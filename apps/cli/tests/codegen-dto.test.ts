@@ -1,0 +1,348 @@
+import { generateDto, renderType } from '../src/codegen-dto.js';
+import {
+  scalarType, arrayType, tupleType, recordType, enumType,
+  literalType, unionType, refType, lazyType, inlineObjectType,
+  field, model, dtoRoot,
+} from './helpers.js';
+import type { ScalarTypeNode } from '../src/ast.js';
+
+describe('renderType', () => {
+  // ─── Scalar types ───────────────────────────────────────────────
+
+  describe('scalar types', () => {
+    it('renders z.string()', () => {
+      expect(renderType(scalarType('string'))).toBe('z.string()');
+    });
+
+    it('renders z.string() with min/max', () => {
+      expect(renderType(scalarType('string', { min: 1, max: 100 }))).toBe('z.string().min(1).max(100)');
+    });
+
+    it('renders z.string() with min only', () => {
+      expect(renderType(scalarType('string', { min: 5 }))).toBe('z.string().min(5)');
+    });
+
+    it('renders z.string() with max only', () => {
+      expect(renderType(scalarType('string', { max: 50 }))).toBe('z.string().max(50)');
+    });
+
+    it('renders z.string() with length', () => {
+      expect(renderType(scalarType('string', { len: 6 }))).toBe('z.string().length(6)');
+    });
+
+    it('renders z.string() with regex', () => {
+      expect(renderType(scalarType('string', { regex: '[A-Z]+' }))).toBe('z.string().regex(/^[A-Z]+$/)');
+    });
+
+    it('renders z.number()', () => {
+      expect(renderType(scalarType('number'))).toBe('z.number()');
+    });
+
+    it('renders z.number() with min', () => {
+      expect(renderType(scalarType('number', { min: 0 }))).toBe('z.number().min(0)');
+    });
+
+    it('renders z.number() with min and max', () => {
+      expect(renderType(scalarType('number', { min: 0, max: 100 }))).toBe('z.number().min(0).max(100)');
+    });
+
+    it('renders z.int()', () => {
+      expect(renderType(scalarType('int'))).toBe('z.int()');
+    });
+
+    it('renders z.int() with constraints', () => {
+      expect(renderType(scalarType('int', { min: 1, max: 10 }))).toBe('z.int().min(1).max(10)');
+    });
+
+    it('renders z.bigint()', () => {
+      expect(renderType(scalarType('bigint'))).toBe('z.bigint()');
+    });
+
+    it('renders z.bigint() with constraints using n suffix', () => {
+      const result = renderType(scalarType('bigint', { min: 0n, max: 100n }));
+      expect(result).toBe('z.bigint().min(0n).max(100n)');
+    });
+
+    it('renders z.boolean()', () => {
+      expect(renderType(scalarType('boolean'))).toBe('z.boolean()');
+    });
+
+    it('renders DateTime custom validator for date', () => {
+      const result = renderType(scalarType('date'));
+      expect(result).toContain('z.custom<DateTime>');
+      expect(result).toContain('DateTime');
+    });
+
+    it('renders DateTime custom validator for datetime', () => {
+      const result = renderType(scalarType('datetime'));
+      expect(result).toContain('z.custom<DateTime>');
+    });
+
+    it('renders z.email()', () => {
+      expect(renderType(scalarType('email'))).toBe('z.email()');
+    });
+
+    it('renders z.url()', () => {
+      expect(renderType(scalarType('url'))).toBe('z.url()');
+    });
+
+    it('renders z.uuid()', () => {
+      expect(renderType(scalarType('uuid'))).toBe('z.uuid()');
+    });
+
+    it('renders z.any()', () => {
+      expect(renderType(scalarType('any'))).toBe('z.any()');
+    });
+
+    it('renders z.unknown()', () => {
+      expect(renderType(scalarType('unknown'))).toBe('z.unknown()');
+    });
+
+    it('renders z.null()', () => {
+      expect(renderType(scalarType('null'))).toBe('z.null()');
+    });
+
+    it('renders z.record for object', () => {
+      expect(renderType(scalarType('object'))).toBe('z.record(z.string(), z.unknown())');
+    });
+
+    it('renders Buffer custom validator for binary', () => {
+      const result = renderType(scalarType('binary'));
+      expect(result).toContain('z.custom<Buffer>');
+      expect(result).toContain('Buffer.isBuffer');
+    });
+  });
+
+  // ─── Compound types ─────────────────────────────────────────────
+
+  describe('compound types', () => {
+    it('renders array type', () => {
+      expect(renderType(arrayType(scalarType('string')))).toBe('z.array(z.string())');
+    });
+
+    it('renders array with constraints', () => {
+      expect(renderType(arrayType(scalarType('string'), { min: 1, max: 10 })))
+        .toBe('z.array(z.string()).min(1).max(10)');
+    });
+
+    it('renders tuple type', () => {
+      expect(renderType(tupleType(scalarType('number'), scalarType('string'))))
+        .toBe('z.tuple([z.number(), z.string()])');
+    });
+
+    it('renders record type', () => {
+      expect(renderType(recordType(scalarType('string'), scalarType('number'))))
+        .toBe('z.record(z.string(), z.number())');
+    });
+
+    it('renders enum type', () => {
+      expect(renderType(enumType('a', 'b', 'c'))).toBe('z.enum(["a", "b", "c"])');
+    });
+
+    it('renders literal string', () => {
+      expect(renderType(literalType('hello'))).toBe('z.literal("hello")');
+    });
+
+    it('renders literal number', () => {
+      expect(renderType(literalType(42))).toBe('z.literal(42)');
+    });
+
+    it('renders literal boolean', () => {
+      expect(renderType(literalType(true))).toBe('z.literal(true)');
+    });
+
+    it('renders union type', () => {
+      expect(renderType(unionType(scalarType('string'), scalarType('number'))))
+        .toBe('z.union([z.string(), z.number()])');
+    });
+
+    it('renders model reference as bare name', () => {
+      expect(renderType(refType('User'))).toBe('User');
+    });
+
+    it('renders lazy type', () => {
+      expect(renderType(lazyType(refType('TreeNode')))).toBe('z.lazy(() => TreeNode)');
+    });
+
+    it('renders inline object type', () => {
+      const result = renderType(inlineObjectType([
+        field('key', scalarType('string')),
+        field('value', scalarType('number')),
+      ]));
+      expect(result).toContain('z.strictObject({');
+      expect(result).toContain('key: z.string(),');
+      expect(result).toContain('value: z.number(),');
+    });
+  });
+});
+
+describe('generateDto', () => {
+  // ─── Simple model ──────────────────────────────────────────────
+
+  describe('simple model', () => {
+    it('generates z.strictObject with fields', () => {
+      const root = dtoRoot([
+        model('User', [
+          field('name', scalarType('string')),
+          field('age', scalarType('number')),
+        ]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('export const User = z.strictObject({');
+      expect(output).toContain('name: z.string(),');
+      expect(output).toContain('age: z.number(),');
+      expect(output).toContain('export type User = z.infer<typeof User>;');
+    });
+
+    it('includes zod import', () => {
+      const root = dtoRoot([model('M', [field('f', scalarType('string'))])]);
+      const output = generateDto(root);
+      expect(output).toContain("import { z } from 'zod';");
+    });
+
+    it('includes luxon import when DateTime fields exist', () => {
+      const root = dtoRoot([model('M', [field('d', scalarType('date'))])]);
+      const output = generateDto(root);
+      expect(output).toContain("import { DateTime } from 'luxon';");
+    });
+
+    it('omits luxon import when no DateTime fields', () => {
+      const root = dtoRoot([model('M', [field('f', scalarType('string'))])]);
+      const output = generateDto(root);
+      expect(output).not.toContain('luxon');
+    });
+
+    it('detects DateTime in nested array types', () => {
+      const root = dtoRoot([model('M', [field('d', arrayType(scalarType('datetime')))])]);
+      const output = generateDto(root);
+      expect(output).toContain("import { DateTime } from 'luxon';");
+    });
+  });
+
+  // ─── Field rendering ───────────────────────────────────────────
+
+  describe('field rendering', () => {
+    it('renders nullable field with .nullable()', () => {
+      const root = dtoRoot([
+        model('M', [field('f', scalarType('string'), { nullable: true })]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('.nullable()');
+    });
+
+    it('renders optional field with .optional()', () => {
+      const root = dtoRoot([
+        model('M', [field('f', scalarType('string'), { optional: true })]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('.optional()');
+    });
+
+    it('renders default string value with .default()', () => {
+      const root = dtoRoot([
+        model('M', [field('f', scalarType('string'), { default: 'user' })]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('.default("user")');
+    });
+
+    it('renders default number value with .default()', () => {
+      const root = dtoRoot([
+        model('M', [field('f', scalarType('number'), { default: 0 })]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('.default(0)');
+    });
+
+    it('renders description with .describe()', () => {
+      const root = dtoRoot([
+        model('M', [field('f', scalarType('string'), { description: 'A name' })]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('.describe("A name")');
+    });
+
+    it('prefers .default() over .optional() when default is set', () => {
+      const root = dtoRoot([
+        model('M', [field('f', scalarType('boolean'), { optional: true, default: true })]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('.default(true)');
+      // .optional() should not appear for this field since default is set
+      const fieldLine = output.split('\n').find(l => l.includes('f:'))!;
+      expect(fieldLine).not.toContain('.optional()');
+    });
+  });
+
+  // ─── Three-schema pattern (visibility) ─────────────────────────
+
+  describe('three-schema pattern', () => {
+    it('generates Base, Read, and Write schemas when visibility fields exist', () => {
+      const root = dtoRoot([
+        model('User', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('name', scalarType('string')),
+          field('password', scalarType('string'), { visibility: 'writeonly' }),
+        ]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('const UserBase = z.strictObject({');
+      expect(output).toContain('export const User = z.strictObject({');
+      expect(output).toContain('export const UserInput = z.strictObject({');
+      expect(output).toContain('export type User = z.infer<typeof User>;');
+      expect(output).toContain('export type UserInput = z.infer<typeof UserInput>;');
+    });
+
+    it('read schema omits writeonly fields', () => {
+      const root = dtoRoot([
+        model('User', [
+          field('name', scalarType('string')),
+          field('password', scalarType('string'), { visibility: 'writeonly' }),
+        ]),
+      ]);
+      const output = generateDto(root);
+      // Find the exported User (read) schema section
+      const userSection = output.split('export const User =')[1]!.split('});')[0]!;
+      expect(userSection).toContain('name:');
+      expect(userSection).not.toContain('password:');
+    });
+
+    it('write schema omits readonly fields', () => {
+      const root = dtoRoot([
+        model('User', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('name', scalarType('string')),
+        ]),
+      ]);
+      const output = generateDto(root);
+      // Find the UserInput (write) schema section
+      const inputSection = output.split('export const UserInput =')[1]!.split('});')[0]!;
+      expect(inputSection).toContain('name:');
+      expect(inputSection).not.toContain('id:');
+    });
+  });
+
+  // ─── Inheritance ───────────────────────────────────────────────
+
+  describe('inheritance', () => {
+    it('generates .extend() for models with a base', () => {
+      const root = dtoRoot([
+        model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('User.extend({');
+    });
+  });
+
+  // ─── Description ──────────────────────────────────────────────
+
+  describe('model description', () => {
+    it('generates JSDoc comment for model description', () => {
+      const root = dtoRoot([
+        model('User', [field('name', scalarType('string'))], { description: 'A user' }),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('/** A user */');
+    });
+  });
+});
