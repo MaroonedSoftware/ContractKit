@@ -23,12 +23,13 @@ function parseArgs(argv: string[]): CliArgs {
   let watch = false;
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--out-dir' || args[i] === '-o') {
+    const arg = args[i]!;
+    if (arg === '--out-dir' || arg === '-o') {
       outDir = args[++i];
-    } else if (args[i] === '--watch' || args[i] === '-w') {
+    } else if (arg === '--watch' || arg === '-w') {
       watch = true;
-    } else if (!args[i].startsWith('--')) {
-      patterns.push(args[i]);
+    } else if (!arg.startsWith('--')) {
+      patterns.push(arg);
     }
   }
 

@@ -31,7 +31,7 @@ export function tokenize(source: string, file: string): Token[] {
   const indentStack: number[] = [0];
 
   for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-    const rawLine = lines[lineNum];
+    const rawLine = lines[lineNum]!;
     const lineNo = lineNum + 1;
 
     // Blank lines are skipped (but don't affect indent tracking)
@@ -57,13 +57,13 @@ export function tokenize(source: string, file: string): Token[] {
     }
     indent = tabAdjusted;
 
-    const currentIndent = indentStack[indentStack.length - 1];
+    const currentIndent = indentStack[indentStack.length - 1]!;
 
     if (indent > currentIndent) {
       indentStack.push(indent);
       tokens.push({ kind: 'INDENT', value: '', line: lineNo });
     } else if (indent < currentIndent) {
-      while (indentStack[indentStack.length - 1] > indent) {
+      while (indentStack[indentStack.length - 1]! > indent) {
         indentStack.pop();
         tokens.push({ kind: 'DEDENT', value: '', line: lineNo });
       }
@@ -108,14 +108,14 @@ export function tokenize(source: string, file: string): Token[] {
       // Numbers (including negative)
       if (content[pos] === '-' && /\d/.test(content[pos + 1] ?? '')) {
         let end = pos + 1;
-        while (end < content.length && /[\d.]/.test(content[end])) end++;
+        while (end < content.length && /[\d.]/.test(content[end]!)) end++;
         tokens.push({ kind: 'NUMBER', value: content.slice(pos, end), line: lineNo });
         pos = end;
         continue;
       }
-      if (/\d/.test(content[pos])) {
+      if (/\d/.test(content[pos]!)) {
         let end = pos;
-        while (end < content.length && /[\d.]/.test(content[end])) end++;
+        while (end < content.length && /[\d.]/.test(content[end]!)) end++;
         tokens.push({ kind: 'NUMBER', value: content.slice(pos, end), line: lineNo });
         pos = end;
         continue;
@@ -136,9 +136,9 @@ export function tokenize(source: string, file: string): Token[] {
       }
 
       // Identifiers and keywords
-      if (/[a-zA-Z_$]/.test(content[pos])) {
+      if (/[a-zA-Z_$]/.test(content[pos]!)) {
         let end = pos;
-        while (end < content.length && /[a-zA-Z0-9_$\-.]/.test(content[end])) end++;
+        while (end < content.length && /[a-zA-Z0-9_$\-.]/.test(content[end]!)) end++;
         const word = content.slice(pos, end);
         if (word === 'true' || word === 'false') {
           tokens.push({ kind: 'BOOLEAN', value: word, line: lineNo });
