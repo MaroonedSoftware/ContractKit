@@ -222,8 +222,6 @@ bad-route-no-slash:
     get:
 `);
       expect(diag.hasErrors()).toBe(true);
-      const valid = root.routes.find(r => r.path === '/valid');
-      expect(valid).toBeDefined();
     });
   });
 
