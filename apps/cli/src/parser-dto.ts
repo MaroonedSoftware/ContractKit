@@ -168,7 +168,7 @@ function parseField(stream: TokenStream, file: string, pendingDesc?: string): Fi
       union.members.splice(nullIdx, 1);
       if (union.members.length === 1) {
         // Unwrap single-member union
-        return buildField(nameTok.value, optional, nullable, visibility, union.members[0], stream, pendingDesc, loc);
+        return buildField(nameTok.value, optional, nullable, visibility, union.members[0]!, stream, pendingDesc, loc);
       }
     }
   } else if (type.kind === 'scalar' && type.name === 'null') {
@@ -221,7 +221,7 @@ function parseTypeExpression(stream: TokenStream, file: string): DtoTypeNode {
     members.push(parseSingleType(stream, file));
   }
 
-  if (members.length === 1) return members[0];
+  if (members.length === 1) return members[0]!;
   return { kind: 'union', members };
 }
 

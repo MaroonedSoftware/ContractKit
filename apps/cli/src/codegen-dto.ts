@@ -119,7 +119,7 @@ function renderField(field: FieldNode): string {
 
 // ─── Type rendering ────────────────────────────────────────────────────────
 
-function renderType(type: DtoTypeNode): string {
+export function renderType(type: DtoTypeNode): string {
   switch (type.kind) {
     case 'scalar':  return renderScalar(type);
     case 'array':   return renderArray(type);

@@ -2,7 +2,7 @@ import type {
   OpRootNode, OpRouteNode, OpOperationNode, OpParamNode,
   OpResponseNode,
 } from './ast.js';
-import { renderType } from './codegen-dto-types.js';
+import { renderType } from './codegen-dto.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -129,7 +129,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string):
 function inferService(op: OpOperationNode, route: OpRouteNode, file: string): { className: string; methodName: string } {
   // If explicitly declared: service: ServiceClass.methodName
   if (op.service) {
-    const [cls, method] = op.service.split('.');
+    const [cls = '', method] = op.service.split('.');
     return { className: cls, methodName: method ?? 'handle' };
   }
 
@@ -174,7 +174,7 @@ function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
 function formatTypeAnnotation(bodyType: string): string {
   // array(X) -> X[]
   const arrayMatch = bodyType.match(/^array\((.+)\)$/);
-  if (arrayMatch) return `${arrayMatch[1]}[]`;
+  if (arrayMatch?.[1]) return `${arrayMatch[1]}[]`;
   return bodyType;
 }
 
@@ -211,7 +211,7 @@ function collectTypes(root: OpRootNode): string[] {
 function extractTypeNames(typeStr: string, out: Set<string>): void {
   // array(SomeType) -> SomeType
   const arrayMatch = typeStr.match(/^array\((.+)\)$/);
-  if (arrayMatch) {
+  if (arrayMatch?.[1]) {
     extractTypeNames(arrayMatch[1], out);
     return;
   }
@@ -226,7 +226,7 @@ function collectServices(root: OpRootNode): string[] {
   for (const route of root.routes) {
     for (const op of route.operations) {
       if (op.service) {
-        services.add(op.service.split('.')[0]);
+        services.add(op.service.split('.')[0] ?? op.service);
       }
     }
   }
@@ -274,6 +274,6 @@ function deriveModulePath(serviceName: string): string {
 
 function deriveTypeImportPath(file: string): string {
   const base = file.split('/').pop()?.replace(/\.op$/, '') ?? 'resource';
-  const module = base.split('.')[0];
+  const module = base.split('.')[0] ?? base;
   return `#modules/${module}/types/index.js`;
 }
