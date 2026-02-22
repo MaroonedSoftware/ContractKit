@@ -1,138 +1,129 @@
-import { TokenStream, ParseError } from '../src/token-stream.js';
+import { adaptTokens } from '../src/token-adapter.js';
 import type { Token, TokenKind } from '../src/lexer.js';
+import { Identifier, Colon, Newline, Indent, Dedent, Eof, StringLit, NumberLit, BooleanLit, Comment } from '../src/tokens.js';
 
 function tok(kind: TokenKind, value = '', line = 1): Token {
   return { kind, value, line };
 }
 
-function makeStream(tokens: Token[], file = 'test.dto'): TokenStream {
-  return new TokenStream(tokens, file);
-}
-
-describe('TokenStream', () => {
-  // ─── peek() ──────────────────────────────────────────────────────
-
-  describe('peek()', () => {
-    it('returns current token without consuming', () => {
-      const stream = makeStream([tok('IDENTIFIER', 'a'), tok('EOF')]);
-      const first = stream.peek();
-      const second = stream.peek();
-      expect(first).toBe(second);
-      expect(first.kind).toBe('IDENTIFIER');
-    });
-
-    it('returns token at offset', () => {
-      const stream = makeStream([tok('IDENTIFIER', 'a'), tok('COLON'), tok('EOF')]);
-      expect(stream.peek(0).kind).toBe('IDENTIFIER');
-      expect(stream.peek(1).kind).toBe('COLON');
-    });
-
-    it('returns EOF sentinel when peeking past end', () => {
-      const stream = makeStream([tok('IDENTIFIER', 'a'), tok('EOF')]);
-      const result = stream.peek(10);
-      expect(result.kind).toBe('EOF');
-    });
+describe('adaptTokens', () => {
+  it('converts basic tokens to Chevrotain IToken format', () => {
+    const raw: Token[] = [
+      tok('IDENTIFIER', 'User', 1),
+      tok('COLON', ':', 1),
+      tok('EOF', '', 1),
+    ];
+    const { tokens } = adaptTokens(raw);
+    expect(tokens).toHaveLength(3);
+    expect(tokens[0]!.tokenType).toBe(Identifier);
+    expect(tokens[0]!.image).toBe('User');
+    expect(tokens[0]!.startLine).toBe(1);
+    expect(tokens[1]!.tokenType).toBe(Colon);
   });
 
-  // ─── consume() ──────────────────────────────────────────────────
+  it('strips COMMENT tokens into comments map', () => {
+    const raw: Token[] = [
+      tok('COMMENT', 'A description', 1),
+      tok('NEWLINE', '', 1),
+      tok('IDENTIFIER', 'User', 2),
+      tok('COLON', ':', 2),
+      tok('NEWLINE', '', 2),
+      tok('EOF', '', 3),
+    ];
+    const { tokens, comments } = adaptTokens(raw);
 
-  describe('consume()', () => {
-    it('returns current token and advances', () => {
-      const stream = makeStream([tok('IDENTIFIER', 'a'), tok('COLON'), tok('EOF')]);
-      const first = stream.consume();
-      expect(first.kind).toBe('IDENTIFIER');
-      expect(stream.peek().kind).toBe('COLON');
-    });
+    // Comments should not appear in the token stream
+    const commentTokens = tokens.filter(t => t.tokenType === Comment);
+    expect(commentTokens).toHaveLength(0);
 
-    it('does not advance past EOF', () => {
-      const stream = makeStream([tok('EOF')]);
-      const first = stream.consume();
-      const second = stream.consume();
-      expect(first.kind).toBe('EOF');
-      expect(second.kind).toBe('EOF');
-    });
+    // Comments should be in the map
+    expect(comments.get(1)).toBe('A description');
   });
 
-  // ─── expect() ───────────────────────────────────────────────────
-
-  describe('expect()', () => {
-    it('returns token when kind matches', () => {
-      const stream = makeStream([tok('IDENTIFIER', 'hello'), tok('EOF')]);
-      const result = stream.expect('IDENTIFIER');
-      expect(result.value).toBe('hello');
-      expect(stream.peek().kind).toBe('EOF');
-    });
-
-    it('throws ParseError when kind does not match', () => {
-      const stream = makeStream([tok('IDENTIFIER', 'hello', 5), tok('EOF')]);
-      expect(() => stream.expect('COLON')).toThrow(ParseError);
-    });
-
-    it('ParseError contains line and file', () => {
-      const stream = makeStream([tok('IDENTIFIER', 'x', 7), tok('EOF')], 'my-file.dto');
-      try {
-        stream.expect('COLON');
-        expect.unreachable('should have thrown');
-      } catch (e) {
-        expect(e).toBeInstanceOf(ParseError);
-        const pe = e as ParseError;
-        expect(pe.line).toBe(7);
-        expect(pe.file).toBe('my-file.dto');
-        expect(pe.message).toContain('COLON');
-        expect(pe.message).toContain('IDENTIFIER');
-      }
-    });
+  it('preserves line numbers on tokens', () => {
+    const raw: Token[] = [
+      tok('IDENTIFIER', 'a', 3),
+      tok('COLON', ':', 3),
+      tok('IDENTIFIER', 'string', 3),
+      tok('NEWLINE', '', 3),
+      tok('EOF', '', 4),
+    ];
+    const { tokens } = adaptTokens(raw);
+    expect(tokens[0]!.startLine).toBe(3);
+    expect(tokens[0]!.endLine).toBe(3);
   });
 
-  // ─── match() ────────────────────────────────────────────────────
-
-  describe('match()', () => {
-    it('consumes and returns true when kind matches', () => {
-      const stream = makeStream([tok('COLON'), tok('EOF')]);
-      const result = stream.match('COLON');
-      expect(result).toBe(true);
-      expect(stream.peek().kind).toBe('EOF');
-    });
-
-    it('returns false without consuming when kind does not match', () => {
-      const stream = makeStream([tok('IDENTIFIER', 'a'), tok('EOF')]);
-      const result = stream.match('COLON');
-      expect(result).toBe(false);
-      expect(stream.peek().kind).toBe('IDENTIFIER');
-    });
+  it('maps all token kinds correctly', () => {
+    const raw: Token[] = [
+      tok('INDENT', '', 1),
+      tok('DEDENT', '', 1),
+      tok('NEWLINE', '', 1),
+      tok('IDENTIFIER', 'name', 1),
+      tok('STRING', 'hello', 1),
+      tok('NUMBER', '42', 1),
+      tok('BOOLEAN', 'true', 1),
+      tok('EOF', '', 1),
+    ];
+    const { tokens } = adaptTokens(raw);
+    expect(tokens[0]!.tokenType).toBe(Indent);
+    expect(tokens[1]!.tokenType).toBe(Dedent);
+    expect(tokens[2]!.tokenType).toBe(Newline);
+    expect(tokens[3]!.tokenType).toBe(Identifier);
+    expect(tokens[4]!.tokenType).toBe(StringLit);
+    expect(tokens[5]!.tokenType).toBe(NumberLit);
+    expect(tokens[6]!.tokenType).toBe(BooleanLit);
+    expect(tokens[7]!.tokenType).toBe(Eof);
   });
 
-  // ─── skipNewlines() ─────────────────────────────────────────────
-
-  describe('skipNewlines()', () => {
-    it('skips consecutive NEWLINE tokens', () => {
-      const stream = makeStream([
-        tok('NEWLINE'), tok('NEWLINE'), tok('NEWLINE'),
-        tok('IDENTIFIER', 'a'), tok('EOF'),
-      ]);
-      stream.skipNewlines();
-      expect(stream.peek().kind).toBe('IDENTIFIER');
-    });
-
-    it('does nothing when not at NEWLINE', () => {
-      const stream = makeStream([tok('IDENTIFIER', 'a'), tok('EOF')]);
-      stream.skipNewlines();
-      expect(stream.peek().kind).toBe('IDENTIFIER');
-    });
-  });
-});
-
-describe('ParseError', () => {
-  it('sets name, message, line, and file correctly', () => {
-    const err = new ParseError('something went wrong', 5, 'test.dto');
-    expect(err.name).toBe('ParseError');
-    expect(err.message).toBe('something went wrong');
-    expect(err.line).toBe(5);
-    expect(err.file).toBe('test.dto');
+  it('assigns monotonically increasing offsets', () => {
+    const raw: Token[] = [
+      tok('IDENTIFIER', 'a', 1),
+      tok('COLON', ':', 1),
+      tok('IDENTIFIER', 'b', 1),
+      tok('EOF', '', 1),
+    ];
+    const { tokens } = adaptTokens(raw);
+    for (let i = 1; i < tokens.length; i++) {
+      expect(tokens[i]!.startOffset).toBeGreaterThan(tokens[i - 1]!.startOffset);
+    }
   });
 
-  it('extends Error', () => {
-    const err = new ParseError('msg', 1, 'f');
-    expect(err).toBeInstanceOf(Error);
+  it('handles multiple comments on different lines', () => {
+    const raw: Token[] = [
+      tok('COMMENT', 'First comment', 1),
+      tok('NEWLINE', '', 1),
+      tok('COMMENT', 'Second comment', 3),
+      tok('NEWLINE', '', 3),
+      tok('EOF', '', 4),
+    ];
+    const { tokens, comments } = adaptTokens(raw);
+
+    // No comment tokens in stream
+    expect(tokens.filter(t => t.tokenType === Comment)).toHaveLength(0);
+
+    // Both comments in map
+    expect(comments.get(1)).toBe('First comment');
+    expect(comments.get(3)).toBe('Second comment');
+  });
+
+  it('handles empty input (only EOF)', () => {
+    const raw: Token[] = [tok('EOF', '', 1)];
+    const { tokens, comments } = adaptTokens(raw);
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0]!.tokenType).toBe(Eof);
+    expect(comments.size).toBe(0);
+  });
+
+  it('preserves token image values', () => {
+    const raw: Token[] = [
+      tok('STRING', 'hello world', 1),
+      tok('NUMBER', '3.14', 1),
+      tok('BOOLEAN', 'false', 1),
+      tok('EOF', '', 1),
+    ];
+    const { tokens } = adaptTokens(raw);
+    expect(tokens[0]!.image).toBe('hello world');
+    expect(tokens[1]!.image).toBe('3.14');
+    expect(tokens[2]!.image).toBe('false');
   });
 });
