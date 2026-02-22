@@ -1,0 +1,22 @@
+{
+    "name": "contract-dsl",
+    "version": "0.1.0",
+    "description": "Compiler for .dto and .op DSL files into TypeScript/Zod/Koa code",
+    "type": "module",
+    "main": "index.ts",
+    "bin": {
+        "dsl-compile": "dist/cli.js"
+    },
+    "scripts": {
+        "build": "tsc",
+        "dev": "node --inspect --no-warnings --no-deprecation --import @swc-node/register/esm-register --enable-source-maps --watch --watch-preserve-output ./src/index.ts",
+        "start": "node dist/cli.js"
+    },
+    "dependencies": {
+        "glob": "^13.0.6"
+    },
+    "devDependencies": {
+        "@repo/config-eslint": "workspace:*",
+        "@repo/config-typescript": "workspace:*"
+    }
+}
