@@ -7,6 +7,7 @@ import { parseDto } from './parser-dto.js';
 import { parseOp } from './parser-op.js';
 import { generateDto } from './codegen-dto.js';
 import { generateOp } from './codegen-op.js';
+import { validateOp } from './validate-op.js';
 
 // ─── Arg parsing ───────────────────────────────────────────────────────────
 
@@ -72,6 +73,7 @@ function compileFile(
   } else {
     const ast = parseOp(source, filePath, diag);
     if (diag.hasErrors()) return null;
+    validateOp(ast, diag);
     content = generateOp(ast);
   }
 

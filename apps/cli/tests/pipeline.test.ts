@@ -2,6 +2,7 @@ import { parseDto } from '../src/parser-dto.js';
 import { parseOp } from '../src/parser-op.js';
 import { generateDto } from '../src/codegen-dto.js';
 import { generateOp } from '../src/codegen-op.js';
+import { validateOp } from '../src/validate-op.js';
 import { DiagnosticCollector } from '../src/diagnostics.js';
 import {
   SIMPLE_USER_DTO, VISIBILITY_DTO, INHERITANCE_DTO,
@@ -117,6 +118,66 @@ describe('OP pipeline (source -> parse -> codegen)', () => {
     const source = `/items { get }`;
     const { output } = compileOpSource(source, 'ledger.items.op');
     expect(output).toContain('LedgerItemsRouter');
+  });
+});
+
+describe('undeclared path param warnings', () => {
+  it('warns when a route has path params but no params block', () => {
+    const source = `/users/:id { get }`;
+    const diag = new DiagnosticCollector();
+    const root = parseOp(source, 'test.op', diag);
+    validateOp(root, diag);
+    const warnings = diag.getAll().filter(d => d.severity === 'warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.message).toContain(':id');
+  });
+
+  it('warns for each undeclared param', () => {
+    const source = `/users/:userId/posts/:postId { get }`;
+    const diag = new DiagnosticCollector();
+    const root = parseOp(source, 'test.op', diag);
+    validateOp(root, diag);
+    const warnings = diag.getAll().filter(d => d.severity === 'warning');
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]!.message).toContain(':userId');
+    expect(warnings[1]!.message).toContain(':postId');
+  });
+
+  it('does not warn when all path params are declared', () => {
+    const source = `/users/:id {\n    params {\n        id: uuid\n    }\n    get\n}`;
+    const diag = new DiagnosticCollector();
+    const root = parseOp(source, 'test.op', diag);
+    validateOp(root, diag);
+    const warnings = diag.getAll().filter(d => d.severity === 'warning');
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('warns only for the subset of undeclared params', () => {
+    const source = `/accounts/:accountId/entries/:entryId {\n    params {\n        accountId: uuid\n    }\n    get\n}`;
+    const diag = new DiagnosticCollector();
+    const root = parseOp(source, 'test.op', diag);
+    validateOp(root, diag);
+    const warnings = diag.getAll().filter(d => d.severity === 'warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.message).toContain(':entryId');
+  });
+
+  it('does not warn when params uses a type reference', () => {
+    const source = `/users/:id {\n    params: UserParams\n    get\n}`;
+    const diag = new DiagnosticCollector();
+    const root = parseOp(source, 'test.op', diag);
+    validateOp(root, diag);
+    const warnings = diag.getAll().filter(d => d.severity === 'warning');
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('does not warn for routes without path params', () => {
+    const source = `/users { get }`;
+    const diag = new DiagnosticCollector();
+    const root = parseOp(source, 'test.op', diag);
+    validateOp(root, diag);
+    const warnings = diag.getAll().filter(d => d.severity === 'warning');
+    expect(warnings).toHaveLength(0);
   });
 });
 
