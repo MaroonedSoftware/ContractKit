@@ -13,7 +13,7 @@
         "lint": "eslint --fix",
         "format": "prettier --write .",
         "test": "vitest run",
-        "start": "node dist/cli.js"
+        "start": "node dist/cli.js \"/Users/robert/projects/contract-dsl/contracts/**/transfers.{dto,op}\" --out-dir ./out/"
     },
     "dependencies": {
         "chevrotain": "^11.0.3",

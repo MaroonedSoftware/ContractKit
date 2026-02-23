@@ -1,0 +1,25 @@
+ProcessCacheQueueInput {
+    batchSize?: int(min=1) # Optional batch size
+}
+ProcessCacheQueueResult {
+    processed: int(min=0) # Number of cache entries processed
+}
+SuccessResult {
+    success: boolean # Whether the operation succeeded
+}
+BalanceCacheDrift {
+    accountId: uuid # The account identifier
+    accountName: string # The account name
+    cachedPostedCredits: bigint # Cached posted credits
+    cachedPostedDebits: bigint # Cached posted debits
+    cachedPendingCredits: bigint # Cached pending credits
+    cachedPendingDebits: bigint # Cached pending debits
+    actualPostedCredits: bigint # Actual posted credits
+    actualPostedDebits: bigint # Actual posted debits
+    actualPendingCredits: bigint # Actual pending credits
+    actualPendingDebits: bigint # Actual pending debits
+    driftPostedCredits: bigint # Drift in posted credits
+    driftPostedDebits: bigint # Drift in posted debits
+    driftPendingCredits: bigint # Drift in pending credits
+    driftPendingDebits: bigint # Drift in pending debits
+}

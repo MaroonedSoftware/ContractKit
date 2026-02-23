@@ -1,0 +1,15 @@
+CustomCurrency {
+    code: string(length=3) # ISO currency code
+    exponent: int # Currency exponent
+}
+
+LedgerAccount {
+    id: readonly uuid # The account identifier
+    name: string(min=3, max=100) # Account name
+    normality: enum(credit, debit) # Account normality
+    currency: string(length=3) | CustomCurrency = "USD" # Currency code or custom currency
+    description?: string(max=1024) # Optional account description
+    createdAt: readonly datetime # The account creation date
+    updatedAt: readonly datetime # The account last update date
+    version: readonly int # The account version
+}

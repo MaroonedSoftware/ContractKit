@@ -1,0 +1,11 @@
+CounterpartyAccount {
+    id: readonly uuid # The counterparty account identifier
+    counterparty_id: uuid
+    financial_institution_id: uuid # The financial institution identifier
+    account_number: string(min=1, max=100) # The account number
+    account_number_type: enum(checking, savings, other) # The account number type
+    account_name: string(min=1, max=100) # The account name
+    account_type: enum(consumer, commercial) # The account type
+    verified_at?: readonly datetime # The date the account was verified
+    verification_method?: readonly string(min=1, max=100) # The verification method
+}

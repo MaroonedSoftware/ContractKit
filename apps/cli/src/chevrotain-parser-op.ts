@@ -1,7 +1,7 @@
 import { CstParser } from 'chevrotain';
 import {
-  allTokens, Indent, Dedent, Newline, Identifier, Colon,
-  LParen, RParen, Slash, NumberLit, Eof,
+  allTokens, Identifier, Colon,
+  LParen, RParen, LBrace, RBrace, Slash, NumberLit, Eof,
 } from './tokens.js';
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
@@ -19,30 +19,24 @@ export class OpCstParser extends CstParser {
 
   public opRoot = this.RULE('opRoot', () => {
     this.MANY(() => {
-      this.MANY2(() => this.CONSUME(Newline));
       this.SUBRULE(this.routeDecl);
     });
-    this.MANY3(() => this.CONSUME2(Newline));
     this.CONSUME(Eof);
   });
 
   // ─── Route ────────────────────────────────────────────────────────────
 
-  // routeDecl: routePath COLON NEWLINE INDENT routeBody DEDENT
+  // routeDecl: routePath LBRACE routeBody RBRACE
   public routeDecl = this.RULE('routeDecl', () => {
     this.SUBRULE(this.routePath);
-    this.CONSUME(Colon);         // terminating colon
-    this.OPTION(() => this.CONSUME(Newline));
-    this.CONSUME(Indent);
+    this.CONSUME(LBrace);
     this.SUBRULE(this.routeBody);
-    this.CONSUME(Dedent);
+    this.CONSUME(RBrace);
   });
 
   // routePath: SLASH (COLON IDENTIFIER | IDENTIFIER) (SLASH (COLON IDENTIFIER | IDENTIFIER))*
   // Route path like /users/:id/posts/:postId
-  // The terminating COLON is NOT consumed here — it's handled by routeDecl.
   // Path parameter colons: COLON followed by IDENTIFIER → `:paramName`
-  // Terminating colon: COLON NOT followed by IDENTIFIER → stop
   public routePath = this.RULE('routePath', () => {
     this.AT_LEAST_ONE(() => {
       this.CONSUME(Slash);
@@ -73,7 +67,6 @@ export class OpCstParser extends CstParser {
   // routeBody: (paramsBlock | httpOperation)*
   public routeBody = this.RULE('routeBody', () => {
     this.MANY(() => {
-      this.MANY2(() => this.CONSUME(Newline));
       this.OR([
         {
           // params block
@@ -93,51 +86,42 @@ export class OpCstParser extends CstParser {
         },
       ]);
     });
-    this.MANY3(() => this.CONSUME2(Newline));
   });
 
   // ─── Params ───────────────────────────────────────────────────────────
 
-  // paramsBlock: "params" COLON NEWLINE INDENT paramDecl* DEDENT
+  // paramsBlock: "params" LBRACE paramDecl* RBRACE
   public paramsBlock = this.RULE('paramsBlock', () => {
     this.CONSUME(Identifier);  // "params"
-    this.CONSUME(Colon);
-    this.OPTION(() => this.CONSUME(Newline));
-    this.CONSUME(Indent);
+    this.CONSUME(LBrace);
     this.MANY(() => {
-      this.MANY2(() => this.CONSUME2(Newline));
       this.SUBRULE(this.paramDecl);
     });
-    this.MANY3(() => this.CONSUME3(Newline));
-    this.CONSUME(Dedent);
+    this.CONSUME(RBrace);
   });
 
-  // paramDecl: IDENTIFIER COLON IDENTIFIER NEWLINE
+  // paramDecl: IDENTIFIER COLON IDENTIFIER
   public paramDecl = this.RULE('paramDecl', () => {
     this.CONSUME(Identifier);  // param name
     this.CONSUME(Colon);
     this.CONSUME2(Identifier); // param type
-    this.OPTION(() => this.CONSUME(Newline));
   });
 
   // ─── HTTP Operation ───────────────────────────────────────────────────
 
-  // httpOperation: IDENTIFIER COLON NEWLINE (INDENT operationBody DEDENT)?
+  // httpOperation: IDENTIFIER (LBRACE operationBody RBRACE)?
   public httpOperation = this.RULE('httpOperation', () => {
     this.CONSUME(Identifier);  // HTTP method name
-    this.CONSUME(Colon);
-    this.OPTION(() => this.CONSUME(Newline));
-    this.OPTION2(() => {
-      this.CONSUME(Indent);
+    this.OPTION(() => {
+      this.CONSUME(LBrace);
       this.SUBRULE(this.operationBody);
-      this.CONSUME(Dedent);
+      this.CONSUME(RBrace);
     });
   });
 
   // operationBody: (requestBlock | responseBlock)*
   public operationBody = this.RULE('operationBody', () => {
     this.MANY(() => {
-      this.MANY2(() => this.CONSUME(Newline));
       this.OR([
         {
           GATE: () => {
@@ -155,61 +139,49 @@ export class OpCstParser extends CstParser {
         },
       ]);
     });
-    this.MANY3(() => this.CONSUME2(Newline));
   });
 
   // ─── Request ──────────────────────────────────────────────────────────
 
-  // requestBlock: "request" COLON NEWLINE INDENT contentTypeLine DEDENT
+  // requestBlock: "request" LBRACE contentTypeLine RBRACE
   public requestBlock = this.RULE('requestBlock', () => {
     this.CONSUME(Identifier);  // "request"
-    this.CONSUME(Colon);
-    this.OPTION(() => this.CONSUME(Newline));
-    this.CONSUME(Indent);
+    this.CONSUME(LBrace);
     this.SUBRULE(this.contentTypeLine);
-    this.MANY(() => this.CONSUME2(Newline));
-    this.CONSUME(Dedent);
+    this.CONSUME(RBrace);
   });
 
   // ─── Response ─────────────────────────────────────────────────────────
 
-  // responseBlock: "response" COLON NEWLINE INDENT statusCodeBlock* DEDENT
+  // responseBlock: "response" LBRACE statusCodeBlock* RBRACE
   public responseBlock = this.RULE('responseBlock', () => {
     this.CONSUME(Identifier);  // "response"
-    this.CONSUME(Colon);
-    this.OPTION(() => this.CONSUME(Newline));
-    this.CONSUME(Indent);
+    this.CONSUME(LBrace);
     this.MANY(() => {
-      this.MANY2(() => this.CONSUME2(Newline));
       this.SUBRULE(this.statusCodeBlock);
     });
-    this.MANY3(() => this.CONSUME3(Newline));
-    this.CONSUME(Dedent);
+    this.CONSUME(RBrace);
   });
 
-  // statusCodeBlock: NUMBER COLON NEWLINE (INDENT contentTypeLine DEDENT)?
+  // statusCodeBlock: NUMBER (LBRACE contentTypeLine RBRACE)?
   public statusCodeBlock = this.RULE('statusCodeBlock', () => {
     this.CONSUME(NumberLit);   // status code e.g. "200"
-    this.CONSUME(Colon);
-    this.OPTION(() => this.CONSUME(Newline));
-    this.OPTION2(() => {
-      this.CONSUME(Indent);
+    this.OPTION(() => {
+      this.CONSUME(LBrace);
       this.SUBRULE(this.contentTypeLine);
-      this.MANY(() => this.CONSUME2(Newline));
-      this.CONSUME(Dedent);
+      this.CONSUME(RBrace);
     });
   });
 
   // ─── Content type line ────────────────────────────────────────────────
 
-  // contentTypeLine: IDENTIFIER SLASH IDENTIFIER COLON bodyTypeExpr NEWLINE
+  // contentTypeLine: IDENTIFIER SLASH IDENTIFIER COLON bodyTypeExpr
   public contentTypeLine = this.RULE('contentTypeLine', () => {
     this.CONSUME(Identifier);   // "application"
     this.CONSUME(Slash);
     this.CONSUME2(Identifier);  // "json" or "form-data"
     this.CONSUME(Colon);
     this.SUBRULE(this.bodyTypeExpr);
-    this.OPTION(() => this.CONSUME(Newline));
   });
 
   // bodyTypeExpr: IDENTIFIER (LPAREN IDENTIFIER RPAREN)?

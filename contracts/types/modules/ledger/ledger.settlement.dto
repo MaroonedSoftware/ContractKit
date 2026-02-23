@@ -1,0 +1,16 @@
+LedgerSettlement {
+    settledAccountId: uuid # Account to settle
+    contraAccountId: uuid # Contra account
+    initialStatus?: enum(processing, drafting) # Optional initial status
+    targetStatus?: enum(pending, posted) # Optional target status
+    effectiveAtUpperBound?: string | null # Optional upper bound date
+    skipSettlementLedgerTransaction?: boolean # Skip creating ledger transaction
+    description?: string(max=1024) | null # Optional description
+    metadata?: record(string, unknown) # Optional metadata
+}
+FinalizeSettlementInput {
+    targetStatus?: enum(pending, posted) # Optional target status
+}
+UpdateSettlementStatusInput {
+    status: enum(posted, archived) # New settlement status
+}

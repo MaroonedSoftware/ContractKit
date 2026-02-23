@@ -4,9 +4,6 @@ import { createToken, type TokenType } from 'chevrotain';
 // These are used by Chevrotain's parser for grammar rules and lookahead.
 // We use our own external lexer, so the patterns here are documentation only.
 
-export const Indent     = createToken({ name: 'Indent',     pattern: /INDENT/ });
-export const Dedent     = createToken({ name: 'Dedent',     pattern: /DEDENT/ });
-export const Newline    = createToken({ name: 'Newline',    pattern: /\n/ });
 export const Comment    = createToken({ name: 'Comment',    pattern: /#[^\n]*/ });
 export const BooleanLit = createToken({ name: 'BooleanLit', pattern: /true|false/ });
 export const Identifier = createToken({ name: 'Identifier', pattern: /[a-zA-Z_$][a-zA-Z0-9_$\-.]*/});
@@ -26,7 +23,6 @@ export const Eof        = createToken({ name: 'Eof',        pattern: /<<EOF>>/ }
 
 // Token vocabulary — order matters for parser lookahead priority
 export const allTokens: TokenType[] = [
-  Newline, Indent, Dedent,
   Comment,
   BooleanLit,   // before Identifier so "true"/"false" don't match as identifiers
   Identifier,
@@ -39,9 +35,6 @@ export const allTokens: TokenType[] = [
 
 // Map from our lexer's TokenKind string to Chevrotain TokenType
 export const tokenKindMap: Record<string, TokenType> = {
-  INDENT:     Indent,
-  DEDENT:     Dedent,
-  NEWLINE:    Newline,
   IDENTIFIER: Identifier,
   COLON:      Colon,
   QUESTION:   Question,

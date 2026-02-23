@@ -1,0 +1,19 @@
+LedgerTransaction {
+    idempotencyKey: uuid # A unique idempotency key for the transaction
+    status: enum(pending, posted) # The initial transaction status
+    effectiveAt?: datetime # Effective date-time (defaults to now)
+    description?: string(max=1024) | null # Optional description
+    entries: array(LedgerTransactionEntry, min=2) # The transaction entries (minimum 2)
+}
+LedgerTransactionEntry {
+    accountId: uuid # The ledger account identifier
+    amount: bigint(min=0) # The entry amount in smallest currency units
+    direction: enum(credit, debit) # The direction of a ledger entry
+    accountVersion?: int # Optional version for optimistic locking
+    pendingBalance?: string # Optional pending balance assertion (e.g. ">=100")
+    postedBalance?: string # Optional posted balance assertion (e.g. ">=100")
+    availableBalance?: string # Optional available balance assertion (e.g. ">=100")
+}
+FinalizeTransactionInput {
+    status: enum(posted, archived) # Target finalization status
+}

@@ -37,14 +37,14 @@ export class DtoVisitor extends BaseDtoVisitor {
 
   modelDecl(ctx: any): ModelNode {
     const identifiers: IToken[] = ctx.Identifier || [];
-    const nameToken = identifiers[0];
+    const nameToken = identifiers[0]!;
     const name = nameToken.image;
     const line = nameToken.startLine ?? 0;
 
     // Second identifier (if any) is the base model name
     let base: string | undefined;
     if (identifiers.length > 1) {
-      base = identifiers[1].image;
+      base = identifiers[1]!.image;
     }
 
     // Parse fields from fieldList
@@ -75,7 +75,7 @@ export class DtoVisitor extends BaseDtoVisitor {
     const identifiers: IToken[] = ctx.Identifier || [];
     if (identifiers.length === 0) return null;
 
-    const nameToken = identifiers[0];
+    const nameToken = identifiers[0]!;
     const fieldName = nameToken.image;
     const line = nameToken.startLine ?? 0;
     const optional = !!ctx.Question;
@@ -86,21 +86,13 @@ export class DtoVisitor extends BaseDtoVisitor {
     // identifiers[1] = visibility modifier (if present)
     let visibility: 'readonly' | 'writeonly' | 'normal' = 'normal';
     if (identifiers.length > 1) {
-      const vis = identifiers[1].image;
+      const vis = identifiers[1]!.image;
       if (vis === 'readonly' || vis === 'writeonly') {
         visibility = vis;
       }
     }
 
-    // Case 1: Nested object (fieldList present, no typeExpression)
-    if (ctx.fieldList && !ctx.typeExpression) {
-      const subFields = this.visit(ctx.fieldList[0]) as FieldNode[];
-      const type: InlineObjectTypeNode = { kind: 'inlineObject', fields: subFields };
-      const description = this.comments.get(line - 1) ?? this.comments.get(line);
-      return { name: fieldName, optional, nullable: false, visibility, type, description, loc: { file: this.file, line } };
-    }
-
-    // Cases 2 & 3: Type expression (with or without visibility)
+    // Type expression (with or without visibility)
     if (!ctx.typeExpression || ctx.typeExpression.length === 0) return null;
 
     let type: DtoTypeNode = this.visit(ctx.typeExpression[0]);

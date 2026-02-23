@@ -13,43 +13,28 @@ describe('parseOp', () => {
 
   describe('route paths', () => {
     it('parses simple route path', () => {
-      const { root } = parse(`\
-/users:
-    get:
-`);
+      const { root } = parse('/users { get }');
       expect(root.routes).toHaveLength(1);
       expect(root.routes[0]!.path).toBe('/users');
     });
 
     it('parses route with path parameters', () => {
-      const { root } = parse(`\
-/users/:id:
-    get:
-`);
+      const { root } = parse('/users/:id { get }');
       expect(root.routes[0]!.path).toBe('/users/:id');
     });
 
     it('parses nested route path', () => {
-      const { root } = parse(`\
-/api/v1/users:
-    get:
-`);
+      const { root } = parse('/api/v1/users { get }');
       expect(root.routes[0]!.path).toBe('/api/v1/users');
     });
 
     it('parses route with multiple path parameters', () => {
-      const { root } = parse(`\
-/users/:userId/posts/:postId:
-    get:
-`);
+      const { root } = parse('/users/:userId/posts/:postId { get }');
       expect(root.routes[0]!.path).toBe('/users/:userId/posts/:postId');
     });
 
     it('errors on route not starting with slash', () => {
-      const { diag } = parse(`\
-users:
-    get:
-`);
+      const { diag } = parse('users { get }');
       expect(diag.hasErrors()).toBe(true);
     });
   });
@@ -59,11 +44,12 @@ users:
   describe('params block', () => {
     it('parses params with scalar types', () => {
       const { root } = parse(`\
-/users/:id:
-    params:
+/users/:id {
+    params {
         id: uuid
-    get:
-`);
+    }
+    get
+}`);
       const params = root.routes[0]!.params;
       expect(params).toHaveLength(1);
       expect(params![0]!.name).toBe('id');
@@ -72,12 +58,13 @@ users:
 
     it('parses multiple params', () => {
       const { root } = parse(`\
-/users/:id/posts/:postId:
-    params:
+/users/:id/posts/:postId {
+    params {
         id: uuid
         postId: uuid
-    get:
-`);
+    }
+    get
+}`);
       const params = root.routes[0]!.params;
       expect(params).toHaveLength(2);
       expect(params![0]!.name).toBe('id');
@@ -89,32 +76,32 @@ users:
 
   describe('HTTP methods', () => {
     it('parses GET operation', () => {
-      const { root } = parse('/users:\n    get:\n');
+      const { root } = parse('/users { get }');
       expect(root.routes[0]!.operations[0]!.method).toBe('get');
     });
 
     it('parses POST operation', () => {
-      const { root } = parse('/users:\n    post:\n');
+      const { root } = parse('/users { post }');
       expect(root.routes[0]!.operations[0]!.method).toBe('post');
     });
 
     it('parses PUT operation', () => {
-      const { root } = parse('/users:\n    put:\n');
+      const { root } = parse('/users { put }');
       expect(root.routes[0]!.operations[0]!.method).toBe('put');
     });
 
     it('parses PATCH operation', () => {
-      const { root } = parse('/users:\n    patch:\n');
+      const { root } = parse('/users { patch }');
       expect(root.routes[0]!.operations[0]!.method).toBe('patch');
     });
 
     it('parses DELETE operation', () => {
-      const { root } = parse('/users:\n    delete:\n');
+      const { root } = parse('/users { delete }');
       expect(root.routes[0]!.operations[0]!.method).toBe('delete');
     });
 
     it('parses operation with no body', () => {
-      const { root } = parse('/users:\n    delete:\n');
+      const { root } = parse('/users { delete }');
       const op = root.routes[0]!.operations[0]!;
       expect(op.method).toBe('delete');
       expect(op.request).toBeUndefined();
@@ -127,11 +114,13 @@ users:
   describe('request block', () => {
     it('parses JSON request with body type', () => {
       const { root } = parse(`\
-/users:
-    post:
-        request:
+/users {
+    post {
+        request {
             application/json: CreateUserInput
-`);
+        }
+    }
+}`);
       const request = root.routes[0]!.operations[0]!.request;
       expect(request).toBeDefined();
       expect(request!.contentType).toBe('application/json');
@@ -140,11 +129,13 @@ users:
 
     it('parses multipart request', () => {
       const { root } = parse(`\
-/uploads:
-    post:
-        request:
+/uploads {
+    post {
+        request {
             multipart/form-data: UploadInput
-`);
+        }
+    }
+}`);
       const request = root.routes[0]!.operations[0]!.request;
       expect(request!.contentType).toBe('multipart/form-data');
     });
@@ -155,12 +146,15 @@ users:
   describe('response block', () => {
     it('parses response with status code and body type', () => {
       const { root } = parse(`\
-/users:
-    get:
-        response:
-            200:
+/users {
+    get {
+        response {
+            200 {
                 application/json: array(User)
-`);
+            }
+        }
+    }
+}`);
       const response = root.routes[0]!.operations[0]!.response;
       expect(response).toBeDefined();
       expect(response!.statusCode).toBe(200);
@@ -170,11 +164,13 @@ users:
 
     it('parses response with no body', () => {
       const { root } = parse(`\
-/users/:id:
-    delete:
-        response:
-            204:
-`);
+/users/:id {
+    delete {
+        response {
+            204
+        }
+    }
+}`);
       const response = root.routes[0]!.operations[0]!.response;
       expect(response).toBeDefined();
       expect(response!.statusCode).toBe(204);
@@ -187,10 +183,10 @@ users:
   describe('multiple operations and routes', () => {
     it('parses multiple HTTP methods under one route', () => {
       const { root } = parse(`\
-/users:
-    get:
-    post:
-`);
+/users {
+    get
+    post
+}`);
       expect(root.routes[0]!.operations).toHaveLength(2);
       expect(root.routes[0]!.operations[0]!.method).toBe('get');
       expect(root.routes[0]!.operations[1]!.method).toBe('post');
@@ -198,12 +194,13 @@ users:
 
     it('parses multiple routes', () => {
       const { root } = parse(`\
-/users:
-    get:
+/users {
+    get
+}
 
-/posts:
-    get:
-`);
+/posts {
+    get
+}`);
       expect(root.routes).toHaveLength(2);
       expect(root.routes[0]!.path).toBe('/users');
       expect(root.routes[1]!.path).toBe('/posts');
@@ -215,12 +212,13 @@ users:
   describe('error recovery', () => {
     it('collects errors and continues parsing', () => {
       const { root, diag } = parse(`\
-bad-route-no-slash:
-    get:
+bad-route-no-slash {
+    get
+}
 
-/valid:
-    get:
-`);
+/valid {
+    get
+}`);
       expect(diag.hasErrors()).toBe(true);
     });
   });
@@ -230,20 +228,28 @@ bad-route-no-slash:
   describe('full example', () => {
     it('parses a complete route with params, request, and response', () => {
       const { root, diag } = parse(`\
-/users/:id:
-    params:
+/users/:id {
+    params {
         id: uuid
-    get:
-        response:
-            200:
+    }
+    get {
+        response {
+            200 {
                 application/json: User
-    put:
-        request:
+            }
+        }
+    }
+    put {
+        request {
             application/json: UpdateUserInput
-        response:
-            200:
+        }
+        response {
+            200 {
                 application/json: User
-`);
+            }
+        }
+    }
+}`);
       expect(diag.hasErrors()).toBe(false);
       const route = root.routes[0]!;
       expect(route.path).toBe('/users/:id');

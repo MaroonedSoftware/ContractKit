@@ -1,6 +1,6 @@
 import { CstParser } from 'chevrotain';
 import {
-  allTokens, Indent, Dedent, Newline, Identifier, Colon, Question,
+  allTokens, Identifier, Colon, Question,
   Equals, Pipe, LParen, RParen, LBrace, RBrace, Comma, Slash,
   StringLit, NumberLit, BooleanLit, Eof,
 } from './tokens.js';
@@ -18,67 +18,44 @@ export class DtoCstParser extends CstParser {
 
   public dtoRoot = this.RULE('dtoRoot', () => {
     this.MANY(() => {
-      this.MANY2(() => this.CONSUME(Newline));
       this.SUBRULE(this.modelDecl);
     });
-    this.MANY3(() => this.CONSUME2(Newline));
     this.CONSUME(Eof);
   });
 
   // ─── Model ────────────────────────────────────────────────────────────
 
-  // modelDecl: IDENTIFIER COLON IDENTIFIER? NEWLINE (INDENT fieldList DEDENT)?
+  // modelDecl: IDENTIFIER (COLON IDENTIFIER)? LBRACE fieldList RBRACE
   public modelDecl = this.RULE('modelDecl', () => {
     this.CONSUME(Identifier);  // model name
-    this.CONSUME(Colon);
     this.OPTION(() => {
-      this.CONSUME2(Identifier); // base model name (optional)
+      this.CONSUME(Colon);
+      this.CONSUME2(Identifier); // base model name
     });
-    this.OPTION2(() => this.CONSUME(Newline));
-    this.OPTION3(() => {
-      this.CONSUME(Indent);
-      this.SUBRULE(this.fieldList);
-      this.CONSUME(Dedent);
-    });
+    this.CONSUME(LBrace);
+    this.SUBRULE(this.fieldList);
+    this.CONSUME(RBrace);
   });
 
   // ─── Fields ───────────────────────────────────────────────────────────
 
   public fieldList = this.RULE('fieldList', () => {
     this.MANY(() => {
-      this.MANY2(() => this.CONSUME(Newline));
-      this.OPTION(() => {
-        this.SUBRULE(this.fieldDecl);
-      });
+      this.SUBRULE(this.fieldDecl);
     });
   });
 
-  // fieldDecl handles three cases:
-  // 1. Nested object:     name: NEWLINE INDENT fieldList DEDENT
-  // 2. Visibility + type: name: readonly typeExpr (= default)? NEWLINE
-  // 3. Regular type:      name: typeExpr (= default)? NEWLINE
+  // fieldDecl handles two cases:
+  // 1. Visibility + type: name: readonly typeExpr (= default)?
+  // 2. Regular type:      name: typeExpr (= default)?
+  // Nested objects are handled via typeExpression → singleType → inlineBraceObject
   public fieldDecl = this.RULE('fieldDecl', () => {
     this.CONSUME(Identifier);  // field name
     this.OPTION(() => this.CONSUME(Question));
     this.CONSUME(Colon);
     this.OR([
       {
-        // Case 1: Nested object — next token is NEWLINE (no type on this line)
-        GATE: () => {
-          const la1 = this.LA(1);
-          return la1.tokenType === Newline || la1.tokenType === Eof || la1.tokenType === Dedent;
-        },
-        ALT: () => {
-          this.CONSUME(Newline);
-          this.OPTION2(() => {
-            this.CONSUME(Indent);
-            this.SUBRULE(this.fieldList);
-            this.CONSUME(Dedent);
-          });
-        },
-      },
-      {
-        // Case 2: Visibility modifier + type expression
+        // Case 1: Visibility modifier + type expression
         GATE: () => {
           const la1 = this.LA(1);
           return la1.tokenType === Identifier &&
@@ -87,22 +64,20 @@ export class DtoCstParser extends CstParser {
         ALT: () => {
           this.CONSUME2(Identifier); // visibility modifier
           this.SUBRULE2(this.typeExpression);
-          this.OPTION3(() => {
+          this.OPTION2(() => {
             this.CONSUME(Equals);
             this.SUBRULE(this.defaultValue);
           });
-          this.OPTION4(() => this.CONSUME2(Newline));
         },
       },
       {
-        // Case 3: Regular type expression (no visibility)
+        // Case 2: Regular type expression (no visibility)
         ALT: () => {
           this.SUBRULE(this.typeExpression);
-          this.OPTION5(() => {
+          this.OPTION3(() => {
             this.CONSUME2(Equals);
             this.SUBRULE2(this.defaultValue);
           });
-          this.OPTION6(() => this.CONSUME3(Newline));
         },
       },
     ]);
@@ -201,12 +176,9 @@ export class DtoCstParser extends CstParser {
 
   public inlineBraceObject = this.RULE('inlineBraceObject', () => {
     this.CONSUME(LBrace);
-    this.OPTION(() => {
+    this.MANY(() => {
       this.SUBRULE(this.inlineField);
-      this.MANY(() => {
-        this.CONSUME(Comma);
-        this.SUBRULE2(this.inlineField);
-      });
+      this.OPTION(() => this.CONSUME(Comma));
     });
     this.CONSUME(RBrace);
   });

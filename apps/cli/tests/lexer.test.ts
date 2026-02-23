@@ -5,9 +5,9 @@ function kinds(tokens: Token[]): Array<[TokenKind, string]> {
   return tokens.map(t => [t.kind, t.value]);
 }
 
-/** Shorthand to get non-NEWLINE, non-EOF tokens for focused assertions. */
+/** Shorthand to get non-EOF tokens for focused assertions. */
 function contentTokens(tokens: Token[]): Token[] {
-  return tokens.filter(t => t.kind !== 'NEWLINE' && t.kind !== 'EOF');
+  return tokens.filter(t => t.kind !== 'EOF');
 }
 
 describe('tokenize', () => {
@@ -90,59 +90,20 @@ describe('tokenize', () => {
     });
   });
 
-  // ─── Indentation ─────────────────────────────────────────────────
-
-  describe('indentation', () => {
-    it('emits INDENT when indentation increases', () => {
-      const tokens = tokenize('a:\n    b', 'test');
-      const kindList = tokens.map(t => t.kind);
-      expect(kindList).toContain('INDENT');
-    });
-
-    it('emits DEDENT when indentation decreases', () => {
-      const tokens = tokenize('a:\n    b\nc', 'test');
-      const kindList = tokens.map(t => t.kind);
-      const indentIdx = kindList.indexOf('INDENT');
-      const dedentIdx = kindList.indexOf('DEDENT');
-      expect(indentIdx).toBeGreaterThan(-1);
-      expect(dedentIdx).toBeGreaterThan(indentIdx);
-    });
-
-    it('emits multiple DEDENTs for multi-level dedent', () => {
-      const tokens = tokenize('a:\n    b:\n        c\nd', 'test');
-      const dedents = tokens.filter(t => t.kind === 'DEDENT');
-      expect(dedents.length).toBeGreaterThanOrEqual(2);
-    });
-
-    it('expands tabs to 4 spaces', () => {
-      const tokens = tokenize('a:\n\tb', 'test');
-      const kindList = tokens.map(t => t.kind);
-      expect(kindList).toContain('INDENT');
-    });
-
-    it('closes all open indents at EOF', () => {
-      const tokens = tokenize('a:\n    b', 'test');
-      const dedents = tokens.filter(t => t.kind === 'DEDENT');
-      expect(dedents.length).toBeGreaterThanOrEqual(1);
-      expect(tokens[tokens.length - 1]!.kind).toBe('EOF');
-    });
-  });
-
   // ─── Complex sequences ──────────────────────────────────────────
 
   describe('complex sequences', () => {
     it('tokenizes a simple model declaration', () => {
-      const tokens = tokenize('User:\n    name: string', 'test');
+      const tokens = tokenize('User { name: string }', 'test');
       const expectedSequence: TokenKind[] = [
-        'IDENTIFIER', 'COLON', 'NEWLINE',
-        'INDENT',
+        'IDENTIFIER', 'LBRACE',
         'IDENTIFIER', 'COLON', 'IDENTIFIER',
-        'NEWLINE', 'DEDENT', 'EOF',
+        'RBRACE', 'EOF',
       ];
       expect(tokens.map(t => t.kind)).toEqual(expectedSequence);
       expect(tokens[0]!.value).toBe('User');
-      expect(tokens[4]!.value).toBe('name');
-      expect(tokens[6]!.value).toBe('string');
+      expect(tokens[2]!.value).toBe('name');
+      expect(tokens[4]!.value).toBe('string');
     });
 
     it('tokenizes identifiers with hyphens', () => {

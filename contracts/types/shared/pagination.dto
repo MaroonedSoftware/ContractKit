@@ -1,0 +1,6 @@
+Pagination {
+    page: int(min=0) = 0 # Page number
+    pageSize: int(min=1, max=100) = 25 # Page size
+    sort: enum(asc, desc) = desc # Sort order
+    total: writeonly int(min=0) # Total number of items
+}

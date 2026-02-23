@@ -1,6 +1,6 @@
 import { adaptTokens } from '../src/token-adapter.js';
 import type { Token, TokenKind } from '../src/lexer.js';
-import { Identifier, Colon, Newline, Indent, Dedent, Eof, StringLit, NumberLit, BooleanLit, Comment } from '../src/tokens.js';
+import { Identifier, Colon, Eof, StringLit, NumberLit, BooleanLit, Comment, LBrace, RBrace } from '../src/tokens.js';
 
 function tok(kind: TokenKind, value = '', line = 1): Token {
   return { kind, value, line };
@@ -24,10 +24,9 @@ describe('adaptTokens', () => {
   it('strips COMMENT tokens into comments map', () => {
     const raw: Token[] = [
       tok('COMMENT', 'A description', 1),
-      tok('NEWLINE', '', 1),
       tok('IDENTIFIER', 'User', 2),
-      tok('COLON', ':', 2),
-      tok('NEWLINE', '', 2),
+      tok('LBRACE', '{', 2),
+      tok('RBRACE', '}', 2),
       tok('EOF', '', 3),
     ];
     const { tokens, comments } = adaptTokens(raw);
@@ -45,7 +44,6 @@ describe('adaptTokens', () => {
       tok('IDENTIFIER', 'a', 3),
       tok('COLON', ':', 3),
       tok('IDENTIFIER', 'string', 3),
-      tok('NEWLINE', '', 3),
       tok('EOF', '', 4),
     ];
     const { tokens } = adaptTokens(raw);
@@ -55,24 +53,22 @@ describe('adaptTokens', () => {
 
   it('maps all token kinds correctly', () => {
     const raw: Token[] = [
-      tok('INDENT', '', 1),
-      tok('DEDENT', '', 1),
-      tok('NEWLINE', '', 1),
       tok('IDENTIFIER', 'name', 1),
+      tok('LBRACE', '{', 1),
+      tok('RBRACE', '}', 1),
       tok('STRING', 'hello', 1),
       tok('NUMBER', '42', 1),
       tok('BOOLEAN', 'true', 1),
       tok('EOF', '', 1),
     ];
     const { tokens } = adaptTokens(raw);
-    expect(tokens[0]!.tokenType).toBe(Indent);
-    expect(tokens[1]!.tokenType).toBe(Dedent);
-    expect(tokens[2]!.tokenType).toBe(Newline);
-    expect(tokens[3]!.tokenType).toBe(Identifier);
-    expect(tokens[4]!.tokenType).toBe(StringLit);
-    expect(tokens[5]!.tokenType).toBe(NumberLit);
-    expect(tokens[6]!.tokenType).toBe(BooleanLit);
-    expect(tokens[7]!.tokenType).toBe(Eof);
+    expect(tokens[0]!.tokenType).toBe(Identifier);
+    expect(tokens[1]!.tokenType).toBe(LBrace);
+    expect(tokens[2]!.tokenType).toBe(RBrace);
+    expect(tokens[3]!.tokenType).toBe(StringLit);
+    expect(tokens[4]!.tokenType).toBe(NumberLit);
+    expect(tokens[5]!.tokenType).toBe(BooleanLit);
+    expect(tokens[6]!.tokenType).toBe(Eof);
   });
 
   it('assigns monotonically increasing offsets', () => {
@@ -91,9 +87,7 @@ describe('adaptTokens', () => {
   it('handles multiple comments on different lines', () => {
     const raw: Token[] = [
       tok('COMMENT', 'First comment', 1),
-      tok('NEWLINE', '', 1),
       tok('COMMENT', 'Second comment', 3),
-      tok('NEWLINE', '', 3),
       tok('EOF', '', 4),
     ];
     const { tokens, comments } = adaptTokens(raw);

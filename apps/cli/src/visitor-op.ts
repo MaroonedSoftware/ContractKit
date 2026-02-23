@@ -29,7 +29,7 @@ export class OpVisitor extends BaseOpVisitor {
 
   routeDecl(ctx: any): OpRouteNode {
     const path: string = this.visit(ctx.routePath[0]);
-    const line = ctx.Colon?.[0]?.startLine ?? 0;
+    const line = ctx.LBrace?.[0]?.startLine ?? 0;
 
     let params: OpParamNode[] | undefined;
     let operations: OpOperationNode[] = [];
@@ -86,9 +86,9 @@ export class OpVisitor extends BaseOpVisitor {
 
   paramDecl(ctx: any): OpParamNode {
     const identifiers: IToken[] = ctx.Identifier || [];
-    const name = identifiers[0].image;
+    const name = identifiers[0]!.image;
     const typeName = identifiers[1]?.image ?? 'string';
-    const line = identifiers[0].startLine ?? 0;
+    const line = identifiers[0]!.startLine ?? 0;
 
     return {
       name,

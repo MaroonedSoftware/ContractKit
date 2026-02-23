@@ -59,7 +59,7 @@ describe('DTO pipeline (source -> parse -> codegen)', () => {
 
   it('compiles a DTO with all type kinds', () => {
     const source = `\
-Kitchen:
+Kitchen {
     tags: array(string)
     coords: tuple(number, number)
     meta: record(string, unknown)
@@ -68,7 +68,7 @@ Kitchen:
     value: string | number
     ref: Address
     children: lazy(Kitchen)
-`;
+}`;
     const { output, diag } = compileDtoSource(source);
     expect(diag.hasErrors()).toBe(false);
     expect(output).toContain('z.array(z.string())');
@@ -83,10 +83,10 @@ Kitchen:
 
   it('includes DateTime import when date fields are used', () => {
     const source = `\
-Event:
+Event {
     startDate: date
     createdAt: datetime
-`;
+}`;
     const { output } = compileDtoSource(source);
     expect(output).toContain("import { DateTime } from 'luxon';");
   });
@@ -114,7 +114,7 @@ describe('OP pipeline (source -> parse -> codegen)', () => {
   });
 
   it('uses correct router name for dotted file names', () => {
-    const source = `/items:\n    get:\n`;
+    const source = `/items { get }`;
     const { output } = compileOpSource(source, 'ledger.items.op');
     expect(output).toContain('LedgerItemsRouter');
   });
@@ -122,12 +122,12 @@ describe('OP pipeline (source -> parse -> codegen)', () => {
 
 describe('error handling pipeline', () => {
   it('reports diagnostics for invalid DTO source', () => {
-    const { diag } = compileDtoSource('Bad\n    name: string\n');
+    const { diag } = compileDtoSource('Bad name: string');
     expect(diag.hasErrors()).toBe(true);
   });
 
   it('reports diagnostics for invalid OP source', () => {
-    const { diag } = compileOpSource('no-slash:\n    get:\n');
+    const { diag } = compileOpSource('no-slash { get }');
     expect(diag.hasErrors()).toBe(true);
   });
 });

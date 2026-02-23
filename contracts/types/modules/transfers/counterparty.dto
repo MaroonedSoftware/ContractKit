@@ -1,0 +1,7 @@
+Counterparty {
+    id: readonly uuid # The counterparty identifier
+    name: string(min=1, max=100) # The counterparty name
+    email?: email # The counterparty email
+    active: boolean = true # Whether the counterparty is active
+    accounts: array(CounterpartyAccount) # The counterparty accounts
+}

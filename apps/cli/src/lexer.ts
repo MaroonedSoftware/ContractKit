@@ -1,7 +1,4 @@
 export type TokenKind =
-  | 'INDENT'      // increase in indentation
-  | 'DEDENT'      // decrease in indentation
-  | 'NEWLINE'
   | 'IDENTIFIER'
   | 'COLON'
   | 'QUESTION'    // ?
@@ -28,49 +25,23 @@ export interface Token {
 export function tokenize(source: string, file: string): Token[] {
   const lines = source.split('\n');
   const tokens: Token[] = [];
-  const indentStack: number[] = [0];
 
   for (let lineNum = 0; lineNum < lines.length; lineNum++) {
     const rawLine = lines[lineNum]!;
     const lineNo = lineNum + 1;
 
-    // Blank lines are skipped (but don't affect indent tracking)
-    if (rawLine.trim() === '' || rawLine.trim().startsWith('#') && rawLine.trim() === rawLine.trimStart()) {
-      // standalone comment line — still emit if it has content
-      const trimmed = rawLine.trim();
-      if (trimmed.startsWith('#')) {
-        tokens.push({ kind: 'COMMENT', value: trimmed.slice(1).trim(), line: lineNo });
-        tokens.push({ kind: 'NEWLINE', value: '', line: lineNo });
-      }
+    // Blank lines are skipped
+    if (rawLine.trim() === '') continue;
+
+    // Standalone comment line
+    const trimmed = rawLine.trim();
+    if (trimmed.startsWith('#')) {
+      tokens.push({ kind: 'COMMENT', value: trimmed.slice(1).trim(), line: lineNo });
       continue;
     }
 
-    // Measure indentation
-    let indent = 0;
-    while (indent < rawLine.length && rawLine[indent] === ' ') indent++;
-    // Also support tabs (treat each tab as 4 spaces)
-    let tabAdjusted = 0;
-    for (let i = 0; i < rawLine.length; i++) {
-      if (rawLine[i] === ' ') tabAdjusted++;
-      else if (rawLine[i] === '\t') tabAdjusted += 4;
-      else break;
-    }
-    indent = tabAdjusted;
-
-    const currentIndent = indentStack[indentStack.length - 1]!;
-
-    if (indent > currentIndent) {
-      indentStack.push(indent);
-      tokens.push({ kind: 'INDENT', value: '', line: lineNo });
-    } else if (indent < currentIndent) {
-      while (indentStack[indentStack.length - 1]! > indent) {
-        indentStack.pop();
-        tokens.push({ kind: 'DEDENT', value: '', line: lineNo });
-      }
-    }
-
     // Tokenize the line content (after stripping leading whitespace)
-    const content = rawLine.trim();
+    const content = trimmed;
     let pos = 0;
 
     while (pos < content.length) {
@@ -152,14 +123,6 @@ export function tokenize(source: string, file: string): Token[] {
       // Unknown — skip
       pos++;
     }
-
-    tokens.push({ kind: 'NEWLINE', value: '', line: lineNo });
-  }
-
-  // Close any remaining open indents
-  while (indentStack.length > 1) {
-    indentStack.pop();
-    tokens.push({ kind: 'DEDENT', value: '', line: lines.length });
   }
 
   tokens.push({ kind: 'EOF', value: '', line: lines.length });

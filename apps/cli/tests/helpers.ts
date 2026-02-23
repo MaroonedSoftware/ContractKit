@@ -110,47 +110,63 @@ export function opRoot(routes: OpRouteNode[], file = 'users.op'): OpRootNode {
 // ─── DSL Fixture Strings ────────────────────────────────────────────────────
 
 export const SIMPLE_USER_DTO = `\
-User:
+User {
     id: readonly uuid
     name: string
     email: email
     age?: number
     active: boolean = true
+}
 `;
 
 export const VISIBILITY_DTO = `\
-User:
+User {
     id: readonly uuid
     name: string
     password: writeonly string
+}
 `;
 
 export const INHERITANCE_DTO = `\
-Admin: User
+Admin: User {
     role: enum(admin, superadmin)
+}
 `;
 
 export const SIMPLE_USERS_OP = `\
-/users:
-    get:
-        response:
-            200:
+/users {
+    get {
+        response {
+            200 {
                 application/json: array(User)
-    post:
-        request:
+            }
+        }
+    }
+    post {
+        request {
             application/json: CreateUserInput
-        response:
-            201:
+        }
+        response {
+            201 {
                 application/json: User
+            }
+        }
+    }
+}
 `;
 
 export const PARAMETERIZED_OP = `\
-/users/:id:
-    params:
+/users/:id {
+    params {
         id: uuid
-    get:
-        response:
-            200:
+    }
+    get {
+        response {
+            200 {
                 application/json: User
-    delete:
+            }
+        }
+    }
+    delete
+}
 `;

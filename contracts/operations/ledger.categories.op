@@ -1,0 +1,76 @@
+/ledger/categories{
+    post:
+        request:
+            application/json: LedgerCategory
+        response:
+            201:
+                application/json: LedgerCategory
+    get:
+        response:
+            200:
+                application/json: array(LedgerCategory)
+}
+
+/ledger/categories/:categoryId:
+    get:
+        response:
+            200:
+                application/json: LedgerCategory
+    patch:
+        request:
+            application/json: LedgerCategory
+        response:
+            200:
+                application/json: LedgerCategory
+    delete:
+        response:
+            204:
+
+/ledger/categories/:categoryId/accounts:
+    get:
+        response:
+            200:
+                application/json: array(LedgerAccount)
+
+/ledger/categories/:categoryId/children:
+    get:
+        response:
+            200:
+                application/json: array(LedgerCategory)
+
+/ledger/categories/:categoryId/parents:
+    get:
+        response:
+            200:
+                application/json: array(LedgerCategory)
+
+/ledger/categories/:categoryId/tree:
+    get:
+        response:
+            200:
+                application/json: CategoryTree
+
+/ledger/categories/:categoryId/balances:
+    get:
+        query: GetCategoryBalancesQuery
+        response:
+            200:
+                application/json: CategoryBalances
+
+/ledger/categories/:categoryId/transactions:
+    get:
+        query: ListCategoryTransactionsQuery
+        response:
+            200:
+                application/json: array(LedgerTransaction)
+
+/ledger/categories/:categoryId/children/:childId:
+    put:
+        service: LedgerService.updateCategoryNesting
+        response:
+            200:
+                application/json: LedgerCategory
+    delete:
+        service: LedgerService.updateCategoryNesting
+        response:
+            204:

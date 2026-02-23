@@ -1,0 +1,40 @@
+/ledger/transactions:
+    post:
+        request:
+            application/json: LedgerTransaction
+        response:
+            201:
+                application/json: LedgerTransaction
+    get:
+        query: ListTransactionsQuery
+        response:
+            200:
+                application/json: array(LedgerTransaction)
+
+/ledger/transactions/transfer:
+    post:
+        request:
+            application/json: TransferInput
+        response:
+            201:
+                application/json: LedgerTransaction
+
+/ledger/transactions/:transactionId:
+    get:
+        response:
+            200:
+                application/json: LedgerTransaction
+
+/ledger/transactions/:transactionId/entries:
+    get:
+        response:
+            200:
+                application/json: array(LedgerEntry)
+
+/ledger/transactions/:transactionId/finalize:
+    post:
+        request:
+            application/json: FinalizeTransactionInput
+        response:
+            200:
+                application/json: LedgerTransaction

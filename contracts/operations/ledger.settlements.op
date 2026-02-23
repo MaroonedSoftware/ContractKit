@@ -1,0 +1,59 @@
+/ledger/settlements:
+    post:
+        request:
+            application/json: LedgerSettlement
+        response:
+            201:
+                application/json: LedgerSettlement
+    get:
+        query: ListSettlementsQuery
+        response:
+            200:
+                application/json: array(LedgerSettlement)
+
+/ledger/settlements/:settlementId:
+    get:
+        response:
+            200:
+                application/json: LedgerSettlement
+
+/ledger/settlements/:settlementId/finalize:
+    post:
+        request:
+            application/json: FinalizeSettlementInput
+        response:
+            200:
+                application/json: LedgerSettlement
+
+/ledger/settlements/:settlementId/status:
+    patch:
+        request:
+            application/json: UpdateSettlementStatusInput
+        response:
+            200:
+                application/json: LedgerSettlement
+
+/ledger/settlements/:settlementId/entries:
+    get:
+        query: ListSettlementEntriesQuery
+        response:
+            200:
+                application/json: array(LedgerEntry)
+
+/ledger/settlements/:settlementId/entries/:entryId:
+    put:
+        service: LedgerService.updateSettlementEntry
+        response:
+            200:
+                application/json: LedgerSettlement
+    delete:
+        service: LedgerService.updateSettlementEntry
+        response:
+            204:
+
+/ledger/settlements/:settlementId/transactions:
+    get:
+        query: ListSettlementTransactionsQuery
+        response:
+            200:
+                application/json: array(LedgerTransaction)

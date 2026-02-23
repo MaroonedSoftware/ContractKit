@@ -1,0 +1,197 @@
+(* ===================================================================== *)
+(* Contract DSL Grammar                                                  *)
+(* Extended Backus-Naur Form (ISO/IEC 14977)                             *)
+(*                                                                       *)
+(* Two sublanguages:                                                     *)
+(*   .dto  — Data Transfer Object schemas  (compiles to Zod)            *)
+(*   .op   — RESTful API operations        (compiles to Koa routers)    *)
+(*                                                                       *)
+(* Brace-delimited blocks. Newlines and whitespace are not significant   *)
+(* outside of string literals.                                           *)
+(* ===================================================================== *)
+
+
+(* --------------------------------------------------------------------- *)
+(* Terminals                                                             *)
+(* --------------------------------------------------------------------- *)
+
+IDENTIFIER  = letter , { letter | digit | "-" | "." | "_" | "$" } ;
+STRING_LIT  = ( '"' , { ? any character except '"' ? } , '"' )
+            | ( "'" , { ? any character except "'" ? } , "'" ) ;
+NUMBER_LIT  = [ "-" ] , digit , { digit } , [ "." , digit , { digit } ] ;
+BOOLEAN_LIT = "true" | "false" ;
+COMMENT     = "#" , { ? any character except newline ? } ;
+
+letter      = "a" | "b" | ... | "z" | "A" | "B" | ... | "Z" | "_" | "$" ;
+digit       = "0" | "1" | ... | "9" ;
+
+EOF         = ? end of file ? ;
+
+
+(* ===================================================================== *)
+(* Part 1 — DTO Grammar  (.dto files)                                   *)
+(* ===================================================================== *)
+
+dtoRoot         = { modelDecl } , EOF ;
+
+(* --------------------------------------------------------------------- *)
+(* Models                                                                *)
+(* --------------------------------------------------------------------- *)
+
+modelDecl       = IDENTIFIER , [ ":" , IDENTIFIER ] , "{" , fieldList , "}" ;
+                  (* first IDENTIFIER  = model name                      *)
+                  (* second IDENTIFIER = base model for inheritance      *)
+
+(* --------------------------------------------------------------------- *)
+(* Fields                                                                *)
+(* --------------------------------------------------------------------- *)
+
+fieldList       = { fieldDecl } ;
+
+fieldDecl       = IDENTIFIER , [ "?" ] , ":" , fieldBody ;
+                  (* IDENTIFIER = field name                             *)
+                  (* "?" marks the field as optional                     *)
+
+fieldBody       = visibilityField                       (* case 1 *)
+                | typeField ;                           (* case 2 *)
+                  (* nested objects are handled via typeExpression       *)
+                  (* → singleType → inlineBraceObject                   *)
+
+(* Case 1 — visibility modifier + type *)
+visibilityField = visibility , typeExpression ,
+                  [ "=" , defaultValue ] ;
+
+visibility      = "readonly" | "writeonly" ;
+
+(* Case 2 — plain type expression *)
+typeField       = typeExpression ,
+                  [ "=" , defaultValue ] ;
+
+(* --------------------------------------------------------------------- *)
+(* Type Expressions                                                      *)
+(* --------------------------------------------------------------------- *)
+
+typeExpression  = singleType , { "|" , singleType } ;
+                  (* pipe-separated union: string | number | null        *)
+
+singleType      = inlineBraceObject
+                | IDENTIFIER , [ "(" , typeArgs , ")" ] ;
+                  (* IDENTIFIER = type name (scalar, compound, or ref)   *)
+                  (* optional parenthesized arguments for constraints    *)
+
+(* --------------------------------------------------------------------- *)
+(* Type Arguments & Constraints                                          *)
+(* --------------------------------------------------------------------- *)
+
+typeArgs        = [ typeArg , { "," , typeArg } ] ;
+
+typeArg         = IDENTIFIER , "=" , argValue           (* key=value     *)
+                | STRING_LIT                            (* literal arg   *)
+                | NUMBER_LIT
+                | BOOLEAN_LIT
+                | singleType ;                          (* nested type   *)
+
+argValue        = regexLiteral
+                | IDENTIFIER
+                | NUMBER_LIT
+                | STRING_LIT
+                | BOOLEAN_LIT ;
+
+regexLiteral    = "/" , { regexChar } , "/" ;
+
+regexChar       = IDENTIFIER | NUMBER_LIT
+                | "(" | ")" | "|" | "{" | "}"
+                | "?" | "=" | "," | ":" ;
+                  (* any token allowed inside a regex pattern            *)
+
+(* --------------------------------------------------------------------- *)
+(* Inline Brace Objects                                                  *)
+(* --------------------------------------------------------------------- *)
+
+inlineBraceObject = "{" , { inlineField , [ "," ] } , "}" ;
+                  (* commas between fields are optional                  *)
+
+inlineField     = IDENTIFIER , [ "?" ] , ":" , typeExpression ;
+
+(* --------------------------------------------------------------------- *)
+(* Default Values                                                        *)
+(* --------------------------------------------------------------------- *)
+
+defaultValue    = STRING_LIT
+                | NUMBER_LIT
+                | BOOLEAN_LIT
+                | IDENTIFIER ;
+
+
+(* ===================================================================== *)
+(* Part 2 — Operation Grammar  (.op files)                              *)
+(* ===================================================================== *)
+
+opRoot          = { routeDecl } , EOF ;
+
+(* --------------------------------------------------------------------- *)
+(* Routes                                                                *)
+(* --------------------------------------------------------------------- *)
+
+routeDecl       = routePath , "{" , routeBody , "}" ;
+
+routePath       = pathSegment , { pathSegment } ;
+                  (* at least one segment required                       *)
+
+pathSegment     = "/" , ( ":" , IDENTIFIER              (* param  :id    *)
+                       | IDENTIFIER ) ;                 (* literal users  *)
+
+(* --------------------------------------------------------------------- *)
+(* Route Body                                                            *)
+(* --------------------------------------------------------------------- *)
+
+routeBody       = { paramsBlock | httpOperation } ;
+
+(* --------------------------------------------------------------------- *)
+(* Path Parameters                                                       *)
+(* --------------------------------------------------------------------- *)
+
+paramsBlock     = "params" , "{" , { paramDecl } , "}" ;
+
+paramDecl       = IDENTIFIER , ":" , IDENTIFIER ;
+                  (* first IDENTIFIER  = parameter name                  *)
+                  (* second IDENTIFIER = parameter type                  *)
+
+(* --------------------------------------------------------------------- *)
+(* HTTP Operations                                                       *)
+(* --------------------------------------------------------------------- *)
+
+httpMethod      = "get" | "post" | "put" | "patch" | "delete" ;
+
+httpOperation   = httpMethod , [ "{" , operationBody , "}" ] ;
+
+operationBody   = { requestBlock | responseBlock } ;
+
+(* --------------------------------------------------------------------- *)
+(* Request                                                               *)
+(* --------------------------------------------------------------------- *)
+
+requestBlock    = "request" , "{" , contentTypeLine , "}" ;
+
+(* --------------------------------------------------------------------- *)
+(* Response                                                              *)
+(* --------------------------------------------------------------------- *)
+
+responseBlock   = "response" , "{" , { statusCodeBlock } , "}" ;
+
+statusCodeBlock = NUMBER_LIT , [ "{" , contentTypeLine , "}" ] ;
+                  (* NUMBER_LIT = HTTP status code (200, 201, 404, etc.) *)
+                  (* body is optional — e.g. 204 has no content          *)
+
+(* --------------------------------------------------------------------- *)
+(* Content Type & Body                                                   *)
+(* --------------------------------------------------------------------- *)
+
+contentTypeLine = IDENTIFIER , "/" , IDENTIFIER , ":" ,
+                  bodyTypeExpr ;
+                  (* e.g. application/json: User                         *)
+                  (* e.g. multipart/form-data: UploadInput               *)
+
+bodyTypeExpr    = IDENTIFIER , [ "(" , IDENTIFIER , ")" ] ;
+                  (* plain type: User                                    *)
+                  (* wrapped type: array(User)                           *)
