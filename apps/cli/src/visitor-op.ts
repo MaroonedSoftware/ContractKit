@@ -5,15 +5,20 @@ import type {
   OpRequestNode, OpResponseNode, HttpMethod, DtoTypeNode,
   ParamSource,
 } from './ast.js';
+import type { DiagnosticCollector } from './diagnostics.js';
 
 const BaseOpVisitor = opCstParser.getBaseCstVisitorConstructor();
 
 export class OpVisitor extends BaseOpVisitor {
   private file: string;
+  private diag: DiagnosticCollector;
+  private comments: Map<number, string>;
 
-  constructor(file: string) {
+  constructor(file: string, diag: DiagnosticCollector, comments: Map<number, string>) {
     super();
     this.file = file;
+    this.diag = diag;
+    this.comments = comments;
     this.validateVisitor();
   }
 
@@ -31,6 +36,7 @@ export class OpVisitor extends BaseOpVisitor {
   routeDecl(ctx: any): OpRouteNode {
     const path: string = this.visit(ctx.routePath[0]);
     const line = ctx.LBrace?.[0]?.startLine ?? 0;
+    const description = this.comments.get(line - 1) ?? this.comments.get(line);
 
     let params: OpParamNode[] | undefined;
     let operations: OpOperationNode[] = [];
@@ -41,7 +47,7 @@ export class OpVisitor extends BaseOpVisitor {
       operations = body.operations;
     }
 
-    return { path, params, operations, loc: { file: this.file, line } };
+    return { path, params, operations, description, loc: { file: this.file, line } };
   }
 
   routePath(ctx: any): string {
@@ -94,8 +100,12 @@ export class OpVisitor extends BaseOpVisitor {
   paramDecl(ctx: any): OpParamNode {
     const identifiers: IToken[] = ctx.Identifier || [];
     const name = identifiers[0]!.image;
-    const typeName = identifiers[1]?.image ?? 'string';
     const line = identifiers[0]!.startLine ?? 0;
+
+    if (!identifiers[1]) {
+      this.diag.warn(this.file, line, `Path parameter "${name}" has no explicit type; defaulting to string`);
+    }
+    const typeName = identifiers[1]?.image ?? 'string';
 
     return {
       name,
@@ -108,6 +118,7 @@ export class OpVisitor extends BaseOpVisitor {
     const methodToken: IToken = ctx.Identifier[0];
     const method = methodToken.image.toLowerCase() as HttpMethod;
     const line = methodToken.startLine ?? 0;
+    const description = this.comments.get(line - 1) ?? this.comments.get(line);
 
     let service: string | undefined;
     let query: OpParamNode[] | undefined;
@@ -124,7 +135,7 @@ export class OpVisitor extends BaseOpVisitor {
       responses = body.responses;
     }
 
-    return { method, service, query, headers, request, responses, loc: { file: this.file, line } };
+    return { method, service, query, headers, request, responses, description, loc: { file: this.file, line } };
   }
 
   operationBody(ctx: any): { service?: string; query?: OpParamNode[]; headers?: OpParamNode[]; request?: OpRequestNode; responses: OpResponseNode[] } {

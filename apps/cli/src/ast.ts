@@ -137,6 +137,7 @@ export interface OpOperationNode {
   responses: OpResponseNode[];
   query?: ParamSource;
   headers?: ParamSource;
+  description?: string;
   loc: SourceLocation;
 }
 
@@ -144,6 +145,7 @@ export interface OpRouteNode {
   path: string;
   params?: ParamSource;
   operations: OpOperationNode[];
+  description?: string;
   loc: SourceLocation;
 }
 

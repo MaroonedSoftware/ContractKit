@@ -3,6 +3,7 @@ import { parseOp } from '../src/parser-op.js';
 import { generateDto } from '../src/codegen-dto.js';
 import { generateOp } from '../src/codegen-op.js';
 import { validateOp } from '../src/validate-op.js';
+import { validateRefs } from '../src/validate-refs.js';
 import { DiagnosticCollector } from '../src/diagnostics.js';
 import {
   SIMPLE_USER_DTO, VISIBILITY_DTO, INHERITANCE_DTO,
@@ -181,6 +182,15 @@ describe('undeclared path param warnings', () => {
   });
 });
 
+describe('param type warnings', () => {
+  it('does not warn when param types are specified', () => {
+    const diag = new DiagnosticCollector();
+    parseOp(PARAMETERIZED_OP, 'test.op', diag);
+    const warnings = diag.getAll().filter(d => d.message.includes('no explicit type'));
+    expect(warnings).toHaveLength(0);
+  });
+});
+
 describe('error handling pipeline', () => {
   it('reports diagnostics for invalid DTO source', () => {
     const { diag } = compileDtoSource('Bad name: string');
@@ -190,5 +200,67 @@ describe('error handling pipeline', () => {
   it('reports diagnostics for invalid OP source', () => {
     const { diag } = compileOpSource('no-slash { get }');
     expect(diag.hasErrors()).toBe(true);
+  });
+});
+
+describe('cross-file type reference validation', () => {
+  it('warns when a DTO references an undefined model', () => {
+    const diag = new DiagnosticCollector();
+    const dto = parseDto('Order { customer: NonExistentModel }', 'order.dto', diag);
+    validateRefs([dto], [], diag);
+    const warnings = diag.getAll().filter(d => d.severity === 'warning');
+    expect(warnings.some(w => w.message.includes('NonExistentModel'))).toBe(true);
+  });
+
+  it('does not warn when referenced model exists in another file', () => {
+    const diag = new DiagnosticCollector();
+    const dto1 = parseDto('User { name: string }', 'user.dto', diag);
+    const dto2 = parseDto('Order { customer: User }', 'order.dto', diag);
+    validateRefs([dto1, dto2], [], diag);
+    const warnings = diag.getAll().filter(d => d.severity === 'warning' && d.message.includes('User'));
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('warns when base model is undefined', () => {
+    const diag = new DiagnosticCollector();
+    const dto = parseDto('Admin: MissingBase { role: string }', 'admin.dto', diag);
+    validateRefs([dto], [], diag);
+    const warnings = diag.getAll().filter(d => d.severity === 'warning');
+    expect(warnings.some(w => w.message.includes('MissingBase'))).toBe(true);
+  });
+
+  it('warns when an .op file references an undefined body type', () => {
+    const diagOp = new DiagnosticCollector();
+    const diagAll = new DiagnosticCollector();
+    const op = parseOp(`\
+/users {
+    get {
+        response {
+            200 {
+                application/json: MissingType
+            }
+        }
+    }
+}`, 'users.op', diagOp);
+    validateRefs([], [op], diagAll);
+    const warnings = diagAll.getAll().filter(d => d.severity === 'warning');
+    expect(warnings.some(w => w.message.includes('MissingType'))).toBe(true);
+  });
+
+  it('does not warn for scalar type names in ops', () => {
+    const diagOp = new DiagnosticCollector();
+    const diagAll = new DiagnosticCollector();
+    const op = parseOp(`\
+/users {
+    get {
+        query {
+            page: int
+        }
+    }
+}`, 'users.op', diagOp);
+    // query with inline params should not trigger model ref warnings
+    validateRefs([], [op], diagAll);
+    const warnings = diagAll.getAll().filter(d => d.severity === 'warning');
+    expect(warnings).toHaveLength(0);
   });
 });

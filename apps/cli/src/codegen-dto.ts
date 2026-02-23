@@ -42,6 +42,8 @@ function generateModel(model: ModelNode, root: DtoRootNode): string[] {
 function generateSimpleModel(model: ModelNode, _root: DtoRootNode): string[] {
   const lines: string[] = [];
 
+  lines.push(`// from ${model.name} (${model.loc.file}:${model.loc.line})`);
+
   if (model.description) {
     lines.push(`/** ${model.description} */`);
   }
@@ -65,6 +67,8 @@ function generateSimpleModel(model: ModelNode, _root: DtoRootNode): string[] {
 function generateThreeSchemaModel(model: ModelNode, _root: DtoRootNode): string[] {
   const lines: string[] = [];
   const name = model.name;
+
+  lines.push(`// from ${model.name} (${model.loc.file}:${model.loc.line})`);
 
   // Base schema — all fields
   const allFields = model.fields;
@@ -112,12 +116,12 @@ function renderField(field: FieldNode): string {
 
   if (field.nullable) expr += '.nullable()';
   if (field.default !== undefined) {
-    const dv = typeof field.default === 'string' ? `"${field.default}"` : String(field.default);
+    const dv = typeof field.default === 'string' ? `"${escapeString(field.default)}"` : String(field.default);
     expr += `.default(${dv})`;
   } else if (field.optional) {
     expr += '.optional()';
   }
-  if (field.description) expr += `.describe("${field.description}")`;
+  if (field.description) expr += `.describe("${escapeString(field.description)}")`;
 
   return `${field.name}: ${expr},`;
 }
@@ -148,7 +152,7 @@ function renderScalar(s: ScalarTypeNode): string {
       else if (s.min !== undefined) e += `.min(${s.min})`;
       else if (s.max !== undefined) e += `.max(${s.max})`;
       if (s.len !== undefined) e += `.length(${s.len})`;
-      if (s.regex) e += `.regex(/^${s.regex}$/)`;
+      if (s.regex) e += `.regex(/^${s.regex.replace(/\//g, '\\/')}$/)`;
       return e;
     }
     case 'number': {
@@ -205,7 +209,7 @@ function renderEnum(e: EnumTypeNode): string {
 }
 
 function renderLiteral(l: LiteralTypeNode): string {
-  if (typeof l.value === 'string') return `z.literal("${l.value}")`;
+  if (typeof l.value === 'string') return `z.literal("${escapeString(l.value)}")`;
   return `z.literal(${l.value})`;
 }
 
@@ -216,6 +220,12 @@ function renderUnion(u: UnionTypeNode): string {
 function renderInlineObject(o: InlineObjectTypeNode): string {
   const fields = o.fields.map(f => `    ${renderField(f)}`).join('\n');
   return `z.strictObject({\n${fields}\n})`;
+}
+
+// ─── String escaping ──────────────────────────────────────────────────────
+
+function escapeString(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────

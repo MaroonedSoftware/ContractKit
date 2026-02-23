@@ -6,7 +6,12 @@ import { renderType } from './codegen-dto.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
-export function generateOp(root: OpRootNode): string {
+export interface OpCodegenOptions {
+  servicePathTemplate?: string;
+  typeImportPathTemplate?: string;
+}
+
+export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
   const lines: string[] = [];
 
   // Collect all referenced types across all routes
@@ -20,13 +25,13 @@ export function generateOp(root: OpRootNode): string {
   lines.push(`import { ServerKitRouter, bodyParserMiddleware } from '@maroonedsoftware/koa';`);
 
   for (const svc of services) {
-    const modulePath = deriveModulePath(svc);
+    const modulePath = deriveModulePath(svc, options.servicePathTemplate);
     lines.push(`import { ${svc} } from '${modulePath}';`);
   }
 
   if (types.length > 0) {
     // Group types by module (heuristic: infer from file path)
-    const typeImport = deriveTypeImportPath(root.file);
+    const typeImport = deriveTypeImportPath(root.file, options.typeImportPathTemplate);
     lines.push(`import { ${types.join(', ')} } from '${typeImport}';`);
   }
 
@@ -57,6 +62,16 @@ export function generateOp(root: OpRootNode): string {
 
 function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string): string[] {
   const lines: string[] = [];
+
+  // Source location comment
+  lines.push(`// from ${route.path} ${op.method.toUpperCase()} (${file}:${op.loc.line})`);
+
+  // JSDoc from description
+  const desc = op.description ?? route.description;
+  if (desc) {
+    lines.push(`/** ${desc} */`);
+  }
+
   const method = op.method;
   const path = route.path;
   const hasBody = !!op.request;
@@ -318,15 +333,21 @@ function deriveRouterFilename(file: string): string {
   return `${base}.router`;
 }
 
-function deriveModulePath(serviceName: string): string {
+function deriveModulePath(serviceName: string, template?: string): string {
   // LedgerService -> #modules/ledger/ledger.service.js
   const base = serviceName.replace(/Service$/, '');
   const kebab = base.replace(/([A-Z])/g, m => `-${m.toLowerCase()}`).replace(/^-/, '');
+  if (template) {
+    return template.replace(/\{name\}/g, base).replace(/\{kebab\}/g, kebab);
+  }
   return `#modules/${kebab}/${kebab}.service.js`;
 }
 
-function deriveTypeImportPath(file: string): string {
+function deriveTypeImportPath(file: string, template?: string): string {
   const base = file.split('/').pop()?.replace(/\.op$/, '') ?? 'resource';
   const module = base.split('.')[0] ?? base;
+  if (template) {
+    return template.replace(/\{module\}/g, module).replace(/\{base\}/g, base);
+  }
   return `#modules/${module}/types/index.js`;
 }

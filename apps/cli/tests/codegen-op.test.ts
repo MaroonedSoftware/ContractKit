@@ -404,4 +404,79 @@ describe('generateOp', () => {
       expect(output).toContain('.routes()');
     });
   });
+
+  // ─── Source line comments ──────────────────────────────────────
+
+  describe('source line comments', () => {
+    it('includes source location comment above handler', () => {
+      const root = opRoot([
+        opRoute('/users', [opOperation('get', { loc: { file: 'users.op', line: 3 } })]),
+      ], 'users.op');
+      const output = generateOp(root);
+      expect(output).toContain('// from /users GET (users.op:3)');
+    });
+  });
+
+  // ─── JSDoc from descriptions ────────────────────────────────────
+
+  describe('JSDoc from descriptions', () => {
+    it('generates JSDoc comment from operation description', () => {
+      const root = opRoot([
+        opRoute('/users', [opOperation('get', { description: 'List all users' })]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain('/** List all users */');
+    });
+
+    it('falls back to route description when operation has none', () => {
+      const root = opRoot([
+        opRoute('/users', [opOperation('get')]),
+      ]);
+      root.routes[0]!.description = 'User routes';
+      const output = generateOp(root);
+      expect(output).toContain('/** User routes */');
+    });
+
+    it('omits JSDoc when no description present', () => {
+      const root = opRoot([
+        opRoute('/users', [opOperation('get')]),
+      ]);
+      const output = generateOp(root);
+      expect(output).not.toContain('/**');
+    });
+  });
+
+  // ─── Configurable paths ──────────────────────────────────────
+
+  describe('configurable paths', () => {
+    it('uses custom service path template', () => {
+      const root = opRoot([
+        opRoute('/users', [opOperation('get', { service: 'UserService.list' })]),
+      ]);
+      const output = generateOp(root, {
+        servicePathTemplate: '@services/{kebab}.service.js',
+      });
+      expect(output).toContain("from '@services/user.service.js'");
+    });
+
+    it('uses custom type import path template', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+        ]),
+      ]);
+      const output = generateOp(root, {
+        typeImportPathTemplate: '@types/{module}/index.js',
+      });
+      expect(output).toContain("from '@types/users/index.js'");
+    });
+
+    it('falls back to default paths when no template provided', () => {
+      const root = opRoot([
+        opRoute('/users', [opOperation('get', { service: 'UserService.list' })]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain("from '#modules/user/user.service.js'");
+    });
+  });
 });

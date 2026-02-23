@@ -415,4 +415,35 @@ bad-route-no-slash {
       expect(putOp.responses[0]!.bodyType).toBe('User');
     });
   });
+
+  // ─── Comment descriptions ──────────────────────────────────────
+
+  describe('comment descriptions', () => {
+    it('parses route description from preceding comment', () => {
+      const { root } = parse(`\
+# User management routes
+/users {
+    get
+}`);
+      expect(root.routes[0]!.description).toBe('User management routes');
+    });
+
+    it('parses operation description from preceding comment', () => {
+      const { root } = parse(`\
+/users {
+    # List all users
+    get
+}`);
+      expect(root.routes[0]!.operations[0]!.description).toBe('List all users');
+    });
+
+    it('returns undefined description when no comment present', () => {
+      const { root } = parse(`\
+/users {
+    get
+}`);
+      expect(root.routes[0]!.description).toBeUndefined();
+      expect(root.routes[0]!.operations[0]!.description).toBeUndefined();
+    });
+  });
 });

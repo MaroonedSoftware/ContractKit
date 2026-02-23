@@ -10,7 +10,7 @@ export function parseOp(source: string, file: string, diag: DiagnosticCollector)
   const rawTokens = tokenize(source, file);
 
   // Step 2: Adapt to Chevrotain IToken format (strips comments to side map)
-  const { tokens } = adaptTokens(rawTokens);
+  const { tokens, comments } = adaptTokens(rawTokens);
 
   // Step 3: Parse to CST
   opCstParser.input = tokens;
@@ -23,6 +23,6 @@ export function parseOp(source: string, file: string, diag: DiagnosticCollector)
   }
 
   // Step 5: Visit CST to build AST
-  const visitor = new OpVisitor(file);
+  const visitor = new OpVisitor(file, diag, comments);
   return visitor.visit(cst);
 }

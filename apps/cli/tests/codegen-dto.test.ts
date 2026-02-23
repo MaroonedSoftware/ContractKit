@@ -34,6 +34,11 @@ describe('renderType', () => {
       expect(renderType(scalarType('string', { regex: '[A-Z]+' }))).toBe('z.string().regex(/^[A-Z]+$/)');
     });
 
+    it('renders z.string() with regex containing forward slashes', () => {
+      expect(renderType(scalarType('string', { regex: 'https?://[^/]+/path' })))
+        .toBe('z.string().regex(/^https?:\\/\\/[^\\/]+\\/path$/)');
+    });
+
     it('renders z.number()', () => {
       expect(renderType(scalarType('number'))).toBe('z.number()');
     });
@@ -141,6 +146,10 @@ describe('renderType', () => {
 
     it('renders literal string', () => {
       expect(renderType(literalType('hello'))).toBe('z.literal("hello")');
+    });
+
+    it('renders literal string with quotes escaped', () => {
+      expect(renderType(literalType('say "hi"'))).toBe('z.literal("say \\"hi\\"")');
     });
 
     it('renders literal number', () => {
@@ -262,6 +271,38 @@ describe('generateDto', () => {
       expect(output).toContain('.describe("A name")');
     });
 
+    it('escapes quotes in default string values', () => {
+      const root = dtoRoot([
+        model('M', [field('f', scalarType('string'), { default: 'he said "hello"' })]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('.default("he said \\"hello\\"")');
+    });
+
+    it('escapes backslashes in default string values', () => {
+      const root = dtoRoot([
+        model('M', [field('f', scalarType('string'), { default: 'path\\to\\file' })]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('.default("path\\\\to\\\\file")');
+    });
+
+    it('escapes quotes in field descriptions', () => {
+      const root = dtoRoot([
+        model('M', [field('f', scalarType('string'), { description: 'A "quoted" desc' })]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('.describe("A \\"quoted\\" desc")');
+    });
+
+    it('escapes newlines in field descriptions', () => {
+      const root = dtoRoot([
+        model('M', [field('f', scalarType('string'), { description: 'line1\nline2' })]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('.describe("line1\\nline2")');
+    });
+
     it('prefers .default() over .optional() when default is set', () => {
       const root = dtoRoot([
         model('M', [field('f', scalarType('boolean'), { optional: true, default: true })]),
@@ -343,6 +384,29 @@ describe('generateDto', () => {
       ]);
       const output = generateDto(root);
       expect(output).toContain('/** A user */');
+    });
+  });
+
+  // ─── Source line comments ──────────────────────────────────────
+
+  describe('source line comments', () => {
+    it('includes source location comment above schema', () => {
+      const root = dtoRoot([
+        model('User', [field('name', scalarType('string'))], { loc: { file: 'user.dto', line: 5 } }),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('// from User (user.dto:5)');
+    });
+
+    it('includes source location for three-schema models', () => {
+      const root = dtoRoot([
+        model('User', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('name', scalarType('string')),
+        ], { loc: { file: 'user.dto', line: 1 } }),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('// from User (user.dto:1)');
     });
   });
 

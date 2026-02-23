@@ -60,6 +60,7 @@
         ]
     },
     "scripts": {
+        "test": "vitest run",
         "build": "node esbuild.mjs",
         "dev": "node esbuild.mjs --watch",
         "lint": "eslint --fix",
