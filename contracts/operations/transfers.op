@@ -13,7 +13,7 @@
 
 /transfers {
     post{
-        service: { TransfersService}
+        service { TransfersService}
         request {
             application/json: CreateTransferIntent
         }
@@ -25,13 +25,13 @@
     }
     get{
         service { TransfersService}
-        query { Pagination}
+        query {
+            page: int
+            limit: int
+        }
         response {
             200 {
-                application/json {
-                    meta: Pagination
-                    data: array(TransferIntent)
-                }
+                application/json: array(TransferIntent)
             }
         }
     }

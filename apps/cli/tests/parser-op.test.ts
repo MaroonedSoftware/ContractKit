@@ -178,6 +178,113 @@ describe('parseOp', () => {
     });
   });
 
+  // ─── Query block ─────────────────────────────────────────────
+
+  describe('query block', () => {
+    it('parses query with typed parameters', () => {
+      const { root } = parse(`\
+/users {
+    get {
+        query {
+            page: int
+            limit: int
+        }
+        response {
+            200 {
+                application/json: array(User)
+            }
+        }
+    }
+}`);
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.query).toHaveLength(2);
+      expect(op.query![0]!.name).toBe('page');
+      expect(op.query![0]!.type).toMatchObject({ kind: 'scalar', name: 'int' });
+      expect(op.query![1]!.name).toBe('limit');
+    });
+
+    it('leaves query undefined when not declared', () => {
+      const { root } = parse('/users { get }');
+      expect(root.routes[0]!.operations[0]!.query).toBeUndefined();
+    });
+  });
+
+  // ─── Headers block ──────────────────────────────────────────
+
+  describe('headers block', () => {
+    it('parses headers with typed parameters', () => {
+      const { root } = parse(`\
+/users {
+    get {
+        headers {
+            authorization: string
+            x-request-id: uuid
+        }
+        response {
+            200 {
+                application/json: array(User)
+            }
+        }
+    }
+}`);
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.headers).toHaveLength(2);
+      expect(op.headers![0]!.name).toBe('authorization');
+      expect(op.headers![0]!.type).toMatchObject({ kind: 'scalar', name: 'string' });
+      expect(op.headers![1]!.name).toBe('x-request-id');
+      expect(op.headers![1]!.type).toMatchObject({ kind: 'scalar', name: 'uuid' });
+    });
+
+    it('leaves headers undefined when not declared', () => {
+      const { root } = parse('/users { get }');
+      expect(root.routes[0]!.operations[0]!.headers).toBeUndefined();
+    });
+  });
+
+  // ─── Service block ────────────────────────────────────────────
+
+  describe('service block', () => {
+    it('parses service with class and method', () => {
+      const { root } = parse(`\
+/users/:id {
+    put {
+        service { LedgerService.updateUser }
+        response {
+            200 {
+                application/json: User
+            }
+        }
+    }
+}`);
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.service).toBe('LedgerService.updateUser');
+    });
+
+    it('parses service with class only', () => {
+      const { root } = parse(`\
+/transfers {
+    post {
+        service { TransfersService }
+        request {
+            application/json: CreateTransferIntent
+        }
+        response {
+            201 {
+                application/json: TransferIntent
+            }
+        }
+    }
+}`);
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.service).toBe('TransfersService');
+    });
+
+    it('leaves service undefined when not declared', () => {
+      const { root } = parse('/users { get }');
+      expect(root.routes[0]!.operations[0]!.service).toBeUndefined();
+    });
+  });
+
   // ─── Multiple operations / routes ──────────────────────────────
 
   describe('multiple operations and routes', () => {

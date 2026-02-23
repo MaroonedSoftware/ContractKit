@@ -165,7 +165,33 @@ httpMethod      = "get" | "post" | "put" | "patch" | "delete" ;
 
 httpOperation   = httpMethod , [ "{" , operationBody , "}" ] ;
 
-operationBody   = { requestBlock | responseBlock } ;
+operationBody   = { serviceBlock | queryBlock | headersBlock
+                  | requestBlock | responseBlock } ;
+
+(* --------------------------------------------------------------------- *)
+(* Service                                                               *)
+(* --------------------------------------------------------------------- *)
+
+serviceBlock    = "service" , "{" , IDENTIFIER , "}" ;
+                  (* IDENTIFIER = dotted service reference                 *)
+                  (* e.g. LedgerService.updateCategoryMembership           *)
+                  (* class-only form: LedgerService (method is inferred)   *)
+
+(* --------------------------------------------------------------------- *)
+(* Query Parameters                                                      *)
+(* --------------------------------------------------------------------- *)
+
+queryBlock      = "query" , "{" , { paramDecl } , "}" ;
+                  (* named query parameters with types                     *)
+                  (* e.g. query { page: int  limit: int }                  *)
+
+(* --------------------------------------------------------------------- *)
+(* Headers                                                               *)
+(* --------------------------------------------------------------------- *)
+
+headersBlock    = "headers" , "{" , { paramDecl } , "}" ;
+                  (* named header parameters with types                    *)
+                  (* e.g. headers { authorization: string }                *)
 
 (* --------------------------------------------------------------------- *)
 (* Request                                                               *)

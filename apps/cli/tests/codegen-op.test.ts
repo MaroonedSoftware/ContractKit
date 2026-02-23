@@ -179,6 +179,66 @@ describe('generateOp', () => {
     });
   });
 
+  // ─── Query validation ────────────────────────────────────────
+
+  describe('query validation', () => {
+    it('generates query validation block', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', {
+            query: [opParam('page', scalarType('int')), opParam('limit', scalarType('int'))],
+          }),
+        ]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain('ctx.query');
+      expect(output).toContain('page: z.int()');
+      expect(output).toContain('limit: z.int()');
+    });
+
+    it('generates parseAndValidate import when operation has query', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', {
+            query: [opParam('page', scalarType('int'))],
+          }),
+        ]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain('parseAndValidate');
+    });
+  });
+
+  // ─── Headers validation ─────────────────────────────────────
+
+  describe('headers validation', () => {
+    it('generates headers validation block', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', {
+            headers: [opParam('authorization', scalarType('string'))],
+          }),
+        ]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain('ctx.headers');
+      expect(output).toContain('authorization: z.string()');
+      expect(output).toContain('.passthrough()');
+    });
+
+    it('generates parseAndValidate import when operation has headers', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', {
+            headers: [opParam('authorization', scalarType('string'))],
+          }),
+        ]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain('parseAndValidate');
+    });
+  });
+
   // ─── Request handling ─────────────────────────────────────────
 
   describe('request handling', () => {

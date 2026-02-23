@@ -119,10 +119,31 @@ export class OpCstParser extends CstParser {
     });
   });
 
-  // operationBody: (requestBlock | responseBlock)*
+  // operationBody: (serviceBlock | queryBlock | headersBlock | requestBlock | responseBlock)*
   public operationBody = this.RULE('operationBody', () => {
     this.MANY(() => {
       this.OR([
+        {
+          GATE: () => {
+            const la = this.LA(1);
+            return la.tokenType === Identifier && la.image === 'service';
+          },
+          ALT: () => this.SUBRULE(this.serviceBlock),
+        },
+        {
+          GATE: () => {
+            const la = this.LA(1);
+            return la.tokenType === Identifier && la.image === 'query';
+          },
+          ALT: () => this.SUBRULE(this.queryBlock),
+        },
+        {
+          GATE: () => {
+            const la = this.LA(1);
+            return la.tokenType === Identifier && la.image === 'headers';
+          },
+          ALT: () => this.SUBRULE(this.headersBlock),
+        },
         {
           GATE: () => {
             const la = this.LA(1);
@@ -139,6 +160,40 @@ export class OpCstParser extends CstParser {
         },
       ]);
     });
+  });
+
+  // ─── Service ────────────────────────────────────────────────────────
+
+  // serviceBlock: "service" LBRACE IDENTIFIER RBRACE
+  public serviceBlock = this.RULE('serviceBlock', () => {
+    this.CONSUME(Identifier);  // "service"
+    this.CONSUME(LBrace);
+    this.CONSUME2(Identifier); // service reference e.g. "LedgerService.updateCategoryMembership"
+    this.CONSUME(RBrace);
+  });
+
+  // ─── Query ──────────────────────────────────────────────────────────
+
+  // queryBlock: "query" LBRACE paramDecl* RBRACE
+  public queryBlock = this.RULE('queryBlock', () => {
+    this.CONSUME(Identifier);  // "query"
+    this.CONSUME(LBrace);
+    this.MANY(() => {
+      this.SUBRULE(this.paramDecl);
+    });
+    this.CONSUME(RBrace);
+  });
+
+  // ─── Headers ────────────────────────────────────────────────────────
+
+  // headersBlock: "headers" LBRACE paramDecl* RBRACE
+  public headersBlock = this.RULE('headersBlock', () => {
+    this.CONSUME(Identifier);  // "headers"
+    this.CONSUME(LBrace);
+    this.MANY(() => {
+      this.SUBRULE(this.paramDecl);
+    });
+    this.CONSUME(RBrace);
   });
 
   // ─── Request ──────────────────────────────────────────────────────────

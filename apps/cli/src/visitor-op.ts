@@ -102,22 +102,40 @@ export class OpVisitor extends BaseOpVisitor {
     const method = methodToken.image.toLowerCase() as HttpMethod;
     const line = methodToken.startLine ?? 0;
 
+    let service: string | undefined;
+    let query: OpParamNode[] | undefined;
+    let headers: OpParamNode[] | undefined;
     let request: OpRequestNode | undefined;
     let response: OpResponseNode | undefined;
 
     if (ctx.operationBody) {
       const body = this.visit(ctx.operationBody[0]);
+      service = body.service;
+      query = body.query;
+      headers = body.headers;
       request = body.request;
       response = body.response;
     }
 
-    return { method, request, response, loc: { file: this.file, line } };
+    return { method, service, query, headers, request, response, loc: { file: this.file, line } };
   }
 
-  operationBody(ctx: any): { request?: OpRequestNode; response?: OpResponseNode } {
+  operationBody(ctx: any): { service?: string; query?: OpParamNode[]; headers?: OpParamNode[]; request?: OpRequestNode; response?: OpResponseNode } {
+    let service: string | undefined;
+    let query: OpParamNode[] | undefined;
+    let headers: OpParamNode[] | undefined;
     let request: OpRequestNode | undefined;
     let response: OpResponseNode | undefined;
 
+    if (ctx.serviceBlock) {
+      service = this.visit(ctx.serviceBlock[0]);
+    }
+    if (ctx.queryBlock) {
+      query = this.visit(ctx.queryBlock[0]);
+    }
+    if (ctx.headersBlock) {
+      headers = this.visit(ctx.headersBlock[0]);
+    }
     if (ctx.requestBlock) {
       request = this.visit(ctx.requestBlock[0]);
     }
@@ -125,7 +143,35 @@ export class OpVisitor extends BaseOpVisitor {
       response = this.visit(ctx.responseBlock[0]);
     }
 
-    return { request, response };
+    return { service, query, headers, request, response };
+  }
+
+  queryBlock(ctx: any): OpParamNode[] {
+    const params: OpParamNode[] = [];
+    if (ctx.paramDecl) {
+      for (const pd of ctx.paramDecl) {
+        const param = this.visit(pd);
+        if (param) params.push(param);
+      }
+    }
+    return params;
+  }
+
+  headersBlock(ctx: any): OpParamNode[] {
+    const params: OpParamNode[] = [];
+    if (ctx.paramDecl) {
+      for (const pd of ctx.paramDecl) {
+        const param = this.visit(pd);
+        if (param) params.push(param);
+      }
+    }
+    return params;
+  }
+
+  serviceBlock(ctx: any): string {
+    const identifiers: IToken[] = ctx.Identifier || [];
+    // identifiers[0] = "service" keyword, identifiers[1] = service reference
+    return identifiers[1]?.image ?? '';
   }
 
   requestBlock(ctx: any): OpRequestNode | undefined {
@@ -170,7 +216,7 @@ export class OpVisitor extends BaseOpVisitor {
     const ctPart2 = identifiers[1]?.image ?? '';
     const contentType = `${ctPart1}/${ctPart2}`;
 
-    const bodyExpr = this.visit(ctx.bodyTypeExpr[0]);
+    const bodyExpr = ctx.bodyTypeExpr ? this.visit(ctx.bodyTypeExpr[0]) : '';
 
     return { contentType, bodyType: bodyExpr };
   }

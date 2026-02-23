@@ -85,6 +85,32 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string):
     lines.push('');
   }
 
+  // Query validation
+  if (op.query && op.query.length > 0) {
+    lines.push(`    const { ${op.query.map(p => p.name).join(', ')} } = await parseAndValidate(`);
+    lines.push(`        ctx.query,`);
+    lines.push(`        z.strictObject({`);
+    for (const param of op.query) {
+      lines.push(`            ${param.name}: ${renderScalarParam(param)},`);
+    }
+    lines.push(`        }),`);
+    lines.push(`    );`);
+    lines.push('');
+  }
+
+  // Headers validation
+  if (op.headers && op.headers.length > 0) {
+    lines.push(`    const { ${op.headers.map(p => p.name).join(', ')} } = await parseAndValidate(`);
+    lines.push(`        ctx.headers,`);
+    lines.push(`        z.object({`);
+    for (const param of op.headers) {
+      lines.push(`            ${param.name}: ${renderScalarParam(param)},`);
+    }
+    lines.push(`        }).passthrough(),`);
+    lines.push(`    );`);
+    lines.push('');
+  }
+
   // Body validation
   if (hasBody && op.request) {
     if (isMultipart) {
@@ -241,7 +267,11 @@ function collectServices(root: OpRootNode): string[] {
 function routeNeedsValidation(root: OpRootNode): boolean {
   return root.routes.some(r =>
     (r.params && r.params.length > 0) ||
-    r.operations.some(op => !!op.request)
+    r.operations.some(op =>
+      !!op.request ||
+      (op.query && op.query.length > 0) ||
+      (op.headers && op.headers.length > 0)
+    )
   );
 }
 
