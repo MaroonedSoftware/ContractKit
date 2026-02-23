@@ -1,0 +1,275 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Contract DSL Operations",
+    "scopeName": "source.op",
+    "patterns": [
+        { "include": "#comment" },
+        { "include": "#route-declaration" }
+    ],
+    "repository": {
+        "comment": {
+            "match": "#.*$",
+            "name": "comment.line.number-sign.op"
+        },
+        "route-declaration": {
+            "begin": "(/[a-zA-Z0-9_/:.-]+)\\s*(\\{)",
+            "beginCaptures": {
+                "1": {
+                    "patterns": [
+                        { "include": "#route-path" }
+                    ]
+                },
+                "2": { "name": "punctuation.definition.block.begin.op" }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": { "name": "punctuation.definition.block.end.op" }
+            },
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#params-block" },
+                { "include": "#http-operation" }
+            ]
+        },
+        "route-path": {
+            "patterns": [
+                {
+                    "match": "(:)([a-zA-Z_][a-zA-Z0-9_]*)",
+                    "captures": {
+                        "1": { "name": "keyword.operator.param-prefix.op" },
+                        "2": { "name": "variable.parameter.path.op" }
+                    }
+                },
+                {
+                    "match": "/",
+                    "name": "punctuation.separator.slash.op"
+                },
+                {
+                    "match": "[a-zA-Z_][a-zA-Z0-9_.]*",
+                    "name": "string.unquoted.path-segment.op"
+                }
+            ]
+        },
+        "params-block": {
+            "begin": "\\b(params)\\b",
+            "beginCaptures": {
+                "1": { "name": "keyword.control.params.op" }
+            },
+            "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|head|options)\\b)|(?=\\})",
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#type-shorthand" },
+                { "include": "#param-decl-block" }
+            ]
+        },
+        "http-operation": {
+            "begin": "\\b(get|post|put|patch|delete|head|options)\\b",
+            "beginCaptures": {
+                "1": { "name": "keyword.control.http-method.op" }
+            },
+            "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|head|options|params)\\b)|(?=\\})",
+            "patterns": [
+                { "include": "#operation-body" }
+            ]
+        },
+        "operation-body": {
+            "begin": "(\\{)",
+            "beginCaptures": {
+                "1": { "name": "punctuation.definition.block.begin.op" }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": { "name": "punctuation.definition.block.end.op" }
+            },
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#service-decl" },
+                { "include": "#query-block" },
+                { "include": "#headers-block" },
+                { "include": "#request-block" },
+                { "include": "#response-block" }
+            ]
+        },
+        "service-decl": {
+            "match": "\\b(service)\\s*(:)\\s*([a-zA-Z_$][a-zA-Z0-9_$.]*)",
+            "captures": {
+                "1": { "name": "keyword.control.service.op" },
+                "2": { "name": "punctuation.separator.colon.op" },
+                "3": { "name": "entity.name.function.service-ref.op" }
+            }
+        },
+        "query-block": {
+            "begin": "\\b(query)\\b",
+            "beginCaptures": {
+                "1": { "name": "keyword.control.query.op" }
+            },
+            "end": "(?<=\\})|(?=\\b(?:service|query|headers|request|response)\\b)|(?=\\})",
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#type-shorthand" },
+                { "include": "#param-decl-block" }
+            ]
+        },
+        "headers-block": {
+            "begin": "\\b(headers)\\b",
+            "beginCaptures": {
+                "1": { "name": "keyword.control.headers.op" }
+            },
+            "end": "(?<=\\})|(?=\\b(?:service|query|headers|request|response)\\b)|(?=\\})",
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#type-shorthand" },
+                { "include": "#param-decl-block" }
+            ]
+        },
+        "request-block": {
+            "begin": "\\b(request)\\s*(\\{)",
+            "beginCaptures": {
+                "1": { "name": "keyword.control.request.op" },
+                "2": { "name": "punctuation.definition.block.begin.op" }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": { "name": "punctuation.definition.block.end.op" }
+            },
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#content-type-line" }
+            ]
+        },
+        "response-block": {
+            "begin": "\\b(response)\\s*(\\{)",
+            "beginCaptures": {
+                "1": { "name": "keyword.control.response.op" },
+                "2": { "name": "punctuation.definition.block.begin.op" }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": { "name": "punctuation.definition.block.end.op" }
+            },
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#status-code-block" }
+            ]
+        },
+        "status-code-block": {
+            "begin": "\\b(\\d{3})\\b",
+            "beginCaptures": {
+                "1": { "name": "constant.numeric.status-code.op" }
+            },
+            "end": "(?<=\\})|(?=\\d{3})|(?=\\})",
+            "patterns": [
+                {
+                    "begin": "(\\{)",
+                    "beginCaptures": {
+                        "1": { "name": "punctuation.definition.block.begin.op" }
+                    },
+                    "end": "(\\})",
+                    "endCaptures": {
+                        "1": { "name": "punctuation.definition.block.end.op" }
+                    },
+                    "patterns": [
+                        { "include": "#comment" },
+                        { "include": "#headers-block" },
+                        { "include": "#content-type-line" }
+                    ]
+                }
+            ]
+        },
+        "content-type-line": {
+            "begin": "((?:application|multipart|text)/[\\w.+-]+)\\s*(:)\\s*",
+            "beginCaptures": {
+                "1": { "name": "string.other.content-type.op" },
+                "2": { "name": "punctuation.separator.colon.op" }
+            },
+            "end": "(?=\\s*$)|(?=\\s*#)|(?=\\})",
+            "patterns": [
+                { "include": "#type-expression" }
+            ]
+        },
+        "type-shorthand": {
+            "begin": "(:)\\s*",
+            "beginCaptures": {
+                "1": { "name": "punctuation.separator.colon.op" }
+            },
+            "end": "(?=\\s*\\{)|(?=\\s*$)|(?=\\s*#)|(?=\\})",
+            "patterns": [
+                { "include": "#type-expression" }
+            ]
+        },
+        "param-decl-block": {
+            "begin": "(\\{)",
+            "beginCaptures": {
+                "1": { "name": "punctuation.definition.block.begin.op" }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": { "name": "punctuation.definition.block.end.op" }
+            },
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#param-declaration" }
+            ]
+        },
+        "param-declaration": {
+            "begin": "([a-zA-Z_][a-zA-Z0-9_]*(?:-[a-zA-Z0-9_]+)*)(\\?)?\\s*(:)\\s*",
+            "beginCaptures": {
+                "1": { "name": "variable.other.param.op" },
+                "2": { "name": "keyword.operator.optional.op" },
+                "3": { "name": "punctuation.separator.colon.op" }
+            },
+            "end": "(?=$|#|\\}|[a-zA-Z_][a-zA-Z0-9_]*(?:-[a-zA-Z0-9_]+)*\\??\\s*:)",
+            "patterns": [
+                { "include": "#type-expression" }
+            ]
+        },
+        "type-expression": {
+            "patterns": [
+                { "include": "#builtin-type" },
+                { "include": "#compound-type" },
+                { "include": "#type-constraints" },
+                { "include": "#union-pipe" },
+                { "include": "#intersection-ampersand" },
+                { "include": "#model-reference" }
+            ]
+        },
+        "builtin-type": {
+            "match": "\\b(string|number|int|bigint|boolean|date|datetime|email|url|uuid|any|unknown|null|object|binary)\\b",
+            "name": "support.type.builtin.op"
+        },
+        "compound-type": {
+            "match": "\\b(array|tuple|record|enum|literal|lazy)(?=\\s*\\()",
+            "name": "support.type.compound.op"
+        },
+        "type-constraints": {
+            "begin": "(\\()",
+            "beginCaptures": {
+                "1": { "name": "punctuation.parenthesis.open.op" }
+            },
+            "end": "(\\))",
+            "endCaptures": {
+                "1": { "name": "punctuation.parenthesis.close.op" }
+            },
+            "patterns": [
+                { "include": "#type-expression" },
+                { "include": "#comma" }
+            ]
+        },
+        "model-reference": {
+            "match": "\\b([A-Z][a-zA-Z0-9_$]*)\\b",
+            "name": "entity.name.type.reference.op"
+        },
+        "union-pipe": {
+            "match": "\\|",
+            "name": "keyword.operator.union.op"
+        },
+        "intersection-ampersand": {
+            "match": "&",
+            "name": "keyword.operator.intersection.op"
+        },
+        "comma": {
+            "match": ",",
+            "name": "punctuation.separator.comma.op"
+        }
+    }
+}

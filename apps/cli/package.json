@@ -4,6 +4,13 @@
     "description": "Compiler for .dto and .op DSL files into TypeScript/Zod/Koa code",
     "type": "module",
     "main": "index.ts",
+    "exports": {
+        "./src/parser-dto.js": "./dist/parser-dto.js",
+        "./src/parser-op.js": "./dist/parser-op.js",
+        "./src/validate-op.js": "./dist/validate-op.js",
+        "./src/diagnostics.js": "./dist/diagnostics.js",
+        "./src/ast.js": "./dist/ast.js"
+    },
     "bin": {
         "dsl-compile": "dist/cli.js"
     },
@@ -16,7 +23,7 @@
         "start": "node dist/cli.js \"/Users/robert/projects/contract-dsl/contracts/**/*.{dto,op}\" --out-dir ./out/"
     },
     "dependencies": {
-        "chevrotain": "^11.0.3",
+        "chevrotain": "^11.1.1",
         "glob": "^13.0.6"
     },
     "devDependencies": {

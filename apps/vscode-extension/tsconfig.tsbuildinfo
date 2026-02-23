@@ -1,0 +1,1 @@
+{"root":["./src/client/extension.ts","./src/server/completion-provider.ts","./src/server/definition-provider.ts","./src/server/diagnostics-adapter.ts","./src/server/document-manager.ts","./src/server/hover-provider.ts","./src/server/server.ts","./src/server/symbol-provider.ts","./src/server/workspace-index.ts"],"version":"5.9.3"}

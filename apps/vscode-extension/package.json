@@ -1,0 +1,83 @@
+{
+    "name": "contract-dsl-vscode",
+    "displayName": "Contract DSL",
+    "description": "Language support for .dto and .op contract definition files",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "publisher": "Marooned Software",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/marooned-software/"
+    },
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "activationEvents": [
+        "onLanguage:dto",
+        "onLanguage:op"
+    ],
+    "main": "./dist/client/extension.js",
+    "contributes": {
+        "languages": [
+            {
+                "id": "dto",
+                "aliases": [
+                    "Contract DTO",
+                    "dto"
+                ],
+                "extensions": [
+                    ".dto"
+                ],
+                "configuration": "./language-configuration/dto-language-config.json"
+            },
+            {
+                "id": "op",
+                "aliases": [
+                    "Contract Operations",
+                    "op"
+                ],
+                "extensions": [
+                    ".op"
+                ],
+                "configuration": "./language-configuration/op-language-config.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "dto",
+                "scopeName": "source.dto",
+                "path": "./syntaxes/dto.tmLanguage.json"
+            },
+            {
+                "language": "op",
+                "scopeName": "source.op",
+                "path": "./syntaxes/op.tmLanguage.json"
+            }
+        ]
+    },
+    "scripts": {
+        "build": "node esbuild.mjs",
+        "dev": "node esbuild.mjs --watch",
+        "lint": "eslint --fix",
+        "format": "prettier --write .",
+        "package": "node esbuild.mjs && vsce package --no-dependencies",
+        "vscode:install": "pnpm run package && cursor --install-extension contract-dsl-vscode-0.1.0.vsix",
+        "vscode:uninstall": "cursor --uninstall-extension contract-dsl-vscode-0.1.0.vsix"
+    },
+    "dependencies": {
+        "contract-dsl": "workspace:*",
+        "vscode-languageclient": "^9.0.1",
+        "vscode-languageserver": "^9.0.1",
+        "vscode-languageserver-textdocument": "^1.0.12"
+    },
+    "devDependencies": {
+        "@repo/config-eslint": "workspace:*",
+        "@repo/config-typescript": "workspace:*",
+        "@types/vscode": "^1.85.0",
+        "esbuild": "^0.25.0"
+    }
+}

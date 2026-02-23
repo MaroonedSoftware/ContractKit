@@ -1,0 +1,162 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Contract DSL DTO",
+    "scopeName": "source.dto",
+    "patterns": [
+        { "include": "#comment" },
+        { "include": "#model-declaration" }
+    ],
+    "repository": {
+        "comment": {
+            "match": "#.*$",
+            "name": "comment.line.number-sign.dto"
+        },
+        "model-declaration": {
+            "begin": "([A-Z][a-zA-Z0-9_$]*)\\s*(?:(:)\\s*([A-Z][a-zA-Z0-9_$]*)\\s*)?(\\{)",
+            "beginCaptures": {
+                "1": { "name": "entity.name.type.model.dto" },
+                "2": { "name": "keyword.operator.inheritance.dto" },
+                "3": { "name": "entity.other.inherited-class.dto" },
+                "4": { "name": "punctuation.definition.block.begin.dto" }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": { "name": "punctuation.definition.block.end.dto" }
+            },
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#field-declaration" }
+            ]
+        },
+        "field-declaration": {
+            "begin": "([a-zA-Z_$][a-zA-Z0-9_$]*(?:-[a-zA-Z0-9_$]+)*)(\\?)?\\s*(:)",
+            "beginCaptures": {
+                "1": { "name": "variable.other.field.dto" },
+                "2": { "name": "keyword.operator.optional.dto" },
+                "3": { "name": "punctuation.separator.colon.dto" }
+            },
+            "end": "(?=$|#|\\}|[a-zA-Z_$][a-zA-Z0-9_$]*(?:-[a-zA-Z0-9_$]+)*\\??\\s*:)",
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#visibility-modifier" },
+                { "include": "#default-value" },
+                { "include": "#type-expression" }
+            ]
+        },
+        "visibility-modifier": {
+            "match": "\\b(readonly|writeonly)\\b",
+            "name": "storage.modifier.dto"
+        },
+        "type-expression": {
+            "patterns": [
+                { "include": "#builtin-type" },
+                { "include": "#compound-type" },
+                { "include": "#type-constraints" },
+                { "include": "#union-pipe" },
+                { "include": "#intersection-ampersand" },
+                { "include": "#inline-object" },
+                { "include": "#string-literal" },
+                { "include": "#number-literal" },
+                { "include": "#boolean-literal" },
+                { "include": "#regex-literal" },
+                { "include": "#model-reference" }
+            ]
+        },
+        "builtin-type": {
+            "match": "\\b(string|number|int|bigint|boolean|date|datetime|email|url|uuid|any|unknown|null|object|binary)\\b",
+            "name": "support.type.builtin.dto"
+        },
+        "compound-type": {
+            "match": "\\b(array|tuple|record|enum|literal|lazy)(?=\\s*\\()",
+            "name": "support.type.compound.dto"
+        },
+        "model-reference": {
+            "match": "\\b([A-Z][a-zA-Z0-9_$]*)\\b",
+            "name": "entity.name.type.reference.dto"
+        },
+        "type-constraints": {
+            "begin": "(\\()",
+            "beginCaptures": {
+                "1": { "name": "punctuation.parenthesis.open.dto" }
+            },
+            "end": "(\\))",
+            "endCaptures": {
+                "1": { "name": "punctuation.parenthesis.close.dto" }
+            },
+            "patterns": [
+                { "include": "#constraint-key-value" },
+                { "include": "#type-expression" },
+                { "include": "#string-literal" },
+                { "include": "#number-literal" },
+                { "include": "#boolean-literal" },
+                { "include": "#comma" },
+                { "include": "#regex-literal" }
+            ]
+        },
+        "constraint-key-value": {
+            "match": "\\b(min|max|length|len|regex)\\s*(=)",
+            "captures": {
+                "1": { "name": "variable.parameter.constraint.dto" },
+                "2": { "name": "keyword.operator.assignment.dto" }
+            }
+        },
+        "union-pipe": {
+            "match": "\\|",
+            "name": "keyword.operator.union.dto"
+        },
+        "intersection-ampersand": {
+            "match": "&",
+            "name": "keyword.operator.intersection.dto"
+        },
+        "inline-object": {
+            "begin": "(\\{)",
+            "beginCaptures": {
+                "1": { "name": "punctuation.definition.block.begin.dto" }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": { "name": "punctuation.definition.block.end.dto" }
+            },
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#field-declaration" }
+            ]
+        },
+        "default-value": {
+            "match": "(=)\\s*",
+            "captures": {
+                "1": { "name": "keyword.operator.assignment.dto" }
+            }
+        },
+        "string-literal": {
+            "patterns": [
+                {
+                    "begin": "\"",
+                    "end": "\"",
+                    "name": "string.quoted.double.dto"
+                },
+                {
+                    "begin": "'",
+                    "end": "'",
+                    "name": "string.quoted.single.dto"
+                }
+            ]
+        },
+        "number-literal": {
+            "match": "-?\\d+(\\.\\d+)?",
+            "name": "constant.numeric.dto"
+        },
+        "boolean-literal": {
+            "match": "\\b(true|false)\\b",
+            "name": "constant.language.boolean.dto"
+        },
+        "regex-literal": {
+            "match": "/[^/]+/",
+            "name": "string.regexp.dto"
+        },
+        "comma": {
+            "match": ",",
+            "name": "punctuation.separator.comma.dto"
+        }
+    }
+}
