@@ -13,7 +13,7 @@
 
 /transfers {
     post{
-        service { TransfersService}
+        service:  TransfersServices
         request {
             application/json: CreateTransferIntent
         }
@@ -24,11 +24,8 @@
         }
     }
     get{
-        service { TransfersService}
-        query {
-            page: int
-            limit: int
-        }
+        service: TransfersService
+        query: Pagination
         response {
             200 {
                 application/json: array(TransferIntent)
@@ -39,7 +36,7 @@
 
 /transfers/:id {
     get{
-        service { TransfersService.getIntent}
+        service: TransfersService.getIntent
         response {
             200 {
                 application/json: TransferIntent

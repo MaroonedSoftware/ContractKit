@@ -3,6 +3,7 @@ import { opCstParser } from './chevrotain-parser-op.js';
 import type {
   OpRootNode, OpRouteNode, OpOperationNode, OpParamNode,
   OpRequestNode, OpResponseNode, HttpMethod, DtoTypeNode,
+  ParamSource,
 } from './ast.js';
 
 const BaseOpVisitor = opCstParser.getBaseCstVisitorConstructor();
@@ -73,7 +74,13 @@ export class OpVisitor extends BaseOpVisitor {
     return { params, operations };
   }
 
-  paramsBlock(ctx: any): OpParamNode[] {
+  paramsBlock(ctx: any): ParamSource {
+    // Declaration form: params: TypeName
+    if (ctx.Colon) {
+      const identifiers: IToken[] = ctx.Identifier || [];
+      return identifiers[1]?.image ?? '';
+    }
+    // Block form: params { name: type ... }
     const params: OpParamNode[] = [];
     if (ctx.paramDecl) {
       for (const pd of ctx.paramDecl) {
@@ -127,8 +134,8 @@ export class OpVisitor extends BaseOpVisitor {
     let request: OpRequestNode | undefined;
     let response: OpResponseNode | undefined;
 
-    if (ctx.serviceBlock) {
-      service = this.visit(ctx.serviceBlock[0]);
+    if (ctx.serviceDecl) {
+      service = this.visit(ctx.serviceDecl[0]);
     }
     if (ctx.queryBlock) {
       query = this.visit(ctx.queryBlock[0]);
@@ -146,7 +153,13 @@ export class OpVisitor extends BaseOpVisitor {
     return { service, query, headers, request, response };
   }
 
-  queryBlock(ctx: any): OpParamNode[] {
+  queryBlock(ctx: any): ParamSource {
+    // Declaration form: query: TypeName
+    if (ctx.Colon) {
+      const identifiers: IToken[] = ctx.Identifier || [];
+      return identifiers[1]?.image ?? '';
+    }
+    // Block form: query { name: type ... }
     const params: OpParamNode[] = [];
     if (ctx.paramDecl) {
       for (const pd of ctx.paramDecl) {
@@ -157,7 +170,13 @@ export class OpVisitor extends BaseOpVisitor {
     return params;
   }
 
-  headersBlock(ctx: any): OpParamNode[] {
+  headersBlock(ctx: any): ParamSource {
+    // Declaration form: headers: TypeName
+    if (ctx.Colon) {
+      const identifiers: IToken[] = ctx.Identifier || [];
+      return identifiers[1]?.image ?? '';
+    }
+    // Block form: headers { name: type ... }
     const params: OpParamNode[] = [];
     if (ctx.paramDecl) {
       for (const pd of ctx.paramDecl) {
@@ -168,7 +187,7 @@ export class OpVisitor extends BaseOpVisitor {
     return params;
   }
 
-  serviceBlock(ctx: any): string {
+  serviceDecl(ctx: any): string {
     const identifiers: IToken[] = ctx.Identifier || [];
     // identifiers[0] = "service" keyword, identifiers[1] = service reference
     return identifiers[1]?.image ?? '';

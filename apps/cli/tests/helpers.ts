@@ -4,7 +4,7 @@ import type {
   EnumTypeNode, LiteralTypeNode, UnionTypeNode, ModelRefTypeNode,
   InlineObjectTypeNode, LazyTypeNode, SourceLocation,
   OpRootNode, OpRouteNode, OpOperationNode, OpParamNode,
-  OpRequestNode, OpResponseNode, HttpMethod,
+  OpRequestNode, OpResponseNode, HttpMethod, ParamSource,
 } from '../src/ast.js';
 
 // ─── AST Builder Helpers ────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ export function opOperation(method: HttpMethod, overrides?: Partial<OpOperationN
   };
 }
 
-export function opRoute(path: string, operations: OpOperationNode[], params?: OpParamNode[]): OpRouteNode {
+export function opRoute(path: string, operations: OpOperationNode[], params?: ParamSource): OpRouteNode {
   return { path, params, operations, loc: loc(1, 'test.op') };
 }
 

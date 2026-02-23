@@ -116,6 +116,9 @@ export interface OpParamNode {
   loc: SourceLocation;
 }
 
+/** Either inline param declarations or a single type reference name. */
+export type ParamSource = OpParamNode[] | string;
+
 export interface OpRequestNode {
   contentType: 'application/json' | 'multipart/form-data';
   bodyType: string; // model name or inline type string
@@ -132,14 +135,14 @@ export interface OpOperationNode {
   service?: string; // e.g. "LedgerService.updateCategoryNesting"
   request?: OpRequestNode;
   response?: OpResponseNode;
-  query?: OpParamNode[];
-  headers?: OpParamNode[];
+  query?: ParamSource;
+  headers?: ParamSource;
   loc: SourceLocation;
 }
 
 export interface OpRouteNode {
   path: string;
-  params?: OpParamNode[];
+  params?: ParamSource;
   operations: OpOperationNode[];
   loc: SourceLocation;
 }

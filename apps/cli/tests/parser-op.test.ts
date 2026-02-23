@@ -70,6 +70,15 @@ describe('parseOp', () => {
       expect(params![0]!.name).toBe('id');
       expect(params![1]!.name).toBe('postId');
     });
+
+    it('parses params as type reference declaration', () => {
+      const { root } = parse(`\
+/users/:id {
+    params: RouteParams
+    get
+}`);
+      expect(root.routes[0]!.params).toBe('RouteParams');
+    });
   });
 
   // ─── HTTP methods ──────────────────────────────────────────────
@@ -203,6 +212,22 @@ describe('parseOp', () => {
       expect(op.query![1]!.name).toBe('limit');
     });
 
+    it('parses query as type reference declaration', () => {
+      const { root } = parse(`\
+/users {
+    get {
+        query: Pagination
+        response {
+            200 {
+                application/json: array(User)
+            }
+        }
+    }
+}`);
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.query).toBe('Pagination');
+    });
+
     it('leaves query undefined when not declared', () => {
       const { root } = parse('/users { get }');
       expect(root.routes[0]!.operations[0]!.query).toBeUndefined();
@@ -235,20 +260,36 @@ describe('parseOp', () => {
       expect(op.headers![1]!.type).toMatchObject({ kind: 'scalar', name: 'uuid' });
     });
 
+    it('parses headers as type reference declaration', () => {
+      const { root } = parse(`\
+/users {
+    get {
+        headers: CommonHeaders
+        response {
+            200 {
+                application/json: array(User)
+            }
+        }
+    }
+}`);
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.headers).toBe('CommonHeaders');
+    });
+
     it('leaves headers undefined when not declared', () => {
       const { root } = parse('/users { get }');
       expect(root.routes[0]!.operations[0]!.headers).toBeUndefined();
     });
   });
 
-  // ─── Service block ────────────────────────────────────────────
+  // ─── Service declaration ─────────────────────────────────────
 
-  describe('service block', () => {
+  describe('service declaration', () => {
     it('parses service with class and method', () => {
       const { root } = parse(`\
 /users/:id {
     put {
-        service { LedgerService.updateUser }
+        service: LedgerService.updateUser
         response {
             200 {
                 application/json: User
@@ -264,7 +305,7 @@ describe('parseOp', () => {
       const { root } = parse(`\
 /transfers {
     post {
-        service { TransfersService }
+        service: TransfersService
         request {
             application/json: CreateTransferIntent
         }

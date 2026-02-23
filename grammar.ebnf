@@ -151,7 +151,8 @@ routeBody       = { paramsBlock | httpOperation } ;
 (* Path Parameters                                                       *)
 (* --------------------------------------------------------------------- *)
 
-paramsBlock     = "params" , "{" , { paramDecl } , "}" ;
+paramsBlock     = "params" , ( ":" , IDENTIFIER              (* type ref   *)
+                            | "{" , { paramDecl } , "}" ) ;  (* inline     *)
 
 paramDecl       = IDENTIFIER , ":" , IDENTIFIER ;
                   (* first IDENTIFIER  = parameter name                  *)
@@ -165,33 +166,35 @@ httpMethod      = "get" | "post" | "put" | "patch" | "delete" ;
 
 httpOperation   = httpMethod , [ "{" , operationBody , "}" ] ;
 
-operationBody   = { serviceBlock | queryBlock | headersBlock
+operationBody   = { serviceDecl | queryBlock | headersBlock
                   | requestBlock | responseBlock } ;
 
 (* --------------------------------------------------------------------- *)
 (* Service                                                               *)
 (* --------------------------------------------------------------------- *)
 
-serviceBlock    = "service" , "{" , IDENTIFIER , "}" ;
+serviceDecl     = "service" , ":" , IDENTIFIER ;
                   (* IDENTIFIER = dotted service reference                 *)
-                  (* e.g. LedgerService.updateCategoryMembership           *)
-                  (* class-only form: LedgerService (method is inferred)   *)
+                  (* e.g. service: LedgerService.updateCategoryMembership  *)
+                  (* class-only form: service: LedgerService               *)
 
 (* --------------------------------------------------------------------- *)
 (* Query Parameters                                                      *)
 (* --------------------------------------------------------------------- *)
 
-queryBlock      = "query" , "{" , { paramDecl } , "}" ;
-                  (* named query parameters with types                     *)
-                  (* e.g. query { page: int  limit: int }                  *)
+queryBlock      = "query" , ( ":" , IDENTIFIER              (* type ref   *)
+                           | "{" , { paramDecl } , "}" ) ;  (* inline     *)
+                  (* type reference: query: Pagination                     *)
+                  (* inline params:  query { page: int  limit: int }       *)
 
 (* --------------------------------------------------------------------- *)
 (* Headers                                                               *)
 (* --------------------------------------------------------------------- *)
 
-headersBlock    = "headers" , "{" , { paramDecl } , "}" ;
-                  (* named header parameters with types                    *)
-                  (* e.g. headers { authorization: string }                *)
+headersBlock    = "headers" , ( ":" , IDENTIFIER              (* type ref   *)
+                             | "{" , { paramDecl } , "}" ) ;  (* inline     *)
+                  (* type reference: headers: CommonHeaders                *)
+                  (* inline params:  headers { authorization: string }     *)
 
 (* --------------------------------------------------------------------- *)
 (* Request                                                               *)

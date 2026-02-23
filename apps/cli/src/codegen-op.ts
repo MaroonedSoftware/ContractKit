@@ -72,43 +72,57 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string):
   lines.push(`${deriveRouterName(file)}.${method}('${path}'${middlewareStr} async (ctx, next) => {`);
 
   // Params validation
-  if (route.params && route.params.length > 0) {
-    lines.push(`    const { ${route.params.map(p => p.name).join(', ')} } = await parseAndValidate(`);
-    lines.push(`        ctx.params,`);
-    lines.push(`        z.strictObject({`);
-    for (const param of route.params) {
-      // renderType is a shared helper — inline uuid, string etc.
-      lines.push(`            ${param.name}: ${renderScalarParam(param)},`);
+  if (route.params) {
+    if (typeof route.params === 'string') {
+      lines.push(`    const params = await parseAndValidate(ctx.params, ${route.params});`);
+      lines.push('');
+    } else if (route.params.length > 0) {
+      lines.push(`    const { ${route.params.map(p => p.name).join(', ')} } = await parseAndValidate(`);
+      lines.push(`        ctx.params,`);
+      lines.push(`        z.strictObject({`);
+      for (const param of route.params) {
+        lines.push(`            ${param.name}: ${renderScalarParam(param)},`);
+      }
+      lines.push(`        }),`);
+      lines.push(`    );`);
+      lines.push('');
     }
-    lines.push(`        }),`);
-    lines.push(`    );`);
-    lines.push('');
   }
 
   // Query validation
-  if (op.query && op.query.length > 0) {
-    lines.push(`    const { ${op.query.map(p => p.name).join(', ')} } = await parseAndValidate(`);
-    lines.push(`        ctx.query,`);
-    lines.push(`        z.strictObject({`);
-    for (const param of op.query) {
-      lines.push(`            ${param.name}: ${renderScalarParam(param)},`);
+  if (op.query) {
+    if (typeof op.query === 'string') {
+      lines.push(`    const query = await parseAndValidate(ctx.query, ${op.query});`);
+      lines.push('');
+    } else if (op.query.length > 0) {
+      lines.push(`    const { ${op.query.map(p => p.name).join(', ')} } = await parseAndValidate(`);
+      lines.push(`        ctx.query,`);
+      lines.push(`        z.strictObject({`);
+      for (const param of op.query) {
+        lines.push(`            ${param.name}: ${renderScalarParam(param)},`);
+      }
+      lines.push(`        }),`);
+      lines.push(`    );`);
+      lines.push('');
     }
-    lines.push(`        }),`);
-    lines.push(`    );`);
-    lines.push('');
   }
 
   // Headers validation
-  if (op.headers && op.headers.length > 0) {
-    lines.push(`    const { ${op.headers.map(p => p.name).join(', ')} } = await parseAndValidate(`);
-    lines.push(`        ctx.headers,`);
-    lines.push(`        z.object({`);
-    for (const param of op.headers) {
-      lines.push(`            ${param.name}: ${renderScalarParam(param)},`);
+  if (op.headers) {
+    if (typeof op.headers === 'string') {
+      lines.push(`    const headers = await parseAndValidate(ctx.headers, ${op.headers});`);
+      lines.push('');
+    } else if (op.headers.length > 0) {
+      lines.push(`    const { ${op.headers.map(p => p.name).join(', ')} } = await parseAndValidate(`);
+      lines.push(`        ctx.headers,`);
+      lines.push(`        z.object({`);
+      for (const param of op.headers) {
+        lines.push(`            ${param.name}: ${renderScalarParam(param)},`);
+      }
+      lines.push(`        }).passthrough(),`);
+      lines.push(`    );`);
+      lines.push('');
     }
-    lines.push(`        }).passthrough(),`);
-    lines.push(`    );`);
-    lines.push('');
   }
 
   // Body validation
@@ -186,7 +200,12 @@ function inferMethodName(
 function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
   const args: string[] = [];
   if (route.params) {
-    args.push(...route.params.map(p => p.name));
+    if (typeof route.params === 'string') {
+      // Type-reference form: pass the validated params object
+      // (individual field names are not known at compile time)
+    } else {
+      args.push(...route.params.map(p => p.name));
+    }
   }
   if (op.request && op.request.contentType !== 'multipart/form-data') {
     args.push('body');
@@ -226,9 +245,12 @@ function renderScalarParam(param: OpParamNode): string {
 function collectTypes(root: OpRootNode): string[] {
   const types = new Set<string>();
   for (const route of root.routes) {
+    if (typeof route.params === 'string') extractTypeNames(route.params, types);
     for (const op of route.operations) {
       if (op.request?.bodyType) extractTypeNames(op.request.bodyType, types);
       if (op.response?.bodyType) extractTypeNames(op.response.bodyType, types);
+      if (typeof op.query === 'string') extractTypeNames(op.query, types);
+      if (typeof op.headers === 'string') extractTypeNames(op.headers, types);
     }
   }
   return [...types].sort();
@@ -264,13 +286,19 @@ function collectServices(root: OpRootNode): string[] {
   return [...services].sort();
 }
 
+function hasParamSource(source?: import('./ast.js').ParamSource): boolean {
+  if (!source) return false;
+  if (typeof source === 'string') return true;
+  return source.length > 0;
+}
+
 function routeNeedsValidation(root: OpRootNode): boolean {
   return root.routes.some(r =>
-    (r.params && r.params.length > 0) ||
+    hasParamSource(r.params) ||
     r.operations.some(op =>
       !!op.request ||
-      (op.query && op.query.length > 0) ||
-      (op.headers && op.headers.length > 0)
+      hasParamSource(op.query) ||
+      hasParamSource(op.headers)
     )
   );
 }

@@ -90,14 +90,27 @@ export class OpCstParser extends CstParser {
 
   // ─── Params ───────────────────────────────────────────────────────────
 
-  // paramsBlock: "params" LBRACE paramDecl* RBRACE
+  // paramsBlock: "params" ( ":" IDENTIFIER | "{" paramDecl* "}" )
   public paramsBlock = this.RULE('paramsBlock', () => {
     this.CONSUME(Identifier);  // "params"
-    this.CONSUME(LBrace);
-    this.MANY(() => {
-      this.SUBRULE(this.paramDecl);
-    });
-    this.CONSUME(RBrace);
+    this.OR([
+      {
+        GATE: () => this.LA(1).tokenType === Colon,
+        ALT: () => {
+          this.CONSUME(Colon);
+          this.CONSUME2(Identifier); // type reference
+        },
+      },
+      {
+        ALT: () => {
+          this.CONSUME(LBrace);
+          this.MANY(() => {
+            this.SUBRULE(this.paramDecl);
+          });
+          this.CONSUME(RBrace);
+        },
+      },
+    ]);
   });
 
   // paramDecl: IDENTIFIER COLON IDENTIFIER
@@ -119,7 +132,7 @@ export class OpCstParser extends CstParser {
     });
   });
 
-  // operationBody: (serviceBlock | queryBlock | headersBlock | requestBlock | responseBlock)*
+  // operationBody: (serviceDecl | queryBlock | headersBlock | requestBlock | responseBlock)*
   public operationBody = this.RULE('operationBody', () => {
     this.MANY(() => {
       this.OR([
@@ -128,7 +141,7 @@ export class OpCstParser extends CstParser {
             const la = this.LA(1);
             return la.tokenType === Identifier && la.image === 'service';
           },
-          ALT: () => this.SUBRULE(this.serviceBlock),
+          ALT: () => this.SUBRULE(this.serviceDecl),
         },
         {
           GATE: () => {
@@ -164,36 +177,61 @@ export class OpCstParser extends CstParser {
 
   // ─── Service ────────────────────────────────────────────────────────
 
-  // serviceBlock: "service" LBRACE IDENTIFIER RBRACE
-  public serviceBlock = this.RULE('serviceBlock', () => {
+  // serviceDecl: "service" COLON IDENTIFIER
+  public serviceDecl = this.RULE('serviceDecl', () => {
     this.CONSUME(Identifier);  // "service"
-    this.CONSUME(LBrace);
+    this.CONSUME(Colon);
     this.CONSUME2(Identifier); // service reference e.g. "LedgerService.updateCategoryMembership"
-    this.CONSUME(RBrace);
   });
 
   // ─── Query ──────────────────────────────────────────────────────────
 
-  // queryBlock: "query" LBRACE paramDecl* RBRACE
+  // queryBlock: "query" ( ":" IDENTIFIER | "{" paramDecl* "}" )
   public queryBlock = this.RULE('queryBlock', () => {
     this.CONSUME(Identifier);  // "query"
-    this.CONSUME(LBrace);
-    this.MANY(() => {
-      this.SUBRULE(this.paramDecl);
-    });
-    this.CONSUME(RBrace);
+    this.OR([
+      {
+        GATE: () => this.LA(1).tokenType === Colon,
+        ALT: () => {
+          this.CONSUME(Colon);
+          this.CONSUME2(Identifier); // type reference
+        },
+      },
+      {
+        ALT: () => {
+          this.CONSUME(LBrace);
+          this.MANY(() => {
+            this.SUBRULE(this.paramDecl);
+          });
+          this.CONSUME(RBrace);
+        },
+      },
+    ]);
   });
 
   // ─── Headers ────────────────────────────────────────────────────────
 
-  // headersBlock: "headers" LBRACE paramDecl* RBRACE
+  // headersBlock: "headers" ( ":" IDENTIFIER | "{" paramDecl* "}" )
   public headersBlock = this.RULE('headersBlock', () => {
     this.CONSUME(Identifier);  // "headers"
-    this.CONSUME(LBrace);
-    this.MANY(() => {
-      this.SUBRULE(this.paramDecl);
-    });
-    this.CONSUME(RBrace);
+    this.OR([
+      {
+        GATE: () => this.LA(1).tokenType === Colon,
+        ALT: () => {
+          this.CONSUME(Colon);
+          this.CONSUME2(Identifier); // type reference
+        },
+      },
+      {
+        ALT: () => {
+          this.CONSUME(LBrace);
+          this.MANY(() => {
+            this.SUBRULE(this.paramDecl);
+          });
+          this.CONSUME(RBrace);
+        },
+      },
+    ]);
   });
 
   // ─── Request ──────────────────────────────────────────────────────────

@@ -177,6 +177,14 @@ describe('generateOp', () => {
       const output = generateOp(root);
       expect(output).toContain('id: z.uuid()');
     });
+
+    it('generates type-reference params validation', () => {
+      const root = opRoot([
+        opRoute('/users/:id', [opOperation('get')], 'RouteParams'),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain('parseAndValidate(ctx.params, RouteParams)');
+    });
   });
 
   // ─── Query validation ────────────────────────────────────────
@@ -207,6 +215,26 @@ describe('generateOp', () => {
       const output = generateOp(root);
       expect(output).toContain('parseAndValidate');
     });
+
+    it('generates type-reference query validation', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', { query: 'Pagination' }),
+        ]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain('parseAndValidate(ctx.query, Pagination)');
+    });
+
+    it('imports type-reference query type', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', { query: 'Pagination' }),
+        ]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toMatch(/import.*Pagination.*from/);
+    });
   });
 
   // ─── Headers validation ─────────────────────────────────────
@@ -236,6 +264,16 @@ describe('generateOp', () => {
       ]);
       const output = generateOp(root);
       expect(output).toContain('parseAndValidate');
+    });
+
+    it('generates type-reference headers validation', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', { headers: 'CommonHeaders' }),
+        ]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain('parseAndValidate(ctx.headers, CommonHeaders)');
     });
   });
 
