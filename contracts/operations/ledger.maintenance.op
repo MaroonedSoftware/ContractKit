@@ -1,27 +1,43 @@
-/ledger/maintenance/cache/process-queue:
-    post:
-        request:
+/ledger/maintenance/cache/process-queue {
+    post {
+        request {
             application/json: ProcessCacheQueueInput
-        response:
-            200:
+        }
+        response {
+            200 {
                 application/json: ProcessCacheQueueResult
+            }
+        }
+    }
+}
 
-/ledger/maintenance/accounts/:accountId/cache/rebuild:
-    post:
+/ledger/maintenance/accounts/:accountId/cache/rebuild {
+    post {
         service: LedgerService.rebuildAccountBalanceCache
-        response:
-            204:
+        response {
+            204
+        }
+    }
+}
 
-/ledger/maintenance/cache/drift:
-    get:
+/ledger/maintenance/cache/drift {
+    get {
         service: LedgerService.detectBalanceCacheDrift
-        response:
-            200:
+        response {
+            200 {
                 application/json: BalanceCacheDriftResult
+            }
+        }
+    }
+}
 
-/ledger/maintenance/accounts/:accountId/cache/drift:
-    get:
+/ledger/maintenance/accounts/:accountId/cache/drift {
+    get {
         service: LedgerService.detectBalanceCacheDrift
-        response:
-            200:
+        response {
+            200 {
                 application/json: BalanceCacheDriftResult
+            }
+        }
+    }
+}

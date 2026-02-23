@@ -113,7 +113,7 @@ export class OpVisitor extends BaseOpVisitor {
     let query: OpParamNode[] | undefined;
     let headers: OpParamNode[] | undefined;
     let request: OpRequestNode | undefined;
-    let response: OpResponseNode | undefined;
+    let responses: OpResponseNode[] = [];
 
     if (ctx.operationBody) {
       const body = this.visit(ctx.operationBody[0]);
@@ -121,18 +121,18 @@ export class OpVisitor extends BaseOpVisitor {
       query = body.query;
       headers = body.headers;
       request = body.request;
-      response = body.response;
+      responses = body.responses;
     }
 
-    return { method, service, query, headers, request, response, loc: { file: this.file, line } };
+    return { method, service, query, headers, request, responses, loc: { file: this.file, line } };
   }
 
-  operationBody(ctx: any): { service?: string; query?: OpParamNode[]; headers?: OpParamNode[]; request?: OpRequestNode; response?: OpResponseNode } {
+  operationBody(ctx: any): { service?: string; query?: OpParamNode[]; headers?: OpParamNode[]; request?: OpRequestNode; responses: OpResponseNode[] } {
     let service: string | undefined;
     let query: OpParamNode[] | undefined;
     let headers: OpParamNode[] | undefined;
     let request: OpRequestNode | undefined;
-    let response: OpResponseNode | undefined;
+    let responses: OpResponseNode[] = [];
 
     if (ctx.serviceDecl) {
       service = this.visit(ctx.serviceDecl[0]);
@@ -147,10 +147,10 @@ export class OpVisitor extends BaseOpVisitor {
       request = this.visit(ctx.requestBlock[0]);
     }
     if (ctx.responseBlock) {
-      response = this.visit(ctx.responseBlock[0]);
+      responses = this.visit(ctx.responseBlock[0]);
     }
 
-    return { service, query, headers, request, response };
+    return { service, query, headers, request, responses };
   }
 
   queryBlock(ctx: any): ParamSource {
@@ -202,15 +202,14 @@ export class OpVisitor extends BaseOpVisitor {
     return { contentType: ct, bodyType: ctLine.bodyType };
   }
 
-  responseBlock(ctx: any): OpResponseNode | undefined {
-    if (!ctx.statusCodeBlock) return undefined;
-
-    // Take the last status code block (matches original parser behavior)
-    let result: OpResponseNode | undefined;
-    for (const scb of ctx.statusCodeBlock) {
-      result = this.visit(scb);
+  responseBlock(ctx: any): OpResponseNode[] {
+    const responses: OpResponseNode[] = [];
+    if (ctx.statusCodeBlock) {
+      for (const scb of ctx.statusCodeBlock) {
+        responses.push(this.visit(scb));
+      }
     }
-    return result;
+    return responses;
   }
 
   statusCodeBlock(ctx: any): OpResponseNode {

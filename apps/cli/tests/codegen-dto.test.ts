@@ -345,4 +345,55 @@ describe('generateDto', () => {
       expect(output).toContain('/** A user */');
     });
   });
+
+  // ─── Model reference imports ──────────────────────────────────
+
+  describe('model reference imports', () => {
+    it('imports externally referenced model types', () => {
+      const root = dtoRoot([
+        model('Counterparty', [
+          field('accounts', arrayType(refType('CounterpartyAccount'))),
+        ]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain("import { CounterpartyAccount } from './counterparty.account.dto.js';");
+    });
+
+    it('does not import locally defined models', () => {
+      const root = dtoRoot([
+        model('CustomCurrency', [field('code', scalarType('string'))]),
+        model('LedgerAccount', [
+          field('currency', refType('CustomCurrency')),
+        ]),
+      ]);
+      const output = generateDto(root);
+      expect(output).not.toContain("import { CustomCurrency }");
+    });
+
+    it('imports base model when inherited from external', () => {
+      const root = dtoRoot([
+        model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain("import { User } from './user.dto.js';");
+    });
+
+    it('does not import base model when defined locally', () => {
+      const root = dtoRoot([
+        model('User', [field('name', scalarType('string'))]),
+        model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
+      ]);
+      const output = generateDto(root);
+      expect(output).not.toContain("import { User }");
+    });
+
+    it('emits no model imports when all refs are local', () => {
+      const root = dtoRoot([
+        model('User', [field('name', scalarType('string'))]),
+      ]);
+      const output = generateDto(root);
+      const importLines = output.split('\n').filter(l => l.startsWith('import'));
+      expect(importLines).toHaveLength(1); // only zod
+    });
+  });
 });

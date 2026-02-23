@@ -3,17 +3,17 @@
         request {
             application/json: Routing
         }
-        response{
+        response {
             201 {
                 application/json: Routing
             }
         }
-}
+    }
 }
 
 /transfers {
-    post{
-        service:  TransfersServices
+    post {
+        service: TransfersService
         request {
             application/json: CreateTransferIntent
         }
@@ -23,7 +23,7 @@
             }
         }
     }
-    get{
+    get {
         service: TransfersService
         query: Pagination
         response {
@@ -35,13 +35,12 @@
 }
 
 /transfers/:id {
-    get{
+    get {
         service: TransfersService.getIntent
         response {
             200 {
                 application/json: TransferIntent
             }
         }
-
     }
 }

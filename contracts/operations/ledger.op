@@ -1,53 +1,82 @@
-/ledger/accounts:
-    post:
-        request:
+/ledger/accounts {
+    post {
+        request {
             application/json: LedgerAccount
-        response:
-            200:
+        }
+        response {
+            200 {
                 application/json: LedgerAccount
-    get:
+            }
+        }
+    }
+    get {
         query: PaginationQuery
-        response:
-            200:
-                application/json:
-                    meta: Pagination
-                    data: array(LedgerAccount)
+        response {
+            200 {
+                application/json: array(LedgerAccount)
+            }
+        }
+    }
+}
 
-/ledger/accounts/:accountId:
-    get:
-        response:
-            200:
+/ledger/accounts/:accountId {
+    get {
+        response {
+            200 {
                 application/json: LedgerAccount
+            }
+        }
+    }
+}
 
-/ledger/accounts/:accountId/balances:
-    params:
+/ledger/accounts/:accountId/balances {
+    params {
         accountId: uuid
-    get:
+    }
+    get {
         query: GetAccountBalancesQuery
-        response:
-            200:
+        response {
+            200 {
                 application/json: AccountBalances
+            }
+        }
+    }
+}
 
-/ledger/accounts/:accountId/transactions:
-    get:
+/ledger/accounts/:accountId/transactions {
+    get {
         query: ListAccountTransactionsQuery
-        response:
-            200:
+        response {
+            200 {
                 application/json: array(LedgerTransaction)
+            }
+        }
+    }
+}
 
-/ledger/accounts/:accountId/categories:
-    get:
-        response:
-            200:
+/ledger/accounts/:accountId/categories {
+    get {
+        response {
+            200 {
                 application/json: array(LedgerCategory)
+            }
+        }
+    }
+}
 
-/ledger/accounts/:accountId/categories/:categoryId:
-    put:
+/ledger/accounts/:accountId/categories/:categoryId {
+    put {
         service: LedgerService.updateCategoryMembership
-        response:
-            200:
+        response {
+            200 {
                 application/json: LedgerAccount
-    delete:
+            }
+        }
+    }
+    delete {
         service: LedgerService.updateCategoryMembership
-        response:
-            204:
+        response {
+            204
+        }
+    }
+}

@@ -134,7 +134,7 @@ export interface OpOperationNode {
   method: HttpMethod;
   service?: string; // e.g. "LedgerService.updateCategoryNesting"
   request?: OpRequestNode;
-  response?: OpResponseNode;
+  responses: OpResponseNode[];
   query?: ParamSource;
   headers?: ParamSource;
   loc: SourceLocation;

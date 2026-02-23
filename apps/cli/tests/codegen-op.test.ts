@@ -43,7 +43,7 @@ describe('generateOp', () => {
     it('generates type imports when response references models', () => {
       const root = opRoot([
         opRoute('/users', [
-          opOperation('get', { response: opResponse(200, 'User', 'application/json') }),
+          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
         ]),
       ]);
       const output = generateOp(root);
@@ -300,7 +300,7 @@ describe('generateOp', () => {
         opRoute('/users', [
           opOperation('post', {
             request: opRequest('CreateUser'),
-            response: opResponse(201, 'User', 'application/json'),
+            responses: [opResponse(201, 'User', 'application/json')],
           }),
         ]),
       ]);
@@ -312,7 +312,7 @@ describe('generateOp', () => {
       const root = opRoot([
         opRoute('/users', [
           opOperation('get', {
-            response: opResponse(200, 'User', 'application/json'),
+            responses: [opResponse(200, 'User', 'application/json')],
           }),
         ]),
       ]);
@@ -324,7 +324,7 @@ describe('generateOp', () => {
       const root = opRoot([
         opRoute('/users', [
           opOperation('get', {
-            response: opResponse(200, 'array(User)', 'application/json'),
+            responses: [opResponse(200, 'array(User)', 'application/json')],
           }),
         ]),
       ]);
@@ -370,7 +370,7 @@ describe('generateOp', () => {
         opRoute('/users', [
           opOperation('post', {
             request: opRequest('CreateUserInput'),
-            response: opResponse(201, 'User', 'application/json'),
+            responses: [opResponse(201, 'User', 'application/json')],
           }),
         ]),
       ]);
@@ -384,7 +384,7 @@ describe('generateOp', () => {
       const root = opRoot([
         opRoute('/users', [
           opOperation('get', {
-            response: opResponse(200, 'array(User)', 'application/json'),
+            responses: [opResponse(200, 'array(User)', 'application/json')],
           }),
         ]),
       ]);

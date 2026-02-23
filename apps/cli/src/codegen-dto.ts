@@ -9,10 +9,15 @@ import type {
 
 export function generateDto(root: DtoRootNode): string {
   const needsDateTime = rootNeedsDateTime(root);
+  const externalRefs = collectExternalRefs(root);
   const lines: string[] = [];
 
   lines.push(`import { z } from 'zod';`);
   if (needsDateTime) lines.push(`import { DateTime } from 'luxon';`);
+  for (const ref of externalRefs) {
+    const moduleName = pascalToDotCase(ref);
+    lines.push(`import { ${ref} } from './${moduleName}.dto.js';`);
+  }
   lines.push('');
 
   for (const model of root.models) {
@@ -229,4 +234,36 @@ function typeNeedsDateTime(type: DtoTypeNode): boolean {
     case 'inlineObject': return type.fields.some(f => typeNeedsDateTime(f.type));
     default: return false;
   }
+}
+
+function collectExternalRefs(root: DtoRootNode): string[] {
+  const localNames = new Set(root.models.map(m => m.name));
+  const refs = new Set<string>();
+
+  for (const model of root.models) {
+    if (model.base && !localNames.has(model.base)) refs.add(model.base);
+    for (const field of model.fields) {
+      collectTypeRefs(field.type, refs);
+    }
+  }
+
+  for (const name of localNames) refs.delete(name);
+  return [...refs].sort();
+}
+
+function collectTypeRefs(type: DtoTypeNode, out: Set<string>): void {
+  switch (type.kind) {
+    case 'ref':          out.add(type.name); break;
+    case 'array':        collectTypeRefs(type.item, out); break;
+    case 'tuple':        type.items.forEach(t => collectTypeRefs(t, out)); break;
+    case 'record':       collectTypeRefs(type.key, out); collectTypeRefs(type.value, out); break;
+    case 'union':        type.members.forEach(t => collectTypeRefs(t, out)); break;
+    case 'lazy':         collectTypeRefs(type.inner, out); break;
+    case 'inlineObject': type.fields.forEach(f => collectTypeRefs(f.type, out)); break;
+  }
+}
+
+/** Convert PascalCase to dot-separated lowercase: CounterpartyAccount → counterparty.account */
+export function pascalToDotCase(name: string): string {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1.$2').toLowerCase();
 }

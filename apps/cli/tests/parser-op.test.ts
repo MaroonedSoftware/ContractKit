@@ -114,7 +114,7 @@ describe('parseOp', () => {
       const op = root.routes[0]!.operations[0]!;
       expect(op.method).toBe('delete');
       expect(op.request).toBeUndefined();
-      expect(op.response).toBeUndefined();
+      expect(op.responses).toHaveLength(0);
     });
   });
 
@@ -164,11 +164,11 @@ describe('parseOp', () => {
         }
     }
 }`);
-      const response = root.routes[0]!.operations[0]!.response;
-      expect(response).toBeDefined();
-      expect(response!.statusCode).toBe(200);
-      expect(response!.contentType).toBe('application/json');
-      expect(response!.bodyType).toBe('array(User)');
+      const responses = root.routes[0]!.operations[0]!.responses;
+      expect(responses).toHaveLength(1);
+      expect(responses[0]!.statusCode).toBe(200);
+      expect(responses[0]!.contentType).toBe('application/json');
+      expect(responses[0]!.bodyType).toBe('array(User)');
     });
 
     it('parses response with no body', () => {
@@ -180,10 +180,10 @@ describe('parseOp', () => {
         }
     }
 }`);
-      const response = root.routes[0]!.operations[0]!.response;
-      expect(response).toBeDefined();
-      expect(response!.statusCode).toBe(204);
-      expect(response!.bodyType).toBeUndefined();
+      const responses = root.routes[0]!.operations[0]!.responses;
+      expect(responses).toHaveLength(1);
+      expect(responses[0]!.statusCode).toBe(204);
+      expect(responses[0]!.bodyType).toBeUndefined();
     });
   });
 
@@ -406,13 +406,13 @@ bad-route-no-slash {
 
       const getOp = route.operations[0]!;
       expect(getOp.method).toBe('get');
-      expect(getOp.response!.statusCode).toBe(200);
-      expect(getOp.response!.bodyType).toBe('User');
+      expect(getOp.responses[0]!.statusCode).toBe(200);
+      expect(getOp.responses[0]!.bodyType).toBe('User');
 
       const putOp = route.operations[1]!;
       expect(putOp.method).toBe('put');
       expect(putOp.request!.bodyType).toBe('UpdateUserInput');
-      expect(putOp.response!.bodyType).toBe('User');
+      expect(putOp.responses[0]!.bodyType).toBe('User');
     });
   });
 });

@@ -52,6 +52,7 @@ async function resolveFiles(patterns: string[]): Promise<string[]> {
 function compileFile(
   filePath: string,
   outDir: string | undefined,
+  rootDir: string,
   diag: DiagnosticCollector,
 ): { outPath: string; content: string } | null {
   const source = readFileSync(filePath, 'utf-8');
@@ -79,11 +80,33 @@ function compileFile(
     ? baseName.replace(/\.dto$/, '.dto.ts')
     : baseName.replace(/\.op$/, '.router.ts');
 
-  const outPath = outDir
-    ? join(resolve(outDir), outName)
-    : join(dirname(filePath), outName);
+  let outPath: string;
+  if (outDir) {
+    // Preserve subdirectory structure relative to rootDir
+    const relDir = relative(rootDir, dirname(filePath));
+    outPath = join(resolve(outDir), relDir, outName);
+  } else {
+    outPath = join(dirname(filePath), outName);
+  }
 
   return { outPath, content };
+}
+
+/** Find the longest common directory prefix of a list of absolute paths. */
+function commonDir(files: string[]): string {
+  if (files.length === 0) return process.cwd();
+  const parts = files.map(f => dirname(f).split('/'));
+  const first = parts[0]!;
+  let depth = first.length;
+  for (const p of parts) {
+    for (let i = 0; i < depth; i++) {
+      if (p[i] !== first[i]) {
+        depth = i;
+        break;
+      }
+    }
+  }
+  return first.slice(0, depth).join('/') || '/';
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────
@@ -110,9 +133,10 @@ async function main() {
 
     const diag = new DiagnosticCollector();
     const results: { outPath: string; content: string }[] = [];
+    const rootDir = commonDir(files);
 
     for (const file of files) {
-      const result = compileFile(file, args.outDir, diag);
+      const result = compileFile(file, args.outDir, rootDir, diag);
       if (result) results.push(result);
     }
 

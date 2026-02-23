@@ -94,6 +94,7 @@ export function opResponse(statusCode: number, bodyType?: string, contentType?: 
 export function opOperation(method: HttpMethod, overrides?: Partial<OpOperationNode>): OpOperationNode {
   return {
     method,
+    responses: [],
     loc: loc(1, 'test.op'),
     ...overrides,
   };

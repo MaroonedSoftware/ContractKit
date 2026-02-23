@@ -136,12 +136,12 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string):
     }
   }
 
-  // Service call
+  // Service call — use the first response with a body as the primary response
+  const primaryResponse = op.responses.find(r => r.bodyType) ?? op.responses[0];
   const serviceParts = inferService(op, route, file);
-  const responseType = inferResponseType(op.response);
 
-  if (op.response?.bodyType) {
-    const typeAnnotation = formatTypeAnnotation(op.response.bodyType);
+  if (primaryResponse?.bodyType) {
+    const typeAnnotation = formatTypeAnnotation(primaryResponse.bodyType);
     lines.push(`    const service = ctx.container.get(${serviceParts.className});`);
     lines.push(`    const result: ${typeAnnotation} = await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
   } else {
@@ -150,9 +150,9 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string):
   }
 
   lines.push('');
-  lines.push(`    ctx.status = ${op.response?.statusCode ?? 200};`);
+  lines.push(`    ctx.status = ${primaryResponse?.statusCode ?? 200};`);
 
-  if (op.response?.bodyType && op.response.contentType) {
+  if (primaryResponse?.bodyType && primaryResponse.contentType) {
     lines.push(`    ctx.type = 'application/json';`);
     lines.push(`    ctx.body = result;`);
   }
@@ -176,15 +176,13 @@ function inferService(op: OpOperationNode, route: OpRouteNode, file: string): { 
   // Infer from file name + method + path
   const baseName = deriveBaseName(file); // e.g. "ledger.categories" -> "LedgerCategories"
   const className = `${baseName}Service`;
-  const methodName = inferMethodName(op.method, route.path, op.request, op.response);
+  const methodName = inferMethodName(op.method, route.path);
   return { className, methodName };
 }
 
 function inferMethodName(
   method: string,
   path: string,
-  request: OpOperationNode['request'],
-  response: OpOperationNode['response'],
 ): string {
   const hasParam = path.includes(':');
   switch (method) {
@@ -223,11 +221,6 @@ function formatTypeAnnotation(bodyType: string): string {
   return bodyType;
 }
 
-function inferResponseType(response?: OpResponseNode): string {
-  if (!response?.bodyType) return 'void';
-  return formatTypeAnnotation(response.bodyType);
-}
-
 function renderScalarParam(param: OpParamNode): string {
   if (param.type.kind === 'scalar') {
     switch (param.type.name) {
@@ -248,7 +241,9 @@ function collectTypes(root: OpRootNode): string[] {
     if (typeof route.params === 'string') extractTypeNames(route.params, types);
     for (const op of route.operations) {
       if (op.request?.bodyType) extractTypeNames(op.request.bodyType, types);
-      if (op.response?.bodyType) extractTypeNames(op.response.bodyType, types);
+      for (const resp of op.responses) {
+        if (resp.bodyType) extractTypeNames(resp.bodyType, types);
+      }
       if (typeof op.query === 'string') extractTypeNames(op.query, types);
       if (typeof op.headers === 'string') extractTypeNames(op.headers, types);
     }
