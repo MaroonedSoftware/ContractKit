@@ -38,7 +38,7 @@ dtoRoot         = { modelDecl } , EOF ;
 (* Models                                                                *)
 (* --------------------------------------------------------------------- *)
 
-modelDecl       = IDENTIFIER , [ ":" , IDENTIFIER ] , "{" , fieldList , "}" ;
+modelDecl       = IDENTIFIER , ":" , [ IDENTIFIER ] , "{" , fieldList , "}" ;
                   (* first IDENTIFIER  = model name                      *)
                   (* second IDENTIFIER = base model for inheritance      *)
 
@@ -151,8 +151,8 @@ routeBody       = { paramsBlock | httpOperation } ;
 (* Path Parameters                                                       *)
 (* --------------------------------------------------------------------- *)
 
-paramsBlock     = "params" , ( ":" , IDENTIFIER              (* type ref   *)
-                            | "{" , { paramDecl } , "}" ) ;  (* inline     *)
+paramsBlock     = "params" , ":" , ( IDENTIFIER               (* type ref   *)
+                                  | "{" , { paramDecl } , "}" ) ;  (* inline     *)
 
 paramDecl       = IDENTIFIER , ":" , IDENTIFIER ;
                   (* first IDENTIFIER  = parameter name                  *)
@@ -164,7 +164,7 @@ paramDecl       = IDENTIFIER , ":" , IDENTIFIER ;
 
 httpMethod      = "get" | "post" | "put" | "patch" | "delete" ;
 
-httpOperation   = httpMethod , [ "{" , operationBody , "}" ] ;
+httpOperation   = httpMethod , [ ":" , "{" , operationBody , "}" ] ;
 
 operationBody   = { serviceDecl | queryBlock | headersBlock
                   | requestBlock | responseBlock } ;
@@ -182,8 +182,8 @@ serviceDecl     = "service" , ":" , IDENTIFIER ;
 (* Query Parameters                                                      *)
 (* --------------------------------------------------------------------- *)
 
-queryBlock      = "query" , ( ":" , IDENTIFIER              (* type ref   *)
-                           | "{" , { paramDecl } , "}" ) ;  (* inline     *)
+queryBlock      = "query" , ":" , ( IDENTIFIER               (* type ref   *)
+                                  | "{" , { paramDecl } , "}" ) ;  (* inline     *)
                   (* type reference: query: Pagination                     *)
                   (* inline params:  query { page: int  limit: int }       *)
 
@@ -191,8 +191,8 @@ queryBlock      = "query" , ( ":" , IDENTIFIER              (* type ref   *)
 (* Headers                                                               *)
 (* --------------------------------------------------------------------- *)
 
-headersBlock    = "headers" , ( ":" , IDENTIFIER              (* type ref   *)
-                             | "{" , { paramDecl } , "}" ) ;  (* inline     *)
+headersBlock    = "headers" , ":" , ( IDENTIFIER               (* type ref   *)
+                                    | "{" , { paramDecl } , "}" ) ;  (* inline     *)
                   (* type reference: headers: CommonHeaders                *)
                   (* inline params:  headers { authorization: string }     *)
 
@@ -200,15 +200,15 @@ headersBlock    = "headers" , ( ":" , IDENTIFIER              (* type ref   *)
 (* Request                                                               *)
 (* --------------------------------------------------------------------- *)
 
-requestBlock    = "request" , "{" , contentTypeLine , "}" ;
+requestBlock    = "request" , ":" , "{" , contentTypeLine , "}" ;
 
 (* --------------------------------------------------------------------- *)
 (* Response                                                              *)
 (* --------------------------------------------------------------------- *)
 
-responseBlock   = "response" , "{" , { statusCodeBlock } , "}" ;
+responseBlock   = "response" , ":" , "{" , { statusCodeBlock } , "}" ;
 
-statusCodeBlock = NUMBER_LIT , [ "{" , contentTypeLine , "}" ] ;
+statusCodeBlock = NUMBER_LIT , ":" , [ "{" , contentTypeLine , "}" ] ;
                   (* NUMBER_LIT = HTTP status code (200, 201, 404, etc.) *)
                   (* body is optional — e.g. 204 has no content          *)
 
