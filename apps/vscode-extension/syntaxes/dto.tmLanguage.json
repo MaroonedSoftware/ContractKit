@@ -12,7 +12,7 @@
             "name": "comment.line.number-sign.dto"
         },
         "model-declaration": {
-            "begin": "([A-Z][a-zA-Z0-9_$]*)\\s*(?:(:)\\s*([A-Z][a-zA-Z0-9_$]*)\\s*)?(\\{)",
+            "begin": "([A-Z][a-zA-Z0-9_$]*)\\s*(:)\\s*(?:([A-Z][a-zA-Z0-9_$]*)\\s*)?(\\{)",
             "beginCaptures": {
                 "1": { "name": "entity.name.type.model.dto" },
                 "2": { "name": "keyword.operator.inheritance.dto" },
