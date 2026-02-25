@@ -1,10 +1,10 @@
 /transfers/fi {
-    post {
-        request {
+    post: {
+        request: {
             application/json: Routing
         }
-        response {
-            201 {
+        response: {
+            201: {
                 application/json: Routing
             }
         }
@@ -12,22 +12,22 @@
 }
 
 /transfers {
-    post {
+    post: {
         service: TransfersService
-        request {
+        request: {
             application/json: CreateTransferIntent
         }
-        response {
-            201 {
+        response: {
+            201: {
                 application/json: TransferIntent
             }
         }
     }
-    get {
+    get: {
         service: TransfersService
         query: Pagination
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: array(TransferIntent)
             }
         }
@@ -35,10 +35,10 @@
 }
 
 /transfers/:id {
-    get {
+    get: {
         service: TransfersService.getIntent
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: TransferIntent
             }
         }

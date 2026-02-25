@@ -45,7 +45,7 @@ describe('parseOp', () => {
     it('parses params with scalar types', () => {
       const { root } = parse(`\
 /users/:id {
-    params {
+    params: {
         id: uuid
     }
     get
@@ -59,7 +59,7 @@ describe('parseOp', () => {
     it('parses multiple params', () => {
       const { root } = parse(`\
 /users/:id/posts/:postId {
-    params {
+    params: {
         id: uuid
         postId: uuid
     }
@@ -124,8 +124,8 @@ describe('parseOp', () => {
     it('parses JSON request with body type', () => {
       const { root } = parse(`\
 /users {
-    post {
-        request {
+    post: {
+        request: {
             application/json: CreateUserInput
         }
     }
@@ -139,8 +139,8 @@ describe('parseOp', () => {
     it('parses multipart request', () => {
       const { root } = parse(`\
 /uploads {
-    post {
-        request {
+    post: {
+        request: {
             multipart/form-data: UploadInput
         }
     }
@@ -156,9 +156,9 @@ describe('parseOp', () => {
     it('parses response with status code and body type', () => {
       const { root } = parse(`\
 /users {
-    get {
-        response {
-            200 {
+    get: {
+        response: {
+            200: {
                 application/json: array(User)
             }
         }
@@ -174,9 +174,9 @@ describe('parseOp', () => {
     it('parses response with no body', () => {
       const { root } = parse(`\
 /users/:id {
-    delete {
-        response {
-            204
+    delete: {
+        response: {
+            204:
         }
     }
 }`);
@@ -193,13 +193,13 @@ describe('parseOp', () => {
     it('parses query with typed parameters', () => {
       const { root } = parse(`\
 /users {
-    get {
-        query {
+    get: {
+        query: {
             page: int
             limit: int
         }
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: array(User)
             }
         }
@@ -215,10 +215,10 @@ describe('parseOp', () => {
     it('parses query as type reference declaration', () => {
       const { root } = parse(`\
 /users {
-    get {
+    get: {
         query: Pagination
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: array(User)
             }
         }
@@ -240,13 +240,13 @@ describe('parseOp', () => {
     it('parses headers with typed parameters', () => {
       const { root } = parse(`\
 /users {
-    get {
-        headers {
+    get: {
+        headers: {
             authorization: string
             x-request-id: uuid
         }
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: array(User)
             }
         }
@@ -263,10 +263,10 @@ describe('parseOp', () => {
     it('parses headers as type reference declaration', () => {
       const { root } = parse(`\
 /users {
-    get {
+    get: {
         headers: CommonHeaders
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: array(User)
             }
         }
@@ -288,10 +288,10 @@ describe('parseOp', () => {
     it('parses service with class and method', () => {
       const { root } = parse(`\
 /users/:id {
-    put {
+    put: {
         service: LedgerService.updateUser
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: User
             }
         }
@@ -304,13 +304,13 @@ describe('parseOp', () => {
     it('parses service with class only', () => {
       const { root } = parse(`\
 /transfers {
-    post {
+    post: {
         service: TransfersService
-        request {
+        request: {
             application/json: CreateTransferIntent
         }
-        response {
-            201 {
+        response: {
+            201: {
                 application/json: TransferIntent
             }
         }
@@ -377,22 +377,22 @@ bad-route-no-slash {
     it('parses a complete route with params, request, and response', () => {
       const { root, diag } = parse(`\
 /users/:id {
-    params {
+    params: {
         id: uuid
     }
-    get {
-        response {
-            200 {
+    get: {
+        response: {
+            200: {
                 application/json: User
             }
         }
     }
-    put {
-        request {
+    put: {
+        request: {
             application/json: UpdateUserInput
         }
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: User
             }
         }

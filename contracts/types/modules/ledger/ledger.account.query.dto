@@ -1,15 +1,15 @@
-GetAccountBalancesQuery {
+GetAccountBalancesQuery: {
     date?: string # Optional ISO 8601 date to query balances at
     version?: int(min=0) # Optional account version to query balances at
 }
 
-AccountBalances {
+AccountBalances: {
     postedBalance: bigint(min=0) # The posted balance in smallest currency units
     pendingBalance: bigint(min=0) # The pending balance in smallest currency units
     availableBalance: bigint(min=0) # The available balance in smallest currency units
 }
 
-ListAccountTransactionsQuery {
+ListAccountTransactionsQuery: {
     status?: enum(pending, posted, archived) # Optional status filter
     limit?: int(min=1, max=100) = 50 # Maximum number of results
     offset?: int(min=0) = 0 # Number of results to skip

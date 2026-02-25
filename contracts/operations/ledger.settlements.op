@@ -1,18 +1,18 @@
 /ledger/settlements {
-    post {
-        request {
+    post: {
+        request: {
             application/json: LedgerSettlement
         }
-        response {
-            201 {
+        response: {
+            201: {
                 application/json: LedgerSettlement
             }
         }
     }
-    get {
+    get: {
         query: ListSettlementsQuery
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: array(LedgerSettlement)
             }
         }
@@ -20,9 +20,9 @@
 }
 
 /ledger/settlements/:settlementId {
-    get {
-        response {
-            200 {
+    get: {
+        response: {
+            200: {
                 application/json: LedgerSettlement
             }
         }
@@ -30,12 +30,12 @@
 }
 
 /ledger/settlements/:settlementId/finalize {
-    post {
-        request {
+    post: {
+        request: {
             application/json: FinalizeSettlementInput
         }
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: LedgerSettlement
             }
         }
@@ -43,12 +43,12 @@
 }
 
 /ledger/settlements/:settlementId/status {
-    patch {
-        request {
+    patch: {
+        request: {
             application/json: UpdateSettlementStatusInput
         }
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: LedgerSettlement
             }
         }
@@ -56,10 +56,10 @@
 }
 
 /ledger/settlements/:settlementId/entries {
-    get {
+    get: {
         query: ListSettlementEntriesQuery
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: array(LedgerEntry)
             }
         }
@@ -67,27 +67,27 @@
 }
 
 /ledger/settlements/:settlementId/entries/:entryId {
-    put {
+    put: {
         service: LedgerService.updateSettlementEntry
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: LedgerSettlement
             }
         }
     }
-    delete {
+    delete: {
         service: LedgerService.updateSettlementEntry
-        response {
-            204
+        response: {
+            204:
         }
     }
 }
 
 /ledger/settlements/:settlementId/transactions {
-    get {
+    get: {
         query: ListSettlementTransactionsQuery
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: array(LedgerTransaction)
             }
         }

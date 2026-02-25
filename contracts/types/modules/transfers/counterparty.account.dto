@@ -1,4 +1,4 @@
-CounterpartyAccount {
+CounterpartyAccount: {
     id: readonly uuid # The counterparty account identifier
     counterparty_id: uuid
     financial_institution_id: uuid # The financial institution identifier

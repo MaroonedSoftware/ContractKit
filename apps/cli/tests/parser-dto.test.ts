@@ -13,7 +13,7 @@ describe('parseDto', () => {
 
   describe('simple models', () => {
     it('parses a model with no fields', () => {
-      const { root } = parse('Empty {}');
+      const { root } = parse('Empty: {}');
       expect(root.models).toHaveLength(1);
       expect(root.models[0]!.name).toBe('Empty');
       expect(root.models[0]!.fields).toHaveLength(0);
@@ -21,7 +21,7 @@ describe('parseDto', () => {
 
     it('parses a model with scalar fields', () => {
       const { root } = parse(`\
-User {
+User: {
     name: string
     age: number
     active: boolean
@@ -39,11 +39,11 @@ User {
 
     it('parses multiple models', () => {
       const { root } = parse(`\
-User {
+User: {
     name: string
 }
 
-Post {
+Post: {
     title: string
 }`);
       expect(root.models).toHaveLength(2);
@@ -57,7 +57,7 @@ Post {
   describe('field modifiers', () => {
     it('parses optional fields', () => {
       const { root } = parse(`\
-M {
+M: {
     name?: string
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -66,7 +66,7 @@ M {
 
     it('parses nullable fields via union with null', () => {
       const { root } = parse(`\
-M {
+M: {
     name: string | null
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -77,7 +77,7 @@ M {
 
     it('parses fields with default string value', () => {
       const { root } = parse(`\
-M {
+M: {
     role: string = "user"
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -86,7 +86,7 @@ M {
 
     it('parses fields with default number value', () => {
       const { root } = parse(`\
-M {
+M: {
     count: number = 0
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -95,7 +95,7 @@ M {
 
     it('parses fields with default boolean value', () => {
       const { root } = parse(`\
-M {
+M: {
     active: boolean = true
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -104,7 +104,7 @@ M {
 
     it('parses readonly visibility', () => {
       const { root } = parse(`\
-M {
+M: {
     id: readonly uuid
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -114,7 +114,7 @@ M {
 
     it('parses writeonly visibility', () => {
       const { root } = parse(`\
-M {
+M: {
     password: writeonly string
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -123,7 +123,7 @@ M {
 
     it('parses field descriptions from inline comments', () => {
       const { root } = parse(`\
-M {
+M: {
     name: string # The user name
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -132,7 +132,7 @@ M {
 
     it('parses field descriptions from preceding comments', () => {
       const { root } = parse(`\
-M {
+M: {
     first: string
     # The user name
     name: string
@@ -147,7 +147,7 @@ M {
   describe('scalar types with modifiers', () => {
     it('parses string with min/max', () => {
       const { root } = parse(`\
-M {
+M: {
     name: string(min=1, max=100)
 }`);
       const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
@@ -159,7 +159,7 @@ M {
 
     it('parses string with length', () => {
       const { root } = parse(`\
-M {
+M: {
     code: string(len=6)
 }`);
       const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
@@ -170,7 +170,7 @@ M {
       // Note: the lexer doesn't tokenize [, ], or + chars, so only
       // identifier-safe characters survive in the regex pattern.
       const { root } = parse(`\
-M {
+M: {
     code: string(regex=/[A-Z]+/)
 }`);
       const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
@@ -179,7 +179,7 @@ M {
 
     it('parses number with min/max', () => {
       const { root } = parse(`\
-M {
+M: {
     score: number(min=0, max=100)
 }`);
       const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
@@ -194,7 +194,7 @@ M {
         'any', 'unknown', 'null', 'object', 'binary',
       ];
       for (const name of scalars) {
-        const { root } = parse(`M { f: ${name} }`);
+        const { root } = parse(`M: { f: ${name} }`);
         const type = root.models[0]!.fields[0]!.type;
         expect(type.kind).toBe('scalar');
         expect((type as ScalarTypeNode).name).toBe(name);
@@ -207,7 +207,7 @@ M {
   describe('compound types', () => {
     it('parses array type', () => {
       const { root } = parse(`\
-M {
+M: {
     tags: array(string)
 }`);
       const type = root.models[0]!.fields[0]!.type as ArrayTypeNode;
@@ -217,7 +217,7 @@ M {
 
     it('parses array with min/max', () => {
       const { root } = parse(`\
-M {
+M: {
     tags: array(string, min=1, max=10)
 }`);
       const type = root.models[0]!.fields[0]!.type as ArrayTypeNode;
@@ -227,7 +227,7 @@ M {
 
     it('parses tuple type', () => {
       const { root } = parse(`\
-M {
+M: {
     coords: tuple(number, number)
 }`);
       const type = root.models[0]!.fields[0]!.type as TupleTypeNode;
@@ -237,7 +237,7 @@ M {
 
     it('parses record type', () => {
       const { root } = parse(`\
-M {
+M: {
     meta: record(string, number)
 }`);
       const type = root.models[0]!.fields[0]!.type as RecordTypeNode;
@@ -248,7 +248,7 @@ M {
 
     it('parses enum type', () => {
       const { root } = parse(`\
-M {
+M: {
     status: enum(active, inactive, pending)
 }`);
       const type = root.models[0]!.fields[0]!.type as EnumTypeNode;
@@ -258,7 +258,7 @@ M {
 
     it('parses literal string type', () => {
       const { root } = parse(`\
-M {
+M: {
     kind: literal("user")
 }`);
       const type = root.models[0]!.fields[0]!.type as LiteralTypeNode;
@@ -268,7 +268,7 @@ M {
 
     it('parses literal number type', () => {
       const { root } = parse(`\
-M {
+M: {
     code: literal(42)
 }`);
       const type = root.models[0]!.fields[0]!.type as LiteralTypeNode;
@@ -277,7 +277,7 @@ M {
 
     it('parses literal boolean type', () => {
       const { root } = parse(`\
-M {
+M: {
     flag: literal(true)
 }`);
       const type = root.models[0]!.fields[0]!.type as LiteralTypeNode;
@@ -286,7 +286,7 @@ M {
 
     it('parses union type', () => {
       const { root } = parse(`\
-M {
+M: {
     val: string | number
 }`);
       const type = root.models[0]!.fields[0]!.type as UnionTypeNode;
@@ -296,7 +296,7 @@ M {
 
     it('parses model reference type', () => {
       const { root } = parse(`\
-M {
+M: {
     address: Address
 }`);
       const type = root.models[0]!.fields[0]!.type as ModelRefTypeNode;
@@ -306,7 +306,7 @@ M {
 
     it('parses lazy type', () => {
       const { root } = parse(`\
-M {
+M: {
     children: lazy(TreeNode)
 }`);
       const type = root.models[0]!.fields[0]!.type as LazyTypeNode;
@@ -320,7 +320,7 @@ M {
   describe('inline objects', () => {
     it('parses inline brace objects', () => {
       const { root } = parse(`\
-M {
+M: {
     meta: { key: string, value: number }
 }`);
       const type = root.models[0]!.fields[0]!.type as InlineObjectTypeNode;
@@ -332,7 +332,7 @@ M {
 
     it('parses nested brace objects', () => {
       const { root } = parse(`\
-M {
+M: {
     address: {
         street: string
         city: string
@@ -364,7 +364,7 @@ Admin: User {
     it('parses model description from preceding comment', () => {
       const { root } = parse(`\
 # Represents a user
-User {
+User: {
     name: string
 }`);
       expect(root.models[0]!.description).toBe('Represents a user');
@@ -372,7 +372,7 @@ User {
 
     it('parses model description from inline comment', () => {
       const { root } = parse(`\
-User { # A user model
+User: { # A user model
     name: string
 }`);
       expect(root.models[0]!.description).toBe('A user model');
@@ -384,7 +384,7 @@ User { # A user model
   describe('error recovery', () => {
     it('collects parse errors in diagnostics', () => {
       const { diag } = parse(`\
-M {
+M: {
     : string
 }`);
       expect(diag.hasErrors()).toBe(true);
@@ -392,11 +392,11 @@ M {
 
     it('continues parsing after error recovery', () => {
       const { root } = parse(`\
-Bad {
+Bad: {
     : string
 }
 
-Good {
+Good: {
     name: string
 }`);
       // Should have at least the Good model
@@ -410,7 +410,7 @@ Good {
   describe('source locations', () => {
     it('records correct line numbers on models and fields', () => {
       const { root } = parse(`\
-User {
+User: {
     name: string
     age: number
 }`);
@@ -420,7 +420,7 @@ User {
     });
 
     it('records the correct file name', () => {
-      const { root } = parse('M { f: string }');
+      const { root } = parse('M: { f: string }');
       expect(root.file).toBe('test.dto');
       expect(root.models[0]!.loc.file).toBe('test.dto');
     });

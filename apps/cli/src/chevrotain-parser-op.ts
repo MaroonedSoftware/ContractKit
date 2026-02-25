@@ -90,14 +90,14 @@ export class OpCstParser extends CstParser {
 
   // ─── Params ───────────────────────────────────────────────────────────
 
-  // paramsBlock: "params" ( ":" IDENTIFIER | "{" paramDecl* "}" )
+  // paramsBlock: "params" ":" ( IDENTIFIER | "{" paramDecl* "}" )
   public paramsBlock = this.RULE('paramsBlock', () => {
     this.CONSUME(Identifier);  // "params"
+    this.CONSUME(Colon);
     this.OR([
       {
-        GATE: () => this.LA(1).tokenType === Colon,
+        GATE: () => this.LA(1).tokenType === Identifier,
         ALT: () => {
-          this.CONSUME(Colon);
           this.CONSUME2(Identifier); // type reference
         },
       },
@@ -122,10 +122,11 @@ export class OpCstParser extends CstParser {
 
   // ─── HTTP Operation ───────────────────────────────────────────────────
 
-  // httpOperation: IDENTIFIER (LBRACE operationBody RBRACE)?
+  // httpOperation: IDENTIFIER (":" LBRACE operationBody RBRACE)?
   public httpOperation = this.RULE('httpOperation', () => {
     this.CONSUME(Identifier);  // HTTP method name
     this.OPTION(() => {
+      this.CONSUME(Colon);
       this.CONSUME(LBrace);
       this.SUBRULE(this.operationBody);
       this.CONSUME(RBrace);
@@ -186,14 +187,14 @@ export class OpCstParser extends CstParser {
 
   // ─── Query ──────────────────────────────────────────────────────────
 
-  // queryBlock: "query" ( ":" IDENTIFIER | "{" paramDecl* "}" )
+  // queryBlock: "query" ":" ( IDENTIFIER | "{" paramDecl* "}" )
   public queryBlock = this.RULE('queryBlock', () => {
     this.CONSUME(Identifier);  // "query"
+    this.CONSUME(Colon);
     this.OR([
       {
-        GATE: () => this.LA(1).tokenType === Colon,
+        GATE: () => this.LA(1).tokenType === Identifier,
         ALT: () => {
-          this.CONSUME(Colon);
           this.CONSUME2(Identifier); // type reference
         },
       },
@@ -211,14 +212,14 @@ export class OpCstParser extends CstParser {
 
   // ─── Headers ────────────────────────────────────────────────────────
 
-  // headersBlock: "headers" ( ":" IDENTIFIER | "{" paramDecl* "}" )
+  // headersBlock: "headers" ":" ( IDENTIFIER | "{" paramDecl* "}" )
   public headersBlock = this.RULE('headersBlock', () => {
     this.CONSUME(Identifier);  // "headers"
+    this.CONSUME(Colon);
     this.OR([
       {
-        GATE: () => this.LA(1).tokenType === Colon,
+        GATE: () => this.LA(1).tokenType === Identifier,
         ALT: () => {
-          this.CONSUME(Colon);
           this.CONSUME2(Identifier); // type reference
         },
       },
@@ -236,9 +237,10 @@ export class OpCstParser extends CstParser {
 
   // ─── Request ──────────────────────────────────────────────────────────
 
-  // requestBlock: "request" LBRACE contentTypeLine RBRACE
+  // requestBlock: "request" ":" LBRACE contentTypeLine RBRACE
   public requestBlock = this.RULE('requestBlock', () => {
     this.CONSUME(Identifier);  // "request"
+    this.CONSUME(Colon);
     this.CONSUME(LBrace);
     this.SUBRULE(this.contentTypeLine);
     this.CONSUME(RBrace);
@@ -246,9 +248,10 @@ export class OpCstParser extends CstParser {
 
   // ─── Response ─────────────────────────────────────────────────────────
 
-  // responseBlock: "response" LBRACE statusCodeBlock* RBRACE
+  // responseBlock: "response" ":" LBRACE statusCodeBlock* RBRACE
   public responseBlock = this.RULE('responseBlock', () => {
     this.CONSUME(Identifier);  // "response"
+    this.CONSUME(Colon);
     this.CONSUME(LBrace);
     this.MANY(() => {
       this.SUBRULE(this.statusCodeBlock);
@@ -256,9 +259,10 @@ export class OpCstParser extends CstParser {
     this.CONSUME(RBrace);
   });
 
-  // statusCodeBlock: NUMBER (LBRACE contentTypeLine RBRACE)?
+  // statusCodeBlock: NUMBER ":" (LBRACE contentTypeLine RBRACE)?
   public statusCodeBlock = this.RULE('statusCodeBlock', () => {
     this.CONSUME(NumberLit);   // status code e.g. "200"
+    this.CONSUME(Colon);
     this.OPTION(() => {
       this.CONSUME(LBrace);
       this.SUBRULE(this.contentTypeLine);

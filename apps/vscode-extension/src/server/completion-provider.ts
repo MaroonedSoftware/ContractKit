@@ -239,13 +239,13 @@ function getOpContext(lines: string[], currentLine: number): OpContext {
                 } else {
                     // This opening brace is the one enclosing the cursor
                     const textBefore = line.slice(0, j).trim();
-                    if (/\d{3}\s*$/.test(textBefore)) {
+                    if (/\d{3}\s*:?\s*$/.test(textBefore)) {
                         contextStack.push('status-code-body');
-                    } else if (/\bresponse\s*$/.test(textBefore)) {
+                    } else if (/\bresponse\s*:?\s*$/.test(textBefore)) {
                         contextStack.push('response-body');
-                    } else if (/\brequest\s*$/.test(textBefore)) {
+                    } else if (/\brequest\s*:?\s*$/.test(textBefore)) {
                         contextStack.push('request-body');
-                    } else if (/\b(get|post|put|patch|delete)\s*$/.test(textBefore)) {
+                    } else if (/\b(get|post|put|patch|delete)\s*:?\s*$/.test(textBefore)) {
                         contextStack.push('operation-body');
                     } else if (/\/[a-zA-Z0-9_/:.-]+\s*$/.test(textBefore)) {
                         contextStack.push('route-body');

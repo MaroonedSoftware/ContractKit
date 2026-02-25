@@ -61,7 +61,7 @@ describe('DTO pipeline (source -> parse -> codegen)', () => {
 
   it('compiles a DTO with all type kinds', () => {
     const source = `\
-Kitchen {
+Kitchen: {
     tags: array(string)
     coords: tuple(number, number)
     meta: record(string, unknown)
@@ -85,7 +85,7 @@ Kitchen {
 
   it('includes DateTime import when date fields are used', () => {
     const source = `\
-Event {
+Event: {
     startDate: date
     createdAt: datetime
 }`;
@@ -145,7 +145,7 @@ describe('undeclared path param warnings', () => {
   });
 
   it('does not warn when all path params are declared', () => {
-    const source = `/users/:id {\n    params {\n        id: uuid\n    }\n    get\n}`;
+    const source = `/users/:id {\n    params: {\n        id: uuid\n    }\n    get\n}`;
     const diag = new DiagnosticCollector();
     const root = parseOp(source, 'test.op', diag);
     validateOp(root, diag);
@@ -154,7 +154,7 @@ describe('undeclared path param warnings', () => {
   });
 
   it('warns only for the subset of undeclared params', () => {
-    const source = `/accounts/:accountId/entries/:entryId {\n    params {\n        accountId: uuid\n    }\n    get\n}`;
+    const source = `/accounts/:accountId/entries/:entryId {\n    params: {\n        accountId: uuid\n    }\n    get\n}`;
     const diag = new DiagnosticCollector();
     const root = parseOp(source, 'test.op', diag);
     validateOp(root, diag);
@@ -206,7 +206,7 @@ describe('error handling pipeline', () => {
 describe('cross-file type reference validation', () => {
   it('warns when a DTO references an undefined model', () => {
     const diag = new DiagnosticCollector();
-    const dto = parseDto('Order { customer: NonExistentModel }', 'order.dto', diag);
+    const dto = parseDto('Order: { customer: NonExistentModel }', 'order.dto', diag);
     validateRefs([dto], [], diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings.some(w => w.message.includes('NonExistentModel'))).toBe(true);
@@ -214,8 +214,8 @@ describe('cross-file type reference validation', () => {
 
   it('does not warn when referenced model exists in another file', () => {
     const diag = new DiagnosticCollector();
-    const dto1 = parseDto('User { name: string }', 'user.dto', diag);
-    const dto2 = parseDto('Order { customer: User }', 'order.dto', diag);
+    const dto1 = parseDto('User: { name: string }', 'user.dto', diag);
+    const dto2 = parseDto('Order: { customer: User }', 'order.dto', diag);
     validateRefs([dto1, dto2], [], diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning' && d.message.includes('User'));
     expect(warnings).toHaveLength(0);
@@ -234,9 +234,9 @@ describe('cross-file type reference validation', () => {
     const diagAll = new DiagnosticCollector();
     const op = parseOp(`\
 /users {
-    get {
-        response {
-            200 {
+    get: {
+        response: {
+            200: {
                 application/json: MissingType
             }
         }
@@ -252,8 +252,8 @@ describe('cross-file type reference validation', () => {
     const diagAll = new DiagnosticCollector();
     const op = parseOp(`\
 /users {
-    get {
-        query {
+    get: {
+        query: {
             page: int
         }
     }
