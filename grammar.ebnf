@@ -38,7 +38,7 @@ dtoRoot         = { modelDecl } , EOF ;
 (* Models                                                                *)
 (* --------------------------------------------------------------------- *)
 
-modelDecl       = IDENTIFIER , [ ":" , IDENTIFIER ] , "{" , fieldList , "}" ;
+modelDecl       = IDENTIFIER , ":" , [ IDENTIFIER ] , "{" , fieldList , "}" ;
                   (* first IDENTIFIER  = model name                      *)
                   (* second IDENTIFIER = base model for inheritance      *)
 
