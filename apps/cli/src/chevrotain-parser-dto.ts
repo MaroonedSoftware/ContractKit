@@ -25,11 +25,11 @@ export class DtoCstParser extends CstParser {
 
   // ─── Model ────────────────────────────────────────────────────────────
 
-  // modelDecl: IDENTIFIER (COLON IDENTIFIER)? LBRACE fieldList RBRACE
+  // modelDecl: IDENTIFIER COLON IDENTIFIER? LBRACE fieldList RBRACE
   public modelDecl = this.RULE('modelDecl', () => {
     this.CONSUME(Identifier);  // model name
+    this.CONSUME(Colon);
     this.OPTION(() => {
-      this.CONSUME(Colon);
       this.CONSUME2(Identifier); // base model name
     });
     this.CONSUME(LBrace);
