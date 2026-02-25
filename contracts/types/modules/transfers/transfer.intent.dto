@@ -1,4 +1,4 @@
-CreateTransferIntent {
+CreateTransferIntent: {
     idempotencyKey: string # The idempotency key for the transfer
     amount: bigint(min=0) # The transfer amount in smallest currency units
     currency?: string(length=3) # ISO currency code
@@ -7,7 +7,7 @@ CreateTransferIntent {
     rail: enum(ach, wire, book, rtp) # The transfer rail
     counterpartyId: uuid # The counterparty identifier
 }
-TransferIntent {
+TransferIntent: {
     id: readonly uuid # The transfer intent identifier
     amount: bigint(min=0) # The transfer amount in smallest currency units
     currency: string(length=3) # ISO currency code

@@ -1,4 +1,4 @@
-LedgerCategory {
+LedgerCategory: {
     id: readonly uuid
     name: string(min=3, max=100) # Category name
     description?: string(max=1024) # Optional description

@@ -1,4 +1,4 @@
-Counterparty {
+Counterparty: {
     id: readonly uuid # The counterparty identifier
     name: string(min=1, max=100) # The counterparty name
     email?: email # The counterparty email

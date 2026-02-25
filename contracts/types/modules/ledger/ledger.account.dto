@@ -1,9 +1,9 @@
-CustomCurrency {
+CustomCurrency: {
     code: string(length=3) # ISO currency code
     exponent: int # Currency exponent
 }
 
-LedgerAccount {
+LedgerAccount: {
     id: readonly uuid # The account identifier
     name: string(min=3, max=100) # Account name
     normality: enum(credit, debit) # Account normality
