@@ -9,7 +9,7 @@ function makeDoc(uri: string, content: string) {
 describe('getCompletions', () => {
   describe('DTO completions', () => {
     it('offers type completions after colon in .dto file', () => {
-      const doc = makeDoc('file:///test.dto', 'M {\n    name: \n}');
+      const doc = makeDoc('file:///test.dto', 'M: {\n    name: \n}');
       const index = new WorkspaceIndex();
       const items = getCompletions(
         { textDocument: { uri: doc.uri }, position: { line: 1, character: 10 } },
@@ -21,9 +21,9 @@ describe('getCompletions', () => {
     });
 
     it('offers model names from index in type position', () => {
-      const doc = makeDoc('file:///test.dto', 'M {\n    ref: \n}');
+      const doc = makeDoc('file:///test.dto', 'M: {\n    ref: \n}');
       const index = new WorkspaceIndex();
-      index.indexFromSource('file:///other.dto', 'User { name: string }');
+      index.indexFromSource('file:///other.dto', 'User: { name: string }');
       const items = getCompletions(
         { textDocument: { uri: doc.uri }, position: { line: 1, character: 9 } },
         doc, index,
