@@ -111,7 +111,7 @@ export function opRoot(routes: OpRouteNode[], file = 'users.op'): OpRootNode {
 // ─── DSL Fixture Strings ────────────────────────────────────────────────────
 
 export const SIMPLE_USER_DTO = `\
-User {
+User: {
     id: readonly uuid
     name: string
     email: email
@@ -121,7 +121,7 @@ User {
 `;
 
 export const VISIBILITY_DTO = `\
-User {
+User: {
     id: readonly uuid
     name: string
     password: writeonly string
@@ -136,19 +136,19 @@ Admin: User {
 
 export const SIMPLE_USERS_OP = `\
 /users {
-    get {
-        response {
-            200 {
+    get: {
+        response: {
+            200: {
                 application/json: array(User)
             }
         }
     }
-    post {
-        request {
+    post: {
+        request: {
             application/json: CreateUserInput
         }
-        response {
-            201 {
+        response: {
+            201: {
                 application/json: User
             }
         }
@@ -158,12 +158,12 @@ export const SIMPLE_USERS_OP = `\
 
 export const PARAMETERIZED_OP = `\
 /users/:id {
-    params {
+    params: {
         id: uuid
     }
-    get {
-        response {
-            200 {
+    get: {
+        response: {
+            200: {
                 application/json: User
             }
         }
