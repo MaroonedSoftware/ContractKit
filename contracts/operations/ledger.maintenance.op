@@ -1,10 +1,10 @@
 /ledger/maintenance/cache/process-queue {
-    post {
-        request {
+    post: {
+        request: {
             application/json: ProcessCacheQueueInput
         }
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: ProcessCacheQueueResult
             }
         }
@@ -12,19 +12,19 @@
 }
 
 /ledger/maintenance/accounts/:accountId/cache/rebuild {
-    post {
+    post: {
         service: LedgerService.rebuildAccountBalanceCache
-        response {
-            204
+        response: {
+            204:
         }
     }
 }
 
 /ledger/maintenance/cache/drift {
-    get {
+    get: {
         service: LedgerService.detectBalanceCacheDrift
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: BalanceCacheDriftResult
             }
         }
@@ -32,10 +32,10 @@
 }
 
 /ledger/maintenance/accounts/:accountId/cache/drift {
-    get {
+    get: {
         service: LedgerService.detectBalanceCacheDrift
-        response {
-            200 {
+        response: {
+            200: {
                 application/json: BalanceCacheDriftResult
             }
         }
