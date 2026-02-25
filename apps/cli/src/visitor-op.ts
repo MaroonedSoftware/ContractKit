@@ -5,6 +5,7 @@ import type {
   OpRequestNode, OpResponseNode, HttpMethod, DtoTypeNode,
   ParamSource,
 } from './ast.js';
+import { SCALAR_NAMES } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
 
 const BaseOpVisitor = opCstParser.getBaseCstVisitorConstructor();
@@ -81,20 +82,7 @@ export class OpVisitor extends BaseOpVisitor {
   }
 
   paramsBlock(ctx: any): ParamSource {
-    // Declaration form: params: TypeName
-    if (ctx.Colon) {
-      const identifiers: IToken[] = ctx.Identifier || [];
-      return identifiers[1]?.image ?? '';
-    }
-    // Block form: params { name: type ... }
-    const params: OpParamNode[] = [];
-    if (ctx.paramDecl) {
-      for (const pd of ctx.paramDecl) {
-        const param = this.visit(pd);
-        if (param) params.push(param);
-      }
-    }
-    return params;
+    return this.visitParamSource(ctx);
   }
 
   paramDecl(ctx: any): OpParamNode {
@@ -165,29 +153,20 @@ export class OpVisitor extends BaseOpVisitor {
   }
 
   queryBlock(ctx: any): ParamSource {
-    // Declaration form: query: TypeName
-    if (ctx.Colon) {
-      const identifiers: IToken[] = ctx.Identifier || [];
-      return identifiers[1]?.image ?? '';
-    }
-    // Block form: query { name: type ... }
-    const params: OpParamNode[] = [];
-    if (ctx.paramDecl) {
-      for (const pd of ctx.paramDecl) {
-        const param = this.visit(pd);
-        if (param) params.push(param);
-      }
-    }
-    return params;
+    return this.visitParamSource(ctx);
   }
 
   headersBlock(ctx: any): ParamSource {
-    // Declaration form: headers: TypeName
+    return this.visitParamSource(ctx);
+  }
+
+  private visitParamSource(ctx: any): ParamSource {
+    // Declaration form: keyword: TypeName
     if (ctx.Colon) {
       const identifiers: IToken[] = ctx.Identifier || [];
       return identifiers[1]?.image ?? '';
     }
-    // Block form: headers { name: type ... }
+    // Block form: keyword { name: type ... }
     const params: OpParamNode[] = [];
     if (ctx.paramDecl) {
       for (const pd of ctx.paramDecl) {
@@ -265,12 +244,8 @@ export class OpVisitor extends BaseOpVisitor {
 }
 
 function resolveSimpleType(name: string): DtoTypeNode {
-  const scalars: Record<string, DtoTypeNode> = {
-    uuid:    { kind: 'scalar', name: 'uuid' },
-    string:  { kind: 'scalar', name: 'string' },
-    int:     { kind: 'scalar', name: 'int' },
-    number:  { kind: 'scalar', name: 'number' },
-    boolean: { kind: 'scalar', name: 'boolean' },
-  };
-  return scalars[name] ?? { kind: 'ref', name };
+  if (SCALAR_NAMES.has(name as any)) {
+    return { kind: 'scalar', name: name as import('./ast.js').ScalarTypeNode['name'] };
+  }
+  return { kind: 'ref', name };
 }

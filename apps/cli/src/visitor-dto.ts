@@ -4,12 +4,7 @@ import type {
   DtoRootNode, ModelNode, FieldNode, DtoTypeNode,
   ScalarTypeNode, InlineObjectTypeNode, UnionTypeNode,
 } from './ast.js';
-
-const SCALAR_NAMES = new Set([
-  'string', 'number', 'int', 'bigint', 'boolean',
-  'date', 'datetime', 'email', 'url', 'uuid',
-  'any', 'unknown', 'null', 'object', 'binary',
-]);
+import { SCALAR_NAMES } from './ast.js';
 
 const BaseDtoVisitor = dtoCstParser.getBaseCstVisitorConstructor();
 
@@ -95,25 +90,9 @@ export class DtoVisitor extends BaseDtoVisitor {
     // Type expression (with or without visibility)
     if (!ctx.typeExpression || ctx.typeExpression.length === 0) return null;
 
-    let type: DtoTypeNode = this.visit(ctx.typeExpression[0]);
-
-    // Handle nullable: extract | null from union
-    let nullable = false;
-    if (type.kind === 'union') {
-      const union = type as UnionTypeNode;
-      const nullIdx = union.members.findIndex(
-        m => m.kind === 'scalar' && (m as ScalarTypeNode).name === 'null'
-      );
-      if (nullIdx !== -1) {
-        nullable = true;
-        union.members.splice(nullIdx, 1);
-        if (union.members.length === 1) {
-          type = union.members[0]!;
-        }
-      }
-    } else if (type.kind === 'scalar' && type.name === 'null') {
-      nullable = true;
-    }
+    const extracted = extractNullability(this.visit(ctx.typeExpression[0]));
+    let type = extracted.type;
+    const nullable = extracted.nullable;
 
     // Default value
     let defaultVal: string | number | boolean | undefined;
@@ -231,26 +210,10 @@ export class DtoVisitor extends BaseDtoVisitor {
     const line = nameToken.startLine ?? 0;
     const optional = !!ctx.Question;
 
-    let type: DtoTypeNode = { kind: 'scalar', name: 'unknown' };
-    if (ctx.typeExpression) {
-      type = this.visit(ctx.typeExpression[0]);
-    }
-
-    // Handle nullable
-    let nullable = false;
-    if (type.kind === 'union') {
-      const union = type as UnionTypeNode;
-      const nullIdx = union.members.findIndex(
-        m => m.kind === 'scalar' && (m as ScalarTypeNode).name === 'null'
-      );
-      if (nullIdx !== -1) {
-        nullable = true;
-        union.members.splice(nullIdx, 1);
-        if (union.members.length === 1) {
-          type = union.members[0]!;
-        }
-      }
-    }
+    const raw: DtoTypeNode = ctx.typeExpression
+      ? this.visit(ctx.typeExpression[0])
+      : { kind: 'scalar', name: 'unknown' };
+    const { type, nullable } = extractNullability(raw);
 
     return {
       name, optional, nullable, visibility: 'normal', type,
@@ -349,4 +312,20 @@ export class DtoVisitor extends BaseDtoVisitor {
     }
     return scalar;
   }
+}
+
+function extractNullability(type: DtoTypeNode): { type: DtoTypeNode; nullable: boolean } {
+  if (type.kind === 'union') {
+    const union = type as UnionTypeNode;
+    const nullIdx = union.members.findIndex(
+      m => m.kind === 'scalar' && (m as ScalarTypeNode).name === 'null'
+    );
+    if (nullIdx !== -1) {
+      union.members.splice(nullIdx, 1);
+      return { type: union.members.length === 1 ? union.members[0]! : type, nullable: true };
+    }
+  } else if (type.kind === 'scalar' && type.name === 'null') {
+    return { type, nullable: true };
+  }
+  return { type, nullable: false };
 }

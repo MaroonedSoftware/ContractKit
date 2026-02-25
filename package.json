@@ -7,7 +7,9 @@
         "lint": "turbo run lint",
         "format": "turbo run format",
         "test": "turbo run test",
-        "start": "turbo run start"
+        "start": "turbo run start",
+        "vscode:install": "turbo run vscode:install",
+        "vscode:uninstall": "turbo run vscode:uninstall"
     },
     "devDependencies": {
         "@types/node": "^25.3.0",

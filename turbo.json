@@ -21,6 +21,12 @@
         },
         "start": {
             "dependsOn": ["build"]
+        },
+        "vscode:install": {
+            "dependsOn": ["build"]           
+        },
+        "vscode:uninstall": {
+            "dependsOn": ["^vscode:uninstall"]
         }
     }
 }

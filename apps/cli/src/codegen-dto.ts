@@ -21,7 +21,7 @@ export function generateDto(root: DtoRootNode): string {
   lines.push('');
 
   for (const model of root.models) {
-    lines.push(...generateModel(model, root));
+    lines.push(...generateModel(model));
     lines.push('');
   }
 
@@ -30,16 +30,16 @@ export function generateDto(root: DtoRootNode): string {
 
 // ─── Model ─────────────────────────────────────────────────────────────────
 
-function generateModel(model: ModelNode, root: DtoRootNode): string[] {
+function generateModel(model: ModelNode): string[] {
   const hasVisibility = model.fields.some(f => f.visibility !== 'normal');
 
   if (hasVisibility) {
-    return generateThreeSchemaModel(model, root);
+    return generateThreeSchemaModel(model);
   }
-  return generateSimpleModel(model, root);
+  return generateSimpleModel(model);
 }
 
-function generateSimpleModel(model: ModelNode, _root: DtoRootNode): string[] {
+function generateSimpleModel(model: ModelNode): string[] {
   const lines: string[] = [];
 
   lines.push(`// from ${model.name} (${model.loc.file}:${model.loc.line})`);
@@ -48,7 +48,7 @@ function generateSimpleModel(model: ModelNode, _root: DtoRootNode): string[] {
     lines.push(`/** ${model.description} */`);
   }
 
-  const body = renderFields(model.fields, 0);
+  const body = renderFields(model.fields);
 
   if (model.base) {
     lines.push(`export const ${model.name} = ${model.base}.extend({`);
@@ -64,7 +64,7 @@ function generateSimpleModel(model: ModelNode, _root: DtoRootNode): string[] {
   return lines;
 }
 
-function generateThreeSchemaModel(model: ModelNode, _root: DtoRootNode): string[] {
+function generateThreeSchemaModel(model: ModelNode): string[] {
   const lines: string[] = [];
   const name = model.name;
 
@@ -72,7 +72,7 @@ function generateThreeSchemaModel(model: ModelNode, _root: DtoRootNode): string[
 
   // Base schema — all fields
   const allFields = model.fields;
-  const baseBody = renderFields(allFields, 0);
+  const baseBody = renderFields(allFields);
 
   if (model.description) lines.push(`/** ${model.description} */`);
 
@@ -87,7 +87,7 @@ function generateThreeSchemaModel(model: ModelNode, _root: DtoRootNode): string[
 
   // Read schema — omit writeonly fields
   const readFields = allFields.filter(f => f.visibility !== 'writeonly');
-  const readBody = renderFields(readFields, 0);
+  const readBody = renderFields(readFields);
   lines.push(`export const ${name} = z.strictObject({`);
   lines.push(...readBody.map(l => `    ${l}`));
   lines.push(`});`);
@@ -96,7 +96,7 @@ function generateThreeSchemaModel(model: ModelNode, _root: DtoRootNode): string[
 
   // Write schema — omit readonly fields
   const writeFields = allFields.filter(f => f.visibility !== 'readonly');
-  const writeBody = renderFields(writeFields, 0);
+  const writeBody = renderFields(writeFields);
   lines.push(`export const ${name}Input = z.strictObject({`);
   lines.push(...writeBody.map(l => `    ${l}`));
   lines.push(`});`);
@@ -107,7 +107,7 @@ function generateThreeSchemaModel(model: ModelNode, _root: DtoRootNode): string[
 
 // ─── Fields ────────────────────────────────────────────────────────────────
 
-function renderFields(fields: FieldNode[], _depth: number): string[] {
+function renderFields(fields: FieldNode[]): string[] {
   return fields.map(f => renderField(f));
 }
 

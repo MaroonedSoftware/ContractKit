@@ -86,59 +86,10 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string):
 
   lines.push(`${deriveRouterName(file)}.${method}('${path}'${middlewareStr} async (ctx, next) => {`);
 
-  // Params validation
-  if (route.params) {
-    if (typeof route.params === 'string') {
-      lines.push(`    const params = await parseAndValidate(ctx.params, ${route.params});`);
-      lines.push('');
-    } else if (route.params.length > 0) {
-      lines.push(`    const { ${route.params.map(p => p.name).join(', ')} } = await parseAndValidate(`);
-      lines.push(`        ctx.params,`);
-      lines.push(`        z.strictObject({`);
-      for (const param of route.params) {
-        lines.push(`            ${param.name}: ${renderScalarParam(param)},`);
-      }
-      lines.push(`        }),`);
-      lines.push(`    );`);
-      lines.push('');
-    }
-  }
-
-  // Query validation
-  if (op.query) {
-    if (typeof op.query === 'string') {
-      lines.push(`    const query = await parseAndValidate(ctx.query, ${op.query});`);
-      lines.push('');
-    } else if (op.query.length > 0) {
-      lines.push(`    const { ${op.query.map(p => p.name).join(', ')} } = await parseAndValidate(`);
-      lines.push(`        ctx.query,`);
-      lines.push(`        z.strictObject({`);
-      for (const param of op.query) {
-        lines.push(`            ${param.name}: ${renderScalarParam(param)},`);
-      }
-      lines.push(`        }),`);
-      lines.push(`    );`);
-      lines.push('');
-    }
-  }
-
-  // Headers validation
-  if (op.headers) {
-    if (typeof op.headers === 'string') {
-      lines.push(`    const headers = await parseAndValidate(ctx.headers, ${op.headers});`);
-      lines.push('');
-    } else if (op.headers.length > 0) {
-      lines.push(`    const { ${op.headers.map(p => p.name).join(', ')} } = await parseAndValidate(`);
-      lines.push(`        ctx.headers,`);
-      lines.push(`        z.object({`);
-      for (const param of op.headers) {
-        lines.push(`            ${param.name}: ${renderScalarParam(param)},`);
-      }
-      lines.push(`        }).passthrough(),`);
-      lines.push(`    );`);
-      lines.push('');
-    }
-  }
+  // Params / query / headers validation
+  lines.push(...generateParamValidation(route.params, 'ctx.params', 'params', 'z.strictObject'));
+  lines.push(...generateParamValidation(op.query, 'ctx.query', 'query', 'z.strictObject'));
+  lines.push(...generateParamValidation(op.headers, 'ctx.headers', 'headers', 'z.object', '.passthrough()'));
 
   // Body validation
   if (hasBody && op.request) {
@@ -236,16 +187,30 @@ function formatTypeAnnotation(bodyType: string): string {
   return bodyType;
 }
 
-function renderScalarParam(param: OpParamNode): string {
-  if (param.type.kind === 'scalar') {
-    switch (param.type.name) {
-      case 'uuid':   return 'z.uuid()';
-      case 'int':    return 'z.int()';
-      case 'string': return 'z.string()';
-      default:       return 'z.string()';
+function generateParamValidation(
+  source: import('./ast.js').ParamSource | undefined,
+  ctxExpr: string,
+  varName: string,
+  schemaWrapper: string,
+  suffix = '',
+): string[] {
+  if (!source) return [];
+  const lines: string[] = [];
+  if (typeof source === 'string') {
+    lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${source});`);
+    lines.push('');
+  } else if (source.length > 0) {
+    lines.push(`    const { ${source.map(p => p.name).join(', ')} } = await parseAndValidate(`);
+    lines.push(`        ${ctxExpr},`);
+    lines.push(`        ${schemaWrapper}({`);
+    for (const param of source) {
+      lines.push(`            ${param.name}: ${renderType(param.type)},`);
     }
+    lines.push(`        })${suffix},`);
+    lines.push(`    );`);
+    lines.push('');
   }
-  return 'z.string()';
+  return lines;
 }
 
 // ─── Collection helpers ────────────────────────────────────────────────────

@@ -5,6 +5,12 @@ export interface SourceLocation {
   line: number;
 }
 
+export const SCALAR_NAMES: ReadonlySet<string> = new Set<ScalarTypeNode['name']>([
+  'string', 'number', 'int', 'bigint', 'boolean',
+  'date', 'datetime', 'email', 'url', 'uuid',
+  'any', 'unknown', 'null', 'object', 'binary',
+]);
+
 // ─── Contracts AST (.dto) ──────────────────────────────────────────────────
 
 export type DtoTypeNode =
