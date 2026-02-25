@@ -63,9 +63,10 @@
             ]
         },
         "http-operation": {
-            "begin": "\\b(get|post|put|patch|delete|head|options)\\b",
+            "begin": "\\b(get|post|put|patch|delete|head|options)\\b\\s*(?:(:)\\s*)?",
             "beginCaptures": {
-                "1": { "name": "keyword.control.http-method.op" }
+                "1": { "name": "keyword.control.http-method.op" },
+                "2": { "name": "punctuation.separator.colon.op" }
             },
             "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|head|options|params)\\b)|(?=\\})",
             "patterns": [
@@ -123,10 +124,11 @@
             ]
         },
         "request-block": {
-            "begin": "\\b(request)\\s*(\\{)",
+            "begin": "\\b(request)\\s*(:)\\s*(\\{)",
             "beginCaptures": {
                 "1": { "name": "keyword.control.request.op" },
-                "2": { "name": "punctuation.definition.block.begin.op" }
+                "2": { "name": "punctuation.separator.colon.op" },
+                "3": { "name": "punctuation.definition.block.begin.op" }
             },
             "end": "(\\})",
             "endCaptures": {
@@ -138,10 +140,11 @@
             ]
         },
         "response-block": {
-            "begin": "\\b(response)\\s*(\\{)",
+            "begin": "\\b(response)\\s*(:)\\s*(\\{)",
             "beginCaptures": {
                 "1": { "name": "keyword.control.response.op" },
-                "2": { "name": "punctuation.definition.block.begin.op" }
+                "2": { "name": "punctuation.separator.colon.op" },
+                "3": { "name": "punctuation.definition.block.begin.op" }
             },
             "end": "(\\})",
             "endCaptures": {
@@ -153,9 +156,10 @@
             ]
         },
         "status-code-block": {
-            "begin": "\\b(\\d{3})\\b",
+            "begin": "\\b(\\d{3})\\b\\s*(:)\\s*",
             "beginCaptures": {
-                "1": { "name": "constant.numeric.status-code.op" }
+                "1": { "name": "constant.numeric.status-code.op" },
+                "2": { "name": "punctuation.separator.colon.op" }
             },
             "end": "(?<=\\})|(?=\\d{3})|(?=\\})",
             "patterns": [
