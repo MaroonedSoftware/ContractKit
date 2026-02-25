@@ -4,7 +4,7 @@ exports[`DTO snapshot tests > counterparty.dto matches snapshot 1`] = `
 "import { z } from 'zod';
 import { CounterpartyAccount } from './counterparty.account.dto.js';
 
-// from Counterparty (/Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto:1)
+// from Counterparty (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/types/modules/transfers/counterparty.dto:1)
 const CounterpartyBase = z.strictObject({
     id: z.uuid().describe("The counterparty identifier"),
     name: z.string().min(1).max(100).describe("The counterparty identifier"),
@@ -36,14 +36,14 @@ exports[`DTO snapshot tests > ledger.account.dto matches snapshot 1`] = `
 "import { z } from 'zod';
 import { DateTime } from 'luxon';
 
-// from CustomCurrency (/Users/robert/projects/contract-dsl/contracts/types/modules/ledger/ledger.account.dto:1)
+// from CustomCurrency (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/types/modules/ledger/ledger.account.dto:1)
 export const CustomCurrency = z.strictObject({
     code: z.string().length(3).describe("ISO currency code"),
     exponent: z.int().describe("ISO currency code"),
 });
 export type CustomCurrency = z.infer<typeof CustomCurrency>;
 
-// from LedgerAccount (/Users/robert/projects/contract-dsl/contracts/types/modules/ledger/ledger.account.dto:6)
+// from LedgerAccount (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/types/modules/ledger/ledger.account.dto:6)
 const LedgerAccountBase = z.strictObject({
     id: z.uuid().describe("The account identifier"),
     name: z.string().min(3).max(100).describe("The account identifier"),
@@ -80,7 +80,7 @@ export type LedgerAccountInput = z.infer<typeof LedgerAccountInput>;
 exports[`DTO snapshot tests > pagination.dto matches snapshot 1`] = `
 "import { z } from 'zod';
 
-// from Pagination (/Users/robert/projects/contract-dsl/contracts/types/shared/pagination.dto:1)
+// from Pagination (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/types/shared/pagination.dto:1)
 const PaginationBase = z.strictObject({
     page: z.int().min(0).default(0).describe("Page number"),
     pageSize: z.int().min(1).max(100).default(25).describe("Page number"),
@@ -114,7 +114,7 @@ import { parseAndValidate } from '#src/shared/validator.js';
 
 export const LedgerRouter = ServerKitRouter();
 
-// from /ledger/accounts POST (/Users/robert/projects/contract-dsl/contracts/operations/ledger.op:2)
+// from /ledger/accounts POST (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/ledger.op:2)
 LedgerRouter.post('/ledger/accounts', bodyParserMiddleware(['json']), async (ctx, next) => {
     const body = await parseAndValidate(ctx.body, LedgerAccount);
 
@@ -128,7 +128,7 @@ LedgerRouter.post('/ledger/accounts', bodyParserMiddleware(['json']), async (ctx
     await next();
 });
 
-// from /ledger/accounts GET (/Users/robert/projects/contract-dsl/contracts/operations/ledger.op:12)
+// from /ledger/accounts GET (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/ledger.op:12)
 LedgerRouter.get('/ledger/accounts', async (ctx, next) => {
     const query = await parseAndValidate(ctx.query, PaginationQuery);
 
@@ -142,7 +142,7 @@ LedgerRouter.get('/ledger/accounts', async (ctx, next) => {
     await next();
 });
 
-// from /ledger/accounts/:accountId GET (/Users/robert/projects/contract-dsl/contracts/operations/ledger.op:23)
+// from /ledger/accounts/:accountId GET (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/ledger.op:23)
 LedgerRouter.get('/ledger/accounts/:accountId', async (ctx, next) => {
     const service = ctx.container.get(LedgerService);
     const result: LedgerAccount = await service.getById();
@@ -154,7 +154,7 @@ LedgerRouter.get('/ledger/accounts/:accountId', async (ctx, next) => {
     await next();
 });
 
-// from /ledger/accounts/:accountId/balances GET (/Users/robert/projects/contract-dsl/contracts/operations/ledger.op:36)
+// from /ledger/accounts/:accountId/balances GET (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/ledger.op:36)
 LedgerRouter.get('/ledger/accounts/:accountId/balances', async (ctx, next) => {
     const { accountId } = await parseAndValidate(
         ctx.params,
@@ -175,7 +175,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/balances', async (ctx, next) => {
     await next();
 });
 
-// from /ledger/accounts/:accountId/transactions GET (/Users/robert/projects/contract-dsl/contracts/operations/ledger.op:47)
+// from /ledger/accounts/:accountId/transactions GET (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/ledger.op:47)
 LedgerRouter.get('/ledger/accounts/:accountId/transactions', async (ctx, next) => {
     const query = await parseAndValidate(ctx.query, ListAccountTransactionsQuery);
 
@@ -189,7 +189,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/transactions', async (ctx, next) =
     await next();
 });
 
-// from /ledger/accounts/:accountId/categories GET (/Users/robert/projects/contract-dsl/contracts/operations/ledger.op:58)
+// from /ledger/accounts/:accountId/categories GET (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/ledger.op:58)
 LedgerRouter.get('/ledger/accounts/:accountId/categories', async (ctx, next) => {
     const service = ctx.container.get(LedgerService);
     const result: LedgerCategory[] = await service.getById();
@@ -201,7 +201,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/categories', async (ctx, next) => 
     await next();
 });
 
-// from /ledger/accounts/:accountId/categories/:categoryId PUT (/Users/robert/projects/contract-dsl/contracts/operations/ledger.op:68)
+// from /ledger/accounts/:accountId/categories/:categoryId PUT (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/ledger.op:68)
 LedgerRouter.put('/ledger/accounts/:accountId/categories/:categoryId', async (ctx, next) => {
     const service = ctx.container.get(LedgerService);
     const result: LedgerAccount = await service.updateCategoryMembership();
@@ -213,7 +213,7 @@ LedgerRouter.put('/ledger/accounts/:accountId/categories/:categoryId', async (ct
     await next();
 });
 
-// from /ledger/accounts/:accountId/categories/:categoryId DELETE (/Users/robert/projects/contract-dsl/contracts/operations/ledger.op:76)
+// from /ledger/accounts/:accountId/categories/:categoryId DELETE (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/ledger.op:76)
 LedgerRouter.delete('/ledger/accounts/:accountId/categories/:categoryId', async (ctx, next) => {
     const service = ctx.container.get(LedgerService);
     await service.updateCategoryMembership();
@@ -238,7 +238,7 @@ import { parseAndValidate } from '#src/shared/validator.js';
 
 export const TransfersRouter = ServerKitRouter();
 
-// from /transfers/fi POST (/Users/robert/projects/contract-dsl/contracts/operations/transfers.op:2)
+// from /transfers/fi POST (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/transfers.op:2)
 TransfersRouter.post('/transfers/fi', bodyParserMiddleware(['json']), async (ctx, next) => {
     const body = await parseAndValidate(ctx.body, Routing);
 
@@ -252,7 +252,7 @@ TransfersRouter.post('/transfers/fi', bodyParserMiddleware(['json']), async (ctx
     await next();
 });
 
-// from /transfers POST (/Users/robert/projects/contract-dsl/contracts/operations/transfers.op:15)
+// from /transfers POST (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/transfers.op:15)
 TransfersRouter.post('/transfers', bodyParserMiddleware(['json']), async (ctx, next) => {
     const body = await parseAndValidate(ctx.body, CreateTransferIntent);
 
@@ -266,7 +266,7 @@ TransfersRouter.post('/transfers', bodyParserMiddleware(['json']), async (ctx, n
     await next();
 });
 
-// from /transfers GET (/Users/robert/projects/contract-dsl/contracts/operations/transfers.op:26)
+// from /transfers GET (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/transfers.op:26)
 TransfersRouter.get('/transfers', async (ctx, next) => {
     const query = await parseAndValidate(ctx.query, Pagination);
 
@@ -280,7 +280,7 @@ TransfersRouter.get('/transfers', async (ctx, next) => {
     await next();
 });
 
-// from /transfers/:id GET (/Users/robert/projects/contract-dsl/contracts/operations/transfers.op:38)
+// from /transfers/:id GET (/Users/robert/projects/contract-dsl/.auto-claude/worktrees/tasks/002-update-cli-and-lsp-with-grammar/contracts/operations/transfers.op:38)
 TransfersRouter.get('/transfers/:id', async (ctx, next) => {
     const service = ctx.container.get(TransfersService);
     const result: TransferIntent = await service.getIntent();
