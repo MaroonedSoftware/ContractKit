@@ -161,20 +161,20 @@ export class OpVisitor extends BaseOpVisitor {
   }
 
   private visitParamSource(ctx: any): ParamSource {
-    // Declaration form: keyword: TypeName
-    if (ctx.Colon) {
-      const identifiers: IToken[] = ctx.Identifier || [];
-      return identifiers[1]?.image ?? '';
-    }
     // Block form: keyword { name: type ... }
-    const params: OpParamNode[] = [];
-    if (ctx.paramDecl) {
-      for (const pd of ctx.paramDecl) {
-        const param = this.visit(pd);
-        if (param) params.push(param);
+    if (ctx.LBrace) {
+      const params: OpParamNode[] = [];
+      if (ctx.paramDecl) {
+        for (const pd of ctx.paramDecl) {
+          const param = this.visit(pd);
+          if (param) params.push(param);
+        }
       }
+      return params;
     }
-    return params;
+    // Declaration form: keyword: TypeName
+    const identifiers: IToken[] = ctx.Identifier || [];
+    return identifiers[1]?.image ?? '';
   }
 
   serviceDecl(ctx: any): string {
