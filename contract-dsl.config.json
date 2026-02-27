@@ -1,0 +1,14 @@
+{
+    "baseDir": "~/projects/homegrown_v2/apps/api/",
+    "cache": true,
+    "dto": {
+        "output": "src/modules/{filename}/types/{filename}.ts",
+        "include": ["contracts/types/**/*.dto"]
+    },
+    "routes": {
+        "output": "src/routes/{filename}.router.ts",
+        "include": ["contracts/operations/**/*.op"],
+        "servicePathTemplate": "#services/{kebab}.service.js",
+        "typeImportPathTemplate": "#modules/{module}/types/index.js"
+    }
+}

@@ -38,7 +38,7 @@ export function generateDto(root: DtoRootNode): string {
     if (needsDateTime) lines.push(`import { DateTime } from 'luxon';`);
     for (const ref of externalRefs) {
         const moduleName = pascalToDotCase(ref);
-        lines.push(`import { ${ref} } from './${moduleName}.dto.js';`);
+        lines.push(`import { ${ref} } from './${moduleName}.js';`);
     }
     lines.push('');
 

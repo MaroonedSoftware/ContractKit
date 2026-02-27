@@ -20,12 +20,10 @@
             "dependsOn": ["^test"]
         },
         "start": {
-            "dependsOn": ["build"],
-            "cache": false,
-            "persistent": false
+            "dependsOn": ["build"]
         },
         "vscode:install": {
-            "dependsOn": ["build"]           
+            "dependsOn": ["build"]
         },
         "vscode:uninstall": {
             "dependsOn": ["^vscode:uninstall"]
