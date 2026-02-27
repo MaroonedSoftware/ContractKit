@@ -18,6 +18,8 @@ export type TokenKind =
   | 'BACKSLASH'   // \  (regex metacharacter)
   | 'DOT'         // .  (regex metacharacter, standalone)
   | 'AMPERSAND'   // &  (intersection type)
+  | 'BANG'        // !  (directive prefix)
+  | 'TRIPLE_DASH' // --- (front-matter delimiter)
   | 'STRING'      // quoted string value
   | 'NUMBER'      // numeric literal
   | 'BOOLEAN'     // true | false
@@ -45,6 +47,12 @@ export function tokenize(source: string, file: string): Token[] {
     const trimmed = rawLine.trim();
     if (trimmed.startsWith('#')) {
       tokens.push({ kind: 'COMMENT', value: trimmed.slice(1).trim(), line: lineNo });
+      continue;
+    }
+
+    // Front-matter delimiter: three or more dashes on their own line
+    if (/^-{3,}$/.test(trimmed)) {
+      tokens.push({ kind: 'TRIPLE_DASH', value: '---', line: lineNo });
       continue;
     }
 
@@ -120,6 +128,7 @@ export function tokenize(source: string, file: string): Token[] {
         case '\\': tokens.push({ kind: 'BACKSLASH', value: '\\', line: lineNo }); pos++; continue;
         case '.': tokens.push({ kind: 'DOT', value: '.', line: lineNo }); pos++; continue;
         case '&': tokens.push({ kind: 'AMPERSAND', value: '&', line: lineNo }); pos++; continue;
+        case '!': tokens.push({ kind: 'BANG', value: '!', line: lineNo }); pos++; continue;
       }
 
       // Identifiers and keywords

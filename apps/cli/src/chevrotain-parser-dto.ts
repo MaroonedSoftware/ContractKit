@@ -3,7 +3,7 @@ import {
   allTokens, Identifier, Colon, Question,
   Equals, Pipe, LParen, RParen, LBrace, RBrace, Comma, Slash,
   LBracket, RBracket, Plus, Star, Caret, Backslash, Dot,
-  StringLit, NumberLit, BooleanLit, Eof,
+  StringLit, NumberLit, BooleanLit, Eof, TripleDash,
 } from './tokens.js';
 
 export class DtoCstParser extends CstParser {
@@ -18,10 +18,32 @@ export class DtoCstParser extends CstParser {
   // ─── Top-level ────────────────────────────────────────────────────────
 
   public dtoRoot = this.RULE('dtoRoot', () => {
+    this.OPTION(() => {
+      this.SUBRULE(this.frontMatter);
+    });
     this.MANY(() => {
       this.SUBRULE(this.modelDecl);
     });
     this.CONSUME(Eof);
+  });
+
+  // --- key: value ... ---
+  public frontMatter = this.RULE('frontMatter', () => {
+    this.CONSUME(TripleDash);  // opening ---
+    this.MANY(() => {
+      this.SUBRULE(this.metaEntry);
+    });
+    this.CONSUME2(TripleDash); // closing ---
+  });
+
+  // key: value (inside front-matter)
+  public metaEntry = this.RULE('metaEntry', () => {
+    this.CONSUME(Identifier);  // key
+    this.CONSUME(Colon);
+    this.OR([
+      { ALT: () => this.CONSUME(StringLit) },
+      { ALT: () => this.CONSUME2(Identifier) },  // unquoted value
+    ]);
   });
 
   // ─── Model ────────────────────────────────────────────────────────────

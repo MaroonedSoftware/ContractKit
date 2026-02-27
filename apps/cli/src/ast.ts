@@ -115,6 +115,7 @@ export interface ModelNode {
 
 export interface DtoRootNode {
   kind: 'dtoRoot';
+  meta: Record<string, string>;
   models: ModelNode[];
   file: string;
 }

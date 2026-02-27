@@ -20,6 +20,13 @@ export class DtoVisitor extends BaseDtoVisitor {
   }
 
   dtoRoot(ctx: any): DtoRootNode {
+    const meta: Record<string, string> = {};
+    if (ctx.frontMatter) {
+      const entries = this.visit(ctx.frontMatter[0]) as [string, string][];
+      for (const [key, value] of entries) {
+        meta[key] = value;
+      }
+    }
     const models: ModelNode[] = [];
     if (ctx.modelDecl) {
       for (const modelCst of ctx.modelDecl) {
@@ -27,7 +34,30 @@ export class DtoVisitor extends BaseDtoVisitor {
         if (model) models.push(model);
       }
     }
-    return { kind: 'dtoRoot', models, file: this.file };
+    return { kind: 'dtoRoot', meta, models, file: this.file };
+  }
+
+  frontMatter(ctx: any): [string, string][] {
+    const entries: [string, string][] = [];
+    if (ctx.metaEntry) {
+      for (const entryCst of ctx.metaEntry) {
+        const entry = this.visit(entryCst);
+        if (entry) entries.push(entry);
+      }
+    }
+    return entries;
+  }
+
+  metaEntry(ctx: any): [string, string] {
+    const identifiers: IToken[] = ctx.Identifier || [];
+    const key = identifiers[0]?.image ?? '';
+    // Value is either a StringLit (quoted) or a second Identifier (unquoted)
+    if (ctx.StringLit) {
+      return [key, ctx.StringLit[0].image];
+    }
+    // Second identifier is the value
+    const value = identifiers[1]?.image ?? '';
+    return [key, value];
   }
 
   modelDecl(ctx: any): ModelNode {

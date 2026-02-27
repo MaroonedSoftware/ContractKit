@@ -1,4 +1,5 @@
 import { generateDto, renderType } from '../src/codegen-dto.js';
+import type { DtoCodegenContext } from '../src/codegen-dto.js';
 import {
   scalarType, arrayType, tupleType, recordType, enumType,
   literalType, unionType, refType, lazyType, inlineObjectType,
@@ -420,7 +421,7 @@ describe('generateDto', () => {
         ]),
       ]);
       const output = generateDto(root);
-      expect(output).toContain("import { CounterpartyAccount } from './counterparty.account.dto.js';");
+      expect(output).toContain("import { CounterpartyAccount } from './counterparty.account.js';");
     });
 
     it('does not import locally defined models', () => {
@@ -439,7 +440,7 @@ describe('generateDto', () => {
         model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
       ]);
       const output = generateDto(root);
-      expect(output).toContain("import { User } from './user.dto.js';");
+      expect(output).toContain("import { User } from './user.js';");
     });
 
     it('does not import base model when defined locally', () => {
@@ -458,6 +459,117 @@ describe('generateDto', () => {
       const output = generateDto(root);
       const importLines = output.split('\n').filter(l => l.startsWith('import'));
       expect(importLines).toHaveLength(1); // only zod
+    });
+  });
+
+  // ─── Cross-directory import resolution ──────────────────────────
+
+  describe('cross-directory import resolution', () => {
+    it('generates correct relative path for ref in a different directory', () => {
+      const root = dtoRoot([
+        model('Counterparty', [
+          field('accounts', arrayType(refType('CounterpartyAccount'))),
+        ]),
+      ]);
+      const context: DtoCodegenContext = {
+        currentOutPath: '/out/modules/transfers/counterparty.ts',
+        modelOutPaths: new Map([
+          ['CounterpartyAccount', '/out/modules/transfers/counterparty.account.ts'],
+        ]),
+      };
+      const output = generateDto(root, context);
+      expect(output).toContain("import { CounterpartyAccount } from './counterparty.account.js';");
+    });
+
+    it('generates ../ path when ref is in a parent directory', () => {
+      const root = dtoRoot([
+        model('Invoice', [
+          field('pagination', refType('Pagination')),
+        ]),
+      ]);
+      const context: DtoCodegenContext = {
+        currentOutPath: '/out/modules/billing/invoice.ts',
+        modelOutPaths: new Map([
+          ['Pagination', '/out/shared/pagination.ts'],
+        ]),
+      };
+      const output = generateDto(root, context);
+      expect(output).toContain("import { Pagination } from '../../shared/pagination.js';");
+    });
+
+    it('generates nested ../ path for deeply separated files', () => {
+      const root = dtoRoot([
+        model('Transfer', [
+          field('account', refType('LedgerAccount')),
+        ]),
+      ]);
+      const context: DtoCodegenContext = {
+        currentOutPath: '/out/modules/transfers/types/transfer.ts',
+        modelOutPaths: new Map([
+          ['LedgerAccount', '/out/modules/ledger/types/ledger.account.ts'],
+        ]),
+      };
+      const output = generateDto(root, context);
+      expect(output).toContain("import { LedgerAccount } from '../../ledger/types/ledger.account.js';");
+    });
+
+    it('generates subdirectory path when ref is in a child directory', () => {
+      const root = dtoRoot([
+        model('Dashboard', [
+          field('user', refType('User')),
+        ]),
+      ]);
+      const context: DtoCodegenContext = {
+        currentOutPath: '/out/dashboard.ts',
+        modelOutPaths: new Map([
+          ['User', '/out/users/user.ts'],
+        ]),
+      };
+      const output = generateDto(root, context);
+      expect(output).toContain("import { User } from './users/user.js';");
+    });
+
+    it('falls back to pascalToDotCase when ref is not in modelOutPaths', () => {
+      const root = dtoRoot([
+        model('Order', [
+          field('item', refType('UnknownExternal')),
+        ]),
+      ]);
+      const context: DtoCodegenContext = {
+        currentOutPath: '/out/order.ts',
+        modelOutPaths: new Map(), // empty — ref not found
+      };
+      const output = generateDto(root, context);
+      expect(output).toContain("import { UnknownExternal } from './unknown.external.js';");
+    });
+
+    it('falls back to pascalToDotCase when no context is provided', () => {
+      const root = dtoRoot([
+        model('Counterparty', [
+          field('accounts', arrayType(refType('CounterpartyAccount'))),
+        ]),
+      ]);
+      const output = generateDto(root); // no context
+      expect(output).toContain("import { CounterpartyAccount } from './counterparty.account.js';");
+    });
+
+    it('resolves multiple refs to different directories', () => {
+      const root = dtoRoot([
+        model('Transfer', [
+          field('from', refType('Counterparty')),
+          field('pagination', refType('Pagination')),
+        ]),
+      ]);
+      const context: DtoCodegenContext = {
+        currentOutPath: '/out/modules/transfers/transfer.ts',
+        modelOutPaths: new Map([
+          ['Counterparty', '/out/modules/transfers/counterparty.ts'],
+          ['Pagination', '/out/shared/pagination.ts'],
+        ]),
+      };
+      const output = generateDto(root, context);
+      expect(output).toContain("import { Counterparty } from './counterparty.js';");
+      expect(output).toContain("import { Pagination } from '../../shared/pagination.js';");
     });
   });
 });

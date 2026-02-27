@@ -6,6 +6,7 @@ import { DiagnosticCollector } from './diagnostics.js';
 import { parseDto } from './parser-dto.js';
 import { parseOp } from './parser-op.js';
 import { generateDto } from './codegen-dto.js';
+import type { DtoCodegenContext } from './codegen-dto.js';
 import { generateOp } from './codegen-op.js';
 import { validateOp } from './validate-op.js';
 import { validateRefs } from './validate-refs.js';
@@ -63,7 +64,7 @@ interface OutPathOptions {
     routes: { output?: string };
 }
 
-const TEMPLATE_VAR_RE = /\{(?:filename|dir|ext)\}/;
+const TEMPLATE_VAR_RE = /\{\w+\}/;
 
 function resolveTemplate(template: string, vars: Record<string, string>): string {
     return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
@@ -75,7 +76,7 @@ function includesFilename(p: string): boolean {
     return last.includes('.');
 }
 
-function computeOutPath(filePath: string, opts: OutPathOptions, rootDir: string): string | null {
+function computeOutPath(filePath: string, opts: OutPathOptions, rootDir: string, meta: Record<string, string> = {}): string | null {
     const ext = filePath.endsWith('.dto') ? 'dto' : filePath.endsWith('.op') ? 'op' : null;
     if (!ext) return null;
 
@@ -92,6 +93,7 @@ function computeOutPath(filePath: string, opts: OutPathOptions, rootDir: string)
             filename,
             dir: relDir,
             ext,
+            ...meta,
         });
         if (includesFilename(resolved)) {
             return join(baseOutDir, resolved);
@@ -161,6 +163,8 @@ async function main() {
         const newCache: FileHashMap = {};
 
         // ── Pass 1: Parse all files ─────────────────────────────────
+        // allDtoInfo tracks every DTO file (even unchanged) for cross-file import resolution
+        const allDtoInfo: { ast: DtoRootNode; filePath: string; outPath: string }[] = [];
         const dtoRoots: { ast: DtoRootNode; filePath: string; outPath: string }[] = [];
         const opRoots: { ast: OpRootNode; filePath: string; outPath: string }[] = [];
 
@@ -171,25 +175,38 @@ async function main() {
                 continue;
             }
 
-            const outPath = computeOutPath(filePath, config, rootDir);
-            if (!outPath) continue;
-
             const source = readFileSync(filePath, 'utf-8');
             const hash = computeHash(source);
             newCache[filePath] = hash;
 
-            // Incremental: skip unchanged files
-            if (!config.force && !isFileChanged(filePath, source, outPath, cache)) {
-                console.log(`  -  ${relative(resolvedBase, outPath)} (unchanged)`);
-                continue;
-            }
-
+            // Parse first so meta directives are available for output path resolution
             if (ext === 'dto') {
                 const ast = parseDto(source, filePath, diag);
+                const outPath = computeOutPath(filePath, config, rootDir, ast.meta);
+                if (!outPath) continue;
+                allDtoInfo.push({ ast, filePath, outPath });
+                if (!config.force && !isFileChanged(filePath, source, outPath, cache)) {
+                    console.log(`  -  ${relative(resolvedBase, outPath)} (unchanged)`);
+                    continue;
+                }
                 dtoRoots.push({ ast, filePath, outPath });
             } else {
+                const outPath = computeOutPath(filePath, config, rootDir);
+                if (!outPath) continue;
+                if (!config.force && !isFileChanged(filePath, source, outPath, cache)) {
+                    console.log(`  -  ${relative(resolvedBase, outPath)} (unchanged)`);
+                    continue;
+                }
                 const ast = parseOp(source, filePath, diag);
                 opRoots.push({ ast, filePath, outPath });
+            }
+        }
+
+        // Build model → outPath map from ALL dto files for cross-file import resolution
+        const modelOutPaths = new Map<string, string>();
+        for (const { ast, outPath } of allDtoInfo) {
+            for (const model of ast.models) {
+                modelOutPaths.set(model.name, outPath);
             }
         }
 
@@ -211,7 +228,7 @@ async function main() {
         const results: { outPath: string; content: string }[] = [];
 
         for (const { ast, outPath } of dtoRoots) {
-            const content = generateDto(ast);
+            const content = generateDto(ast, { modelOutPaths, currentOutPath: outPath });
             results.push({ outPath, content });
         }
 

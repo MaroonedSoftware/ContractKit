@@ -25,6 +25,8 @@ export const Caret      = createToken({ name: 'Caret',      pattern: /\^/ });
 export const Backslash  = createToken({ name: 'Backslash',  pattern: /\\/ });
 export const Dot        = createToken({ name: 'Dot',        pattern: /\./ });
 export const Ampersand  = createToken({ name: 'Ampersand',  pattern: /&/ });
+export const Bang       = createToken({ name: 'Bang',       pattern: /!/ });
+export const TripleDash = createToken({ name: 'TripleDash', pattern: /---/ });
 export const StringLit  = createToken({ name: 'StringLit',  pattern: /"[^"]*"|'[^']*'/ });
 export const NumberLit  = createToken({ name: 'NumberLit',  pattern: /-?\d+(\.\d+)?/ });
 export const Eof        = createToken({ name: 'Eof',        pattern: /<<EOF>>/ });
@@ -37,7 +39,7 @@ export const allTokens: TokenType[] = [
   Colon, Question, Equals, Pipe,
   LParen, RParen, LBrace, RBrace,
   Comma, Slash,
-  LBracket, RBracket, Plus, Star, Caret, Backslash, Dot, Ampersand,
+  LBracket, RBracket, Plus, Star, Caret, Backslash, Dot, Ampersand, Bang, TripleDash,
   StringLit, NumberLit,
   Eof,
 ];
@@ -63,6 +65,8 @@ export const tokenKindMap: Record<string, TokenType> = {
   BACKSLASH:  Backslash,
   DOT:        Dot,
   AMPERSAND:  Ampersand,
+  BANG:       Bang,
+  TRIPLE_DASH: TripleDash,
   STRING:     StringLit,
   NUMBER:     NumberLit,
   BOOLEAN:    BooleanLit,

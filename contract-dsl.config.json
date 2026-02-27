@@ -2,7 +2,7 @@
     "baseDir": "~/projects/homegrown_v2/apps/api/",
     "cache": true,
     "dto": {
-        "output": "src/modules/{filename}/types/{filename}.ts",
+        "output": "src/modules/{area}/types/{filename}.ts",
         "include": ["contracts/types/**/*.dto"]
     },
     "routes": {

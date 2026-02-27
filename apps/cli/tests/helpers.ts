@@ -76,7 +76,7 @@ export function model(name: string, fields: FieldNode[], overrides?: Partial<Mod
 }
 
 export function dtoRoot(models: ModelNode[], file = 'test.dto'): DtoRootNode {
-  return { kind: 'dtoRoot', models, file };
+  return { kind: 'dtoRoot', meta: {}, models, file };
 }
 
 export function opParam(name: string, type: DtoTypeNode): OpParamNode {

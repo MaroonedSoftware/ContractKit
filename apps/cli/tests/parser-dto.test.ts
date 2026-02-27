@@ -423,4 +423,101 @@ User: {
       expect(root.models[0]!.loc.file).toBe('test.dto');
     });
   });
+
+  // ─── Front-matter ──────────────────────────────────────────────
+
+  describe('front-matter', () => {
+    it('parses an empty front-matter block', () => {
+      const { root, diag } = parse(`\
+---
+---
+
+User: {
+    name: string
+}`);
+      expect(diag.hasErrors()).toBe(false);
+      expect(root.meta).toEqual({});
+      expect(root.models).toHaveLength(1);
+    });
+
+    it('parses front-matter with a single unquoted entry', () => {
+      const { root, diag } = parse(`\
+---
+area: users
+---
+
+Account: {
+    id: uuid
+}`);
+      expect(diag.hasErrors()).toBe(false);
+      expect(root.meta).toEqual({ area: 'users' });
+      expect(root.models).toHaveLength(1);
+      expect(root.models[0]!.name).toBe('Account');
+    });
+
+    it('parses front-matter with multiple entries', () => {
+      const { root, diag } = parse(`\
+---
+area: billing
+module: payments
+version: v2
+---
+
+Invoice: {
+    total: number
+}`);
+      expect(diag.hasErrors()).toBe(false);
+      expect(root.meta).toEqual({
+        area: 'billing',
+        module: 'payments',
+        version: 'v2',
+      });
+      expect(root.models).toHaveLength(1);
+    });
+
+    it('parses front-matter with quoted string values', () => {
+      const { root, diag } = parse(`\
+---
+area: "user-management"
+label: 'User Management'
+---
+
+User: {
+    name: string
+}`);
+      expect(diag.hasErrors()).toBe(false);
+      expect(root.meta).toEqual({
+        area: 'user-management',
+        label: 'User Management',
+      });
+    });
+
+    it('returns empty meta when no front-matter is present', () => {
+      const { root } = parse(`\
+User: {
+    name: string
+}`);
+      expect(root.meta).toEqual({});
+    });
+
+    it('parses front-matter followed by multiple models', () => {
+      const { root, diag } = parse(`\
+---
+area: users
+---
+
+User: {
+    name: string
+}
+
+Admin: User {
+    role: string
+}`);
+      expect(diag.hasErrors()).toBe(false);
+      expect(root.meta).toEqual({ area: 'users' });
+      expect(root.models).toHaveLength(2);
+      expect(root.models[0]!.name).toBe('User');
+      expect(root.models[1]!.name).toBe('Admin');
+    });
+  });
 });

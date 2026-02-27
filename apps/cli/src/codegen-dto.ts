@@ -1,3 +1,4 @@
+import { relative, dirname } from 'node:path';
 import type {
     DtoRootNode,
     ModelNode,
@@ -16,6 +17,15 @@ import type {
     LazyTypeNode,
 } from './ast.js';
 
+// ─── Cross-file import resolution ─────────────────────────────────────────
+
+export interface DtoCodegenContext {
+    /** Map from model name → absolute output file path */
+    modelOutPaths: Map<string, string>;
+    /** Absolute output file path for the current DTO file */
+    currentOutPath: string;
+}
+
 // ─── Public entry point ────────────────────────────────────────────────────
 
 function generateComments(model: ModelNode): string[] {
@@ -29,7 +39,7 @@ function generateComments(model: ModelNode): string[] {
     return lines;
 }
 
-export function generateDto(root: DtoRootNode): string {
+export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): string {
     const needsDateTime = rootNeedsDateTime(root);
     const externalRefs = collectExternalRefs(root);
     const lines: string[] = [];
@@ -37,8 +47,8 @@ export function generateDto(root: DtoRootNode): string {
     lines.push(`import { z } from 'zod';`);
     if (needsDateTime) lines.push(`import { DateTime } from 'luxon';`);
     for (const ref of externalRefs) {
-        const moduleName = pascalToDotCase(ref);
-        lines.push(`import { ${ref} } from './${moduleName}.js';`);
+        const importPath = resolveImportPath(ref, context);
+        lines.push(`import { ${ref} } from '${importPath}';`);
     }
     lines.push('');
 
@@ -423,6 +433,30 @@ function topoSortModels(models: ModelNode[]): ModelNode[] {
     }
 
     return sorted;
+}
+
+/**
+ * Resolve the import path for an external model reference.
+ * When a codegen context is available, computes the correct relative path
+ * from the current file to the referenced model's output file.
+ * Falls back to same-directory PascalCase → dot.case convention.
+ */
+function resolveImportPath(refName: string, context?: DtoCodegenContext): string {
+    if (context) {
+        const refOutPath = context.modelOutPaths.get(refName);
+        if (refOutPath) {
+            const fromDir = dirname(context.currentOutPath);
+            let rel = relative(fromDir, refOutPath);
+            // Replace .ts extension with .js for ESM imports
+            rel = rel.replace(/\.ts$/, '.js');
+            // Ensure relative path starts with ./ or ../
+            if (!rel.startsWith('.')) rel = './' + rel;
+            return rel;
+        }
+    }
+    // Fallback: assume same directory, use PascalCase → dot.case convention
+    const moduleName = pascalToDotCase(refName);
+    return `./${moduleName}.js`;
 }
 
 /** Convert PascalCase to dot-separated lowercase: CounterpartyAccount → counterparty.account */
