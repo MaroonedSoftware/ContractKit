@@ -25,6 +25,9 @@ export function validateRefs(
         diag.warn(model.loc.file, model.loc.line,
           `Base model "${model.base}" is not defined in any .dto file`);
       }
+      if (model.type) {
+        checkTypeRefs(model.type, model.loc.file, model.loc.line, modelNames, diag);
+      }
       for (const field of model.fields) {
         checkTypeRefs(field.type, field.loc.file, field.loc.line, modelNames, diag);
       }
@@ -34,24 +37,18 @@ export function validateRefs(
   // Phase 3: Check OP type references
   for (const root of opRoots) {
     for (const route of root.routes) {
-      if (typeof route.params === 'string') {
-        checkNameRef(route.params, root.file, route.loc.line, modelNames, diag);
-      }
+      checkParamSourceRefs(route.params, root.file, route.loc.line, modelNames, diag);
       for (const op of route.operations) {
         if (op.request?.bodyType) {
-          checkBodyTypeRef(op.request.bodyType, root.file, op.loc.line, modelNames, diag);
+          checkTypeRefs(op.request.bodyType, root.file, op.loc.line, modelNames, diag);
         }
         for (const resp of op.responses) {
           if (resp.bodyType) {
-            checkBodyTypeRef(resp.bodyType, root.file, op.loc.line, modelNames, diag);
+            checkTypeRefs(resp.bodyType, root.file, op.loc.line, modelNames, diag);
           }
         }
-        if (typeof op.query === 'string') {
-          checkNameRef(op.query, root.file, op.loc.line, modelNames, diag);
-        }
-        if (typeof op.headers === 'string') {
-          checkNameRef(op.headers, root.file, op.loc.line, modelNames, diag);
-        }
+        checkParamSourceRefs(op.query, root.file, op.loc.line, modelNames, diag);
+        checkParamSourceRefs(op.headers, root.file, op.loc.line, modelNames, diag);
       }
     }
   }
@@ -83,6 +80,9 @@ function checkTypeRefs(
     case 'union':
       type.members.forEach(t => checkTypeRefs(t, file, line, models, diag));
       break;
+    case 'intersection':
+      type.members.forEach(t => checkTypeRefs(t, file, line, models, diag));
+      break;
     case 'lazy':
       checkTypeRefs(type.inner, file, line, models, diag);
       break;
@@ -92,18 +92,22 @@ function checkTypeRefs(
   }
 }
 
-function checkBodyTypeRef(
-  bodyType: string,
+function checkParamSourceRefs(
+  source: import('./ast.js').ParamSource | undefined,
   file: string,
   line: number,
   models: Set<string>,
   diag: DiagnosticCollector,
 ): void {
-  const arrayMatch = bodyType.match(/^array\((.+)\)$/);
-  const typeName = arrayMatch?.[1] ?? bodyType;
-
-  if (/^[A-Z]/.test(typeName) && !models.has(typeName)) {
-    diag.warn(file, line, `Referenced model "${typeName}" is not defined in any .dto file`);
+  if (!source) return;
+  if (typeof source === 'string') {
+    checkNameRef(source, file, line, models, diag);
+  } else if (Array.isArray(source)) {
+    for (const param of source) {
+      checkTypeRefs(param.type, file, param.loc.line, models, diag);
+    }
+  } else {
+    checkTypeRefs(source, file, line, models, diag);
   }
 }
 

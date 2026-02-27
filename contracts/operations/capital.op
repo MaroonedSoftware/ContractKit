@@ -1,0 +1,159 @@
+/capital/offers/expansion {
+    post: { # create an offer for expansion capital
+        request: {
+            application/json: ExpansionCapitalOffer
+        }
+        response: {
+            201: {
+                application/json: ExpansionCapitalOffer
+            }
+        }
+    }
+    get: { # list offers for expansion capital
+        query: Pagination & { status?: OfferStatus[] }
+        response: {
+            200: {
+                application/json: {
+                    meta: Pagination & { status?: OfferStatus[] }
+                    data: array(ExpansionCapitalOffer)
+                }
+            }
+        }
+    }
+}
+
+/capital/offers/expansion/:id {
+    params: {
+        id: uuid # the identifier of the offer to retrieve
+    }
+    get: { # get an offer for expansion capital
+        response: {
+            200: {
+                application/json: ExpansionCapitalOffer
+            }
+        }
+    }
+    delete: { # withdraw an offer for expansion capital
+        response: {
+            204:
+        }
+    }
+}
+
+/capital/offers/expansion/:id/accept {
+    params: {
+        id: uuid # the id of the offer to accept
+    }
+    post: {
+        request: {
+            application/json: {
+                termId: uuid # the term to accept
+            }
+        }
+        response: {
+            201: {
+                application/json: ExpansionCapitalOffer
+            }
+        }
+    }
+}
+
+/capital/offers/expansion/:id/decline {
+    params: {
+        id: uuid
+    }
+    post: {
+        response: {
+            201: {
+                application/json: ExpansionCapitalOffer
+            }
+        }
+    }
+}
+
+/capital/expansion {
+    get: {
+        query: Pagination
+        response: {
+            200: {
+                application/json: {
+                    meta: Pagination
+                    data: array(ExpansionCapital)
+                }
+            }
+        }
+    }
+}
+
+/capital/expansion/:id {
+    params: {
+        id: uuid
+    }
+    get: {
+        response: {
+            200: {
+                application/json: ExpansionCapital
+            }
+        }
+    }
+}
+
+/capital/expansion/:id/disburse {
+    params: {
+        id: uuid
+    }
+    post: {
+        request: {
+            application/json: {
+                capitalAmount: bigint
+                originationFee: bigint
+                effectiveAt: datetime
+            }
+        }
+        response: {
+            201: {
+                application/json: LedgerTransaction
+            }
+        }
+    }
+}
+
+/capital/expansion/:id/repayment {
+    params: {
+        id: uuid
+    }
+    post: {
+        request: {
+            application/json: {
+                repaymentAmount: bigint
+                capitalFee: bigint
+                effectiveAt: datetime
+            }
+        }
+        response: {
+            201: {
+                application/json: LedgerTransaction
+            }
+        }
+    }
+}
+
+/capital/expansion/:id/liquidity-disbursement {
+    params: {
+        id: uuid
+    }
+    post: {
+        request: {
+            application/json: {
+                disbursementAmount: bigint
+                serviceFee: bigint
+                effectiveAt: datetime
+            }
+        }
+        response: {
+            201: {
+                application/json: LedgerTransaction
+            }
+        }
+    }
+}

@@ -1,7 +1,7 @@
 /ledger/categories {
     post: {
         request: {
-            application/json: LedgerCategory
+            application/json: LedgerCategoryInput
         }
         response: {
             201: {
@@ -19,6 +19,9 @@
 }
 
 /ledger/categories/:categoryId {
+    params: {
+        categoryId: uuid
+    }
     get: {
         response: {
             200: {
@@ -28,7 +31,7 @@
     }
     patch: {
         request: {
-            application/json: LedgerCategory
+            application/json: UpdateCategoryInput
         }
         response: {
             200: {
@@ -44,6 +47,9 @@
 }
 
 /ledger/categories/:categoryId/accounts {
+    params: {
+        categoryId: uuid
+    }
     get: {
         response: {
             200: {
@@ -54,6 +60,9 @@
 }
 
 /ledger/categories/:categoryId/children {
+    params: {
+        categoryId: uuid
+    }
     get: {
         response: {
             200: {
@@ -64,6 +73,9 @@
 }
 
 /ledger/categories/:categoryId/parents {
+    params: {
+        categoryId: uuid
+    }
     get: {
         response: {
             200: {
@@ -74,6 +86,9 @@
 }
 
 /ledger/categories/:categoryId/tree {
+    params: {
+        categoryId: uuid
+    }
     get: {
         response: {
             200: {
@@ -84,6 +99,9 @@
 }
 
 /ledger/categories/:categoryId/balances {
+    params: {
+        categoryId: uuid
+    }
     get: {
         query: GetCategoryBalancesQuery
         response: {
@@ -95,6 +113,9 @@
 }
 
 /ledger/categories/:categoryId/transactions {
+    params: {
+        categoryId: uuid
+    }
     get: {
         query: ListCategoryTransactionsQuery
         response: {
@@ -106,6 +127,10 @@
 }
 
 /ledger/categories/:categoryId/children/:childId {
+    params: {
+        categoryId: uuid
+        childId: uuid
+    }
     put: {
         service: LedgerService.updateCategoryNesting
         response: {

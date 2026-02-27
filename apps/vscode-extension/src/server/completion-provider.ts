@@ -12,7 +12,7 @@ const BUILTIN_SCALAR_TYPES = [
     'any', 'unknown', 'null', 'object', 'binary',
 ];
 
-const COMPOUND_TYPES = ['array', 'tuple', 'record', 'enum', 'lazy'];
+const COMPOUND_TYPES = ['array', 'tuple', 'record', 'enum', 'literal', 'lazy'];
 
 const CONSTRAINT_KEYS = ['min', 'max', 'length', 'len', 'regex'];
 

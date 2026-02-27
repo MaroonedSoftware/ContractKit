@@ -1,8 +1,3 @@
-CustomCurrency: {
-    code: string(length=3) # ISO currency code
-    exponent: int # Currency exponent
-}
-
 LedgerAccount: {
     id: readonly uuid # The account identifier
     name: string(min=3, max=100) # Account name

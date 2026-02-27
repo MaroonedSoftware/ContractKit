@@ -1,7 +1,7 @@
 /ledger/accounts {
     post: {
         request: {
-            application/json: LedgerAccount
+            application/json: LedgerAccountInput
         }
         response: {
             200: {
@@ -20,6 +20,9 @@
 }
 
 /ledger/accounts/:accountId {
+    params: {
+        accountId: uuid
+    }
     get: {
         response: {
             200: {
@@ -44,6 +47,9 @@
 }
 
 /ledger/accounts/:accountId/transactions {
+    params: {
+        accountId: uuid
+    }
     get: {
         query: ListAccountTransactionsQuery
         response: {
@@ -55,6 +61,9 @@
 }
 
 /ledger/accounts/:accountId/categories {
+    params: {
+        accountId: uuid
+    }
     get: {
         response: {
             200: {
@@ -65,6 +74,10 @@
 }
 
 /ledger/accounts/:accountId/categories/:categoryId {
+    params: {
+        accountId: uuid
+        categoryId: uuid
+    }
     put: {
         service: LedgerService.updateCategoryMembership
         response: {

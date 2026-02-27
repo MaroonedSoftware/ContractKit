@@ -1,7 +1,9 @@
 import { CstParser } from 'chevrotain';
 import {
-  allTokens, Identifier, Colon,
-  LParen, RParen, LBrace, RBrace, Slash, NumberLit, Eof,
+  allTokens, Identifier, Colon, Question,
+  Equals, Pipe, LParen, RParen, LBrace, RBrace,
+  Comma, Slash, LBracket, RBracket, Ampersand,
+  NumberLit, StringLit, BooleanLit, Eof,
 } from './tokens.js';
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
@@ -122,15 +124,13 @@ export class OpCstParser extends CstParser {
 
   // ─── HTTP Operation ───────────────────────────────────────────────────
 
-  // httpOperation: IDENTIFIER (":" LBRACE operationBody RBRACE)?
+  // httpOperation: IDENTIFIER ":" LBRACE operationBody RBRACE
   public httpOperation = this.RULE('httpOperation', () => {
     this.CONSUME(Identifier);  // HTTP method name
-    this.OPTION(() => {
-      this.CONSUME(Colon);
-      this.CONSUME(LBrace);
-      this.SUBRULE(this.operationBody);
-      this.CONSUME(RBrace);
-    });
+    this.CONSUME(Colon);
+    this.CONSUME(LBrace);
+    this.SUBRULE(this.operationBody);
+    this.CONSUME(RBrace);
   });
 
   // operationBody: (serviceDecl | queryBlock | headersBlock | requestBlock | responseBlock)*
@@ -187,52 +187,20 @@ export class OpCstParser extends CstParser {
 
   // ─── Query ──────────────────────────────────────────────────────────
 
-  // queryBlock: "query" ":" ( IDENTIFIER | "{" paramDecl* "}" )
+  // queryBlock: "query" ":" opTypeExpr
   public queryBlock = this.RULE('queryBlock', () => {
     this.CONSUME(Identifier);  // "query"
     this.CONSUME(Colon);
-    this.OR([
-      {
-        GATE: () => this.LA(1).tokenType === Identifier,
-        ALT: () => {
-          this.CONSUME2(Identifier); // type reference
-        },
-      },
-      {
-        ALT: () => {
-          this.CONSUME(LBrace);
-          this.MANY(() => {
-            this.SUBRULE(this.paramDecl);
-          });
-          this.CONSUME(RBrace);
-        },
-      },
-    ]);
+    this.SUBRULE(this.opTypeExpr);
   });
 
   // ─── Headers ────────────────────────────────────────────────────────
 
-  // headersBlock: "headers" ":" ( IDENTIFIER | "{" paramDecl* "}" )
+  // headersBlock: "headers" ":" opTypeExpr
   public headersBlock = this.RULE('headersBlock', () => {
     this.CONSUME(Identifier);  // "headers"
     this.CONSUME(Colon);
-    this.OR([
-      {
-        GATE: () => this.LA(1).tokenType === Identifier,
-        ALT: () => {
-          this.CONSUME2(Identifier); // type reference
-        },
-      },
-      {
-        ALT: () => {
-          this.CONSUME(LBrace);
-          this.MANY(() => {
-            this.SUBRULE(this.paramDecl);
-          });
-          this.CONSUME(RBrace);
-        },
-      },
-    ]);
+    this.SUBRULE(this.opTypeExpr);
   });
 
   // ─── Request ──────────────────────────────────────────────────────────
@@ -272,24 +240,122 @@ export class OpCstParser extends CstParser {
 
   // ─── Content type line ────────────────────────────────────────────────
 
-  // contentTypeLine: IDENTIFIER SLASH IDENTIFIER COLON bodyTypeExpr
+  // contentTypeLine: IDENTIFIER SLASH IDENTIFIER COLON opTypeExpr
   public contentTypeLine = this.RULE('contentTypeLine', () => {
     this.CONSUME(Identifier);   // "application"
     this.CONSUME(Slash);
     this.CONSUME2(Identifier);  // "json" or "form-data"
     this.CONSUME(Colon);
-    this.SUBRULE(this.bodyTypeExpr);
+    this.SUBRULE(this.opTypeExpr);
   });
 
-  // bodyTypeExpr: IDENTIFIER (LPAREN IDENTIFIER RPAREN)?
-  // Handles "User" or "array(User)"
-  public bodyTypeExpr = this.RULE('bodyTypeExpr', () => {
-    this.CONSUME(Identifier);  // type name
-    this.OPTION(() => {
-      this.CONSUME(LParen);
-      this.CONSUME2(Identifier);  // inner type
-      this.CONSUME(RParen);
+  // ─── OP Type Expressions ──────────────────────────────────────────────
+  // These mirror the DTO type system but also support intersection (&)
+  // and postfix array syntax ([])
+
+  // opTypeExpr: opIntersectionExpr (PIPE opIntersectionExpr)*
+  public opTypeExpr = this.RULE('opTypeExpr', () => {
+    this.SUBRULE(this.opIntersectionExpr);
+    this.MANY(() => {
+      this.CONSUME(Pipe);
+      this.SUBRULE2(this.opIntersectionExpr);
     });
+  });
+
+  // opIntersectionExpr: opAtomicType (AMPERSAND opAtomicType)*
+  public opIntersectionExpr = this.RULE('opIntersectionExpr', () => {
+    this.SUBRULE(this.opAtomicType);
+    this.MANY(() => {
+      this.CONSUME(Ampersand);
+      this.SUBRULE2(this.opAtomicType);
+    });
+  });
+
+  // opAtomicType: opInlineObject | IDENTIFIER (LPAREN opTypeArgs RPAREN)? (LBRACKET RBRACKET)?
+  public opAtomicType = this.RULE('opAtomicType', () => {
+    this.OR([
+      {
+        GATE: () => this.LA(1).tokenType === LBrace,
+        ALT: () => this.SUBRULE(this.opInlineObject),
+      },
+      {
+        ALT: () => {
+          this.CONSUME(Identifier);  // type name
+          this.OPTION(() => {
+            this.CONSUME(LParen);
+            this.SUBRULE(this.opTypeArgs);
+            this.CONSUME(RParen);
+          });
+          // Postfix array: Type[]
+          this.OPTION2(() => {
+            this.CONSUME(LBracket);
+            this.CONSUME(RBracket);
+          });
+        },
+      },
+    ]);
+  });
+
+  // opTypeArgs: (opTypeArg (COMMA opTypeArg)*)?
+  public opTypeArgs = this.RULE('opTypeArgs', () => {
+    this.OPTION(() => {
+      this.SUBRULE(this.opTypeArg);
+      this.MANY(() => {
+        this.CONSUME(Comma);
+        this.SUBRULE2(this.opTypeArg);
+      });
+    });
+  });
+
+  // opTypeArg: key=value | STRING | NUMBER | BOOLEAN | opTypeExpr
+  public opTypeArg = this.RULE('opTypeArg', () => {
+    this.OR([
+      {
+        // key=value constraint (min=1, max=100, etc.)
+        GATE: () => {
+          const la1 = this.LA(1);
+          const la2 = this.LA(2);
+          return la1.tokenType === Identifier && la2.tokenType === Equals;
+        },
+        ALT: () => {
+          this.CONSUME(Identifier);
+          this.CONSUME(Equals);
+          this.SUBRULE(this.opArgValue);
+        },
+      },
+      { ALT: () => this.CONSUME(StringLit) },
+      { ALT: () => this.CONSUME(NumberLit) },
+      { ALT: () => this.CONSUME(BooleanLit) },
+      { ALT: () => this.SUBRULE(this.opTypeExpr) },
+    ]);
+  });
+
+  // opArgValue: NUMBER | STRING | BOOLEAN | IDENTIFIER
+  public opArgValue = this.RULE('opArgValue', () => {
+    this.OR([
+      { ALT: () => this.CONSUME(NumberLit) },
+      { ALT: () => this.CONSUME(StringLit) },
+      { ALT: () => this.CONSUME(BooleanLit) },
+      { ALT: () => this.CONSUME(Identifier) },
+    ]);
+  });
+
+  // opInlineObject: LBRACE (opInlineField (COMMA)?)* RBRACE
+  public opInlineObject = this.RULE('opInlineObject', () => {
+    this.CONSUME(LBrace);
+    this.MANY(() => {
+      this.SUBRULE(this.opInlineField);
+      this.OPTION(() => this.CONSUME(Comma));
+    });
+    this.CONSUME(RBrace);
+  });
+
+  // opInlineField: IDENTIFIER QUESTION? COLON opTypeExpr
+  public opInlineField = this.RULE('opInlineField', () => {
+    this.CONSUME(Identifier);
+    this.OPTION(() => this.CONSUME(Question));
+    this.CONSUME(Colon);
+    this.SUBRULE(this.opTypeExpr);
   });
 }
 

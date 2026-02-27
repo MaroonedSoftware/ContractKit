@@ -36,6 +36,15 @@ export class DtoVisitor extends BaseDtoVisitor {
     const name = nameToken.image;
     const line = nameToken.startLine ?? 0;
 
+    // Description from comments: preceding line or same line
+    const description = this.comments.get(line - 1) ?? this.comments.get(line);
+
+    // Type alias form: Name : typeExpression (no braces, no fieldList)
+    if (ctx.typeExpression && !ctx.fieldList) {
+      const type: DtoTypeNode = this.visit(ctx.typeExpression[0]);
+      return { kind: 'model', name, fields: [], type, description, loc: { file: this.file, line } };
+    }
+
     // Second identifier (if any) is the base model name
     let base: string | undefined;
     if (identifiers.length > 1) {
@@ -48,9 +57,6 @@ export class DtoVisitor extends BaseDtoVisitor {
       const result = this.visit(ctx.fieldList[0]);
       if (Array.isArray(result)) fields.push(...result);
     }
-
-    // Description from comments: preceding line or same line
-    const description = this.comments.get(line - 1) ?? this.comments.get(line);
 
     return { kind: 'model', name, base, fields, description, loc: { file: this.file, line } };
   }
@@ -165,7 +171,7 @@ export class DtoVisitor extends BaseDtoVisitor {
     if (ctx.StringLit) return { type: 'string', value: ctx.StringLit[0].image };
     if (ctx.NumberLit) return { type: 'number', value: Number(ctx.NumberLit[0].image) };
     if (ctx.BooleanLit) return { type: 'boolean', value: ctx.BooleanLit[0].image === 'true' };
-    if (ctx.singleType) return { type: 'type', value: this.visit(ctx.singleType[0]) };
+    if (ctx.typeExpression) return { type: 'type', value: this.visit(ctx.typeExpression[0]) };
     return null;
   }
 

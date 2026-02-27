@@ -8,9 +8,11 @@ LedgerSettlement: {
     description?: string(max=1024) | null # Optional description
     metadata?: record(string, unknown) # Optional metadata
 }
+
 FinalizeSettlementInput: {
     targetStatus?: enum(pending, posted) # Optional target status
 }
+
 UpdateSettlementStatusInput: {
     status: enum(posted, archived) # New settlement status
 }

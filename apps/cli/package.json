@@ -20,7 +20,8 @@
         "lint": "eslint --fix",
         "format": "prettier --write .",
         "test": "vitest run",
-        "start": "node dist/cli.js \"/Users/robert/projects/homegrown_v2/apps/api/contracts/**/*.{dto,op}\" --out-dir /Users/robert/projects/homegrown_v2/apps/api/contracts/dist/"
+        "start_": "node dist/cli.js \"/Users/robert/projects/homegrown_v2/apps/api/contracts/**/*.{dto,op}\" --out-dir /Users/robert/projects/contract-dsl/dist/",
+        "start": "node dist/cli.js \"/Users/robert/projects/contract-dsl/contracts/**/*.{dto,op}\" --out-dir /Users/robert/projects/contract-dsl/dist/"
     },
     "dependencies": {
         "chevrotain": "^11.1.1",

@@ -20,12 +20,12 @@ export function validateOp(root: OpRootNode, diag: DiagnosticCollector): void {
       for (const name of pathParams) {
         diag.warn(root.file, route.loc.line, `Path parameter ':${name}' is not explicitly defined in a params block`);
       }
-    } else if (typeof route.params === 'string') {
-      // Type-reference form (params: SomeType) — all params are covered by the type
+    } else if (typeof route.params === 'string' || !Array.isArray(route.params)) {
+      // Type-reference or DtoTypeNode form — all params are covered by the type
       continue;
     } else {
       // Block form — check each path param is declared
-      const declared = new Set(route.params.map(p => p.name));
+      const declared = new Set(route.params.map((p: { name: string }) => p.name));
       for (const name of pathParams) {
         if (!declared.has(name)) {
           diag.warn(root.file, route.loc.line, `Path parameter ':${name}' is not explicitly defined in a params block`);

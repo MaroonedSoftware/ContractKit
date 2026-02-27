@@ -33,6 +33,9 @@
 }
 
 /ledger/transactions/:transactionId {
+    params: {
+        transactionId: uuid
+    }
     get: {
         response: {
             200: {
@@ -43,6 +46,9 @@
 }
 
 /ledger/transactions/:transactionId/entries {
+    params: {
+        transactionId: uuid
+    }
     get: {
         response: {
             200: {
@@ -53,6 +59,9 @@
 }
 
 /ledger/transactions/:transactionId/finalize {
+    params: {
+        transactionId: uuid
+    }
     post: {
         request: {
             application/json: FinalizeTransactionInput

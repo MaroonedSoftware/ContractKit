@@ -5,4 +5,3 @@ LedgerCategory: {
     depth: readonly int
     createdAt: readonly datetime
 }
-

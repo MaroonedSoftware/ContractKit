@@ -6,19 +6,19 @@ import type { DtoTypeNode, FieldNode, ModelNode } from 'contract-dsl/src/ast.js'
 const BUILTIN_TYPE_DOCS: Record<string, string> = {
     string: 'Text string — Zod `z.string()`',
     number: 'Floating-point number — Zod `z.number()`',
-    int: 'Integer number — Zod `z.number().int()`',
+    int: 'Integer number — Zod `z.int()`',
     bigint: 'BigInt — Zod `z.bigint()`',
     boolean: 'Boolean true/false — Zod `z.boolean()`',
-    date: 'Date (date only) — Zod `z.string().date()`',
-    datetime: 'ISO 8601 datetime — Luxon DateTime',
-    email: 'Email address — Zod `z.string().email()`',
-    url: 'URL string — Zod `z.string().url()`',
-    uuid: 'UUID string — Zod `z.string().uuid()`',
+    date: 'Date — Luxon `DateTime` custom validator',
+    datetime: 'ISO 8601 datetime — Luxon `DateTime` custom validator',
+    email: 'Email address — Zod `z.email()`',
+    url: 'URL string — Zod `z.url()`',
+    uuid: 'UUID string — Zod `z.uuid()`',
     any: 'Any value — Zod `z.any()`',
     unknown: 'Unknown value — Zod `z.unknown()`',
     null: 'Null literal — Zod `z.null()`',
-    object: 'Object — Zod `z.object({})`',
-    binary: 'Binary data — Zod `z.instanceof(Buffer)`',
+    object: 'Generic object — Zod `z.record(z.string(), z.unknown())`',
+    binary: 'Binary data — `Buffer` custom validator',
 };
 
 export function getHover(

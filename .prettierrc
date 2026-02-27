@@ -4,14 +4,5 @@
     "arrowParens": "avoid",
     "tabWidth": 4,
     "useTabs": false,
-    "printWidth": 150,
-    "plugins": ["@prettier/plugin-xml"],
-    "overrides": [
-        {
-            "files": "*.xml",
-            "options": {
-                "parser": "xml"
-            }
-        }
-    ]
+    "printWidth": 150
 }

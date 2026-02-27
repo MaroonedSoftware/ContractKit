@@ -1,0 +1,24 @@
+OfferStatus: enum(active, accepted, declined, expired, withdrawn)
+
+ExpansionCapitalOffer: {
+    createdAt: readonly datetime
+    updatedAt: readonly datetime
+    id: readonly uuid
+    currency: string(length=3) | CustomCurrency = "USD"
+    expiresAt: datetime
+    status: readonly OfferStatus
+    terms: array(ExpansionCapitalOfferTerm, min=1, max=5)
+}
+
+ExpansionCapitalOfferTerm: {
+    createdAt: readonly datetime
+    updatedAt: readonly datetime
+    id: readonly uuid
+    accepted: readonly boolean
+    capitalAmount: bigint(min=0)
+    originationFee: bigint(min=0)
+    holdback: {
+        percentage: int(min=0, max=100)
+        amount: bigint(min=0)
+    }
+}

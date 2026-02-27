@@ -21,6 +21,7 @@ export type DtoTypeNode =
   | EnumTypeNode
   | LiteralTypeNode
   | UnionTypeNode
+  | IntersectionTypeNode
   | ModelRefTypeNode
   | InlineObjectTypeNode
   | LazyTypeNode;
@@ -81,6 +82,11 @@ export interface InlineObjectTypeNode {
   fields: FieldNode[];
 }
 
+export interface IntersectionTypeNode {
+  kind: 'intersection';
+  members: DtoTypeNode[];
+}
+
 export interface LazyTypeNode {
   kind: 'lazy';
   inner: DtoTypeNode;
@@ -102,6 +108,7 @@ export interface ModelNode {
   name: string;
   base?: string;
   fields: FieldNode[];
+  type?: DtoTypeNode; // type alias: Name: typeExpression (fields will be empty)
   description?: string;
   loc: SourceLocation;
 }
@@ -122,18 +129,18 @@ export interface OpParamNode {
   loc: SourceLocation;
 }
 
-/** Either inline param declarations or a single type reference name. */
-export type ParamSource = OpParamNode[] | string;
+/** Either inline param declarations, a single type reference name, or a DtoTypeNode. */
+export type ParamSource = OpParamNode[] | string | DtoTypeNode;
 
 export interface OpRequestNode {
   contentType: 'application/json' | 'multipart/form-data';
-  bodyType: string; // model name or inline type string
+  bodyType: DtoTypeNode;
 }
 
 export interface OpResponseNode {
   statusCode: number;
   contentType?: 'application/json';
-  bodyType?: string; // model name or inline type string (e.g. array(X))
+  bodyType?: DtoTypeNode;
 }
 
 export interface OpOperationNode {

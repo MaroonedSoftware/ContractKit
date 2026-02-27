@@ -10,6 +10,14 @@ export type TokenKind =
   | 'RBRACE'      // }
   | 'COMMA'
   | 'SLASH'       // /
+  | 'LBRACKET'    // [  (regex metacharacter)
+  | 'RBRACKET'    // ]  (regex metacharacter)
+  | 'PLUS'        // +  (regex metacharacter)
+  | 'STAR'        // *  (regex metacharacter)
+  | 'CARET'       // ^  (regex metacharacter)
+  | 'BACKSLASH'   // \  (regex metacharacter)
+  | 'DOT'         // .  (regex metacharacter, standalone)
+  | 'AMPERSAND'   // &  (intersection type)
   | 'STRING'      // quoted string value
   | 'NUMBER'      // numeric literal
   | 'BOOLEAN'     // true | false
@@ -104,6 +112,14 @@ export function tokenize(source: string, file: string): Token[] {
         case '}': tokens.push({ kind: 'RBRACE', value: '}', line: lineNo }); pos++; continue;
         case ',': tokens.push({ kind: 'COMMA', value: ',', line: lineNo }); pos++; continue;
         case '/': tokens.push({ kind: 'SLASH', value: '/', line: lineNo }); pos++; continue;
+        case '[': tokens.push({ kind: 'LBRACKET', value: '[', line: lineNo }); pos++; continue;
+        case ']': tokens.push({ kind: 'RBRACKET', value: ']', line: lineNo }); pos++; continue;
+        case '+': tokens.push({ kind: 'PLUS', value: '+', line: lineNo }); pos++; continue;
+        case '*': tokens.push({ kind: 'STAR', value: '*', line: lineNo }); pos++; continue;
+        case '^': tokens.push({ kind: 'CARET', value: '^', line: lineNo }); pos++; continue;
+        case '\\': tokens.push({ kind: 'BACKSLASH', value: '\\', line: lineNo }); pos++; continue;
+        case '.': tokens.push({ kind: 'DOT', value: '.', line: lineNo }); pos++; continue;
+        case '&': tokens.push({ kind: 'AMPERSAND', value: '&', line: lineNo }); pos++; continue;
       }
 
       // Identifiers and keywords

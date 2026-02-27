@@ -5,6 +5,7 @@ LedgerTransaction: {
     description?: string(max=1024) | null # Optional description
     entries: array(LedgerTransactionEntry, min=2) # The transaction entries (minimum 2)
 }
+
 LedgerTransactionEntry: {
     accountId: uuid # The ledger account identifier
     amount: bigint(min=0) # The entry amount in smallest currency units
@@ -14,6 +15,7 @@ LedgerTransactionEntry: {
     postedBalance?: string # Optional posted balance assertion (e.g. ">=100")
     availableBalance?: string # Optional available balance assertion (e.g. ">=100")
 }
+
 FinalizeTransactionInput: {
     status: enum(posted, archived) # Target finalization status
 }

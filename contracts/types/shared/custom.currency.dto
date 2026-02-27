@@ -1,0 +1,4 @@
+CustomCurrency: {
+    code: string(length=3) # ISO currency code
+    exponent: int # Currency exponent
+}

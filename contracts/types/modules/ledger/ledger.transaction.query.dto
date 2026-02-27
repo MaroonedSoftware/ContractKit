@@ -5,6 +5,7 @@ ListTransactionsQuery: {
     orderBy?: enum(effective_at, created_at, id) = effective_at # Sort field
     orderDirection?: enum(asc, desc) = desc # Sort direction
 }
+
 LedgerEntry: {
     accountId: readonly uuid # The ledger account identifier
     accountVersion: readonly int # The account version at time of entry

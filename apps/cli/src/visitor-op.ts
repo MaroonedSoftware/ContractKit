@@ -3,7 +3,7 @@ import { opCstParser } from './chevrotain-parser-op.js';
 import type {
   OpRootNode, OpRouteNode, OpOperationNode, OpParamNode,
   OpRequestNode, OpResponseNode, HttpMethod, DtoTypeNode,
-  ParamSource,
+  FieldNode, ParamSource, ScalarTypeNode, InlineObjectTypeNode,
 } from './ast.js';
 import { SCALAR_NAMES } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
@@ -52,7 +52,6 @@ export class OpVisitor extends BaseOpVisitor {
   }
 
   routePath(ctx: any): string {
-    // Reconstruct path from tokens: SLASH, COLON, IDENTIFIER
     const allToks: IToken[] = [];
 
     if (ctx.Slash) for (const t of ctx.Slash) allToks.push(t);
@@ -109,8 +108,8 @@ export class OpVisitor extends BaseOpVisitor {
     const description = this.comments.get(line - 1) ?? this.comments.get(line);
 
     let service: string | undefined;
-    let query: OpParamNode[] | undefined;
-    let headers: OpParamNode[] | undefined;
+    let query: ParamSource | undefined;
+    let headers: ParamSource | undefined;
     let request: OpRequestNode | undefined;
     let responses: OpResponseNode[] = [];
 
@@ -126,10 +125,10 @@ export class OpVisitor extends BaseOpVisitor {
     return { method, service, query, headers, request, responses, description, loc: { file: this.file, line } };
   }
 
-  operationBody(ctx: any): { service?: string; query?: OpParamNode[]; headers?: OpParamNode[]; request?: OpRequestNode; responses: OpResponseNode[] } {
+  operationBody(ctx: any): { service?: string; query?: ParamSource; headers?: ParamSource; request?: OpRequestNode; responses: OpResponseNode[] } {
     let service: string | undefined;
-    let query: OpParamNode[] | undefined;
-    let headers: OpParamNode[] | undefined;
+    let query: ParamSource | undefined;
+    let headers: ParamSource | undefined;
     let request: OpRequestNode | undefined;
     let responses: OpResponseNode[] = [];
 
@@ -153,11 +152,13 @@ export class OpVisitor extends BaseOpVisitor {
   }
 
   queryBlock(ctx: any): ParamSource {
-    return this.visitParamSource(ctx);
+    const typeNode: DtoTypeNode = this.visit(ctx.opTypeExpr[0]);
+    return typeNodeToParamSource(typeNode);
   }
 
   headersBlock(ctx: any): ParamSource {
-    return this.visitParamSource(ctx);
+    const typeNode: DtoTypeNode = this.visit(ctx.opTypeExpr[0]);
+    return typeNodeToParamSource(typeNode);
   }
 
   private visitParamSource(ctx: any): ParamSource {
@@ -179,7 +180,6 @@ export class OpVisitor extends BaseOpVisitor {
 
   serviceDecl(ctx: any): string {
     const identifiers: IToken[] = ctx.Identifier || [];
-    // identifiers[0] = "service" keyword, identifiers[1] = service reference
     return identifiers[1]?.image ?? '';
   }
 
@@ -206,7 +206,7 @@ export class OpVisitor extends BaseOpVisitor {
     const statusCode = parseInt(ctx.NumberLit[0].image, 10);
 
     let contentType: 'application/json' | undefined;
-    let bodyType: string | undefined;
+    let bodyType: DtoTypeNode | undefined;
 
     if (ctx.contentTypeLine) {
       const ctLine = this.visit(ctx.contentTypeLine[0]);
@@ -217,35 +217,214 @@ export class OpVisitor extends BaseOpVisitor {
     return { statusCode, contentType, bodyType };
   }
 
-  contentTypeLine(ctx: any): { contentType: string; bodyType: string } {
+  contentTypeLine(ctx: any): { contentType: string; bodyType: DtoTypeNode } {
     const identifiers: IToken[] = ctx.Identifier || [];
-    // identifiers[0] = "application", identifiers[1] = "json" or "form-data"
     const ctPart1 = identifiers[0]?.image ?? '';
     const ctPart2 = identifiers[1]?.image ?? '';
     const contentType = `${ctPart1}/${ctPart2}`;
 
-    const bodyExpr = ctx.bodyTypeExpr ? this.visit(ctx.bodyTypeExpr[0]) : '';
+    const bodyType: DtoTypeNode = ctx.opTypeExpr
+      ? this.visit(ctx.opTypeExpr[0])
+      : { kind: 'scalar', name: 'unknown' };
 
-    return { contentType, bodyType: bodyExpr };
+    return { contentType, bodyType };
   }
 
-  bodyTypeExpr(ctx: any): string {
-    const identifiers: IToken[] = ctx.Identifier || [];
-    const typeName = identifiers[0]?.image ?? '';
+  // ─── OP Type Expression Visitors ────────────────────────────────────
 
-    if (ctx.LParen) {
-      // array(User) or similar
-      const innerType = identifiers[1]?.image ?? '';
-      return `${typeName}(${innerType})`;
+  opTypeExpr(ctx: any): DtoTypeNode {
+    const members: DtoTypeNode[] = [];
+    if (ctx.opIntersectionExpr) {
+      for (const ie of ctx.opIntersectionExpr) {
+        members.push(this.visit(ie));
+      }
+    }
+    if (members.length === 1) return members[0]!;
+    return { kind: 'union', members };
+  }
+
+  opIntersectionExpr(ctx: any): DtoTypeNode {
+    const members: DtoTypeNode[] = [];
+    if (ctx.opAtomicType) {
+      for (const at of ctx.opAtomicType) {
+        members.push(this.visit(at));
+      }
+    }
+    if (members.length === 1) return members[0]!;
+    return { kind: 'intersection', members };
+  }
+
+  opAtomicType(ctx: any): DtoTypeNode {
+    if (ctx.opInlineObject) {
+      return this.visit(ctx.opInlineObject[0]);
     }
 
-    return typeName;
+    const identToken: IToken = ctx.Identifier[0];
+    const typeName = identToken.image;
+
+    // Type with arguments: array(User), string(min=1), etc.
+    if (ctx.opTypeArgs) {
+      const args = this.visit(ctx.opTypeArgs[0]) as any[];
+      const node = buildCompoundType(typeName, args);
+      if (ctx.LBracket) {
+        return { kind: 'array', item: node };
+      }
+      return node;
+    }
+
+    // Postfix array: Type[]
+    if (ctx.LBracket) {
+      const base = resolveSimpleType(typeName);
+      return { kind: 'array', item: base };
+    }
+
+    return resolveSimpleType(typeName);
+  }
+
+  opTypeArgs(ctx: any): any[] {
+    const args: any[] = [];
+    if (ctx.opTypeArg) {
+      for (const ta of ctx.opTypeArg) {
+        args.push(this.visit(ta));
+      }
+    }
+    return args;
+  }
+
+  opTypeArg(ctx: any): any {
+    if (ctx.Identifier && ctx.Equals) {
+      const key = ctx.Identifier[0].image;
+      const value = this.visit(ctx.opArgValue[0]);
+      return { key, value };
+    }
+    if (ctx.StringLit) return { type: 'string', value: ctx.StringLit[0].image };
+    if (ctx.NumberLit) return { type: 'number', value: Number(ctx.NumberLit[0].image) };
+    if (ctx.BooleanLit) return { type: 'boolean', value: ctx.BooleanLit[0].image === 'true' };
+    if (ctx.opTypeExpr) return { type: 'type', value: this.visit(ctx.opTypeExpr[0]) };
+    return null;
+  }
+
+  opArgValue(ctx: any): string | number | boolean {
+    if (ctx.NumberLit) return Number(ctx.NumberLit[0].image);
+    if (ctx.StringLit) return ctx.StringLit[0].image;
+    if (ctx.BooleanLit) return ctx.BooleanLit[0].image === 'true';
+    if (ctx.Identifier) return ctx.Identifier[0].image;
+    return '';
+  }
+
+  opInlineObject(ctx: any): InlineObjectTypeNode {
+    const fields: FieldNode[] = [];
+    if (ctx.opInlineField) {
+      for (const f of ctx.opInlineField) {
+        const field = this.visit(f);
+        if (field) fields.push(field);
+      }
+    }
+    return { kind: 'inlineObject', fields };
+  }
+
+  opInlineField(ctx: any): FieldNode {
+    const nameToken: IToken = ctx.Identifier[0];
+    const name = nameToken.image;
+    const line = nameToken.startLine ?? 0;
+    const optional = !!ctx.Question;
+
+    const type: DtoTypeNode = ctx.opTypeExpr
+      ? this.visit(ctx.opTypeExpr[0])
+      : { kind: 'scalar', name: 'unknown' };
+
+    return {
+      name,
+      optional,
+      nullable: false,
+      visibility: 'normal',
+      type,
+      loc: { file: this.file, line },
+    };
   }
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────
+
 function resolveSimpleType(name: string): DtoTypeNode {
   if (SCALAR_NAMES.has(name as any)) {
-    return { kind: 'scalar', name: name as import('./ast.js').ScalarTypeNode['name'] };
+    return { kind: 'scalar', name: name as ScalarTypeNode['name'] };
   }
   return { kind: 'ref', name };
+}
+
+/** Convert a DtoTypeNode to ParamSource for query/headers blocks. */
+function typeNodeToParamSource(node: DtoTypeNode): ParamSource {
+  if (node.kind === 'ref') return node.name;
+  if (node.kind === 'inlineObject') {
+    return node.fields.map(f => ({
+      name: f.name,
+      type: f.type,
+      loc: f.loc,
+    }));
+  }
+  return node;
+}
+
+/** Build a compound type from type name and args (mirrors DTO visitor logic). */
+function buildCompoundType(name: string, args: any[]): DtoTypeNode {
+  switch (name) {
+    case 'array': {
+      const typeArgs = args.filter(a => a?.type === 'type');
+      const item: DtoTypeNode = typeArgs[0]?.value ?? { kind: 'scalar', name: 'unknown' };
+      let min: number | undefined;
+      let max: number | undefined;
+      for (const a of args) {
+        if (a?.key === 'min') min = Number(a.value);
+        if (a?.key === 'max') max = Number(a.value);
+      }
+      return { kind: 'array', item, min, max };
+    }
+    case 'tuple': {
+      const items = args.filter(a => a?.type === 'type').map(a => a.value as DtoTypeNode);
+      return { kind: 'tuple', items };
+    }
+    case 'record': {
+      const typeArgs = args.filter(a => a?.type === 'type');
+      const key: DtoTypeNode = typeArgs[0]?.value ?? { kind: 'scalar', name: 'string' };
+      const value: DtoTypeNode = typeArgs[1]?.value ?? { kind: 'scalar', name: 'unknown' };
+      return { kind: 'record', key, value };
+    }
+    case 'enum': {
+      const values: string[] = [];
+      for (const a of args) {
+        if (a?.type === 'type' && a.value?.kind === 'ref') values.push(a.value.name);
+        else if (a?.type === 'string') values.push(a.value);
+        else if (a?.type === 'type' && a.value?.kind === 'scalar') values.push(a.value.name);
+      }
+      return { kind: 'enum', values };
+    }
+    case 'literal': {
+      const arg = args[0];
+      if (!arg) return { kind: 'literal', value: '' };
+      if (arg.type === 'string') return { kind: 'literal', value: arg.value };
+      if (arg.type === 'number') return { kind: 'literal', value: arg.value };
+      if (arg.type === 'boolean') return { kind: 'literal', value: arg.value };
+      return { kind: 'literal', value: String(arg.value) };
+    }
+    case 'lazy': {
+      const typeArg = args.find(a => a?.type === 'type');
+      const inner: DtoTypeNode = typeArg?.value ?? { kind: 'scalar', name: 'unknown' };
+      return { kind: 'lazy', inner };
+    }
+    default: {
+      if (SCALAR_NAMES.has(name)) {
+        const scalar: ScalarTypeNode = { kind: 'scalar', name: name as ScalarTypeNode['name'] };
+        for (const a of args) {
+          if (!a?.key) continue;
+          if (a.key === 'min') scalar.min = name === 'bigint' ? BigInt(a.value) : Number(a.value);
+          if (a.key === 'max') scalar.max = name === 'bigint' ? BigInt(a.value) : Number(a.value);
+          if (a.key === 'len' || a.key === 'length') scalar.len = Number(a.value);
+          if (a.key === 'regex') scalar.regex = String(a.value);
+        }
+        return scalar;
+      }
+      return { kind: 'ref', name };
+    }
+  }
 }

@@ -8,6 +8,7 @@ SimpleTransferInput: {
     effectiveAt?: datetime # Optional effective date-time
     description?: string(max=1024) | null # Optional description
 }
+
 MultiLegTransferInput: {
     idempotencyKey: string(min=16, max=128) # Unique idempotency key
     entries: array(TransferLegInput, min=2) # At least 2 legs
@@ -15,6 +16,7 @@ MultiLegTransferInput: {
     effectiveAt?: datetime # Optional effective date-time
     description?: string(max=1024) | null # Optional description
 }
+
 TransferLegInput: {
     accountId: uuid # Account identifier
     amount: bigint(min=1) # Positive amount

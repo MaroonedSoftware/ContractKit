@@ -83,12 +83,23 @@ export function opParam(name: string, type: DtoTypeNode): OpParamNode {
   return { name, type, loc: loc(1, 'test.op') };
 }
 
-export function opRequest(bodyType: string, contentType: OpRequestNode['contentType'] = 'application/json'): OpRequestNode {
-  return { contentType, bodyType };
+export function opRequest(bodyType: string | DtoTypeNode, contentType: OpRequestNode['contentType'] = 'application/json'): OpRequestNode {
+  const bt: DtoTypeNode = typeof bodyType === 'string' ? refType(bodyType) : bodyType;
+  return { contentType, bodyType: bt };
 }
 
-export function opResponse(statusCode: number, bodyType?: string, contentType?: 'application/json'): OpResponseNode {
-  return { statusCode, contentType, bodyType };
+export function opResponse(statusCode: number, bodyType?: string | DtoTypeNode, contentType?: 'application/json'): OpResponseNode {
+  const bt: DtoTypeNode | undefined = bodyType === undefined ? undefined
+    : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
+  return { statusCode, contentType, bodyType: bt };
+}
+
+function parseBodyTypeString(s: string): DtoTypeNode {
+  const arrayMatch = s.match(/^array\((.+)\)$/);
+  if (arrayMatch?.[1]) {
+    return { kind: 'array', item: refType(arrayMatch[1]) };
+  }
+  return refType(s);
 }
 
 export function opOperation(method: HttpMethod, overrides?: Partial<OpOperationNode>): OpOperationNode {
@@ -168,6 +179,6 @@ export const PARAMETERIZED_OP = `\
             }
         }
     }
-    delete
+    delete: {}
 }
 `;

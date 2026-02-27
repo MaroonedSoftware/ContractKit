@@ -32,7 +32,7 @@ Admin: User { role: string }
   describe('indexFromSource - OP', () => {
     it('indexes route paths from .op source', () => {
       const index = new WorkspaceIndex();
-      index.indexFromSource('file:///test.op', '/users { get }');
+      index.indexFromSource('file:///test.op', '/users { get: {} }');
       expect(index.getRoute('/users')).toBeDefined();
     });
 
@@ -40,7 +40,7 @@ Admin: User { role: string }
       const index = new WorkspaceIndex();
       index.indexFromSource('file:///test.op', `\
 /users {
-    put {
+    put: {
         service: UserService.update
     }
 }`);
@@ -59,7 +59,7 @@ Admin: User { role: string }
 
     it('removes routes and services on file removal', () => {
       const index = new WorkspaceIndex();
-      index.indexFromSource('file:///test.op', '/users { get { service: Svc.list } }');
+      index.indexFromSource('file:///test.op', '/users { get: { service: Svc.list } }');
       expect(index.getRoute('/users')).toBeDefined();
       expect(index.getAllServiceNames()).toContain('Svc.list');
 

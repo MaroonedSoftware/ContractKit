@@ -2,6 +2,7 @@ import { CstParser } from 'chevrotain';
 import {
   allTokens, Identifier, Colon, Question,
   Equals, Pipe, LParen, RParen, LBrace, RBrace, Comma, Slash,
+  LBracket, RBracket, Plus, Star, Caret, Backslash, Dot,
   StringLit, NumberLit, BooleanLit, Eof,
 } from './tokens.js';
 
@@ -25,16 +26,44 @@ export class DtoCstParser extends CstParser {
 
   // ─── Model ────────────────────────────────────────────────────────────
 
-  // modelDecl: IDENTIFIER COLON IDENTIFIER? LBRACE fieldList RBRACE
+  // modelDecl:
+  //   IDENTIFIER COLON IDENTIFIER LBRACE fieldList RBRACE   (model with inheritance)
+  //   IDENTIFIER COLON LBRACE fieldList RBRACE               (model with fields)
+  //   IDENTIFIER COLON typeExpression                         (type alias)
   public modelDecl = this.RULE('modelDecl', () => {
     this.CONSUME(Identifier);  // model name
     this.CONSUME(Colon);
-    this.OPTION(() => {
-      this.CONSUME2(Identifier); // base model name
-    });
-    this.CONSUME(LBrace);
-    this.SUBRULE(this.fieldList);
-    this.CONSUME(RBrace);
+    this.OR([
+      {
+        // Model with inheritance: Name : Base { fields }
+        GATE: () => {
+          const la1 = this.LA(1);
+          const la2 = this.LA(2);
+          return la1.tokenType === Identifier && la2.tokenType === LBrace;
+        },
+        ALT: () => {
+          this.CONSUME2(Identifier); // base model name
+          this.CONSUME(LBrace);
+          this.SUBRULE(this.fieldList);
+          this.CONSUME(RBrace);
+        },
+      },
+      {
+        // Model with fields: Name : { fields }
+        GATE: () => this.LA(1).tokenType === LBrace,
+        ALT: () => {
+          this.CONSUME2(LBrace);
+          this.SUBRULE2(this.fieldList);
+          this.CONSUME2(RBrace);
+        },
+      },
+      {
+        // Type alias: Name : typeExpression
+        ALT: () => {
+          this.SUBRULE(this.typeExpression);
+        },
+      },
+    ]);
   });
 
   // ─── Fields ───────────────────────────────────────────────────────────
@@ -137,14 +166,14 @@ export class DtoCstParser extends CstParser {
       { ALT: () => this.CONSUME(StringLit) },
       { ALT: () => this.CONSUME(NumberLit) },
       { ALT: () => this.CONSUME(BooleanLit) },
-      { ALT: () => this.SUBRULE(this.singleType) },
+      { ALT: () => this.SUBRULE(this.typeExpression) },
     ]);
   });
 
   public argValue = this.RULE('argValue', () => {
     this.OR([
       {
-        // regex: /pattern/
+        // regex: /pattern/ — any token except Slash is allowed inside
         ALT: () => {
           this.CONSUME(Slash);
           this.MANY(() => {
@@ -160,6 +189,13 @@ export class DtoCstParser extends CstParser {
               { ALT: () => this.CONSUME(Equals) },
               { ALT: () => this.CONSUME(Comma) },
               { ALT: () => this.CONSUME(Colon) },
+              { ALT: () => this.CONSUME(LBracket) },
+              { ALT: () => this.CONSUME(RBracket) },
+              { ALT: () => this.CONSUME(Plus) },
+              { ALT: () => this.CONSUME(Star) },
+              { ALT: () => this.CONSUME(Caret) },
+              { ALT: () => this.CONSUME(Backslash) },
+              { ALT: () => this.CONSUME(Dot) },
             ]);
           });
           this.CONSUME2(Slash);

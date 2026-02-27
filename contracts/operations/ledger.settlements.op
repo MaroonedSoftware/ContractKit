@@ -20,6 +20,9 @@
 }
 
 /ledger/settlements/:settlementId {
+    params: {
+        settlementId: uuid
+    }
     get: {
         response: {
             200: {
@@ -30,6 +33,9 @@
 }
 
 /ledger/settlements/:settlementId/finalize {
+    params: {
+        settlementId: uuid
+    }
     post: {
         request: {
             application/json: FinalizeSettlementInput
@@ -43,6 +49,9 @@
 }
 
 /ledger/settlements/:settlementId/status {
+    params: {
+        settlementId: uuid
+    }
     patch: {
         request: {
             application/json: UpdateSettlementStatusInput
@@ -56,6 +65,9 @@
 }
 
 /ledger/settlements/:settlementId/entries {
+    params: {
+        settlementId: uuid
+    }
     get: {
         query: ListSettlementEntriesQuery
         response: {
@@ -67,6 +79,10 @@
 }
 
 /ledger/settlements/:settlementId/entries/:entryId {
+    params: {
+        settlementId: uuid
+        entryId: uuid
+    }
     put: {
         service: LedgerService.updateSettlementEntry
         response: {
@@ -84,6 +100,9 @@
 }
 
 /ledger/settlements/:settlementId/transactions {
+    params: {
+        settlementId: uuid
+    }
     get: {
         query: ListSettlementTransactionsQuery
         response: {

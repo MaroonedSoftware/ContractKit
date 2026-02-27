@@ -1,12 +1,7 @@
-ProcessCacheQueueInput: {
+ProcessCacheQueue: {
     batchSize?: int(min=1) # Optional batch size
 }
-ProcessCacheQueueResult: {
-    processed: int(min=0) # Number of cache entries processed
-}
-SuccessResult: {
-    success: boolean # Whether the operation succeeded
-}
+
 BalanceCacheDrift: {
     accountId: uuid # The account identifier
     accountName: string # The account name

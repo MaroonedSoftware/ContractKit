@@ -1,46 +1,71 @@
-/transfers/fi {
-    post: {
-        request: {
-            application/json: Routing
-        }
-        response: {
-            201: {
-                application/json: Routing
-            }
-        }
-    }
-}
+# /transfers/fi {
+#     post: {
+#         request: {
+#             application/json: Routing
+#         }
+#         response: {
+#             201: {
+#                 application/json: Routing
+#             }
+#         }
+#     }
+# }
 
-/transfers {
-    post: {
-        service: TransfersService
-        request: {
-            application/json: CreateTransferIntent
-        }
-        response: {
-            201: {
-                application/json: TransferIntent
-            }
-        }
-    }
-    get: {
-        service: TransfersService
+/transfers/counterparties {
+    get: { # list counterparties
+        service: TransfersService.listCounterparties
         query: Pagination
         response: {
             200: {
-                application/json: array(TransferIntent)
+                application/json: { pagination: Pagination, data: array(Counterparty) }
+            }
+        }
+    }
+    post: { # create counterparty
+        request: {
+            application/json: CreateCounterparty
+        }
+        response: {
+            201: {
+                application/json: Counterparty
             }
         }
     }
 }
 
-/transfers/:id {
-    get: {
-        service: TransfersService.getIntent
-        response: {
-            200: {
-                application/json: TransferIntent
-            }
-        }
-    }
-}
+# /transfers {
+#     post: {
+#         service: TransfersService
+#         request: {
+#             application/json: CreateTransferIntent
+#         }
+#         response: {
+#             201: {
+#                 application/json: TransferIntent
+#             }
+#         }
+#     }
+#     get: {
+#         service: TransfersService
+#         query: Pagination
+#         response: {
+#             200: {
+#                 application/json: array(TransferIntent)
+#             }
+#         }
+#     }
+# }
+
+# /transfers/:id {
+#     params: {
+#         id: uuid
+#     }
+#     get: {
+#         service: TransfersService.getIntent
+#         response: {
+#             200: {
+#                 application/json: TransferIntent
+#             }
+#         }
+#     }
+# }

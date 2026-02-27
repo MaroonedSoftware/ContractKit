@@ -13,28 +13,28 @@ describe('parseOp', () => {
 
   describe('route paths', () => {
     it('parses simple route path', () => {
-      const { root } = parse('/users { get }');
+      const { root } = parse('/users { get: {} }');
       expect(root.routes).toHaveLength(1);
       expect(root.routes[0]!.path).toBe('/users');
     });
 
     it('parses route with path parameters', () => {
-      const { root } = parse('/users/:id { get }');
+      const { root } = parse('/users/:id { get: {} }');
       expect(root.routes[0]!.path).toBe('/users/:id');
     });
 
     it('parses nested route path', () => {
-      const { root } = parse('/api/v1/users { get }');
+      const { root } = parse('/api/v1/users { get: {} }');
       expect(root.routes[0]!.path).toBe('/api/v1/users');
     });
 
     it('parses route with multiple path parameters', () => {
-      const { root } = parse('/users/:userId/posts/:postId { get }');
+      const { root } = parse('/users/:userId/posts/:postId { get: {} }');
       expect(root.routes[0]!.path).toBe('/users/:userId/posts/:postId');
     });
 
     it('errors on route not starting with slash', () => {
-      const { diag } = parse('users { get }');
+      const { diag } = parse('users { get: {} }');
       expect(diag.hasErrors()).toBe(true);
     });
   });
@@ -48,7 +48,7 @@ describe('parseOp', () => {
     params: {
         id: uuid
     }
-    get
+    get: {}
 }`);
       const params = root.routes[0]!.params;
       expect(params).toHaveLength(1);
@@ -63,7 +63,7 @@ describe('parseOp', () => {
         id: uuid
         postId: uuid
     }
-    get
+    get: {}
 }`);
       const params = root.routes[0]!.params;
       expect(params).toHaveLength(2);
@@ -75,7 +75,7 @@ describe('parseOp', () => {
       const { root } = parse(`\
 /users/:id {
     params: RouteParams
-    get
+    get: {}
 }`);
       expect(root.routes[0]!.params).toBe('RouteParams');
     });
@@ -85,32 +85,32 @@ describe('parseOp', () => {
 
   describe('HTTP methods', () => {
     it('parses GET operation', () => {
-      const { root } = parse('/users { get }');
+      const { root } = parse('/users { get: {} }');
       expect(root.routes[0]!.operations[0]!.method).toBe('get');
     });
 
     it('parses POST operation', () => {
-      const { root } = parse('/users { post }');
+      const { root } = parse('/users { post: {} }');
       expect(root.routes[0]!.operations[0]!.method).toBe('post');
     });
 
     it('parses PUT operation', () => {
-      const { root } = parse('/users { put }');
+      const { root } = parse('/users { put: {} }');
       expect(root.routes[0]!.operations[0]!.method).toBe('put');
     });
 
     it('parses PATCH operation', () => {
-      const { root } = parse('/users { patch }');
+      const { root } = parse('/users { patch: {} }');
       expect(root.routes[0]!.operations[0]!.method).toBe('patch');
     });
 
     it('parses DELETE operation', () => {
-      const { root } = parse('/users { delete }');
+      const { root } = parse('/users { delete: {} }');
       expect(root.routes[0]!.operations[0]!.method).toBe('delete');
     });
 
-    it('parses operation with no body', () => {
-      const { root } = parse('/users { delete }');
+    it('parses operation with empty body', () => {
+      const { root } = parse('/users { delete: {} }');
       const op = root.routes[0]!.operations[0]!;
       expect(op.method).toBe('delete');
       expect(op.request).toBeUndefined();
@@ -133,7 +133,7 @@ describe('parseOp', () => {
       const request = root.routes[0]!.operations[0]!.request;
       expect(request).toBeDefined();
       expect(request!.contentType).toBe('application/json');
-      expect(request!.bodyType).toBe('CreateUserInput');
+      expect(request!.bodyType).toEqual({ kind: 'ref', name: 'CreateUserInput' });
     });
 
     it('parses multipart request', () => {
@@ -168,7 +168,7 @@ describe('parseOp', () => {
       expect(responses).toHaveLength(1);
       expect(responses[0]!.statusCode).toBe(200);
       expect(responses[0]!.contentType).toBe('application/json');
-      expect(responses[0]!.bodyType).toBe('array(User)');
+      expect(responses[0]!.bodyType).toEqual({ kind: 'array', item: { kind: 'ref', name: 'User' } });
     });
 
     it('parses response with no body', () => {
@@ -229,7 +229,7 @@ describe('parseOp', () => {
     });
 
     it('leaves query undefined when not declared', () => {
-      const { root } = parse('/users { get }');
+      const { root } = parse('/users { get: {} }');
       expect(root.routes[0]!.operations[0]!.query).toBeUndefined();
     });
   });
@@ -277,7 +277,7 @@ describe('parseOp', () => {
     });
 
     it('leaves headers undefined when not declared', () => {
-      const { root } = parse('/users { get }');
+      const { root } = parse('/users { get: {} }');
       expect(root.routes[0]!.operations[0]!.headers).toBeUndefined();
     });
   });
@@ -321,7 +321,7 @@ describe('parseOp', () => {
     });
 
     it('leaves service undefined when not declared', () => {
-      const { root } = parse('/users { get }');
+      const { root } = parse('/users { get: {} }');
       expect(root.routes[0]!.operations[0]!.service).toBeUndefined();
     });
   });
@@ -332,8 +332,8 @@ describe('parseOp', () => {
     it('parses multiple HTTP methods under one route', () => {
       const { root } = parse(`\
 /users {
-    get
-    post
+    get: {}
+    post: {}
 }`);
       expect(root.routes[0]!.operations).toHaveLength(2);
       expect(root.routes[0]!.operations[0]!.method).toBe('get');
@@ -343,11 +343,11 @@ describe('parseOp', () => {
     it('parses multiple routes', () => {
       const { root } = parse(`\
 /users {
-    get
+    get: {}
 }
 
 /posts {
-    get
+    get: {}
 }`);
       expect(root.routes).toHaveLength(2);
       expect(root.routes[0]!.path).toBe('/users');
@@ -361,11 +361,11 @@ describe('parseOp', () => {
     it('collects errors and continues parsing', () => {
       const { root, diag } = parse(`\
 bad-route-no-slash {
-    get
+    get: {}
 }
 
 /valid {
-    get
+    get: {}
 }`);
       expect(diag.hasErrors()).toBe(true);
     });
@@ -407,12 +407,12 @@ bad-route-no-slash {
       const getOp = route.operations[0]!;
       expect(getOp.method).toBe('get');
       expect(getOp.responses[0]!.statusCode).toBe(200);
-      expect(getOp.responses[0]!.bodyType).toBe('User');
+      expect(getOp.responses[0]!.bodyType).toEqual({ kind: 'ref', name: 'User' });
 
       const putOp = route.operations[1]!;
       expect(putOp.method).toBe('put');
-      expect(putOp.request!.bodyType).toBe('UpdateUserInput');
-      expect(putOp.responses[0]!.bodyType).toBe('User');
+      expect(putOp.request!.bodyType).toEqual({ kind: 'ref', name: 'UpdateUserInput' });
+      expect(putOp.responses[0]!.bodyType).toEqual({ kind: 'ref', name: 'User' });
     });
   });
 
@@ -423,7 +423,7 @@ bad-route-no-slash {
       const { root } = parse(`\
 # User management routes
 /users {
-    get
+    get: {}
 }`);
       expect(root.routes[0]!.description).toBe('User management routes');
     });
@@ -432,7 +432,7 @@ bad-route-no-slash {
       const { root } = parse(`\
 /users {
     # List all users
-    get
+    get: {}
 }`);
       expect(root.routes[0]!.operations[0]!.description).toBe('List all users');
     });
@@ -440,7 +440,7 @@ bad-route-no-slash {
     it('returns undefined description when no comment present', () => {
       const { root } = parse(`\
 /users {
-    get
+    get: {}
 }`);
       expect(root.routes[0]!.description).toBeUndefined();
       expect(root.routes[0]!.operations[0]!.description).toBeUndefined();

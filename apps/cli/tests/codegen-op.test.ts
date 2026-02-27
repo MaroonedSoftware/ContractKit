@@ -394,26 +394,15 @@ describe('generateOp', () => {
     });
   });
 
-  // ─── Registration comment ─────────────────────────────────────
-
-  describe('registration comment', () => {
-    it('generates registration comment at end', () => {
-      const root = opRoot([opRoute('/users', [opOperation('get')])]);
-      const output = generateOp(root);
-      expect(output).toContain('Register in');
-      expect(output).toContain('.routes()');
-    });
-  });
-
   // ─── Source line comments ──────────────────────────────────────
 
   describe('source line comments', () => {
-    it('includes source location comment above handler', () => {
+    it('includes source location in JSDoc above handler', () => {
       const root = opRoot([
         opRoute('/users', [opOperation('get', { loc: { file: 'users.op', line: 3 } })]),
       ], 'users.op');
       const output = generateOp(root);
-      expect(output).toContain('// from /users GET (users.op:3)');
+      expect(output).toContain('file://users.op#L3');
     });
   });
 
@@ -425,7 +414,7 @@ describe('generateOp', () => {
         opRoute('/users', [opOperation('get', { description: 'List all users' })]),
       ]);
       const output = generateOp(root);
-      expect(output).toContain('/** List all users */');
+      expect(output).toContain('* List all users');
     });
 
     it('falls back to route description when operation has none', () => {
@@ -434,15 +423,16 @@ describe('generateOp', () => {
       ]);
       root.routes[0]!.description = 'User routes';
       const output = generateOp(root);
-      expect(output).toContain('/** User routes */');
+      expect(output).toContain('* User routes');
     });
 
-    it('omits JSDoc when no description present', () => {
+    it('includes source link JSDoc for all handlers', () => {
       const root = opRoot([
         opRoute('/users', [opOperation('get')]),
       ]);
       const output = generateOp(root);
-      expect(output).not.toContain('/**');
+      expect(output).toContain('/**');
+      expect(output).toContain('file://');
     });
   });
 

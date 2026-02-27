@@ -1,7 +1,15 @@
 Counterparty: {
+    createdAt: readonly datetime # The counterparty creation timestamp
+    updatedAt: readonly datetime # The counterparty last update timestamp
     id: readonly uuid # The counterparty identifier
     name: string(min=1, max=100) # The counterparty name
     email?: email # The counterparty email
     active: boolean = true # Whether the counterparty is active
-    accounts: array(CounterpartyAccount) # The counterparty accounts
+    accounts: readonly array(CounterpartyAccount) # The counterparty accounts
+}
+
+CreateCounterparty: {
+    name: string(min=1, max=100) # The counterparty name
+    email?: email # The counterparty email
+    accounts: array(CreateCounterpartyFinancialAccount | CreateCounterpartyProcessorAccount, min=0, max=10) # The counterparty accounts
 }

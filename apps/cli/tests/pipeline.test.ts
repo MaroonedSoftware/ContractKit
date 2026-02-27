@@ -116,7 +116,7 @@ describe('OP pipeline (source -> parse -> codegen)', () => {
   });
 
   it('uses correct router name for dotted file names', () => {
-    const source = `/items { get }`;
+    const source = `/items { get: {} }`;
     const { output } = compileOpSource(source, 'ledger.items.op');
     expect(output).toContain('LedgerItemsRouter');
   });
@@ -124,7 +124,7 @@ describe('OP pipeline (source -> parse -> codegen)', () => {
 
 describe('undeclared path param warnings', () => {
   it('warns when a route has path params but no params block', () => {
-    const source = `/users/:id { get }`;
+    const source = `/users/:id { get: {} }`;
     const diag = new DiagnosticCollector();
     const root = parseOp(source, 'test.op', diag);
     validateOp(root, diag);
@@ -134,7 +134,7 @@ describe('undeclared path param warnings', () => {
   });
 
   it('warns for each undeclared param', () => {
-    const source = `/users/:userId/posts/:postId { get }`;
+    const source = `/users/:userId/posts/:postId { get: {} }`;
     const diag = new DiagnosticCollector();
     const root = parseOp(source, 'test.op', diag);
     validateOp(root, diag);
@@ -145,7 +145,7 @@ describe('undeclared path param warnings', () => {
   });
 
   it('does not warn when all path params are declared', () => {
-    const source = `/users/:id {\n    params: {\n        id: uuid\n    }\n    get\n}`;
+    const source = `/users/:id {\n    params: {\n        id: uuid\n    }\n    get: {}\n}`;
     const diag = new DiagnosticCollector();
     const root = parseOp(source, 'test.op', diag);
     validateOp(root, diag);
@@ -154,7 +154,7 @@ describe('undeclared path param warnings', () => {
   });
 
   it('warns only for the subset of undeclared params', () => {
-    const source = `/accounts/:accountId/entries/:entryId {\n    params: {\n        accountId: uuid\n    }\n    get\n}`;
+    const source = `/accounts/:accountId/entries/:entryId {\n    params: {\n        accountId: uuid\n    }\n    get: {}\n}`;
     const diag = new DiagnosticCollector();
     const root = parseOp(source, 'test.op', diag);
     validateOp(root, diag);
@@ -164,7 +164,7 @@ describe('undeclared path param warnings', () => {
   });
 
   it('does not warn when params uses a type reference', () => {
-    const source = `/users/:id {\n    params: UserParams\n    get\n}`;
+    const source = `/users/:id {\n    params: UserParams\n    get: {}\n}`;
     const diag = new DiagnosticCollector();
     const root = parseOp(source, 'test.op', diag);
     validateOp(root, diag);
@@ -173,7 +173,7 @@ describe('undeclared path param warnings', () => {
   });
 
   it('does not warn for routes without path params', () => {
-    const source = `/users { get }`;
+    const source = `/users { get: {} }`;
     const diag = new DiagnosticCollector();
     const root = parseOp(source, 'test.op', diag);
     validateOp(root, diag);
@@ -198,7 +198,7 @@ describe('error handling pipeline', () => {
   });
 
   it('reports diagnostics for invalid OP source', () => {
-    const { diag } = compileOpSource('no-slash { get }');
+    const { diag } = compileOpSource('no-slash { get: {} }');
     expect(diag.hasErrors()).toBe(true);
   });
 });

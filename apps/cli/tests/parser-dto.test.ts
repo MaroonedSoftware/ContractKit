@@ -167,14 +167,12 @@ M: {
     });
 
     it('parses string with regex', () => {
-      // Note: the lexer doesn't tokenize [, ], or + chars, so only
-      // identifier-safe characters survive in the regex pattern.
       const { root } = parse(`\
 M: {
     code: string(regex=/[A-Z]+/)
 }`);
       const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
-      expect(type.regex).toBe('A-Z');
+      expect(type.regex).toBe('[A-Z]+');
     });
 
     it('parses number with min/max', () => {
