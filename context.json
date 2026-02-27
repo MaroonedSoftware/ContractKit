@@ -1,0 +1,85 @@
+{
+  "files_to_modify": {
+    "cli": [
+      "apps/cli/src/chevrotain-parser-dto.ts",
+      "apps/cli/src/chevrotain-parser-op.ts",
+      "apps/cli/src/visitor-op.ts",
+      "apps/cli/tests/helpers.ts",
+      "apps/cli/tests/parser-dto.test.ts",
+      "apps/cli/tests/parser-op.test.ts",
+      "apps/cli/tests/pipeline.test.ts",
+      "apps/cli/tests/snapshot.test.ts"
+    ],
+    "vscode-extension": [
+      "apps/vscode-extension/syntaxes/dto.tmLanguage.json",
+      "apps/vscode-extension/syntaxes/op.tmLanguage.json",
+      "apps/vscode-extension/src/server/completion-provider.ts"
+    ],
+    "contracts": [
+      "contracts/types/shared/pagination.dto",
+      "contracts/types/shared/limit-offset.dto",
+      "contracts/types/modules/ledger/ledger.account.dto",
+      "contracts/types/modules/ledger/ledger.account.query.dto",
+      "contracts/types/modules/ledger/ledger.category.dto",
+      "contracts/types/modules/ledger/ledger.category.query.dto",
+      "contracts/types/modules/ledger/ledger.maintenance.dto",
+      "contracts/types/modules/ledger/ledger.settlement.dto",
+      "contracts/types/modules/ledger/ledger.settlement.query.dto",
+      "contracts/types/modules/ledger/ledger.transaction.dto",
+      "contracts/types/modules/ledger/ledger.transaction.query.dto",
+      "contracts/types/modules/ledger/transfer.dto",
+      "contracts/types/modules/transfers/counterparty.account.dto",
+      "contracts/types/modules/transfers/counterparty.dto",
+      "contracts/types/modules/transfers/routing.dto",
+      "contracts/types/modules/transfers/transfer.intent.dto",
+      "contracts/operations/ledger.op",
+      "contracts/operations/ledger.categories.op",
+      "contracts/operations/ledger.maintenance.op",
+      "contracts/operations/ledger.settlements.op",
+      "contracts/operations/ledger.transactions.op",
+      "contracts/operations/transfers.op"
+    ]
+  },
+  "files_to_reference": [
+    "grammar.ebnf",
+    "apps/cli/src/tokens.ts",
+    "apps/cli/src/chevrotain-parser-dto.ts",
+    "apps/cli/src/chevrotain-parser-op.ts",
+    "apps/cli/src/visitor-op.ts"
+  ],
+  "patterns": {
+    "chevrotain_parser": "Rules use this.RULE(), this.CONSUME() for mandatory tokens, this.OPTION() for optional, this.OR() with GATE for alternatives. CONSUME2/CONSUME3 needed for same token type used twice.",
+    "visitor_pattern": "CST visitors extend BaseOpVisitor/BaseDtoVisitor, access ctx.TokenName arrays and ctx.RuleName arrays, use this.visit() for sub-rules.",
+    "textmate_grammar": "JSON-based TextMate grammars with begin/end regex patterns, captures for scope assignment, repository pattern references via #include.",
+    "completion_provider": "getOpContext() walks backwards tracking brace depth, regex-matches keyword before { to determine context type.",
+    "test_fixtures": "DSL source strings defined in helpers.ts and inline in test files, parsed via parseDto()/parseOp() wrapper functions.",
+    "contract_files": "Raw DSL files in contracts/ directory, consumed by snapshot tests that compile and snapshot the output."
+  },
+  "existing_implementations": {
+    "colon_already_exists_in": [
+      "fieldDecl (mandatory colon between name and type)",
+      "paramDecl (mandatory colon between param name and type)",
+      "serviceDecl (mandatory colon after 'service' keyword)",
+      "contentTypeLine (mandatory colon after content type)",
+      "routePath (colon for path params like :id)"
+    ],
+    "colon_needs_adding_to": [
+      "modelDecl - colon is optional (wrapped in OPTION with base model), needs to be mandatory",
+      "httpOperation - no colon before body brace",
+      "paramsBlock - colon only in type-ref form, missing from block form",
+      "queryBlock - same issue as paramsBlock",
+      "headersBlock - same issue as paramsBlock",
+      "requestBlock - no colon before body brace",
+      "responseBlock - no colon before body brace",
+      "statusCodeBlock - no colon after status code number"
+    ]
+  },
+  "key_findings": {
+    "lexer_unchanged": "The Colon token already exists in tokens.ts and the lexer. No lexer changes needed.",
+    "ast_unchanged": "AST types are unaffected - changes are syntax-only, not structural.",
+    "codegen_unchanged": "Code generators consume ASTs, not syntax. No codegen changes needed.",
+    "visitor_dto_unchanged": "visitor-dto.ts already handles identifiers by index. The colon is a separate token, so identifier[1] still works for base model.",
+    "visitor_op_needs_fix": "visitParamSource uses ctx.Colon to distinguish block vs type-ref. After colon becomes mandatory in both forms, must switch to ctx.LBrace.",
+    "vscode_inherits_parser": "VSCode extension depends on contract-dsl (workspace:*) which IS the CLI package. Parser changes propagate automatically to LSP parsing."
+  }
+}

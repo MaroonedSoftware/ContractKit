@@ -1,0 +1,40 @@
+{
+  "project_type": "monorepo",
+  "services": {
+    "cli": {
+      "path": "apps/cli",
+      "tech_stack": ["typescript", "chevrotain"],
+      "description": "Compiler for .dto and .op DSL files into TypeScript/Zod/Koa code",
+      "dev_command": "npx vitest --watch",
+      "test_command": "npx vitest run",
+      "build_command": "tsc"
+    },
+    "vscode-extension": {
+      "path": "apps/vscode-extension",
+      "tech_stack": ["typescript", "vscode-languageserver", "textmate"],
+      "description": "VS Code language support for .dto and .op files (LSP + syntax highlighting)",
+      "dev_command": "node esbuild.mjs --watch",
+      "test_command": "npx vitest run",
+      "build_command": "node esbuild.mjs"
+    }
+  },
+  "infrastructure": {
+    "docker": false,
+    "database": false,
+    "ci_cd": false
+  },
+  "conventions": {
+    "package_manager": "pnpm@10.24.0",
+    "task_runner": "turbo",
+    "linter": "eslint",
+    "formatter": "prettier",
+    "testing": "vitest",
+    "module_system": "esm",
+    "target": "es2022"
+  },
+  "contracts": {
+    "path": "contracts",
+    "dto_files": "contracts/types/**/*.dto",
+    "op_files": "contracts/operations/**/*.op"
+  }
+}

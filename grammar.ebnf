@@ -21,6 +21,8 @@ STRING_LIT  = ( '"' , { ? any character except '"' ? } , '"' )
 NUMBER_LIT  = [ "-" ] , digit , { digit } , [ "." , digit , { digit } ] ;
 BOOLEAN_LIT = "true" | "false" ;
 COMMENT     = "#" , { ? any character except newline ? } ;
+                  (* On a field line → .describe("comment")              *)
+                  (* On a model line → JSDoc block above export const    *)
 
 letter      = "a" | "b" | ... | "z" | "A" | "B" | ... | "Z" | "_" | "$" ;
 digit       = "0" | "1" | ... | "9" ;
@@ -62,6 +64,9 @@ visibilityField = visibility , typeExpression ,
                   [ "=" , defaultValue ] ;
 
 visibility      = "readonly" | "writeonly" ;
+                  (* readonly  = response/read schema only               *)
+                  (* writeonly = request/write schema only                *)
+                  (* Placed after ":", before the type expression         *)
 
 (* Case 2 — plain type expression *)
 typeField       = typeExpression ,
@@ -72,12 +77,28 @@ typeField       = typeExpression ,
 (* --------------------------------------------------------------------- *)
 
 typeExpression  = singleType , { "|" , singleType } ;
-                  (* pipe-separated union: string | number | null        *)
+                  (* pipe-separated union: string | number               *)
+                  (* trailing | null → .nullable() not z.union           *)
 
 singleType      = inlineBraceObject
                 | IDENTIFIER , [ "(" , typeArgs , ")" ] ;
                   (* IDENTIFIER = type name (scalar, compound, or ref)   *)
                   (* optional parenthesized arguments for constraints    *)
+
+                  (* Known scalar types:                                 *)
+                  (*   string, number, int, bigint, boolean,             *)
+                  (*   date, datetime, email, url, uuid,                 *)
+                  (*   any, unknown, null, object, binary                *)
+                  (*                                                     *)
+                  (* Known compound types (with args):                   *)
+                  (*   array(type [, min=N, max=N])                      *)
+                  (*   tuple(type, type, ...)                            *)
+                  (*   record(keyType, valueType)                        *)
+                  (*   enum(value1, value2, ...)                         *)
+                  (*   literal(value)                                    *)
+                  (*   lazy(ModelRef)                                    *)
+                  (*                                                     *)
+                  (* Any PascalCase IDENTIFIER may also be a model ref   *)
 
 (* --------------------------------------------------------------------- *)
 (* Type Arguments & Constraints                                          *)
@@ -91,6 +112,11 @@ typeArg         = IDENTIFIER , "=" , argValue           (* key=value     *)
                 | BOOLEAN_LIT
                 | singleType ;                          (* nested type   *)
 
+                  (* Known constraint keys:                              *)
+                  (*   min=N, max=N    — value or length bounds          *)
+                  (*   len=N           — exact length                    *)
+                  (*   regex=/pattern/ — regex constraint                *)
+
 argValue        = regexLiteral
                 | IDENTIFIER
                 | NUMBER_LIT
@@ -99,10 +125,9 @@ argValue        = regexLiteral
 
 regexLiteral    = "/" , { regexChar } , "/" ;
 
-regexChar       = IDENTIFIER | NUMBER_LIT
-                | "(" | ")" | "|" | "{" | "}"
-                | "?" | "=" | "," | ":" ;
-                  (* any token allowed inside a regex pattern            *)
+regexChar       = ? any character except "/" and newline ? ;
+                  (* e.g. [a-z0-9-]+  →  letters, digits, metacharacters *)
+                  (* common metacharacters: [ ] ( ) { } | . * + ? ^ $ \  *)
 
 (* --------------------------------------------------------------------- *)
 (* Inline Brace Objects                                                  *)
@@ -121,6 +146,8 @@ defaultValue    = STRING_LIT
                 | NUMBER_LIT
                 | BOOLEAN_LIT
                 | IDENTIFIER ;
+                  (* .default(value) replaces .optional() — mutually     *)
+                  (* exclusive with "?"                                   *)
 
 
 (* ===================================================================== *)
@@ -164,7 +191,8 @@ paramDecl       = IDENTIFIER , ":" , IDENTIFIER ;
 
 httpMethod      = "get" | "post" | "put" | "patch" | "delete" ;
 
-httpOperation   = httpMethod , [ ":" , "{" , operationBody , "}" ] ;
+httpOperation   = httpMethod , ":" , "{" , operationBody , "}" ;
+                  (* colon and braces are mandatory                     *)
 
 operationBody   = { serviceDecl | queryBlock | headersBlock
                   | requestBlock | responseBlock } ;
