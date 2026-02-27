@@ -50,3 +50,5 @@ yarn-error.log*
 .worktrees/
 .security-key
 logs/security/
+
+*.vsix
