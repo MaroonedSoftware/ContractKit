@@ -20,7 +20,8 @@
             "dependsOn": ["^test"]
         },
         "start": {
-            "dependsOn": ["build"]
+            "dependsOn": ["build"],
+            "cache": false
         },
         "vscode:install": {
             "dependsOn": ["build"]

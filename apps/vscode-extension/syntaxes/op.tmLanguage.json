@@ -55,7 +55,7 @@
             "beginCaptures": {
                 "1": { "name": "keyword.control.params.op" }
             },
-            "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|head|options)\\b)|(?=\\})",
+            "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete)\\b)|(?=\\})",
             "patterns": [
                 { "include": "#comment" },
                 { "include": "#type-shorthand" },
@@ -63,12 +63,12 @@
             ]
         },
         "http-operation": {
-            "begin": "\\b(get|post|put|patch|delete|head|options)\\b\\s*(?:(:)\\s*)?",
+            "begin": "\\b(get|post|put|patch|delete)\\b\\s*(?:(:)\\s*)?",
             "beginCaptures": {
                 "1": { "name": "keyword.control.http-method.op" },
                 "2": { "name": "punctuation.separator.colon.op" }
             },
-            "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|head|options|params)\\b)|(?=\\})",
+            "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|params)\\b)|(?=\\})",
             "patterns": [
                 { "include": "#operation-body" }
             ]
@@ -181,7 +181,7 @@
             ]
         },
         "content-type-line": {
-            "begin": "((?:application|multipart|text)/[\\w.+-]+)\\s*(:)\\s*",
+            "begin": "([a-zA-Z][a-zA-Z0-9-]*/[a-zA-Z][a-zA-Z0-9.+-]*)\\s*(:)\\s*",
             "beginCaptures": {
                 "1": { "name": "string.other.content-type.op" },
                 "2": { "name": "punctuation.separator.colon.op" }
@@ -234,7 +234,14 @@
                 { "include": "#type-constraints" },
                 { "include": "#union-pipe" },
                 { "include": "#intersection-ampersand" },
-                { "include": "#model-reference" }
+                { "include": "#postfix-array" },
+                { "include": "#inline-object" },
+                { "include": "#string-literal" },
+                { "include": "#number-literal" },
+                { "include": "#boolean-literal" },
+                { "include": "#regex-literal" },
+                { "include": "#model-reference" },
+                { "include": "#enum-value" }
             ]
         },
         "builtin-type": {
@@ -255,13 +262,29 @@
                 "1": { "name": "punctuation.parenthesis.close.op" }
             },
             "patterns": [
+                { "include": "#constraint-key-value" },
                 { "include": "#type-expression" },
+                { "include": "#string-literal" },
+                { "include": "#number-literal" },
+                { "include": "#boolean-literal" },
+                { "include": "#regex-literal" },
                 { "include": "#comma" }
             ]
+        },
+        "constraint-key-value": {
+            "match": "\\b(min|max|length|len|regex)\\s*(=)",
+            "captures": {
+                "1": { "name": "variable.parameter.constraint.op" },
+                "2": { "name": "keyword.operator.assignment.op" }
+            }
         },
         "model-reference": {
             "match": "\\b([A-Z][a-zA-Z0-9_$]*)\\b",
             "name": "entity.name.type.reference.op"
+        },
+        "enum-value": {
+            "match": "\\b([a-z][a-zA-Z0-9_$.-]*)\\b",
+            "name": "variable.other.enummember.op"
         },
         "union-pipe": {
             "match": "\\|",
@@ -270,6 +293,51 @@
         "intersection-ampersand": {
             "match": "&",
             "name": "keyword.operator.intersection.op"
+        },
+        "postfix-array": {
+            "match": "\\[\\]",
+            "name": "punctuation.definition.array.op"
+        },
+        "inline-object": {
+            "begin": "(\\{)",
+            "beginCaptures": {
+                "1": { "name": "punctuation.definition.block.begin.op" }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": { "name": "punctuation.definition.block.end.op" }
+            },
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#param-declaration" },
+                { "include": "#comma" }
+            ]
+        },
+        "string-literal": {
+            "patterns": [
+                {
+                    "begin": "\"",
+                    "end": "\"",
+                    "name": "string.quoted.double.op"
+                },
+                {
+                    "begin": "'",
+                    "end": "'",
+                    "name": "string.quoted.single.op"
+                }
+            ]
+        },
+        "number-literal": {
+            "match": "-?\\d+(\\.\\d+)?",
+            "name": "constant.numeric.op"
+        },
+        "boolean-literal": {
+            "match": "\\b(true|false)\\b",
+            "name": "constant.language.boolean.op"
+        },
+        "regex-literal": {
+            "match": "/[^/]+/",
+            "name": "string.regexp.op"
         },
         "comma": {
             "match": ",",

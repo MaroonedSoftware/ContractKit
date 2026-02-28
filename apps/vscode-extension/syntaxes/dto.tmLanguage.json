@@ -4,12 +4,37 @@
     "scopeName": "source.dto",
     "patterns": [
         { "include": "#comment" },
-        { "include": "#model-declaration" }
+        { "include": "#front-matter" },
+        { "include": "#model-declaration" },
+        { "include": "#type-alias-declaration" }
     ],
     "repository": {
         "comment": {
             "match": "#.*$",
             "name": "comment.line.number-sign.dto"
+        },
+        "front-matter": {
+            "begin": "(---)",
+            "beginCaptures": {
+                "1": { "name": "punctuation.definition.front-matter.begin.dto" }
+            },
+            "end": "(---)",
+            "endCaptures": {
+                "1": { "name": "punctuation.definition.front-matter.end.dto" }
+            },
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#meta-entry" }
+            ]
+        },
+        "meta-entry": {
+            "match": "([a-zA-Z_$][a-zA-Z0-9_$.-]*)\\s*(:)\\s*(?:(\"[^\"]*\"|'[^']*')|([a-zA-Z_$][a-zA-Z0-9_$.-]*))",
+            "captures": {
+                "1": { "name": "entity.other.attribute-name.dto" },
+                "2": { "name": "punctuation.separator.colon.dto" },
+                "3": { "name": "string.quoted.dto" },
+                "4": { "name": "string.unquoted.dto" }
+            }
         },
         "model-declaration": {
             "begin": "([A-Z][a-zA-Z0-9_$]*)\\s*(:)\\s*(?:([A-Z][a-zA-Z0-9_$]*)\\s*)?(\\{)",
@@ -26,6 +51,18 @@
             "patterns": [
                 { "include": "#comment" },
                 { "include": "#field-declaration" }
+            ]
+        },
+        "type-alias-declaration": {
+            "begin": "([A-Z][a-zA-Z0-9_$]*)\\s*(:)",
+            "beginCaptures": {
+                "1": { "name": "entity.name.type.model.dto" },
+                "2": { "name": "keyword.operator.inheritance.dto" }
+            },
+            "end": "$",
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#type-expression" }
             ]
         },
         "field-declaration": {
@@ -53,13 +90,13 @@
                 { "include": "#compound-type" },
                 { "include": "#type-constraints" },
                 { "include": "#union-pipe" },
-                { "include": "#intersection-ampersand" },
                 { "include": "#inline-object" },
                 { "include": "#string-literal" },
                 { "include": "#number-literal" },
                 { "include": "#boolean-literal" },
                 { "include": "#regex-literal" },
-                { "include": "#model-reference" }
+                { "include": "#model-reference" },
+                { "include": "#enum-value" }
             ]
         },
         "builtin-type": {
@@ -73,6 +110,10 @@
         "model-reference": {
             "match": "\\b([A-Z][a-zA-Z0-9_$]*)\\b",
             "name": "entity.name.type.reference.dto"
+        },
+        "enum-value": {
+            "match": "\\b([a-z][a-zA-Z0-9_$.-]*)\\b",
+            "name": "variable.other.enummember.dto"
         },
         "type-constraints": {
             "begin": "(\\()",
@@ -103,10 +144,6 @@
         "union-pipe": {
             "match": "\\|",
             "name": "keyword.operator.union.dto"
-        },
-        "intersection-ampersand": {
-            "match": "&",
-            "name": "keyword.operator.intersection.dto"
         },
         "inline-object": {
             "begin": "(\\{)",

@@ -272,7 +272,7 @@ function isInsideTypeConstraints(lines: string[], currentLine: number, textBefor
             } else {
                 // Found unmatched opening paren; check if preceded by a type name
                 const before = fullText.slice(0, i).trim();
-                return /\b(string|number|int|bigint|array|tuple|record)$/.test(before);
+                return /\b(string|number|int|bigint|boolean|date|datetime|email|url|uuid|array|tuple|record|enum|literal|lazy)$/.test(before);
             }
         }
     }

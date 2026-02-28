@@ -255,7 +255,7 @@ async function main() {
         for (const { outPath, content } of results) {
             mkdirSync(dirname(outPath), { recursive: true });
             writeFileSync(outPath, content, 'utf-8');
-            console.log(`  ✓  ${relative(resolvedBase, outPath)}`);
+            console.log(`  ✓  ${outPath}`);
         }
 
         // Save cache
