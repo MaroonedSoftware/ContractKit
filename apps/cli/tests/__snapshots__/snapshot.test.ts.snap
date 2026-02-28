@@ -3,12 +3,12 @@
 exports[`DTO snapshot tests > counterparty.dto matches snapshot 1`] = `
 "import { z } from 'zod';
 import { DateTime } from 'luxon';
-import { CounterpartyAccount } from './counterparty.account.dto.js';
-import { CreateCounterpartyFinancialAccount } from './create.counterparty.financial.account.dto.js';
-import { CreateCounterpartyProcessorAccount } from './create.counterparty.processor.account.dto.js';
+import { CounterpartyAccount } from './counterparty.account.js';
+import { CreateCounterpartyFinancialAccount } from './create.counterparty.financial.account.js';
+import { CreateCounterpartyProcessorAccount } from './create.counterparty.processor.account.js';
 
 /**
- * generated from [Counterparty](file:///Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L1)
+ * generated from [Counterparty](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L1)
 */
 const CounterpartyBase = z.strictObject({
     createdAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The counterparty creation timestamp"),
@@ -39,7 +39,7 @@ export const CounterpartyInput = z.strictObject({
 export type CounterpartyInput = z.infer<typeof CounterpartyInput>;
 
 /**
- * generated from [CreateCounterparty](file:///Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L11)
+ * generated from [CreateCounterparty](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L11)
 */
 export const CreateCounterparty = z.strictObject({
     name: z.string().min(1).max(100).describe("The counterparty name"),
@@ -53,10 +53,10 @@ export type CreateCounterparty = z.infer<typeof CreateCounterparty>;
 exports[`DTO snapshot tests > ledger.account.dto matches snapshot 1`] = `
 "import { z } from 'zod';
 import { DateTime } from 'luxon';
-import { CustomCurrency } from './custom.currency.dto.js';
+import { CustomCurrency } from './custom.currency.js';
 
 /**
- * generated from [LedgerAccount](file:///Users/robert/projects/contract-dsl/contracts/types/modules/ledger/ledger.account.dto#L1)
+ * generated from [LedgerAccount](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/ledger/ledger.account.dto#L1)
 */
 const LedgerAccountBase = z.strictObject({
     id: z.uuid().describe("The account identifier"),
@@ -95,7 +95,7 @@ exports[`DTO snapshot tests > pagination.dto matches snapshot 1`] = `
 "import { z } from 'zod';
 
 /**
- * generated from [Pagination](file:///Users/robert/projects/contract-dsl/contracts/types/shared/pagination.dto#L1)
+ * generated from [Pagination](file://.//Users/robert/projects/contract-dsl/contracts/types/shared/pagination.dto#L1)
 */
 const PaginationBase = z.strictObject({
     page: z.int().min(0).default(0).describe("Page number"),
@@ -129,12 +129,12 @@ import { AccountBalances, GetAccountBalancesQuery, LedgerAccount, LedgerAccountI
 import { parseAndValidate } from '#src/shared/validator.js';
 
 /**
- * generated from [ledger.op](file:///Users/robert/projects/contract-dsl/contracts/operations/ledger.op)
+ * generated from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op)
 */
 export const LedgerRouter = ServerKitRouter();
 
 /**
- * from file:///Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L2
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L2)
 */
 LedgerRouter.post('/ledger/accounts', bodyParserMiddleware(['json']), async (ctx, next) => {
     const body = await parseAndValidate(ctx.body, LedgerAccountInput);
@@ -150,7 +150,7 @@ LedgerRouter.post('/ledger/accounts', bodyParserMiddleware(['json']), async (ctx
 });
 
 /**
- * from file:///Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L12
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L12)
 */
 LedgerRouter.get('/ledger/accounts', async (ctx, next) => {
     const query = await parseAndValidate(ctx.query, PaginationQuery);
@@ -166,7 +166,7 @@ LedgerRouter.get('/ledger/accounts', async (ctx, next) => {
 });
 
 /**
- * from file:///Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L26
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L26)
 */
 LedgerRouter.get('/ledger/accounts/:accountId', async (ctx, next) => {
     const { accountId } = await parseAndValidate(
@@ -187,7 +187,7 @@ LedgerRouter.get('/ledger/accounts/:accountId', async (ctx, next) => {
 });
 
 /**
- * from file:///Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L39
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L39)
 */
 LedgerRouter.get('/ledger/accounts/:accountId/balances', async (ctx, next) => {
     const { accountId } = await parseAndValidate(
@@ -210,7 +210,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/balances', async (ctx, next) => {
 });
 
 /**
- * from file:///Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L53
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L53)
 */
 LedgerRouter.get('/ledger/accounts/:accountId/transactions', async (ctx, next) => {
     const { accountId } = await parseAndValidate(
@@ -233,7 +233,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/transactions', async (ctx, next) =
 });
 
 /**
- * from file:///Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L67
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L67)
 */
 LedgerRouter.get('/ledger/accounts/:accountId/categories', async (ctx, next) => {
     const { accountId } = await parseAndValidate(
@@ -254,7 +254,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/categories', async (ctx, next) => 
 });
 
 /**
- * from file:///Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L81
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L81)
 */
 LedgerRouter.put('/ledger/accounts/:accountId/categories/:categoryId', async (ctx, next) => {
     const { accountId, categoryId } = await parseAndValidate(
@@ -276,7 +276,7 @@ LedgerRouter.put('/ledger/accounts/:accountId/categories/:categoryId', async (ct
 });
 
 /**
- * from file:///Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L89
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L89)
 */
 LedgerRouter.delete('/ledger/accounts/:accountId/categories/:categoryId', async (ctx, next) => {
     const { accountId, categoryId } = await parseAndValidate(
@@ -305,13 +305,13 @@ import { Counterparty, CreateCounterparty, Pagination } from '#modules/transfers
 import { parseAndValidate } from '#src/shared/validator.js';
 
 /**
- * generated from [transfers.op](file:///Users/robert/projects/contract-dsl/contracts/operations/transfers.op)
+ * generated from [transfers.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/transfers.op)
 */
 export const TransfersRouter = ServerKitRouter();
 
 /**
  * list counterparties
- * from file:///Users/robert/projects/contract-dsl/contracts/operations/transfers.op#L15
+ * from [transfers.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/transfers.op#L15)
 */
 TransfersRouter.get('/transfers/counterparties', async (ctx, next) => {
     const query = await parseAndValidate(ctx.query, Pagination);
@@ -331,7 +331,7 @@ TransfersRouter.get('/transfers/counterparties', async (ctx, next) => {
 
 /**
  * create counterparty
- * from file:///Users/robert/projects/contract-dsl/contracts/operations/transfers.op#L24
+ * from [transfers.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/transfers.op#L24)
 */
 TransfersRouter.post('/transfers/counterparties', bodyParserMiddleware(['json']), async (ctx, next) => {
     const body = await parseAndValidate(ctx.body, CreateCounterparty);

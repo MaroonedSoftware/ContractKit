@@ -165,6 +165,7 @@ export interface OpRouteNode {
 
 export interface OpRootNode {
   kind: 'opRoot';
+  meta: Record<string, string>;
   routes: OpRouteNode[];
   file: string;
 }

@@ -3,7 +3,7 @@ import {
   allTokens, Identifier, Colon, Question,
   Equals, Pipe, LParen, RParen, LBrace, RBrace,
   Comma, Slash, LBracket, RBracket, Ampersand,
-  NumberLit, StringLit, BooleanLit, Eof,
+  NumberLit, StringLit, BooleanLit, Eof, TripleDash,
 } from './tokens.js';
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
@@ -20,10 +20,32 @@ export class OpCstParser extends CstParser {
   // ─── Top-level ────────────────────────────────────────────────────────
 
   public opRoot = this.RULE('opRoot', () => {
+    this.OPTION(() => {
+      this.SUBRULE(this.frontMatter);
+    });
     this.MANY(() => {
       this.SUBRULE(this.routeDecl);
     });
     this.CONSUME(Eof);
+  });
+
+  // --- key: value ... ---
+  public frontMatter = this.RULE('frontMatter', () => {
+    this.CONSUME(TripleDash);  // opening ---
+    this.MANY(() => {
+      this.SUBRULE(this.metaEntry);
+    });
+    this.CONSUME2(TripleDash); // closing ---
+  });
+
+  // key: value (inside front-matter)
+  public metaEntry = this.RULE('metaEntry', () => {
+    this.CONSUME(Identifier);  // key
+    this.CONSUME(Colon);
+    this.OR([
+      { ALT: () => this.CONSUME(StringLit) },
+      { ALT: () => this.CONSUME2(Identifier) },  // unquoted value
+    ]);
   });
 
   // ─── Route ────────────────────────────────────────────────────────────

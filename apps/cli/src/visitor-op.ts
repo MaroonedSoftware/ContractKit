@@ -24,6 +24,13 @@ export class OpVisitor extends BaseOpVisitor {
   }
 
   opRoot(ctx: any): OpRootNode {
+    const meta: Record<string, string> = {};
+    if (ctx.frontMatter) {
+      const entries = this.visit(ctx.frontMatter[0]) as [string, string][];
+      for (const [key, value] of entries) {
+        meta[key] = value;
+      }
+    }
     const routes: OpRouteNode[] = [];
     if (ctx.routeDecl) {
       for (const routeCst of ctx.routeDecl) {
@@ -31,7 +38,28 @@ export class OpVisitor extends BaseOpVisitor {
         if (route) routes.push(route);
       }
     }
-    return { kind: 'opRoot', routes, file: this.file };
+    return { kind: 'opRoot', meta, routes, file: this.file };
+  }
+
+  frontMatter(ctx: any): [string, string][] {
+    const entries: [string, string][] = [];
+    if (ctx.metaEntry) {
+      for (const entryCst of ctx.metaEntry) {
+        const entry = this.visit(entryCst);
+        if (entry) entries.push(entry);
+      }
+    }
+    return entries;
+  }
+
+  metaEntry(ctx: any): [string, string] {
+    const identifiers: IToken[] = ctx.Identifier || [];
+    const key = identifiers[0]?.image ?? '';
+    if (ctx.StringLit) {
+      return [key, ctx.StringLit[0].image];
+    }
+    const value = identifiers[1]?.image ?? '';
+    return [key, value];
   }
 
   routeDecl(ctx: any): OpRouteNode {

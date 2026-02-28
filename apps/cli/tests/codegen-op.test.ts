@@ -360,6 +360,24 @@ describe('generateOp', () => {
       const output = generateOp(root);
       expect(output).toContain('LedgerCategoriesService');
     });
+
+    it('uses meta for service import path when declared', () => {
+      const root = opRoot([
+        opRoute('/capital', [
+          opOperation('post', { service: 'LedgerService.disburse' }),
+        ]),
+      ], 'capital.op', { LedgerService: '#modules/ledger/ledger.service.js' });
+      const output = generateOp(root);
+      expect(output).toContain("import { LedgerService } from '#modules/ledger/ledger.service.js';");
+    });
+
+    it('falls back to deriveModulePath when meta has no entry for service', () => {
+      const root = opRoot([
+        opRoute('/capital', [opOperation('get')]),
+      ], 'capital.op', { SomeOtherService: '#other/path.js' });
+      const output = generateOp(root);
+      expect(output).toContain("import { CapitalService } from '#modules/capital/capital.service.js';");
+    });
   });
 
   // ─── Type collection ──────────────────────────────────────────
@@ -402,7 +420,7 @@ describe('generateOp', () => {
         opRoute('/users', [opOperation('get', { loc: { file: 'users.op', line: 3 } })]),
       ], 'users.op');
       const output = generateOp(root);
-      expect(output).toContain('file://users.op#L3');
+      expect(output).toContain('file://./users.op#L3');
     });
   });
 

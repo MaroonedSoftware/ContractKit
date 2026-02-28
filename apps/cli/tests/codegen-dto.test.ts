@@ -396,7 +396,7 @@ describe('generateDto', () => {
         model('User', [field('name', scalarType('string'))], { loc: { file: 'user.dto', line: 5 } }),
       ]);
       const output = generateDto(root);
-      expect(output).toContain('file://user.dto#L5');
+      expect(output).toContain('file://./user.dto#L5');
     });
 
     it('includes source location for three-schema models', () => {
@@ -407,7 +407,7 @@ describe('generateDto', () => {
         ], { loc: { file: 'user.dto', line: 1 } }),
       ]);
       const output = generateDto(root);
-      expect(output).toContain('file://user.dto#L1');
+      expect(output).toContain('file://./user.dto#L1');
     });
   });
 

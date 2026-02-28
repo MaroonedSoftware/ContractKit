@@ -8,7 +8,7 @@
     "routes": {
         "output": "src/routes/{filename}.router.ts",
         "include": ["contracts/operations/**/*.op"],
-        "servicePathTemplate": "#services/{kebab}.service.js",
+        "servicePathTemplate": "#modules/{module}/{module}.service.js",
         "typeImportPathTemplate": "#modules/{module}/types/index.js"
     }
 }

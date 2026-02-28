@@ -1,12 +1,15 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource } from './ast.js';
-import { renderType } from './codegen-dto.js';
-import { basename } from 'path';
+import { renderType, pascalToDotCase } from './codegen-dto.js';
+import { basename, dirname, relative } from 'path';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
 export interface OpCodegenOptions {
     servicePathTemplate?: string;
     typeImportPathTemplate?: string;
+    outPath?: string;
+    /** Map from model name → absolute output file path (for cross-module type imports) */
+    modelOutPaths?: Map<string, string>;
 }
 
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
@@ -23,14 +26,12 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     lines.push(`import { ServerKitRouter, bodyParserMiddleware } from '@maroonedsoftware/koa';`);
 
     for (const svc of services) {
-        const modulePath = deriveModulePath(svc, options.servicePathTemplate);
+        const modulePath = root.meta[svc] ?? deriveModulePath(svc, options.servicePathTemplate);
         lines.push(`import { ${svc} } from '${modulePath}';`);
     }
 
     if (types.length > 0) {
-        // Group types by module (heuristic: infer from file path)
-        const typeImport = deriveTypeImportPath(root.file, options.typeImportPathTemplate);
-        lines.push(`import { ${types.join(', ')} } from '${typeImport}';`);
+        lines.push(...generateTypeImports(types, root.file, options));
     }
 
     if (needsParseAndValidate) {
@@ -39,14 +40,15 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
     lines.push('');
     lines.push('/**');
-    lines.push(` * generated from [${basename(root.file)}](file://${root.file})`);
+    const relFile = options.outPath ? relative(dirname(options.outPath), root.file) : root.file;
+    lines.push(` * generated from [${basename(root.file)}](file://./${relFile})`);
     lines.push('*/');
     lines.push(`export const ${routerName} = ServerKitRouter();`);
     lines.push('');
 
     for (const route of root.routes) {
         for (const op of route.operations) {
-            lines.push(...generateHandler(route, op, root.file));
+            lines.push(...generateHandler(route, op, root.file, options.outPath));
             lines.push('');
         }
     }
@@ -56,7 +58,7 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
 // ─── Handler generation ────────────────────────────────────────────────────
 
-function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string): string[] {
+function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, outPath?: string): string[] {
     const lines: string[] = [];
 
     lines.push('/**');
@@ -67,7 +69,8 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string):
         lines.push(` * ${desc}`);
     }
     // Source location comment
-    lines.push(` * from file://${file}#L${op.loc.line}`);
+    const relFile = outPath ? relative(dirname(outPath), file) : file;
+    lines.push(` * from [${basename(file)}](file://./${relFile}#L${op.loc.line})`);
     lines.push('*/');
 
     const method = op.method;
@@ -205,9 +208,7 @@ function generateParamValidation(source: ParamSource | undefined, ctxExpr: strin
         if (source.length > 0) {
             // Destructure only for params (spread individually in service call);
             // query/headers are passed as whole objects.
-            const lhs = varName === 'params'
-                ? `{ ${source.map(p => p.name).join(', ')} }`
-                : varName;
+            const lhs = varName === 'params' ? `{ ${source.map(p => p.name).join(', ')} }` : varName;
             lines.push(`    const ${lhs} = await parseAndValidate(`);
             lines.push(`        ${ctxExpr},`);
             lines.push(`        ${schemaWrapper}({`);
@@ -223,6 +224,57 @@ function generateParamValidation(source: ParamSource | undefined, ctxExpr: strin
         lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${renderType(source)});`);
         lines.push('');
     }
+    return lines;
+}
+
+// ─── Type import resolution ────────────────────────────────────────────────
+
+/**
+ * Generate per-file type import statements.
+ * When modelOutPaths is available, groups types by their actual output file
+ * and computes correct relative paths. Falls back to the template-based
+ * single-import approach for types not found in the map.
+ */
+function generateTypeImports(types: string[], opFile: string, options: OpCodegenOptions): string[] {
+    const lines: string[] = [];
+    const { modelOutPaths, outPath } = options;
+
+    if (modelOutPaths && outPath) {
+        // Group types by their output file
+        const byFile = new Map<string, string[]>();
+        const unresolved: string[] = [];
+
+        for (const type of types) {
+            const typeOutPath = modelOutPaths.get(type);
+            if (typeOutPath) {
+                const group = byFile.get(typeOutPath) ?? [];
+                group.push(type);
+                byFile.set(typeOutPath, group);
+            } else {
+                unresolved.push(type);
+            }
+        }
+
+        // Emit one import per source file with a relative path
+        const fromDir = dirname(outPath);
+        for (const [typeOutPath, names] of byFile) {
+            let rel = relative(fromDir, typeOutPath);
+            rel = rel.replace(/\.ts$/, '.js');
+            if (!rel.startsWith('.')) rel = './' + rel;
+            lines.push(`import { ${names.sort().join(', ')} } from '${rel}';`);
+        }
+
+        // Fallback for types not in the map
+        for (const type of unresolved) {
+            const moduleName = pascalToDotCase(type);
+            lines.push(`import { ${type} } from './${moduleName}.js';`);
+        }
+    } else {
+        // No resolution context — fall back to template-based single import
+        const typeImport = deriveTypeImportPath(opFile, options.typeImportPathTemplate);
+        lines.push(`import { ${types.join(', ')} } from '${typeImport}';`);
+    }
+
     return lines;
 }
 

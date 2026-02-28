@@ -115,8 +115,8 @@ export function opRoute(path: string, operations: OpOperationNode[], params?: Pa
   return { path, params, operations, loc: loc(1, 'test.op') };
 }
 
-export function opRoot(routes: OpRouteNode[], file = 'users.op'): OpRootNode {
-  return { kind: 'opRoot', routes, file };
+export function opRoot(routes: OpRouteNode[], file = 'users.op', meta: Record<string, string> = {}): OpRootNode {
+  return { kind: 'opRoot', meta, routes, file };
 }
 
 // ─── DSL Fixture Strings ────────────────────────────────────────────────────

@@ -35,6 +35,7 @@ export interface Token {
 export function tokenize(source: string, file: string): Token[] {
   const lines = source.split('\n');
   const tokens: Token[] = [];
+  let inFrontMatter = false;
 
   for (let lineNum = 0; lineNum < lines.length; lineNum++) {
     const rawLine = lines[lineNum]!;
@@ -43,16 +44,35 @@ export function tokenize(source: string, file: string): Token[] {
     // Blank lines are skipped
     if (rawLine.trim() === '') continue;
 
-    // Standalone comment line
     const trimmed = rawLine.trim();
-    if (trimmed.startsWith('#')) {
-      tokens.push({ kind: 'COMMENT', value: trimmed.slice(1).trim(), line: lineNo });
-      continue;
-    }
 
     // Front-matter delimiter: three or more dashes on their own line
     if (/^-{3,}$/.test(trimmed)) {
       tokens.push({ kind: 'TRIPLE_DASH', value: '---', line: lineNo });
+      inFrontMatter = !inFrontMatter;
+      continue;
+    }
+
+    // Inside front-matter: tokenize as key: value
+    // Values are consumed whole (no # comment handling) to support paths like #modules/...
+    if (inFrontMatter) {
+      const match = trimmed.match(/^([a-zA-Z_$][a-zA-Z0-9_$\-.]*)\s*:\s*(.+)$/);
+      if (match) {
+        tokens.push({ kind: 'IDENTIFIER', value: match[1]!, line: lineNo });
+        tokens.push({ kind: 'COLON', value: ':', line: lineNo });
+        let value = match[2]!.trim();
+        // Strip surrounding quotes if present, emit as STRING either way
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        tokens.push({ kind: 'STRING', value, line: lineNo });
+      }
+      continue;
+    }
+
+    // Standalone comment line
+    if (trimmed.startsWith('#')) {
+      tokens.push({ kind: 'COMMENT', value: trimmed.slice(1).trim(), line: lineNo });
       continue;
     }
 

@@ -446,4 +446,54 @@ bad-route-no-slash {
       expect(root.routes[0]!.operations[0]!.description).toBeUndefined();
     });
   });
+
+  // ─── Front-matter ────────────────────────────────────────────────
+
+  describe('front-matter', () => {
+    it('parses front-matter with unquoted value', () => {
+      const { root } = parse(`\
+---
+module: capital
+---
+/capital { get: {} }`);
+      expect(root.meta).toEqual({ module: 'capital' });
+      expect(root.routes).toHaveLength(1);
+    });
+
+    it('parses front-matter with quoted string value', () => {
+      const { root } = parse(`\
+---
+CapitalService: "#modules/capital/capital.service.js"
+---
+/capital { get: {} }`);
+      expect(root.meta).toEqual({ CapitalService: '#modules/capital/capital.service.js' });
+    });
+
+    it('parses front-matter with unquoted hash-prefixed path', () => {
+      const { root } = parse(`\
+---
+CapitalService: #modules/capital/capital.service.js
+---
+/capital { get: {} }`);
+      expect(root.meta).toEqual({ CapitalService: '#modules/capital/capital.service.js' });
+    });
+
+    it('parses front-matter with multiple entries', () => {
+      const { root } = parse(`\
+---
+CapitalService: #modules/capital/capital.service.js
+LedgerService: #modules/ledger/ledger.service.js
+---
+/capital { get: {} }`);
+      expect(root.meta).toEqual({
+        CapitalService: '#modules/capital/capital.service.js',
+        LedgerService: '#modules/ledger/ledger.service.js',
+      });
+    });
+
+    it('defaults to empty meta when no front-matter', () => {
+      const { root } = parse('/users { get: {} }');
+      expect(root.meta).toEqual({});
+    });
+  });
 });

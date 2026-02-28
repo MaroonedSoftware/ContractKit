@@ -191,13 +191,13 @@ async function main() {
                 }
                 dtoRoots.push({ ast, filePath, outPath });
             } else {
-                const outPath = computeOutPath(filePath, config, rootDir);
+                const ast = parseOp(source, filePath, diag);
+                const outPath = computeOutPath(filePath, config, rootDir, ast.meta);
                 if (!outPath) continue;
                 if (!config.force && !isFileChanged(filePath, source, outPath, cache)) {
                     console.log(`  -  ${relative(resolvedBase, outPath)} (unchanged)`);
                     continue;
                 }
-                const ast = parseOp(source, filePath, diag);
                 opRoots.push({ ast, filePath, outPath });
             }
         }
@@ -237,6 +237,8 @@ async function main() {
             const content = generateOp(ast, {
                 servicePathTemplate: config.routes.servicePathTemplate,
                 typeImportPathTemplate: config.routes.typeImportPathTemplate,
+                outPath,
+                modelOutPaths,
             });
             results.push({ outPath, content });
         }

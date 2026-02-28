@@ -28,13 +28,15 @@ export interface DtoCodegenContext {
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
-function generateComments(model: ModelNode): string[] {
+function generateComments(model: ModelNode, outPath?: string): string[] {
     const lines: string[] = [];
     lines.push('/**');
     if (model.description) {
         lines.push(` * ${model.description}`);
     }
-    lines.push(` * generated from [${model.name}](file://${model.loc.file}#L${model.loc.line})`);
+
+    const relPath = outPath ? relative(dirname(outPath), model.loc.file) : model.loc.file;
+    lines.push(` * generated from [${model.name}](file://./${relPath}#L${model.loc.line})`);
     lines.push('*/');
     return lines;
 }
@@ -53,7 +55,7 @@ export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): str
     lines.push('');
 
     for (const model of topoSortModels(root.models)) {
-        lines.push(...generateModel(model));
+        lines.push(...generateModel(model, context?.currentOutPath));
         lines.push('');
     }
 
@@ -62,31 +64,31 @@ export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): str
 
 // ─── Model ─────────────────────────────────────────────────────────────────
 
-function generateModel(model: ModelNode): string[] {
+function generateModel(model: ModelNode, outPath?: string): string[] {
     // Type alias: Name : typeExpression
     if (model.type) {
-        return generateTypeAlias(model);
+        return generateTypeAlias(model, outPath);
     }
 
     const hasVisibility = model.fields.some(f => f.visibility !== 'normal');
 
     if (hasVisibility) {
-        return generateThreeSchemaModel(model);
+        return generateThreeSchemaModel(model, outPath);
     }
-    return generateSimpleModel(model);
+    return generateSimpleModel(model, outPath);
 }
 
-function generateTypeAlias(model: ModelNode): string[] {
+function generateTypeAlias(model: ModelNode, outPath?: string): string[] {
     const lines: string[] = [];
-    lines.push(...generateComments(model));
+    lines.push(...generateComments(model, outPath));
     lines.push(`export const ${model.name} = ${renderType(model.type!)};`);
     lines.push(`export type ${model.name} = z.infer<typeof ${model.name}>;`);
     return lines;
 }
 
-function generateSimpleModel(model: ModelNode): string[] {
+function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
     const lines: string[] = [];
-    lines.push(...generateComments(model));
+    lines.push(...generateComments(model, outPath));
 
     const body = renderFields(model.fields);
 
@@ -104,11 +106,11 @@ function generateSimpleModel(model: ModelNode): string[] {
     return lines;
 }
 
-function generateThreeSchemaModel(model: ModelNode): string[] {
+function generateThreeSchemaModel(model: ModelNode, outPath?: string): string[] {
     const lines: string[] = [];
     const name = model.name;
 
-    lines.push(...generateComments(model));
+    lines.push(...generateComments(model, outPath));
 
     // Base schema — all fields
     const allFields = model.fields;
