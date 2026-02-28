@@ -4,12 +4,36 @@
     "scopeName": "source.op",
     "patterns": [
         { "include": "#comment" },
+        { "include": "#front-matter" },
         { "include": "#route-declaration" }
     ],
     "repository": {
         "comment": {
             "match": "#.*$",
             "name": "comment.line.number-sign.op"
+        },
+        "front-matter": {
+            "begin": "(---)",
+            "beginCaptures": {
+                "1": { "name": "punctuation.definition.front-matter.begin.op" }
+            },
+            "end": "(---)",
+            "endCaptures": {
+                "1": { "name": "punctuation.definition.front-matter.end.op" }
+            },
+            "patterns": [
+                { "include": "#comment" },
+                { "include": "#meta-entry" }
+            ]
+        },
+        "meta-entry": {
+            "match": "([a-zA-Z_$][a-zA-Z0-9_$.-]*)\\s*(:)\\s*(?:(\"[^\"]*\"|'[^']*')|([a-zA-Z_$][a-zA-Z0-9_$.-]*))",
+            "captures": {
+                "1": { "name": "entity.other.attribute-name.op" },
+                "2": { "name": "punctuation.separator.colon.op" },
+                "3": { "name": "string.quoted.op" },
+                "4": { "name": "string.unquoted.op" }
+            }
         },
         "route-declaration": {
             "begin": "(/[a-zA-Z0-9_/:.-]+)\\s*(\\{)",

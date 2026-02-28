@@ -90,6 +90,7 @@
                 { "include": "#compound-type" },
                 { "include": "#type-constraints" },
                 { "include": "#union-pipe" },
+                { "include": "#intersection-ampersand" },
                 { "include": "#inline-object" },
                 { "include": "#string-literal" },
                 { "include": "#number-literal" },
@@ -144,6 +145,10 @@
         "union-pipe": {
             "match": "\\|",
             "name": "keyword.operator.union.dto"
+        },
+        "intersection-ampersand": {
+            "match": "&",
+            "name": "keyword.operator.intersection.dto"
         },
         "inline-object": {
             "begin": "(\\{)",

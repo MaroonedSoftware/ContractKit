@@ -30,6 +30,31 @@ describe('getCompletions', () => {
       );
       expect(items.some(i => i.label === 'User')).toBe(true);
     });
+
+    it('offers type completions after ampersand (intersection)', () => {
+      const doc = makeDoc('file:///test.dto', 'M: {\n    f: string & \n}');
+      const index = new WorkspaceIndex();
+      const items = getCompletions(
+        { textDocument: { uri: doc.uri }, position: { line: 1, character: 15 } },
+        doc, index,
+      );
+      expect(items.some(i => i.label === 'string')).toBe(true);
+      expect(items.some(i => i.label === 'number')).toBe(true);
+      expect(items.some(i => i.label === 'null')).toBe(true);
+      expect(items.some(i => i.label === 'array')).toBe(true);
+    });
+
+    it('offers type completions after pipe (union)', () => {
+      const doc = makeDoc('file:///test.dto', 'M: {\n    f: string | \n}');
+      const index = new WorkspaceIndex();
+      const items = getCompletions(
+        { textDocument: { uri: doc.uri }, position: { line: 1, character: 15 } },
+        doc, index,
+      );
+      expect(items.some(i => i.label === 'string')).toBe(true);
+      expect(items.some(i => i.label === 'null')).toBe(true);
+      expect(items.some(i => i.label === 'array')).toBe(true);
+    });
   });
 
   describe('OP completions', () => {
@@ -52,6 +77,30 @@ describe('getCompletions', () => {
         doc, index,
       );
       expect(items.some(i => i.label === 'params')).toBe(true);
+    });
+
+    it('offers builtin and compound types after query:', () => {
+      const doc = makeDoc('file:///test.op', '/users {\n    get: {\n        query: \n    }\n}');
+      const index = new WorkspaceIndex();
+      const items = getCompletions(
+        { textDocument: { uri: doc.uri }, position: { line: 2, character: 15 } },
+        doc, index,
+      );
+      expect(items.some(i => i.label === 'string')).toBe(true);
+      expect(items.some(i => i.label === 'int')).toBe(true);
+      expect(items.some(i => i.label === 'array')).toBe(true);
+    });
+
+    it('offers service names after service:', () => {
+      const doc = makeDoc('file:///test.op', '/users {\n    get: {\n        service: \n    }\n}');
+      const index = new WorkspaceIndex();
+      index.indexFromSource('file:///other.op', '/test {\n    get: {\n        service: UserService.list\n    }\n}');
+      const items = getCompletions(
+        { textDocument: { uri: doc.uri }, position: { line: 2, character: 17 } },
+        doc, index,
+      );
+      // Service names come from the index
+      expect(items.every(i => i.kind === 3 /* Function */)).toBe(true);
     });
   });
 });

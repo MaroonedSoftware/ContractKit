@@ -73,12 +73,19 @@ function getDtoCompletions(
         ];
     }
 
-    // After a pipe — union type continuation
-    if (/\|\s*\w*$/.test(textBefore)) {
+    // After a pipe or ampersand — union/intersection type continuation
+    if (/[|&]\s*\w*$/.test(textBefore)) {
         return [
             ...BUILTIN_SCALAR_TYPES.map((t) => ({
                 label: t,
                 kind: CompletionItemKind.TypeParameter,
+            })),
+            ...COMPOUND_TYPES.map((t) => ({
+                label: t,
+                kind: CompletionItemKind.TypeParameter,
+                detail: 'Compound type',
+                insertText: `${t}($1)`,
+                insertTextFormat: 2,
             })),
             { label: 'null', kind: CompletionItemKind.Keyword },
             ...index.getAllModelNames().map((name) => ({
@@ -150,13 +157,27 @@ function getOpCompletions(
         }));
     }
 
-    // After query: or headers: or params: — offer model names
+    // After query: or headers: or params: — offer types and model names
     if (/(?:query|headers|params)\s*:\s*\w*$/.test(textBefore)) {
-        return index.getAllModelNames().map((name) => ({
-            label: name,
-            kind: CompletionItemKind.Class,
-            detail: 'Model reference',
-        }));
+        return [
+            ...BUILTIN_SCALAR_TYPES.map((t) => ({
+                label: t,
+                kind: CompletionItemKind.TypeParameter,
+                detail: 'Built-in type',
+            })),
+            ...COMPOUND_TYPES.map((t) => ({
+                label: t,
+                kind: CompletionItemKind.TypeParameter,
+                detail: 'Compound type',
+                insertText: `${t}($1)`,
+                insertTextFormat: 2,
+            })),
+            ...index.getAllModelNames().map((name) => ({
+                label: name,
+                kind: CompletionItemKind.Class,
+                detail: 'Model reference',
+            })),
+        ];
     }
 
     // After content type colon — offer model names

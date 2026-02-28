@@ -5,8 +5,8 @@ import type { DtoTypeNode, FieldNode, ModelNode } from 'contract-dsl/src/ast.js'
 
 const BUILTIN_TYPE_DOCS: Record<string, string> = {
     string: 'Text string — Zod `z.string()`',
-    number: 'Floating-point number — Zod `z.number()`',
-    int: 'Integer number — Zod `z.int()`',
+    number: 'Floating-point number — Zod `z.coerce.number()`',
+    int: 'Integer number — Zod `z.coerce.number().int()`',
     bigint: 'BigInt — Zod `z.bigint()`',
     boolean: 'Boolean true/false — Zod `z.boolean()`',
     date: 'Date — Luxon `DateTime` custom validator',
@@ -105,6 +105,8 @@ function formatType(type: DtoTypeNode): string {
             return JSON.stringify(type.value);
         case 'union':
             return type.members.map(formatType).join(' | ');
+        case 'intersection':
+            return type.members.map(formatType).join(' & ');
         case 'ref':
             return type.name;
         case 'inlineObject':

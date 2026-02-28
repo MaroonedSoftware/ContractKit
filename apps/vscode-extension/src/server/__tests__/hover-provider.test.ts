@@ -45,4 +45,26 @@ describe('getHover', () => {
     );
     expect(hover).toBeNull();
   });
+
+  it('returns coerced number hover for number type', () => {
+    const doc = TextDocument.create('file:///test.dto', 'dto', 1, 'M {\n    f: number\n}');
+    const index = new WorkspaceIndex();
+    const hover = getHover(
+      { textDocument: { uri: doc.uri }, position: { line: 1, character: 8 } },
+      doc, index,
+    );
+    expect(hover).not.toBeNull();
+    expect(hover!.contents).toMatchObject({ kind: 'markdown', value: expect.stringContaining('z.coerce.number()') });
+  });
+
+  it('returns coerced int hover for int type', () => {
+    const doc = TextDocument.create('file:///test.dto', 'dto', 1, 'M {\n    f: int\n}');
+    const index = new WorkspaceIndex();
+    const hover = getHover(
+      { textDocument: { uri: doc.uri }, position: { line: 1, character: 8 } },
+      doc, index,
+    );
+    expect(hover).not.toBeNull();
+    expect(hover!.contents).toMatchObject({ kind: 'markdown', value: expect.stringContaining('z.coerce.number().int()') });
+  });
 });
