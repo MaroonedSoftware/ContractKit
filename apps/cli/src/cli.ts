@@ -128,6 +128,35 @@ function commonDir(files: string[], baseDir: string): string {
     return first.slice(0, depth).join('/') || '/';
 }
 
+// ─── Barrel file generation ───────────────────────────────────────────────
+
+function generateBarrelFiles(dtoPaths: string[]): { outPath: string; content: string }[] {
+    // Group DTO output files by directory
+    const byDir = new Map<string, string[]>();
+    for (const outPath of dtoPaths) {
+        const dir = dirname(outPath);
+        const group = byDir.get(dir) ?? [];
+        group.push(outPath);
+        byDir.set(dir, group);
+    }
+
+    const results: { outPath: string; content: string }[] = [];
+    for (const [dir, files] of byDir) {
+        const exports = files
+            .map(f => {
+                const base = f.split('/').pop()!.replace(/\.ts$/, '.js');
+                return `export * from './${base}';`;
+            })
+            .sort()
+            .join('\n');
+
+        const content = `// Auto-generated barrel file\n${exports}\n`;
+        results.push({ outPath: join(dir, 'index.ts'), content });
+    }
+
+    return results;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -258,6 +287,14 @@ async function main() {
             mkdirSync(dirname(outPath), { recursive: true });
             writeFileSync(outPath, content, 'utf-8');
             console.log(`  ✓  ${outPath}`);
+        }
+
+        // ── Generate barrel index files for DTO directories ─────────
+        const barrelFiles = generateBarrelFiles(allDtoInfo.map(d => d.outPath));
+        for (const { outPath, content } of barrelFiles) {
+            mkdirSync(dirname(outPath), { recursive: true });
+            writeFileSync(outPath, content, 'utf-8');
+            console.log(`  ✓  ${relative(resolvedBase, outPath)} (barrel)`);
         }
 
         // Save cache
