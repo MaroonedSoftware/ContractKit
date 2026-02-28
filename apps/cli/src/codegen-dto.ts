@@ -209,13 +209,13 @@ function renderScalar(s: ScalarTypeNode): string {
             return e;
         }
         case 'number': {
-            let e = 'z.number()';
+            let e = 'z.coerce.number()';
             if (s.min !== undefined) e += `.min(${s.min})`;
             if (s.max !== undefined) e += `.max(${s.max})`;
             return e;
         }
         case 'int': {
-            let e = 'z.int()';
+            let e = 'z.coerce.number().int()';
             if (s.min !== undefined) e += `.min(${s.min})`;
             if (s.max !== undefined) e += `.max(${s.max})`;
             return e;

@@ -228,8 +228,8 @@ describe('generateOp', () => {
       ]);
       const output = generateOp(root);
       expect(output).toContain('ctx.query');
-      expect(output).toContain('page: z.int()');
-      expect(output).toContain('limit: z.int()');
+      expect(output).toContain('page: z.coerce.number().int()');
+      expect(output).toContain('limit: z.coerce.number().int()');
     });
 
     it('generates parseAndValidate import when operation has query', () => {

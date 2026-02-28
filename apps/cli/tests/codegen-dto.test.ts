@@ -40,24 +40,24 @@ describe('renderType', () => {
         .toBe('z.string().regex(/^https?:\\/\\/[^\\/]+\\/path$/)');
     });
 
-    it('renders z.number()', () => {
-      expect(renderType(scalarType('number'))).toBe('z.number()');
+    it('renders z.coerce.number()', () => {
+      expect(renderType(scalarType('number'))).toBe('z.coerce.number()');
     });
 
-    it('renders z.number() with min', () => {
-      expect(renderType(scalarType('number', { min: 0 }))).toBe('z.number().min(0)');
+    it('renders z.coerce.number() with min', () => {
+      expect(renderType(scalarType('number', { min: 0 }))).toBe('z.coerce.number().min(0)');
     });
 
-    it('renders z.number() with min and max', () => {
-      expect(renderType(scalarType('number', { min: 0, max: 100 }))).toBe('z.number().min(0).max(100)');
+    it('renders z.coerce.number() with min and max', () => {
+      expect(renderType(scalarType('number', { min: 0, max: 100 }))).toBe('z.coerce.number().min(0).max(100)');
     });
 
-    it('renders z.int()', () => {
-      expect(renderType(scalarType('int'))).toBe('z.int()');
+    it('renders z.coerce.number().int()', () => {
+      expect(renderType(scalarType('int'))).toBe('z.coerce.number().int()');
     });
 
-    it('renders z.int() with constraints', () => {
-      expect(renderType(scalarType('int', { min: 1, max: 10 }))).toBe('z.int().min(1).max(10)');
+    it('renders z.coerce.number().int() with constraints', () => {
+      expect(renderType(scalarType('int', { min: 1, max: 10 }))).toBe('z.coerce.number().int().min(1).max(10)');
     });
 
     it('renders z.bigint()', () => {
@@ -133,12 +133,12 @@ describe('renderType', () => {
 
     it('renders tuple type', () => {
       expect(renderType(tupleType(scalarType('number'), scalarType('string'))))
-        .toBe('z.tuple([z.number(), z.string()])');
+        .toBe('z.tuple([z.coerce.number(), z.string()])');
     });
 
     it('renders record type', () => {
       expect(renderType(recordType(scalarType('string'), scalarType('number'))))
-        .toBe('z.record(z.string(), z.number())');
+        .toBe('z.record(z.string(), z.coerce.number())');
     });
 
     it('renders enum type', () => {
@@ -163,7 +163,7 @@ describe('renderType', () => {
 
     it('renders union type', () => {
       expect(renderType(unionType(scalarType('string'), scalarType('number'))))
-        .toBe('z.union([z.string(), z.number()])');
+        .toBe('z.union([z.string(), z.coerce.number()])');
     });
 
     it('renders model reference as bare name', () => {
@@ -181,7 +181,7 @@ describe('renderType', () => {
       ]));
       expect(result).toContain('z.strictObject({');
       expect(result).toContain('key: z.string(),');
-      expect(result).toContain('value: z.number(),');
+      expect(result).toContain('value: z.coerce.number(),');
     });
   });
 });
@@ -200,7 +200,7 @@ describe('generateDto', () => {
       const output = generateDto(root);
       expect(output).toContain('export const User = z.strictObject({');
       expect(output).toContain('name: z.string(),');
-      expect(output).toContain('age: z.number(),');
+      expect(output).toContain('age: z.coerce.number(),');
       expect(output).toContain('export type User = z.infer<typeof User>;');
     });
 

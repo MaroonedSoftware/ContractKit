@@ -32,7 +32,7 @@ describe('DTO pipeline (source -> parse -> codegen)', () => {
     expect(output).toContain('id: z.uuid()');
     expect(output).toContain('name: z.string()');
     expect(output).toContain('email: z.email()');
-    expect(output).toContain('age: z.number().optional()');
+    expect(output).toContain('age: z.coerce.number().optional()');
     expect(output).toContain('active: z.boolean().default(true)');
   });
 
@@ -74,11 +74,11 @@ Kitchen: {
     const { output, diag } = compileDtoSource(source);
     expect(diag.hasErrors()).toBe(false);
     expect(output).toContain('z.array(z.string())');
-    expect(output).toContain('z.tuple([z.number(), z.number()])');
+    expect(output).toContain('z.tuple([z.coerce.number(), z.coerce.number()])');
     expect(output).toContain('z.record(z.string(), z.unknown())');
     expect(output).toContain('z.enum(["open", "closed"])');
     expect(output).toContain('z.literal("kitchen")');
-    expect(output).toContain('z.union([z.string(), z.number()])');
+    expect(output).toContain('z.union([z.string(), z.coerce.number()])');
     expect(output).toContain('Address');
     expect(output).toContain('z.lazy(() => Kitchen)');
   });
