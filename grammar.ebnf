@@ -20,6 +20,7 @@ STRING_LIT  = ( '"' , { ? any character except '"' ? } , '"' )
             | ( "'" , { ? any character except "'" ? } , "'" ) ;
 NUMBER_LIT  = [ "-" ] , digit , { digit } , [ "." , digit , { digit } ] ;
 BOOLEAN_LIT = "true" | "false" ;
+TRIPLE_DASH = "---" ;
 COMMENT     = "#" , { ? any character except newline ? } ;
                   (* On a field line → .describe("comment")              *)
                   (* On a model line → JSDoc block above export const    *)
@@ -30,19 +31,38 @@ digit       = "0" | "1" | ... | "9" ;
 EOF         = ? end of file ? ;
 
 
+(* --------------------------------------------------------------------- *)
+(* Front-matter (shared by .dto and .op files)                           *)
+(* --------------------------------------------------------------------- *)
+
+frontMatter     = TRIPLE_DASH , { metaEntry } , TRIPLE_DASH ;
+                  (* key-value metadata block                              *)
+                  (* In .dto: template variables for output paths          *)
+                  (* In .op:  explicit service import paths                *)
+
+metaEntry       = IDENTIFIER , ":" , ( STRING_LIT | IDENTIFIER ) ;
+                  (* key: value — value may be quoted or unquoted          *)
+                  (* Inside front-matter, # is NOT treated as a comment    *)
+                  (* so unquoted paths like #modules/foo.js are valid      *)
+
+
 (* ===================================================================== *)
 (* Part 1 — DTO Grammar  (.dto files)                                   *)
 (* ===================================================================== *)
 
-dtoRoot         = { modelDecl } , EOF ;
+dtoRoot         = [ frontMatter ] , { modelDecl } , EOF ;
 
 (* --------------------------------------------------------------------- *)
 (* Models                                                                *)
 (* --------------------------------------------------------------------- *)
 
-modelDecl       = IDENTIFIER , ":" , [ IDENTIFIER ] , "{" , fieldList , "}" ;
+modelDecl       = IDENTIFIER , ":" ,
+                  ( IDENTIFIER , "{" , fieldList , "}"   (* inheritance   *)
+                  | "{" , fieldList , "}"                 (* plain model   *)
+                  | typeExpression ) ;                    (* type alias    *)
                   (* first IDENTIFIER  = model name                      *)
                   (* second IDENTIFIER = base model for inheritance      *)
+                  (* type alias form: Name : string | number             *)
 
 (* --------------------------------------------------------------------- *)
 (* Fields                                                                *)
@@ -57,7 +77,7 @@ fieldDecl       = IDENTIFIER , [ "?" ] , ":" , fieldBody ;
 fieldBody       = visibilityField                       (* case 1 *)
                 | typeField ;                           (* case 2 *)
                   (* nested objects are handled via typeExpression       *)
-                  (* → singleType → inlineBraceObject                   *)
+                  (* → intersectionExpr → singleType → inlineBraceObject *)
 
 (* Case 1 — visibility modifier + type *)
 visibilityField = visibility , typeExpression ,
@@ -76,9 +96,14 @@ typeField       = typeExpression ,
 (* Type Expressions                                                      *)
 (* --------------------------------------------------------------------- *)
 
-typeExpression  = singleType , { "|" , singleType } ;
+typeExpression  = intersectionExpr , { "|" , intersectionExpr } ;
                   (* pipe-separated union: string | number               *)
                   (* trailing | null → .nullable() not z.union           *)
+
+intersectionExpr = singleType , { "&" , singleType } ;
+                  (* ampersand-separated intersection                    *)
+                  (* higher precedence than union                        *)
+                  (* e.g. Pagination & { sortBy?: string }               *)
 
 singleType      = inlineBraceObject
                 | IDENTIFIER , [ "(" , typeArgs , ")" ] ;
@@ -110,7 +135,7 @@ typeArg         = IDENTIFIER , "=" , argValue           (* key=value     *)
                 | STRING_LIT                            (* literal arg   *)
                 | NUMBER_LIT
                 | BOOLEAN_LIT
-                | singleType ;                          (* nested type   *)
+                | typeExpression ;                      (* nested type   *)
 
                   (* Known constraint keys:                              *)
                   (*   min=N, max=N    — value or length bounds          *)
@@ -125,9 +150,11 @@ argValue        = regexLiteral
 
 regexLiteral    = "/" , { regexChar } , "/" ;
 
-regexChar       = ? any character except "/" and newline ? ;
+regexChar       = ? any token except "/" ? ;
                   (* e.g. [a-z0-9-]+  →  letters, digits, metacharacters *)
-                  (* common metacharacters: [ ] ( ) { } | . * + ? ^ $ \  *)
+                  (* Allows: identifiers, numbers, parens, pipes, braces *)
+                  (*   brackets, question, equals, comma, colon,         *)
+                  (*   plus, star, caret, backslash, dot                 *)
 
 (* --------------------------------------------------------------------- *)
 (* Inline Brace Objects                                                  *)
@@ -136,7 +163,9 @@ regexChar       = ? any character except "/" and newline ? ;
 inlineBraceObject = "{" , { inlineField , [ "," ] } , "}" ;
                   (* commas between fields are optional                  *)
 
-inlineField     = IDENTIFIER , [ "?" ] , ":" , typeExpression ;
+inlineField     = IDENTIFIER , [ "?" ] , ":" , typeExpression ,
+                  [ "=" , defaultValue ] ;
+                  (* supports optional default values                    *)
 
 (* --------------------------------------------------------------------- *)
 (* Default Values                                                        *)
@@ -154,7 +183,7 @@ defaultValue    = STRING_LIT
 (* Part 2 — Operation Grammar  (.op files)                              *)
 (* ===================================================================== *)
 
-opRoot          = { routeDecl } , EOF ;
+opRoot          = [ frontMatter ] , { routeDecl } , EOF ;
 
 (* --------------------------------------------------------------------- *)
 (* Routes                                                                *)
@@ -210,19 +239,18 @@ serviceDecl     = "service" , ":" , IDENTIFIER ;
 (* Query Parameters                                                      *)
 (* --------------------------------------------------------------------- *)
 
-queryBlock      = "query" , ":" , ( IDENTIFIER               (* type ref   *)
-                                  | "{" , { paramDecl } , "}" ) ;  (* inline     *)
+queryBlock      = "query" , ":" , opTypeExpr ;
                   (* type reference: query: Pagination                     *)
-                  (* inline params:  query { page: int  limit: int }       *)
+                  (* inline object:  query: { page: int, limit: int }      *)
+                  (* intersection:   query: Pagination & { sortBy: string } *)
 
 (* --------------------------------------------------------------------- *)
 (* Headers                                                               *)
 (* --------------------------------------------------------------------- *)
 
-headersBlock    = "headers" , ":" , ( IDENTIFIER               (* type ref   *)
-                                    | "{" , { paramDecl } , "}" ) ;  (* inline     *)
+headersBlock    = "headers" , ":" , opTypeExpr ;
                   (* type reference: headers: CommonHeaders                *)
-                  (* inline params:  headers { authorization: string }     *)
+                  (* inline object:  headers: { authorization: string }    *)
 
 (* --------------------------------------------------------------------- *)
 (* Request                                                               *)
@@ -245,10 +273,58 @@ statusCodeBlock = NUMBER_LIT , ":" , [ "{" , contentTypeLine , "}" ] ;
 (* --------------------------------------------------------------------- *)
 
 contentTypeLine = IDENTIFIER , "/" , IDENTIFIER , ":" ,
-                  bodyTypeExpr ;
+                  opTypeExpr ;
                   (* e.g. application/json: User                         *)
                   (* e.g. multipart/form-data: UploadInput               *)
+                  (* e.g. application/json: array(User)                  *)
 
-bodyTypeExpr    = IDENTIFIER , [ "(" , IDENTIFIER , ")" ] ;
-                  (* plain type: User                                    *)
-                  (* wrapped type: array(User)                           *)
+(* --------------------------------------------------------------------- *)
+(* OP Type Expressions                                                   *)
+(* --------------------------------------------------------------------- *)
+(* These mirror the DTO type system but also support postfix array       *)
+(* syntax ([]) on atomic types. Used in query, headers, request body,    *)
+(* and response body positions.                                          *)
+
+opTypeExpr      = opIntersectionExpr , { "|" , opIntersectionExpr } ;
+                  (* union: string | number                              *)
+
+opIntersectionExpr = opAtomicType , { "&" , opAtomicType } ;
+                  (* intersection: Pagination & { sortBy: string }       *)
+
+opAtomicType    = opInlineObject
+                | IDENTIFIER , [ "(" , opTypeArgs , ")" ] ,
+                  [ "[" , "]" ] ;
+                  (* IDENTIFIER = type name or model reference           *)
+                  (* optional parens for type args/constraints           *)
+                  (* optional postfix [] for array shorthand             *)
+                  (* e.g. User[], string(min=1)[], enum(a, b)            *)
+
+(* --------------------------------------------------------------------- *)
+(* OP Type Arguments                                                     *)
+(* --------------------------------------------------------------------- *)
+
+opTypeArgs      = [ opTypeArg , { "," , opTypeArg } ] ;
+
+opTypeArg       = IDENTIFIER , "=" , opArgValue         (* key=value     *)
+                | STRING_LIT                            (* literal arg   *)
+                | NUMBER_LIT
+                | BOOLEAN_LIT
+                | opTypeExpr ;                          (* nested type   *)
+
+opArgValue      = NUMBER_LIT
+                | STRING_LIT
+                | BOOLEAN_LIT
+                | IDENTIFIER ;
+                  (* Note: OP argValue does NOT support regex literals   *)
+                  (* unlike DTO argValue                                 *)
+
+(* --------------------------------------------------------------------- *)
+(* OP Inline Objects                                                     *)
+(* --------------------------------------------------------------------- *)
+
+opInlineObject  = "{" , { opInlineField , [ "," ] } , "}" ;
+                  (* commas between fields are optional                  *)
+
+opInlineField   = IDENTIFIER , [ "?" ] , ":" , opTypeExpr ;
+                  (* Note: OP inline fields do NOT support default values *)
+                  (* unlike DTO inline fields                            *)
