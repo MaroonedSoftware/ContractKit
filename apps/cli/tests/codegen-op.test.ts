@@ -75,6 +75,34 @@ describe('generateOp', () => {
       const output = generateOp(root);
       expect(output).not.toContain('parseAndValidate');
     });
+
+    it('includes luxon DateTime import when query uses datetime type', () => {
+      const root = opRoot([
+        opRoute('/events', [
+          opOperation('get', {
+            query: [opParam('since', scalarType('datetime'))],
+          }),
+        ]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain("import { DateTime } from 'luxon';");
+    });
+
+    it('includes luxon DateTime import when inline param uses date type', () => {
+      const root = opRoot([
+        opRoute('/events/:date', [opOperation('get')], [opParam('date', scalarType('date'))]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain("import { DateTime } from 'luxon';");
+    });
+
+    it('omits luxon DateTime import when no date/datetime types used', () => {
+      const root = opRoot([
+        opRoute('/users/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))]),
+      ]);
+      const output = generateOp(root);
+      expect(output).not.toContain('luxon');
+    });
   });
 
   // ─── Handler generation — GET ──────────────────────────────────

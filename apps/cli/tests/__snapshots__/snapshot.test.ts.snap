@@ -316,11 +316,12 @@ export const TransfersRouter = ServerKitRouter();
 TransfersRouter.get('/transfers/counterparties', async (ctx, next) => {
     const query = await parseAndValidate(ctx.query, Pagination);
 
-    const service = ctx.container.get(TransfersService);
-    const result: z.infer<typeof z.strictObject({
+    const resultType = z.strictObject({
     pagination: Pagination,
     data: z.array(Counterparty),
-})> = await service.listCounterparties(query);
+});
+    const service = ctx.container.get(TransfersService);
+    const result: z.infer<typeof resultType> = await service.listCounterparties(query);
 
     ctx.status = 200;
     ctx.type = 'application/json';

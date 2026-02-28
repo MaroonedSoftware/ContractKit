@@ -2,7 +2,7 @@ import type { IToken } from 'chevrotain';
 import { dtoCstParser } from './chevrotain-parser-dto.js';
 import type {
   DtoRootNode, ModelNode, FieldNode, DtoTypeNode,
-  ScalarTypeNode, InlineObjectTypeNode, UnionTypeNode,
+  ScalarTypeNode, InlineObjectTypeNode, UnionTypeNode, IntersectionTypeNode,
 } from './ast.js';
 import { SCALAR_NAMES } from './ast.js';
 
@@ -148,13 +148,24 @@ export class DtoVisitor extends BaseDtoVisitor {
 
   typeExpression(ctx: any): DtoTypeNode {
     const types: DtoTypeNode[] = [];
+    if (ctx.intersectionExpr) {
+      for (const ie of ctx.intersectionExpr) {
+        types.push(this.visit(ie));
+      }
+    }
+    if (types.length === 1) return types[0]!;
+    return { kind: 'union', members: types };
+  }
+
+  intersectionExpr(ctx: any): DtoTypeNode {
+    const types: DtoTypeNode[] = [];
     if (ctx.singleType) {
       for (const st of ctx.singleType) {
         types.push(this.visit(st));
       }
     }
     if (types.length === 1) return types[0]!;
-    return { kind: 'union', members: types };
+    return { kind: 'intersection', members: types };
   }
 
   singleType(ctx: any): DtoTypeNode {
@@ -251,8 +262,14 @@ export class DtoVisitor extends BaseDtoVisitor {
       : { kind: 'scalar', name: 'unknown' };
     const { type, nullable } = extractNullability(raw);
 
+    let defaultVal: string | number | boolean | undefined;
+    if (ctx.defaultValue) {
+      defaultVal = this.visit(ctx.defaultValue[0]);
+    }
+
     return {
       name, optional, nullable, visibility: 'normal', type,
+      default: defaultVal,
       loc: { file: this.file, line },
     };
   }

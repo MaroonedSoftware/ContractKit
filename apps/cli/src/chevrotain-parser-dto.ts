@@ -2,7 +2,7 @@ import { CstParser } from 'chevrotain';
 import {
   allTokens, Identifier, Colon, Question,
   Equals, Pipe, LParen, RParen, LBrace, RBrace, Comma, Slash,
-  LBracket, RBracket, Plus, Star, Caret, Backslash, Dot,
+  LBracket, RBracket, Plus, Star, Caret, Backslash, Dot, Ampersand,
   StringLit, NumberLit, BooleanLit, Eof, TripleDash,
 } from './tokens.js';
 
@@ -136,10 +136,20 @@ export class DtoCstParser extends CstParser {
 
   // ─── Type expressions ─────────────────────────────────────────────────
 
+  // Union: intersectionExpr (| intersectionExpr)*
   public typeExpression = this.RULE('typeExpression', () => {
-    this.SUBRULE(this.singleType);
+    this.SUBRULE(this.intersectionExpr);
     this.MANY(() => {
       this.CONSUME(Pipe);
+      this.SUBRULE2(this.intersectionExpr);
+    });
+  });
+
+  // Intersection: singleType (& singleType)*   — higher precedence than union
+  public intersectionExpr = this.RULE('intersectionExpr', () => {
+    this.SUBRULE(this.singleType);
+    this.MANY(() => {
+      this.CONSUME(Ampersand);
       this.SUBRULE2(this.singleType);
     });
   });
@@ -246,6 +256,10 @@ export class DtoCstParser extends CstParser {
     this.OPTION(() => this.CONSUME(Question));
     this.CONSUME(Colon);
     this.SUBRULE(this.typeExpression);
+    this.OPTION2(() => {
+      this.CONSUME(Equals);
+      this.SUBRULE(this.defaultValue);
+    });
   });
 
   // ─── Default value ────────────────────────────────────────────────────

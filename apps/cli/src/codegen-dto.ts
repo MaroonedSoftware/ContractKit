@@ -307,7 +307,7 @@ function rootNeedsDateTime(root: DtoRootNode): boolean {
     return root.models.some(m => (m.type && typeNeedsDateTime(m.type)) || m.fields.some(f => typeNeedsDateTime(f.type)));
 }
 
-function typeNeedsDateTime(type: DtoTypeNode): boolean {
+export function typeNeedsDateTime(type: DtoTypeNode): boolean {
     switch (type.kind) {
         case 'scalar':
             return type.name === 'date' || type.name === 'datetime';

@@ -1,6 +1,6 @@
 import { parseDto } from '../src/parser-dto.js';
 import { DiagnosticCollector } from '../src/diagnostics.js';
-import type { ScalarTypeNode, ArrayTypeNode, TupleTypeNode, RecordTypeNode, EnumTypeNode, LiteralTypeNode, UnionTypeNode, ModelRefTypeNode, InlineObjectTypeNode, LazyTypeNode } from '../src/ast.js';
+import type { ScalarTypeNode, ArrayTypeNode, TupleTypeNode, RecordTypeNode, EnumTypeNode, LiteralTypeNode, UnionTypeNode, IntersectionTypeNode, ModelRefTypeNode, InlineObjectTypeNode, LazyTypeNode } from '../src/ast.js';
 
 function parse(source: string) {
   const diag = new DiagnosticCollector();
@@ -290,6 +290,44 @@ M: {
       const type = root.models[0]!.fields[0]!.type as UnionTypeNode;
       expect(type.kind).toBe('union');
       expect(type.members).toHaveLength(2);
+    });
+
+    it('parses intersection type', () => {
+      const { root } = parse(`\
+M: {
+    val: Pagination & Sortable
+}`);
+      const type = root.models[0]!.fields[0]!.type as IntersectionTypeNode;
+      expect(type.kind).toBe('intersection');
+      expect(type.members).toHaveLength(2);
+      expect((type.members[0] as ModelRefTypeNode).name).toBe('Pagination');
+      expect((type.members[1] as ModelRefTypeNode).name).toBe('Sortable');
+    });
+
+    it('parses intersection with inline object', () => {
+      const { root } = parse(`\
+Query: Pagination & {
+    status?: enum(pending, posted)
+}`);
+      const type = root.models[0]!.type as IntersectionTypeNode;
+      expect(type.kind).toBe('intersection');
+      expect(type.members).toHaveLength(2);
+      expect((type.members[0] as ModelRefTypeNode).name).toBe('Pagination');
+      expect(type.members[1]!.kind).toBe('inlineObject');
+    });
+
+    it('intersection binds tighter than union', () => {
+      const { root } = parse(`\
+M: {
+    val: string | Pagination & Sortable
+}`);
+      const type = root.models[0]!.fields[0]!.type as UnionTypeNode;
+      expect(type.kind).toBe('union');
+      expect(type.members).toHaveLength(2);
+      expect(type.members[0]!.kind).toBe('scalar');
+      const inter = type.members[1] as IntersectionTypeNode;
+      expect(inter.kind).toBe('intersection');
+      expect(inter.members).toHaveLength(2);
     });
 
     it('parses model reference type', () => {

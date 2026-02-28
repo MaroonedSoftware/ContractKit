@@ -1,5 +1,5 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource } from './ast.js';
-import { renderType, pascalToDotCase } from './codegen-dto.js';
+import { renderType, pascalToDotCase, typeNeedsDateTime } from './codegen-dto.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -32,6 +32,10 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
     if (types.length > 0) {
         lines.push(...generateTypeImports(types, root.file, options));
+    }
+
+    if (opNeedsDateTime(root)) {
+        lines.push(`import { DateTime } from 'luxon';`);
     }
 
     if (needsParseAndValidate) {
@@ -108,9 +112,12 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
     const serviceParts = inferService(op, route, file);
 
     if (primaryResponse?.bodyType) {
-        const typeAnnotation = formatTypeAnnotation(primaryResponse.bodyType!);
+        const { annotation, prelude } = formatTypeAnnotation(primaryResponse.bodyType!);
+        if (prelude) {
+            lines.push(`    ${prelude}`);
+        }
         lines.push(`    const service = ctx.container.get(${serviceParts.className});`);
-        lines.push(`    const result: ${typeAnnotation} = await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
+        lines.push(`    const result: ${annotation} = await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
     } else {
         lines.push(`    const service = ctx.container.get(${serviceParts.className});`);
         lines.push(`    await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
@@ -186,14 +193,19 @@ function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
     return args.join(', ');
 }
 
-function formatTypeAnnotation(bodyType: DtoTypeNode): string {
+function formatTypeAnnotation(bodyType: DtoTypeNode): { annotation: string; prelude?: string } {
     if (bodyType.kind === 'array') {
-        return `${formatTypeAnnotation(bodyType.item)}[]`;
+        const inner = formatTypeAnnotation(bodyType.item);
+        return { annotation: `${inner.annotation}[]`, prelude: inner.prelude };
     }
-    if (bodyType.kind === 'ref') return bodyType.name;
-    if (bodyType.kind === 'scalar') return bodyType.name;
-    // For complex types, fall back to z.infer
-    return `z.infer<typeof ${renderType(bodyType)}>`;
+    if (bodyType.kind === 'ref') return { annotation: bodyType.name };
+    if (bodyType.kind === 'scalar') return { annotation: bodyType.name };
+    // For complex types, extract schema into a variable so the result line stays readable
+    const schema = renderType(bodyType);
+    return {
+        annotation: 'z.infer<typeof resultType>',
+        prelude: `const resultType = ${schema};`,
+    };
 }
 
 function generateParamValidation(source: ParamSource | undefined, ctxExpr: string, varName: string, schemaWrapper: string, suffix = ''): string[] {
@@ -337,6 +349,25 @@ function collectTypeNodeRefs(type: DtoTypeNode, out: Set<string>): void {
             type.fields.forEach(f => collectTypeNodeRefs(f.type, out));
             break;
     }
+}
+
+function paramSourceNeedsDateTime(source: ParamSource | undefined): boolean {
+    if (!source) return false;
+    if (typeof source === 'string') return false;
+    if (Array.isArray(source)) return source.some(p => typeNeedsDateTime(p.type));
+    return typeNeedsDateTime(source);
+}
+
+function opNeedsDateTime(root: OpRootNode): boolean {
+    return root.routes.some(route =>
+        paramSourceNeedsDateTime(route.params)
+        || route.operations.some(op =>
+            (op.request?.bodyType && typeNeedsDateTime(op.request.bodyType))
+            || op.responses.some(r => r.bodyType && typeNeedsDateTime(r.bodyType))
+            || paramSourceNeedsDateTime(op.query)
+            || paramSourceNeedsDateTime(op.headers),
+        ),
+    );
 }
 
 function collectServices(root: OpRootNode): string[] {
