@@ -11,12 +11,14 @@ export interface SdkCodegenOptions {
     modelOutPaths?: Map<string, string>;
     /** Absolute path to the shared sdk-options.ts file (if set, imports SdkOptions instead of defining inline) */
     sdkOptionsPath?: string;
+    /** Set of model names that have Input variants (models with visibility modifiers) */
+    modelsWithInput?: Set<string>;
 }
 
 export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): string {
     const lines: string[] = [];
 
-    const types = collectTypes(root);
+    const types = collectTypes(root, options.modelsWithInput);
     const clientClassName = deriveClientClassName(root.file);
 
     // Type-only imports
@@ -30,6 +32,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         rel = rel.replace(/\.ts$/, '.js');
         if (!rel.startsWith('.')) rel = './' + rel;
         lines.push(`import type { SdkOptions } from '${rel}';`);
+        lines.push(`import { bigIntReplacer, bigIntReviver } from '${rel}';`);
     } else {
         lines.push('');
         lines.push('export interface SdkOptions {');
@@ -52,7 +55,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     for (const route of root.routes) {
         for (const op of route.operations) {
             lines.push('');
-            lines.push(...generateMethod(route, op, root.file));
+            lines.push(...generateMethod(route, op, root.file, options.modelsWithInput));
         }
     }
 
@@ -66,13 +69,13 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
 
 // ─── Method generation ────────────────────────────────────────────────────
 
-function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string): string[] {
+function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, modelsWithInput?: Set<string>): string[] {
     const lines: string[] = [];
     const methodName = deriveMethodName(op, route);
     const httpMethod = op.method.toUpperCase();
 
-    // Build method parameters
-    const params = buildMethodParams(route, op);
+    // Build method parameters (request-side — use Input variants)
+    const params = buildMethodParams(route, op, modelsWithInput);
     const paramStr = params.map(p => `${p.name}${p.optional ? '?' : ''}: ${p.type}`).join(', ');
 
     // Determine return type
@@ -125,7 +128,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string): 
             fetchArgs.push('body: body');
         } else {
             fetchArgs.push(`headers: { 'Content-Type': 'application/json' }`);
-            fetchArgs.push('body: JSON.stringify(body)');
+            fetchArgs.push('body: JSON.stringify(body, bigIntReplacer)');
         }
     }
 
@@ -153,7 +156,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string): 
     if (isVoid) {
         // No return for void responses
     } else {
-        lines.push(`        return await res.json() as ${returnType};`);
+        lines.push(`        return JSON.parse(await res.text(), bigIntReviver) as ${returnType};`);
     }
 
     lines.push('    }');
@@ -178,52 +181,55 @@ interface MethodParam {
     optional: boolean;
 }
 
-function buildMethodParams(route: OpRouteNode, op: OpOperationNode): MethodParam[] {
+function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithInput?: Set<string>): MethodParam[] {
     const params: MethodParam[] = [];
 
-    // Path params — always first, always required
+    // Path params — always first, always required (request-side — use Input variants)
     if (route.params) {
         if (Array.isArray(route.params)) {
             for (const p of route.params) {
                 params.push({ name: p.name, type: renderTsType(p.type), optional: false });
             }
         } else if (typeof route.params === 'string') {
-            params.push({ name: 'params', type: route.params, optional: false });
+            const typeName = modelsWithInput?.has(route.params) ? `${route.params}Input` : route.params;
+            params.push({ name: 'params', type: typeName, optional: false });
         } else {
-            params.push({ name: 'params', type: renderTsType(route.params), optional: false });
+            params.push({ name: 'params', type: renderInputTsType(route.params, modelsWithInput), optional: false });
         }
     }
 
-    // Body
+    // Body (request-side — use Input variants)
     if (op.request) {
         if (op.request.contentType === 'multipart/form-data') {
             params.push({ name: 'body', type: 'FormData', optional: false });
         } else {
-            params.push({ name: 'body', type: renderTsType(op.request.bodyType), optional: false });
+            params.push({ name: 'body', type: renderInputTsType(op.request.bodyType, modelsWithInput), optional: false });
         }
     }
 
-    // Query
+    // Query (request-side — use Input variants)
     if (op.query) {
         if (Array.isArray(op.query)) {
             const fields = op.query.map(p => `${p.name}?: ${renderTsType(p.type)}`).join('; ');
             params.push({ name: 'query', type: `{ ${fields} }`, optional: true });
         } else if (typeof op.query === 'string') {
-            params.push({ name: 'query', type: op.query, optional: true });
+            const typeName = modelsWithInput?.has(op.query) ? `${op.query}Input` : op.query;
+            params.push({ name: 'query', type: typeName, optional: true });
         } else {
-            params.push({ name: 'query', type: renderTsType(op.query), optional: true });
+            params.push({ name: 'query', type: renderInputTsType(op.query, modelsWithInput), optional: true });
         }
     }
 
-    // Headers
+    // Headers (request-side — use Input variants)
     if (op.headers) {
         if (Array.isArray(op.headers)) {
             const fields = op.headers.map(p => `${p.name}?: ${renderTsType(p.type)}`).join('; ');
             params.push({ name: 'customHeaders', type: `{ ${fields} }`, optional: true });
         } else if (typeof op.headers === 'string') {
-            params.push({ name: 'customHeaders', type: op.headers, optional: true });
+            const typeName = modelsWithInput?.has(op.headers) ? `${op.headers}Input` : op.headers;
+            params.push({ name: 'customHeaders', type: typeName, optional: true });
         } else {
-            params.push({ name: 'customHeaders', type: renderTsType(op.headers), optional: true });
+            params.push({ name: 'customHeaders', type: renderInputTsType(op.headers, modelsWithInput), optional: true });
         }
     }
 
@@ -301,6 +307,23 @@ function renderTsInlineObject(fields: FieldNode[]): string {
     return `{ ${entries.join('; ')} }`;
 }
 
+/**
+ * Like renderTsType, but substitutes model refs with their Input variant
+ * when the model has visibility modifiers. Used for request-side types
+ * (body, params, query, headers).
+ */
+export function renderInputTsType(type: DtoTypeNode, modelsWithInput?: Set<string>): string {
+    if (!modelsWithInput || modelsWithInput.size === 0) return renderTsType(type);
+    switch (type.kind) {
+        case 'ref':
+            return modelsWithInput.has(type.name) ? `${type.name}Input` : type.name;
+        case 'array':
+            return `${renderInputTsType(type.item, modelsWithInput)}[]`;
+        default:
+            return renderTsType(type);
+    }
+}
+
 // ─── Method name inference ────────────────────────────────────────────────
 
 function deriveMethodName(op: OpOperationNode, route: OpRouteNode): string {
@@ -354,20 +377,49 @@ export function deriveClientPropertyName(file: string): string {
 
 // ─── Type collection ──────────────────────────────────────────────────────
 
-function collectTypes(root: OpRootNode): string[] {
+function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[] {
     const types = new Set<string>();
     for (const route of root.routes) {
         collectParamSourceRefs(route.params, types);
+        collectParamSourceInputRefs(route.params, types, modelsWithInput);
         for (const op of route.operations) {
-            if (op.request?.bodyType) collectTypeNodeRefs(op.request.bodyType, types);
+            if (op.request?.bodyType) {
+                collectTypeNodeRefs(op.request.bodyType, types);
+                collectInputTypeNodeRefs(op.request.bodyType, types, modelsWithInput);
+            }
             for (const resp of op.responses) {
                 if (resp.bodyType) collectTypeNodeRefs(resp.bodyType, types);
             }
             collectParamSourceRefs(op.query, types);
+            collectParamSourceInputRefs(op.query, types, modelsWithInput);
             collectParamSourceRefs(op.headers, types);
+            collectParamSourceInputRefs(op.headers, types, modelsWithInput);
         }
     }
     return [...types].sort();
+}
+
+/** Collect Input variant refs for request-side ParamSource types. */
+function collectParamSourceInputRefs(source: ParamSource | undefined, out: Set<string>, modelsWithInput?: Set<string>): void {
+    if (!source || !modelsWithInput) return;
+    if (typeof source === 'string') {
+        if (modelsWithInput.has(source)) out.add(`${source}Input`);
+    } else if (!Array.isArray(source)) {
+        collectInputTypeNodeRefs(source, out, modelsWithInput);
+    }
+}
+
+/** Collect Input variant refs for request-side DtoTypeNode types. */
+function collectInputTypeNodeRefs(type: DtoTypeNode, out: Set<string>, modelsWithInput?: Set<string>): void {
+    if (!modelsWithInput) return;
+    switch (type.kind) {
+        case 'ref':
+            if (modelsWithInput.has(type.name)) out.add(`${type.name}Input`);
+            break;
+        case 'array':
+            collectInputTypeNodeRefs(type.item, out, modelsWithInput);
+            break;
+    }
 }
 
 function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string>): void {
@@ -491,6 +543,20 @@ export function generateSdkOptions(): string {
         '    fetch?: typeof fetch;',
         '    headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);',
         '}',
+        '',
+        'export const bigIntReplacer = (_: string, value: any): any => {',
+        '    if (typeof value === \'bigint\') {',
+        '        return value.toString() + \'n\';',
+        '    }',
+        '    return value;',
+        '};',
+        '',
+        'export const bigIntReviver = (_: string, value: any): any => {',
+        '    if (typeof value === \'string\' && /^-?\\d+n$/.test(value)) {',
+        '        return BigInt(value.slice(0, -1));',
+        '    }',
+        '    return value;',
+        '};',
         '',
     ].join('\n');
 }

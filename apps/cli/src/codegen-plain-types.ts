@@ -1,8 +1,8 @@
 import { relative, dirname } from 'node:path';
 import type { DtoRootNode, ModelNode, FieldNode } from './ast.js';
 import type { DtoCodegenContext } from './codegen-dto.js';
-import { collectExternalRefs, topoSortModels, resolveImportPath } from './codegen-dto.js';
-import { renderTsType } from './codegen-sdk.js';
+import { collectExternalRefs, collectExternalInputRefs, topoSortModels, resolveImportPath } from './codegen-dto.js';
+import { renderTsType, renderInputTsType } from './codegen-sdk.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -16,15 +16,30 @@ export function generatePlainTypes(root: DtoRootNode, context?: DtoCodegenContex
     const externalRefs = collectExternalRefs(root);
     const lines: string[] = [];
 
+    // Compute which models have Input variants (local + external)
+    const localModelsWithInput = new Set<string>();
+    for (const model of root.models) {
+        if (model.fields.some(f => f.visibility !== 'normal')) {
+            localModelsWithInput.add(model.name);
+        }
+    }
+    const allModelsWithInput = new Set([...localModelsWithInput, ...(context?.modelsWithInput ?? [])]);
+
+    // Collect additional external Input refs needed for Input schema fields
+    const externalInputRefs = allModelsWithInput.size > 0
+        ? collectExternalInputRefs(root, allModelsWithInput)
+        : [];
+    const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs])].sort();
+
     // Type-only imports for external references
-    for (const ref of externalRefs) {
+    for (const ref of allExternalRefs) {
         const importPath = resolveImportPath(ref, context);
         lines.push(`import type { ${ref} } from '${importPath}';`);
     }
-    if (externalRefs.length > 0) lines.push('');
+    if (allExternalRefs.length > 0) lines.push('');
 
     for (const model of topoSortModels(root.models)) {
-        lines.push(...generateModel(model, context?.currentOutPath));
+        lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput));
         lines.push('');
     }
 
@@ -33,7 +48,7 @@ export function generatePlainTypes(root: DtoRootNode, context?: DtoCodegenContex
 
 // ─── Model ─────────────────────────────────────────────────────────────────
 
-function generateModel(model: ModelNode, outPath?: string): string[] {
+function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
     // Type alias: Name : typeExpression
     if (model.type) {
         return generateTypeAlias(model, outPath);
@@ -42,7 +57,7 @@ function generateModel(model: ModelNode, outPath?: string): string[] {
     const hasVisibility = model.fields.some(f => f.visibility !== 'normal');
 
     if (hasVisibility) {
-        return generateVisibilityModel(model, outPath);
+        return generateVisibilityModel(model, outPath, modelsWithInput);
     }
     return generateSimpleModel(model, outPath);
 }
@@ -85,7 +100,7 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
     return lines;
 }
 
-function generateVisibilityModel(model: ModelNode, outPath?: string): string[] {
+function generateVisibilityModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
 
@@ -103,7 +118,7 @@ function generateVisibilityModel(model: ModelNode, outPath?: string): string[] {
     lines.push('}');
     lines.push('');
 
-    // Write type — omit readonly fields
+    // Write type — omit readonly fields (use Input variants for sub-type refs)
     const writeFields = model.fields.filter(f => f.visibility !== 'readonly');
     const inputBase = model.base ? `${model.base}Input` : undefined;
     if (inputBase) {
@@ -112,7 +127,7 @@ function generateVisibilityModel(model: ModelNode, outPath?: string): string[] {
         lines.push(`export interface ${model.name}Input {`);
     }
     for (const field of writeFields) {
-        lines.push(`    ${renderField(field)}`);
+        lines.push(`    ${modelsWithInput ? renderInputField(field, modelsWithInput) : renderField(field)}`);
     }
     lines.push('}');
 
@@ -124,6 +139,13 @@ function generateVisibilityModel(model: ModelNode, outPath?: string): string[] {
 function renderField(field: FieldNode): string {
     const opt = field.optional || field.default !== undefined ? '?' : '';
     let typeStr = renderTsType(field.type);
+    if (field.nullable) typeStr += ' | null';
+    return `${field.name}${opt}: ${typeStr};`;
+}
+
+function renderInputField(field: FieldNode, modelsWithInput: Set<string>): string {
+    const opt = field.optional || field.default !== undefined ? '?' : '';
+    let typeStr = renderInputTsType(field.type, modelsWithInput);
     if (field.nullable) typeStr += ' | null';
     return `${field.name}${opt}: ${typeStr};`;
 }

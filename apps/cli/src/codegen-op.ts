@@ -1,5 +1,5 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource } from './ast.js';
-import { renderType, pascalToDotCase, typeNeedsDateTime } from './codegen-dto.js';
+import { renderType, renderInputType, pascalToDotCase, typeNeedsDateTime } from './codegen-dto.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -10,13 +10,15 @@ export interface OpCodegenOptions {
     outPath?: string;
     /** Map from model name → absolute output file path (for cross-module type imports) */
     modelOutPaths?: Map<string, string>;
+    /** Set of model names that have Input variants (models with visibility modifiers) */
+    modelsWithInput?: Set<string>;
 }
 
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
     const lines: string[] = [];
 
     // Collect all referenced types across all routes
-    const types = collectTypes(root);
+    const types = collectTypes(root, options.modelsWithInput);
     const services = collectServices(root);
     const routerName = deriveRouterName(root.file);
     const needsParseAndValidate = routeNeedsValidation(root);
@@ -52,7 +54,7 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
     for (const route of root.routes) {
         for (const op of route.operations) {
-            lines.push(...generateHandler(route, op, root.file, options.outPath));
+            lines.push(...generateHandler(route, op, root.file, options));
             lines.push('');
         }
     }
@@ -62,8 +64,10 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
 // ─── Handler generation ────────────────────────────────────────────────────
 
-function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, outPath?: string): string[] {
+function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, options: OpCodegenOptions): string[] {
     const lines: string[] = [];
+    const outPath = options.outPath;
+    const modelsWithInput = options.modelsWithInput;
 
     lines.push('/**');
 
@@ -91,18 +95,18 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
 
     lines.push(`${deriveRouterName(file)}.${method}('${path}'${middlewareStr} async (ctx, next) => {`);
 
-    // Params / query / headers validation
-    lines.push(...generateParamValidation(route.params, 'ctx.params', 'params', 'z.strictObject'));
-    lines.push(...generateParamValidation(op.query, 'ctx.query', 'query', 'z.strictObject'));
-    lines.push(...generateParamValidation(op.headers, 'ctx.headers', 'headers', 'z.object', '.passthrough()'));
+    // Params / query / headers validation (request-side — use Input variants)
+    lines.push(...generateParamValidation(route.params, 'ctx.params', 'params', 'z.strictObject', '', modelsWithInput));
+    lines.push(...generateParamValidation(op.query, 'ctx.query', 'query', 'z.strictObject', '', modelsWithInput));
+    lines.push(...generateParamValidation(op.headers, 'ctx.headers', 'headers', 'z.object', '.passthrough()', modelsWithInput));
 
-    // Body validation
+    // Body validation (request-side — use Input variants)
     if (hasBody && op.request) {
         if (isMultipart) {
             lines.push(`    const multipartBody = ctx.body as MultipartBody;`);
             lines.push('');
         } else {
-            lines.push(`    const body = await parseAndValidate(ctx.body, ${renderType(op.request.bodyType)});`);
+            lines.push(`    const body = await parseAndValidate(ctx.body, ${renderInputType(op.request.bodyType, modelsWithInput)});`);
             lines.push('');
         }
     }
@@ -208,12 +212,13 @@ function formatTypeAnnotation(bodyType: DtoTypeNode): { annotation: string; prel
     };
 }
 
-function generateParamValidation(source: ParamSource | undefined, ctxExpr: string, varName: string, schemaWrapper: string, suffix = ''): string[] {
+function generateParamValidation(source: ParamSource | undefined, ctxExpr: string, varName: string, schemaWrapper: string, suffix = '', modelsWithInput?: Set<string>): string[] {
     if (!source) return [];
     const lines: string[] = [];
     if (typeof source === 'string') {
-        // Type reference name
-        lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${source});`);
+        // Type reference name — use Input variant if available
+        const typeName = modelsWithInput?.has(source) ? `${source}Input` : source;
+        lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${typeName});`);
         lines.push('');
     } else if (Array.isArray(source)) {
         // Inline param declarations
@@ -232,8 +237,8 @@ function generateParamValidation(source: ParamSource | undefined, ctxExpr: strin
             lines.push('');
         }
     } else {
-        // DtoTypeNode
-        lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${renderType(source)});`);
+        // DtoTypeNode — use Input variant if available
+        lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${renderInputType(source, modelsWithInput)});`);
         lines.push('');
     }
     return lines;
@@ -292,17 +297,23 @@ function generateTypeImports(types: string[], opFile: string, options: OpCodegen
 
 // ─── Collection helpers ────────────────────────────────────────────────────
 
-function collectTypes(root: OpRootNode): string[] {
+function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[] {
     const types = new Set<string>();
     for (const route of root.routes) {
         collectParamSourceRefs(route.params, types);
+        collectParamSourceInputRefs(route.params, types, modelsWithInput);
         for (const op of route.operations) {
-            if (op.request?.bodyType) collectTypeNodeRefs(op.request.bodyType, types);
+            if (op.request?.bodyType) {
+                collectTypeNodeRefs(op.request.bodyType, types);
+                collectInputTypeNodeRefs(op.request.bodyType, types, modelsWithInput);
+            }
             for (const resp of op.responses) {
                 if (resp.bodyType) collectTypeNodeRefs(resp.bodyType, types);
             }
             collectParamSourceRefs(op.query, types);
+            collectParamSourceInputRefs(op.query, types, modelsWithInput);
             collectParamSourceRefs(op.headers, types);
+            collectParamSourceInputRefs(op.headers, types, modelsWithInput);
         }
     }
     return [...types].sort();
@@ -318,6 +329,29 @@ function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string
         }
     } else {
         collectTypeNodeRefs(source, out);
+    }
+}
+
+/** Collect Input variant refs for request-side ParamSource types. */
+function collectParamSourceInputRefs(source: ParamSource | undefined, out: Set<string>, modelsWithInput?: Set<string>): void {
+    if (!source || !modelsWithInput) return;
+    if (typeof source === 'string') {
+        if (modelsWithInput.has(source)) out.add(`${source}Input`);
+    } else if (!Array.isArray(source)) {
+        collectInputTypeNodeRefs(source, out, modelsWithInput);
+    }
+}
+
+/** Collect Input variant refs for request-side DtoTypeNode types. */
+function collectInputTypeNodeRefs(type: DtoTypeNode, out: Set<string>, modelsWithInput?: Set<string>): void {
+    if (!modelsWithInput) return;
+    switch (type.kind) {
+        case 'ref':
+            if (modelsWithInput.has(type.name)) out.add(`${type.name}Input`);
+            break;
+        case 'array':
+            collectInputTypeNodeRefs(type.item, out, modelsWithInput);
+            break;
     }
 }
 

@@ -24,6 +24,8 @@ export interface DtoCodegenContext {
     modelOutPaths: Map<string, string>;
     /** Absolute output file path for the current DTO file */
     currentOutPath: string;
+    /** Set of model names that have Input variants (models with visibility modifiers) */
+    modelsWithInput?: Set<string>;
 }
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -46,16 +48,31 @@ export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): str
     const externalRefs = collectExternalRefs(root);
     const lines: string[] = [];
 
+    // Compute which models have Input variants (local + external)
+    const localModelsWithInput = new Set<string>();
+    for (const model of root.models) {
+        if (model.fields.some(f => f.visibility !== 'normal')) {
+            localModelsWithInput.add(model.name);
+        }
+    }
+    const allModelsWithInput = new Set([...localModelsWithInput, ...(context?.modelsWithInput ?? [])]);
+
+    // Collect additional external Input refs needed for Input schema fields
+    const externalInputRefs = allModelsWithInput.size > 0
+        ? collectExternalInputRefs(root, allModelsWithInput)
+        : [];
+    const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs])].sort();
+
     lines.push(`import { z } from 'zod';`);
     if (needsDateTime) lines.push(`import { DateTime } from 'luxon';`);
-    for (const ref of externalRefs) {
+    for (const ref of allExternalRefs) {
         const importPath = resolveImportPath(ref, context);
         lines.push(`import { ${ref} } from '${importPath}';`);
     }
     lines.push('');
 
     for (const model of topoSortModels(root.models)) {
-        lines.push(...generateModel(model, context?.currentOutPath));
+        lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput));
         lines.push('');
     }
 
@@ -64,7 +81,7 @@ export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): str
 
 // ─── Model ─────────────────────────────────────────────────────────────────
 
-function generateModel(model: ModelNode, outPath?: string): string[] {
+function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
     // Type alias: Name : typeExpression
     if (model.type) {
         return generateTypeAlias(model, outPath);
@@ -73,7 +90,7 @@ function generateModel(model: ModelNode, outPath?: string): string[] {
     const hasVisibility = model.fields.some(f => f.visibility !== 'normal');
 
     if (hasVisibility) {
-        return generateThreeSchemaModel(model, outPath);
+        return generateThreeSchemaModel(model, outPath, modelsWithInput);
     }
     return generateSimpleModel(model, outPath);
 }
@@ -106,7 +123,7 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
     return lines;
 }
 
-function generateThreeSchemaModel(model: ModelNode, outPath?: string): string[] {
+function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
     const lines: string[] = [];
     const name = model.name;
 
@@ -134,9 +151,9 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string): string[] 
     lines.push(`export type ${name} = z.infer<typeof ${name}>;`);
     lines.push('');
 
-    // Write schema — omit readonly fields
+    // Write schema — omit readonly fields (use Input variants for sub-type refs)
     const writeFields = allFields.filter(f => f.visibility !== 'readonly');
-    const writeBody = renderFields(writeFields);
+    const writeBody = modelsWithInput ? renderInputFields(writeFields, modelsWithInput) : renderFields(writeFields);
     lines.push(`export const ${name}Input = z.strictObject({`);
     lines.push(...writeBody.map(l => `    ${l}`));
     lines.push(`});`);
@@ -295,6 +312,91 @@ function renderInlineObject(o: InlineObjectTypeNode): string {
     return `z.strictObject({\n${fields}\n})`;
 }
 
+// ─── Input type rendering ─────────────────────────────────────────────────
+
+/**
+ * Like renderScalar, but coerces from string input (JSON wire format).
+ * Used for Input (write) schemas where data arrives as JSON strings.
+ */
+function renderInputScalar(s: ScalarTypeNode): string {
+    switch (s.name) {
+        case 'bigint': {
+            let e = `z.string().transform((val) => BigInt(val.replace(/n$/, ''))).pipe(z.bigint()`;
+            if (s.min !== undefined) e += `.min(${s.min}n)`;
+            if (s.max !== undefined) e += `.max(${s.max}n)`;
+            e += ')';
+            return e;
+        }
+        case 'date':
+        case 'datetime':
+            return `z.string().transform((val) => DateTime.fromISO(val)).refine((dt) => dt.isValid, { message: 'Must be in ISO 8601 format' })`;
+        default:
+            return renderScalar(s);
+    }
+}
+
+/**
+ * Like renderType, but substitutes model refs with their Input variant
+ * when the model has visibility modifiers, and coerces scalars from strings.
+ * Used for Input (write) schema fields so that sub-type references also
+ * point to their Input variants.
+ */
+export function renderInputType(type: DtoTypeNode, modelsWithInput?: Set<string>): string {
+    switch (type.kind) {
+        case 'scalar':
+            return renderInputScalar(type);
+        case 'ref':
+            return modelsWithInput?.has(type.name) ? `${type.name}Input` : type.name;
+        case 'array': {
+            let e = `z.array(${renderInputType(type.item, modelsWithInput)})`;
+            if (type.min !== undefined) e += `.min(${type.min})`;
+            if (type.max !== undefined) e += `.max(${type.max})`;
+            return e;
+        }
+        case 'tuple':
+            return `z.tuple([${type.items.map(i => renderInputType(i, modelsWithInput)).join(', ')}])`;
+        case 'record':
+            return `z.record(${renderInputType(type.key, modelsWithInput)}, ${renderInputType(type.value, modelsWithInput)})`;
+        case 'union':
+            return `z.union([${type.members.map(m => renderInputType(m, modelsWithInput)).join(', ')}])`;
+        case 'intersection': {
+            const [first, ...rest] = type.members;
+            let expr = renderInputType(first!, modelsWithInput);
+            for (const member of rest) {
+                expr += `.and(${renderInputType(member, modelsWithInput)})`;
+            }
+            return expr;
+        }
+        case 'lazy':
+            return `z.lazy(() => ${renderInputType(type.inner, modelsWithInput)})`;
+        case 'inlineObject': {
+            const fields = type.fields.map(f => `    ${renderInputField(f, modelsWithInput ?? new Set())}`).join('\n');
+            return `z.strictObject({\n${fields}\n})`;
+        }
+        default:
+            return renderType(type);
+    }
+}
+
+function renderInputField(field: FieldNode, modelsWithInput: Set<string>): string {
+    let expr = renderInputType(field.type, modelsWithInput);
+
+    if (field.nullable) expr += '.nullable()';
+    if (field.default !== undefined) {
+        const dv = typeof field.default === 'string' ? `"${escapeString(field.default)}"` : String(field.default);
+        expr += `.default(${dv})`;
+    } else if (field.optional) {
+        expr += '.optional()';
+    }
+    if (field.description) expr += `.describe("${escapeString(field.description)}")`;
+
+    return `${field.name}: ${expr},`;
+}
+
+function renderInputFields(fields: FieldNode[], modelsWithInput: Set<string>): string[] {
+    return fields.map(f => renderInputField(f, modelsWithInput));
+}
+
 // ─── String escaping ──────────────────────────────────────────────────────
 
 function escapeString(s: string): string {
@@ -338,6 +440,57 @@ export function collectExternalRefs(root: DtoRootNode): string[] {
 
     for (const name of localNames) refs.delete(name);
     return [...refs].sort();
+}
+
+/** Collect external Input variant refs needed for Input schema fields. */
+export function collectExternalInputRefs(root: DtoRootNode, modelsWithInput: Set<string>): string[] {
+    const localNames = new Set(root.models.map(m => m.name));
+    const refs = new Set<string>();
+
+    for (const model of root.models) {
+        if (!model.fields.some(f => f.visibility !== 'normal')) continue;
+        const writeFields = model.fields.filter(f => f.visibility !== 'readonly');
+        for (const field of writeFields) {
+            collectInputTypeRefs(field.type, refs, modelsWithInput);
+        }
+    }
+
+    // Remove locally defined Input variants (generated in this file)
+    for (const name of localNames) {
+        refs.delete(`${name}Input`);
+    }
+
+    return [...refs].sort();
+}
+
+function collectInputTypeRefs(type: DtoTypeNode, out: Set<string>, modelsWithInput: Set<string>): void {
+    switch (type.kind) {
+        case 'ref':
+            if (modelsWithInput.has(type.name)) out.add(`${type.name}Input`);
+            break;
+        case 'array':
+            collectInputTypeRefs(type.item, out, modelsWithInput);
+            break;
+        case 'tuple':
+            type.items.forEach(i => collectInputTypeRefs(i, out, modelsWithInput));
+            break;
+        case 'record':
+            collectInputTypeRefs(type.key, out, modelsWithInput);
+            collectInputTypeRefs(type.value, out, modelsWithInput);
+            break;
+        case 'union':
+            type.members.forEach(m => collectInputTypeRefs(m, out, modelsWithInput));
+            break;
+        case 'intersection':
+            type.members.forEach(m => collectInputTypeRefs(m, out, modelsWithInput));
+            break;
+        case 'lazy':
+            collectInputTypeRefs(type.inner, out, modelsWithInput);
+            break;
+        case 'inlineObject':
+            type.fields.forEach(f => collectInputTypeRefs(f.type, out, modelsWithInput));
+            break;
+    }
 }
 
 function collectTypeRefs(type: DtoTypeNode, out: Set<string>): void {

@@ -315,9 +315,15 @@ async function main() {
 
         // Build model → outPath map from ALL dto files for cross-file import resolution
         const modelOutPaths = new Map<string, string>();
+        const modelsWithInput = new Set<string>();
         for (const { ast, outPath } of allDtoInfo) {
             for (const model of ast.models) {
                 modelOutPaths.set(model.name, outPath);
+                // Track models that generate Input variants (have visibility modifiers)
+                if (model.fields.some(f => f.visibility !== 'normal')) {
+                    modelsWithInput.add(model.name);
+                    modelOutPaths.set(`${model.name}Input`, outPath);
+                }
             }
         }
 
@@ -339,7 +345,7 @@ async function main() {
         const results: { outPath: string; content: string }[] = [];
 
         for (const { ast, outPath } of dtoRoots) {
-            const content = generateDto(ast, { modelOutPaths, currentOutPath: outPath });
+            const content = generateDto(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput });
             results.push({ outPath, content });
         }
 
@@ -350,6 +356,7 @@ async function main() {
                 typeImportPathTemplate: config.server.routes.typeImportPathTemplate,
                 outPath,
                 modelOutPaths,
+                modelsWithInput,
             });
             results.push({ outPath, content });
         }
@@ -377,10 +384,13 @@ async function main() {
                     );
                     if (!typeOutPath) continue;
                     // Generate plain TypeScript types (not Zod schemas) for the SDK package
-                    const content = generatePlainTypes(ast, { modelOutPaths: sdkModelOutPaths, currentOutPath: typeOutPath });
+                    const content = generatePlainTypes(ast, { modelOutPaths: sdkModelOutPaths, currentOutPath: typeOutPath, modelsWithInput });
                     results.push({ outPath: typeOutPath, content });
                     for (const model of ast.models) {
                         sdkModelOutPaths.set(model.name, typeOutPath);
+                        if (model.fields.some(f => f.visibility !== 'normal')) {
+                            sdkModelOutPaths.set(`${model.name}Input`, typeOutPath);
+                        }
                     }
                 }
             }
@@ -400,6 +410,7 @@ async function main() {
                         outPath: sdkOutPath,
                         modelOutPaths: sdkModelOutPaths,
                         sdkOptionsPath,
+                        modelsWithInput,
                     });
                     results.push({ outPath: sdkOutPath, content });
                     sdkClientInfos.push({
