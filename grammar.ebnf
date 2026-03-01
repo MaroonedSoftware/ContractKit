@@ -223,7 +223,7 @@ httpMethod      = "get" | "post" | "put" | "patch" | "delete" ;
 httpOperation   = httpMethod , ":" , "{" , operationBody , "}" ;
                   (* colon and braces are mandatory                     *)
 
-operationBody   = { serviceDecl | queryBlock | headersBlock
+operationBody   = { serviceDecl | sdkDecl | queryBlock | headersBlock
                   | requestBlock | responseBlock } ;
 
 (* --------------------------------------------------------------------- *)
@@ -234,6 +234,10 @@ serviceDecl     = "service" , ":" , IDENTIFIER ;
                   (* IDENTIFIER = dotted service reference                 *)
                   (* e.g. service: LedgerService.updateCategoryMembership  *)
                   (* class-only form: service: LedgerService               *)
+
+sdkDecl         = "sdk" , ":" , IDENTIFIER ;
+                  (* explicit SDK method name                              *)
+                  (* e.g. sdk: getUser                                     *)
 
 (* --------------------------------------------------------------------- *)
 (* Query Parameters                                                      *)

@@ -326,6 +326,49 @@ describe('parseOp', () => {
     });
   });
 
+  // ─── SDK declaration ─────────────────────────────────────────
+
+  describe('sdk declaration', () => {
+    it('parses sdk method name', () => {
+      const { root } = parse(`\
+/users {
+    get: {
+        sdk: listUsers
+        response: {
+            200: {
+                application/json: User
+            }
+        }
+    }
+}`);
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.sdk).toBe('listUsers');
+    });
+
+    it('parses sdk alongside service', () => {
+      const { root } = parse(`\
+/users/:id {
+    get: {
+        service: UserService.getById
+        sdk: getUser
+        response: {
+            200: {
+                application/json: User
+            }
+        }
+    }
+}`);
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.service).toBe('UserService.getById');
+      expect(op.sdk).toBe('getUser');
+    });
+
+    it('leaves sdk undefined when not declared', () => {
+      const { root } = parse('/users { get: {} }');
+      expect(root.routes[0]!.operations[0]!.sdk).toBeUndefined();
+    });
+  });
+
   // ─── Multiple operations / routes ──────────────────────────────
 
   describe('multiple operations and routes', () => {

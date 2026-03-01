@@ -1,0 +1,528 @@
+import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, DtoTypeNode, ParamSource, FieldNode } from './ast.js';
+import { pascalToDotCase } from './codegen-dto.js';
+import { basename, dirname, relative } from 'path';
+
+// ─── Public entry point ────────────────────────────────────────────────────
+
+export interface SdkCodegenOptions {
+    typeImportPathTemplate?: string;
+    outPath?: string;
+    /** Map from model name → absolute output file path (for cross-module type imports) */
+    modelOutPaths?: Map<string, string>;
+    /** Absolute path to the shared sdk-options.ts file (if set, imports SdkOptions instead of defining inline) */
+    sdkOptionsPath?: string;
+}
+
+export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): string {
+    const lines: string[] = [];
+
+    const types = collectTypes(root);
+    const clientClassName = deriveClientClassName(root.file);
+
+    // Type-only imports
+    if (types.length > 0) {
+        lines.push(...generateTypeImports(types, root.file, options));
+    }
+
+    // SdkOptions import (from shared file) or inline fallback
+    if (options.sdkOptionsPath && options.outPath) {
+        let rel = relative(dirname(options.outPath), options.sdkOptionsPath);
+        rel = rel.replace(/\.ts$/, '.js');
+        if (!rel.startsWith('.')) rel = './' + rel;
+        lines.push(`import type { SdkOptions } from '${rel}';`);
+    } else {
+        lines.push('');
+        lines.push('export interface SdkOptions {');
+        lines.push('    baseUrl: string;');
+        lines.push('    fetch?: typeof fetch;');
+        lines.push('    headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);');
+        lines.push('}');
+    }
+
+    lines.push('');
+
+    // Client class
+    lines.push('/**');
+    const relFile = options.outPath ? relative(dirname(options.outPath), root.file) : root.file;
+    lines.push(` * generated from [${basename(root.file)}](file://./${relFile})`);
+    lines.push(' */');
+    lines.push(`export class ${clientClassName} {`);
+    lines.push('    constructor(private options: SdkOptions) {}');
+
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            lines.push('');
+            lines.push(...generateMethod(route, op, root.file));
+        }
+    }
+
+    lines.push('');
+    lines.push(...FETCH_HELPER);
+    lines.push('}');
+    lines.push('');
+
+    return lines.join('\n');
+}
+
+// ─── Method generation ────────────────────────────────────────────────────
+
+function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string): string[] {
+    const lines: string[] = [];
+    const methodName = deriveMethodName(op, route);
+    const httpMethod = op.method.toUpperCase();
+
+    // Build method parameters
+    const params = buildMethodParams(route, op);
+    const paramStr = params.map(p => `${p.name}${p.optional ? '?' : ''}: ${p.type}`).join(', ');
+
+    // Determine return type
+    const primaryResponse = op.responses.find(r => r.bodyType) ?? op.responses[0];
+    const isVoid = !primaryResponse?.bodyType;
+    const returnType = isVoid ? 'void' : renderTsType(primaryResponse!.bodyType!);
+
+    // JSDoc
+    const desc = op.description ?? route.description;
+    if (desc) {
+        lines.push(`    /** ${desc} */`);
+    }
+
+    lines.push(`    async ${methodName}(${paramStr}): Promise<${returnType}> {`);
+
+    // Build URL with path params
+    const urlExpr = buildUrlExpression(route.path, route.params);
+
+    // Query string
+    const hasQuery = !!op.query;
+    let fetchUrl = urlExpr;
+    if (hasQuery) {
+        lines.push(`        const searchParams = new URLSearchParams();`);
+        lines.push(`        if (query) {`);
+        lines.push(`            for (const [k, v] of Object.entries(query)) {`);
+        lines.push(`                if (v !== undefined && v !== null) searchParams.set(k, String(v));`);
+        lines.push(`            }`);
+        lines.push(`        }`);
+        lines.push(`        const qs = searchParams.toString();`);
+        fetchUrl = urlExpr;
+    }
+
+    // Build fetch options
+    const hasBody = !!op.request;
+    const isMultipart = op.request?.contentType === 'multipart/form-data';
+    const hasHeaders = !!op.headers;
+
+    const fetchArgs: string[] = [];
+
+    if (hasQuery) {
+        fetchArgs.push(`url: qs ? \`${fetchUrl}?\${qs}\` : \`${fetchUrl}\``);
+    } else {
+        fetchArgs.push(`url: \`${fetchUrl}\``);
+    }
+
+    fetchArgs.push(`method: '${httpMethod}'`);
+
+    if (hasBody) {
+        if (isMultipart) {
+            fetchArgs.push('body: body');
+        } else {
+            fetchArgs.push(`headers: { 'Content-Type': 'application/json' }`);
+            fetchArgs.push('body: JSON.stringify(body)');
+        }
+    }
+
+    if (hasHeaders) {
+        if (hasBody && !isMultipart) {
+            // Merge content-type with custom headers
+            const lastIdx = fetchArgs.findIndex(a => a.startsWith('headers:'));
+            fetchArgs[lastIdx] = `headers: { 'Content-Type': 'application/json', ...customHeaders }`;
+        } else {
+            fetchArgs.push('headers: customHeaders');
+        }
+    }
+
+    if (fetchArgs.length <= 2 && !hasBody && !hasHeaders && !hasQuery) {
+        // Simple case — inline
+        lines.push(`        const res = await this.fetch(\`${fetchUrl}\`, { method: '${httpMethod}' });`);
+    } else {
+        lines.push(`        const res = await this.fetch(${fetchArgs[0]!.split(': ').slice(1).join(': ')}, {`);
+        for (let i = 1; i < fetchArgs.length; i++) {
+            lines.push(`            ${fetchArgs[i]},`);
+        }
+        lines.push(`        });`);
+    }
+
+    if (isVoid) {
+        // No return for void responses
+    } else {
+        lines.push(`        return await res.json() as ${returnType};`);
+    }
+
+    lines.push('    }');
+
+    return lines;
+}
+
+// ─── URL building ─────────────────────────────────────────────────────────
+
+function buildUrlExpression(path: string, params?: ParamSource): string {
+    // Replace :paramName with ${encodeURIComponent(paramName)}
+    return path.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, (_match, name) => {
+        return `\${encodeURIComponent(String(${name}))}`;
+    });
+}
+
+// ─── Method parameters ────────────────────────────────────────────────────
+
+interface MethodParam {
+    name: string;
+    type: string;
+    optional: boolean;
+}
+
+function buildMethodParams(route: OpRouteNode, op: OpOperationNode): MethodParam[] {
+    const params: MethodParam[] = [];
+
+    // Path params — always first, always required
+    if (route.params) {
+        if (Array.isArray(route.params)) {
+            for (const p of route.params) {
+                params.push({ name: p.name, type: renderTsType(p.type), optional: false });
+            }
+        } else if (typeof route.params === 'string') {
+            params.push({ name: 'params', type: route.params, optional: false });
+        } else {
+            params.push({ name: 'params', type: renderTsType(route.params), optional: false });
+        }
+    }
+
+    // Body
+    if (op.request) {
+        if (op.request.contentType === 'multipart/form-data') {
+            params.push({ name: 'body', type: 'FormData', optional: false });
+        } else {
+            params.push({ name: 'body', type: renderTsType(op.request.bodyType), optional: false });
+        }
+    }
+
+    // Query
+    if (op.query) {
+        if (Array.isArray(op.query)) {
+            const fields = op.query.map(p => `${p.name}?: ${renderTsType(p.type)}`).join('; ');
+            params.push({ name: 'query', type: `{ ${fields} }`, optional: true });
+        } else if (typeof op.query === 'string') {
+            params.push({ name: 'query', type: op.query, optional: true });
+        } else {
+            params.push({ name: 'query', type: renderTsType(op.query), optional: true });
+        }
+    }
+
+    // Headers
+    if (op.headers) {
+        if (Array.isArray(op.headers)) {
+            const fields = op.headers.map(p => `${p.name}?: ${renderTsType(p.type)}`).join('; ');
+            params.push({ name: 'customHeaders', type: `{ ${fields} }`, optional: true });
+        } else if (typeof op.headers === 'string') {
+            params.push({ name: 'customHeaders', type: op.headers, optional: true });
+        } else {
+            params.push({ name: 'customHeaders', type: renderTsType(op.headers), optional: true });
+        }
+    }
+
+    return params;
+}
+
+// ─── TypeScript type rendering ────────────────────────────────────────────
+
+export function renderTsType(type: DtoTypeNode): string {
+    switch (type.kind) {
+        case 'scalar':
+            return renderTsScalar(type.name);
+        case 'array':
+            return `${renderTsType(type.item)}[]`;
+        case 'tuple':
+            return `[${type.items.map(renderTsType).join(', ')}]`;
+        case 'record':
+            return `Record<${renderTsType(type.key)}, ${renderTsType(type.value)}>`;
+        case 'enum':
+            return type.values.map(v => `'${v}'`).join(' | ');
+        case 'literal':
+            return typeof type.value === 'string' ? `'${type.value}'` : String(type.value);
+        case 'union':
+            return type.members.map(renderTsType).join(' | ');
+        case 'intersection':
+            return type.members.map(renderTsType).join(' & ');
+        case 'ref':
+            return type.name;
+        case 'lazy':
+            return renderTsType(type.inner);
+        case 'inlineObject':
+            return renderTsInlineObject(type.fields);
+        default:
+            return 'unknown';
+    }
+}
+
+function renderTsScalar(name: string): string {
+    switch (name) {
+        case 'string':
+        case 'email':
+        case 'url':
+        case 'uuid':
+            return 'string';
+        case 'number':
+        case 'int':
+            return 'number';
+        case 'bigint':
+            return 'bigint';
+        case 'boolean':
+            return 'boolean';
+        case 'date':
+        case 'datetime':
+            return 'string';
+        case 'null':
+            return 'null';
+        case 'any':
+            return 'any';
+        case 'unknown':
+            return 'unknown';
+        case 'object':
+            return 'Record<string, unknown>';
+        case 'binary':
+            return 'Blob';
+        default:
+            return 'unknown';
+    }
+}
+
+function renderTsInlineObject(fields: FieldNode[]): string {
+    const entries = fields.map(f => {
+        const opt = f.optional ? '?' : '';
+        return `${f.name}${opt}: ${renderTsType(f.type)}`;
+    });
+    return `{ ${entries.join('; ')} }`;
+}
+
+// ─── Method name inference ────────────────────────────────────────────────
+
+function deriveMethodName(op: OpOperationNode, route: OpRouteNode): string {
+    if (op.sdk) return op.sdk;
+    return inferMethodName(op.method, route.path);
+}
+
+function inferMethodName(method: string, path: string): string {
+    // Build a name from the path segments + method
+    // e.g. GET /users/:id → getUsersById
+    // e.g. POST /users → postUsers
+    // e.g. DELETE /users/:id → deleteUsersById
+    const segments = path.split('/').filter(s => s.length > 0);
+    const parts: string[] = [method.toLowerCase()];
+
+    for (const seg of segments) {
+        if (seg.startsWith(':')) {
+            // :id → ById, :accountId → ByAccountId
+            const paramName = seg.slice(1);
+            parts.push('By' + paramName.charAt(0).toUpperCase() + paramName.slice(1));
+        } else {
+            // Regular segment — camelCase it
+            const segParts = seg.split(/[.-]/).filter(Boolean);
+            for (const sp of segParts) {
+                parts.push(sp.charAt(0).toUpperCase() + sp.slice(1));
+            }
+        }
+    }
+
+    return parts[0]! + parts.slice(1).join('');
+}
+
+// ─── Naming conventions ────────────────────────────────────────────────────
+
+function deriveBaseName(file: string): string {
+    const base = file.split('/').pop()?.replace(/\.op$/, '') ?? 'Resource';
+    return base
+        .split('.')
+        .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+        .join('');
+}
+
+export function deriveClientClassName(file: string): string {
+    return `${deriveBaseName(file)}Client`;
+}
+
+export function deriveClientPropertyName(file: string): string {
+    const base = deriveBaseName(file);
+    return base.charAt(0).toLowerCase() + base.slice(1);
+}
+
+// ─── Type collection ──────────────────────────────────────────────────────
+
+function collectTypes(root: OpRootNode): string[] {
+    const types = new Set<string>();
+    for (const route of root.routes) {
+        collectParamSourceRefs(route.params, types);
+        for (const op of route.operations) {
+            if (op.request?.bodyType) collectTypeNodeRefs(op.request.bodyType, types);
+            for (const resp of op.responses) {
+                if (resp.bodyType) collectTypeNodeRefs(resp.bodyType, types);
+            }
+            collectParamSourceRefs(op.query, types);
+            collectParamSourceRefs(op.headers, types);
+        }
+    }
+    return [...types].sort();
+}
+
+function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string>): void {
+    if (!source) return;
+    if (typeof source === 'string') {
+        if (/^[A-Z]/.test(source)) out.add(source);
+    } else if (Array.isArray(source)) {
+        for (const param of source) {
+            collectTypeNodeRefs(param.type, out);
+        }
+    } else {
+        collectTypeNodeRefs(source, out);
+    }
+}
+
+function collectTypeNodeRefs(type: DtoTypeNode, out: Set<string>): void {
+    switch (type.kind) {
+        case 'ref':
+            if (/^[A-Z]/.test(type.name)) out.add(type.name);
+            break;
+        case 'array':
+            collectTypeNodeRefs(type.item, out);
+            break;
+        case 'tuple':
+            type.items.forEach(t => collectTypeNodeRefs(t, out));
+            break;
+        case 'record':
+            collectTypeNodeRefs(type.key, out);
+            collectTypeNodeRefs(type.value, out);
+            break;
+        case 'union':
+            type.members.forEach(t => collectTypeNodeRefs(t, out));
+            break;
+        case 'intersection':
+            type.members.forEach(t => collectTypeNodeRefs(t, out));
+            break;
+        case 'lazy':
+            collectTypeNodeRefs(type.inner, out);
+            break;
+        case 'inlineObject':
+            type.fields.forEach(f => collectTypeNodeRefs(f.type, out));
+            break;
+    }
+}
+
+// ─── Type import resolution ───────────────────────────────────────────────
+
+function generateTypeImports(types: string[], opFile: string, options: SdkCodegenOptions): string[] {
+    const lines: string[] = [];
+    const { modelOutPaths, outPath } = options;
+
+    if (modelOutPaths && outPath) {
+        const byFile = new Map<string, string[]>();
+        const unresolved: string[] = [];
+
+        for (const type of types) {
+            const typeOutPath = modelOutPaths.get(type);
+            if (typeOutPath) {
+                const group = byFile.get(typeOutPath) ?? [];
+                group.push(type);
+                byFile.set(typeOutPath, group);
+            } else {
+                unresolved.push(type);
+            }
+        }
+
+        const fromDir = dirname(outPath);
+        for (const [typeOutPath, names] of byFile) {
+            let rel = relative(fromDir, typeOutPath);
+            rel = rel.replace(/\.ts$/, '.js');
+            if (!rel.startsWith('.')) rel = './' + rel;
+            lines.push(`import type { ${names.sort().join(', ')} } from '${rel}';`);
+        }
+
+        for (const type of unresolved) {
+            const moduleName = pascalToDotCase(type);
+            lines.push(`import type { ${type} } from './${moduleName}.js';`);
+        }
+    } else {
+        const typeImport = deriveTypeImportPath(opFile, options.typeImportPathTemplate);
+        lines.push(`import type { ${types.join(', ')} } from '${typeImport}';`);
+    }
+
+    return lines;
+}
+
+function deriveTypeImportPath(file: string, template?: string): string {
+    const base = file.split('/').pop()?.replace(/\.op$/, '') ?? 'resource';
+    const module = base.split('.')[0] ?? base;
+    if (template) {
+        return template.replace(/\{module\}/g, module).replace(/\{base\}/g, base);
+    }
+    return `#modules/${module}/types/index.js`;
+}
+
+// ─── Fetch helper (emitted inside the class) ──────────────────────────────
+
+const FETCH_HELPER = [
+    '    private async fetch(url: string, init: RequestInit): Promise<Response> {',
+    '        const baseHeaders = typeof this.options.headers === \'function\'',
+    '            ? await this.options.headers()',
+    '            : this.options.headers ?? {};',
+    '        const res = await (this.options.fetch ?? fetch)(`${this.options.baseUrl}${url}`, {',
+    '            ...init,',
+    '            headers: { ...baseHeaders, ...init.headers },',
+    '        });',
+    '        if (!res.ok) {',
+    '            throw new Error(`HTTP ${res.status}: ${res.statusText}`);',
+    '        }',
+    '        return res;',
+    '    }',
+];
+
+// ─── Shared SDK files ──────────────────────────────────────────────────────
+
+/** Generate the shared SdkOptions interface file. */
+export function generateSdkOptions(): string {
+    return [
+        'export interface SdkOptions {',
+        '    baseUrl: string;',
+        '    fetch?: typeof fetch;',
+        '    headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);',
+        '}',
+        '',
+    ].join('\n');
+}
+
+export interface SdkClientInfo {
+    className: string;
+    propertyName: string;
+    importPath: string;
+}
+
+/** Generate the sdk.ts aggregator that wraps all clients into a single Sdk class. */
+export function generateSdkAggregator(clients: SdkClientInfo[], sdkOptionsImportPath = './sdk-options.js'): string {
+    const lines: string[] = [];
+
+    lines.push(`import type { SdkOptions } from '${sdkOptionsImportPath}';`);
+    for (const c of clients) {
+        lines.push(`import { ${c.className} } from '${c.importPath}';`);
+    }
+    lines.push('');
+
+    lines.push('export class Sdk {');
+    for (const c of clients) {
+        lines.push(`    readonly ${c.propertyName}: ${c.className};`);
+    }
+    lines.push('');
+    lines.push('    constructor(options: SdkOptions) {');
+    for (const c of clients) {
+        lines.push(`        this.${c.propertyName} = new ${c.className}(options);`);
+    }
+    lines.push('    }');
+    lines.push('}');
+    lines.push('');
+
+    return lines.join('\n');
+}

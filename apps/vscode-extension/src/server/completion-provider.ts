@@ -18,7 +18,7 @@ const CONSTRAINT_KEYS = ['min', 'max', 'length', 'len', 'regex'];
 
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 
-const OP_BLOCK_KEYWORDS = ['service', 'query', 'headers', 'request', 'response'];
+const OP_BLOCK_KEYWORDS = ['service', 'sdk', 'query', 'headers', 'request', 'response'];
 
 export function getCompletions(
     params: TextDocumentPositionParams,

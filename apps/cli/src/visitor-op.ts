@@ -136,6 +136,7 @@ export class OpVisitor extends BaseOpVisitor {
     const description = this.comments.get(line - 1) ?? this.comments.get(line);
 
     let service: string | undefined;
+    let sdk: string | undefined;
     let query: ParamSource | undefined;
     let headers: ParamSource | undefined;
     let request: OpRequestNode | undefined;
@@ -144,17 +145,19 @@ export class OpVisitor extends BaseOpVisitor {
     if (ctx.operationBody) {
       const body = this.visit(ctx.operationBody[0]);
       service = body.service;
+      sdk = body.sdk;
       query = body.query;
       headers = body.headers;
       request = body.request;
       responses = body.responses;
     }
 
-    return { method, service, query, headers, request, responses, description, loc: { file: this.file, line } };
+    return { method, service, sdk, query, headers, request, responses, description, loc: { file: this.file, line } };
   }
 
-  operationBody(ctx: any): { service?: string; query?: ParamSource; headers?: ParamSource; request?: OpRequestNode; responses: OpResponseNode[] } {
+  operationBody(ctx: any): { service?: string; sdk?: string; query?: ParamSource; headers?: ParamSource; request?: OpRequestNode; responses: OpResponseNode[] } {
     let service: string | undefined;
+    let sdk: string | undefined;
     let query: ParamSource | undefined;
     let headers: ParamSource | undefined;
     let request: OpRequestNode | undefined;
@@ -162,6 +165,9 @@ export class OpVisitor extends BaseOpVisitor {
 
     if (ctx.serviceDecl) {
       service = this.visit(ctx.serviceDecl[0]);
+    }
+    if (ctx.sdkDecl) {
+      sdk = this.visit(ctx.sdkDecl[0]);
     }
     if (ctx.queryBlock) {
       query = this.visit(ctx.queryBlock[0]);
@@ -176,7 +182,7 @@ export class OpVisitor extends BaseOpVisitor {
       responses = this.visit(ctx.responseBlock[0]);
     }
 
-    return { service, query, headers, request, responses };
+    return { service, sdk, query, headers, request, responses };
   }
 
   queryBlock(ctx: any): ParamSource {
@@ -207,6 +213,11 @@ export class OpVisitor extends BaseOpVisitor {
   }
 
   serviceDecl(ctx: any): string {
+    const identifiers: IToken[] = ctx.Identifier || [];
+    return identifiers[1]?.image ?? '';
+  }
+
+  sdkDecl(ctx: any): string {
     const identifiers: IToken[] = ctx.Identifier || [];
     return identifiers[1]?.image ?? '';
   }

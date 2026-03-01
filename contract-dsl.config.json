@@ -1,14 +1,29 @@
 {
-    "baseDir": "~/projects/homegrown_v2/apps/api/",
+    "rootDir": "~/projects/homegrown_v2/",
     "cache": true,
-    "dto": {
-        "output": "src/modules/{area}/types/{filename}.ts",
-        "include": ["contracts/types/**/*.dto"]
+    "server": {
+        "baseDir": "apps/api/",
+        "types": {
+            "output": "src/modules/{area}/types/{filename}.ts",
+            "include": ["contracts/types/**/*.dto"]
+        },
+        "routes": {
+            "output": "src/routes/{filename}.router.ts",
+            "include": ["contracts/operations/**/*.op"],
+            "servicePathTemplate": "#modules/{module}/{module}.service.js",
+            "typeImportPathTemplate": "#modules/{module}/types/index.js"
+        }
     },
-    "routes": {
-        "output": "src/routes/{filename}.router.ts",
-        "include": ["contracts/operations/**/*.op"],
-        "servicePathTemplate": "#modules/{module}/{module}.service.js",
-        "typeImportPathTemplate": "#modules/{module}/types/index.js"
+    "sdk": {
+        "baseDir": "packages/sdk/",
+        "output": "src/homegrown.sdk.ts",
+        "types": {
+            "output": "src/{area}/types/{filename}.ts",
+            "include": ["contracts/types/**/*.dto"]
+        },
+        "clients": {
+            "output": "src/{area}/{filename}.client.ts",
+            "include": ["contracts/operations/**/*.op"]
+        }
     }
 }

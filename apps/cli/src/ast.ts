@@ -147,6 +147,7 @@ export interface OpResponseNode {
 export interface OpOperationNode {
   method: HttpMethod;
   service?: string; // e.g. "LedgerService.updateCategoryNesting"
+  sdk?: string; // e.g. "getUser" — explicit SDK method name
   request?: OpRequestNode;
   responses: OpResponseNode[];
   query?: ParamSource;

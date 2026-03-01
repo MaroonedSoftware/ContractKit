@@ -109,6 +109,7 @@
             "patterns": [
                 { "include": "#comment" },
                 { "include": "#service-decl" },
+                { "include": "#sdk-decl" },
                 { "include": "#query-block" },
                 { "include": "#headers-block" },
                 { "include": "#request-block" },
@@ -123,12 +124,20 @@
                 "3": { "name": "entity.name.function.service-ref.op" }
             }
         },
+        "sdk-decl": {
+            "match": "\\b(sdk)\\s*(:)\\s*([a-zA-Z_$][a-zA-Z0-9_$]*)",
+            "captures": {
+                "1": { "name": "keyword.control.sdk.op" },
+                "2": { "name": "punctuation.separator.colon.op" },
+                "3": { "name": "entity.name.function.sdk-method.op" }
+            }
+        },
         "query-block": {
             "begin": "\\b(query)\\b",
             "beginCaptures": {
                 "1": { "name": "keyword.control.query.op" }
             },
-            "end": "(?<=\\})|(?=\\b(?:service|query|headers|request|response)\\b)|(?=\\})",
+            "end": "(?<=\\})|(?=\\b(?:service|sdk|query|headers|request|response)\\b)|(?=\\})",
             "patterns": [
                 { "include": "#comment" },
                 { "include": "#type-shorthand" },
@@ -140,7 +149,7 @@
             "beginCaptures": {
                 "1": { "name": "keyword.control.headers.op" }
             },
-            "end": "(?<=\\})|(?=\\b(?:service|query|headers|request|response)\\b)|(?=\\})",
+            "end": "(?<=\\})|(?=\\b(?:service|sdk|query|headers|request|response)\\b)|(?=\\})",
             "patterns": [
                 { "include": "#comment" },
                 { "include": "#type-shorthand" },

@@ -324,7 +324,7 @@ export function typeNeedsDateTime(type: DtoTypeNode): boolean {
     }
 }
 
-function collectExternalRefs(root: DtoRootNode): string[] {
+export function collectExternalRefs(root: DtoRootNode): string[] {
     const localNames = new Set(root.models.map(m => m.name));
     const refs = new Set<string>();
 
@@ -374,7 +374,7 @@ function collectTypeRefs(type: DtoTypeNode, out: Set<string>): void {
  * Topologically sort models so dependencies are emitted before dependents.
  * Falls back to source order for cycles (which would need z.lazy at runtime).
  */
-function topoSortModels(models: ModelNode[]): ModelNode[] {
+export function topoSortModels(models: ModelNode[]): ModelNode[] {
     const localNames = new Set(models.map(m => m.name));
     const modelMap = new Map(models.map(m => [m.name, m]));
 
@@ -443,7 +443,7 @@ function topoSortModels(models: ModelNode[]): ModelNode[] {
  * from the current file to the referenced model's output file.
  * Falls back to same-directory PascalCase → dot.case convention.
  */
-function resolveImportPath(refName: string, context?: DtoCodegenContext): string {
+export function resolveImportPath(refName: string, context?: DtoCodegenContext): string {
     if (context) {
         const refOutPath = context.modelOutPaths.get(refName);
         if (refOutPath) {

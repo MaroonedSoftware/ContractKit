@@ -169,6 +169,13 @@ export class OpCstParser extends CstParser {
         {
           GATE: () => {
             const la = this.LA(1);
+            return la.tokenType === Identifier && la.image === 'sdk';
+          },
+          ALT: () => this.SUBRULE(this.sdkDecl),
+        },
+        {
+          GATE: () => {
+            const la = this.LA(1);
             return la.tokenType === Identifier && la.image === 'query';
           },
           ALT: () => this.SUBRULE(this.queryBlock),
@@ -205,6 +212,15 @@ export class OpCstParser extends CstParser {
     this.CONSUME(Identifier);  // "service"
     this.CONSUME(Colon);
     this.CONSUME2(Identifier); // service reference e.g. "LedgerService.updateCategoryMembership"
+  });
+
+  // ─── SDK ───────────────────────────────────────────────────────────
+
+  // sdkDecl: "sdk" COLON IDENTIFIER
+  public sdkDecl = this.RULE('sdkDecl', () => {
+    this.CONSUME(Identifier);  // "sdk"
+    this.CONSUME(Colon);
+    this.CONSUME2(Identifier); // method name e.g. "getUser"
   });
 
   // ─── Query ──────────────────────────────────────────────────────────
