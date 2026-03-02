@@ -16,7 +16,8 @@
     },
     "sdk": {
         "baseDir": "packages/sdk/",
-        "output": "src/homegrown.sdk.ts",
+        "name": "homegrown",
+        "output": "src/{name}.sdk.ts",
         "types": {
             "output": "src/{area}/types/{filename}.ts",
             "include": ["contracts/types/**/*.dto"]

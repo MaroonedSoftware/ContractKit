@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { resolve, join, dirname, relative } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { resolve, join, dirname, relative, basename } from 'node:path';
 import { glob } from 'glob';
 import { DiagnosticCollector } from './diagnostics.js';
 import { parseDto } from './parser-dto.js';
@@ -192,6 +192,16 @@ function commonDir(files: string[], rootDir: string): string {
     return first.slice(0, depth).join('/') || '/';
 }
 
+// ─── Content comparison ───────────────────────────────────────────────────
+
+function isContentUnchanged(outPath: string, content: string): boolean {
+    try {
+        return existsSync(outPath) && readFileSync(outPath, 'utf-8') === content;
+    } catch {
+        return false;
+    }
+}
+
 // ─── Barrel file generation ───────────────────────────────────────────────
 
 function generateBarrelFiles(dtoPaths: string[]): { outPath: string; content: string }[] {
@@ -273,8 +283,9 @@ async function main() {
         const newCache: FileHashMap = {};
 
         // ── Pass 1: Parse all files ─────────────────────────────────
-        // allDtoInfo tracks every DTO file (even unchanged) for cross-file import resolution
+        // allDtoInfo/allOpInfo track every file (even unchanged) for cross-file import resolution and SDK generation
         const allDtoInfo: { ast: DtoRootNode; filePath: string; outPath: string }[] = [];
+        const allOpInfo: { ast: OpRootNode; filePath: string; outPath: string }[] = [];
         const dtoRoots: { ast: DtoRootNode; filePath: string; outPath: string }[] = [];
         const opRoots: { ast: OpRootNode; filePath: string; outPath: string }[] = [];
 
@@ -305,6 +316,7 @@ async function main() {
                 const ast = parseOp(source, filePath, diag);
                 const outPath = computeOutPath(filePath, serverOpts, commonRoot, ast.meta);
                 if (!outPath) continue;
+                allOpInfo.push({ ast, filePath, outPath });
                 if (!config.force && !isFileChanged(filePath, source, outPath, cache)) {
                     console.log(`  -  ${relative(resolvedBase, outPath)} (unchanged)`);
                     continue;
@@ -324,6 +336,27 @@ async function main() {
                     modelsWithInput.add(model.name);
                     modelOutPaths.set(`${model.name}Input`, outPath);
                 }
+            }
+        }
+
+        // ── Dependency fingerprint ──────────────────────────────────
+        // Cross-file state (model names, output paths, input variants) flows into
+        // every generated file. If this state changes, all outputs must regenerate.
+        const depsFingerprint = computeHash(
+            [...modelOutPaths.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}:${v}`).join('\n')
+            + '\n'
+            + [...modelsWithInput].sort().join(','),
+        );
+        const depsChanged = cacheEnabled && cache['__deps__'] !== depsFingerprint;
+        newCache['__deps__'] = depsFingerprint;
+
+        if (depsChanged) {
+            // Cross-file dependencies changed — regenerate all outputs
+            for (const info of allDtoInfo) {
+                if (!dtoRoots.includes(info)) dtoRoots.push(info);
+            }
+            for (const info of allOpInfo) {
+                if (!opRoots.includes(info)) opRoots.push(info);
             }
         }
 
@@ -363,8 +396,10 @@ async function main() {
 
         // ── SDK generation (opt-in via config.sdk) ──────────────
         const sdkClientInfos: { outPath: string; className: string; propertyName: string }[] = [];
+        const sdkTypePaths: string[] = [];
+        const sdkName = config.sdk?.name;
         const sdkEntryPath = config.sdk?.output
-            ? join(sdkBase, config.sdk.output)
+            ? join(sdkBase, resolveTemplate(config.sdk.output, { name: sdkName ?? 'sdk' }))
             : join(sdkBase, 'sdk.ts');
         const sdkOptionsPath = join(dirname(sdkEntryPath), 'sdk-options.ts');
 
@@ -374,7 +409,7 @@ async function main() {
             let sdkModelOutPaths = modelOutPaths;
             if (config.sdk.types?.output) {
                 sdkModelOutPaths = new Map<string, string>();
-                for (const { ast, filePath, outPath: dtoOutPath } of allDtoInfo) {
+                for (const { ast, filePath } of allDtoInfo) {
                     const typeOutPath = computeSdkTypeOutPath(
                         filePath,
                         sdkBase,
@@ -383,20 +418,27 @@ async function main() {
                         ast.meta,
                     );
                     if (!typeOutPath) continue;
-                    // Generate plain TypeScript types (not Zod schemas) for the SDK package
-                    const content = generatePlainTypes(ast, { modelOutPaths: sdkModelOutPaths, currentOutPath: typeOutPath, modelsWithInput });
-                    results.push({ outPath: typeOutPath, content });
+                    sdkTypePaths.push(typeOutPath);
+                    // Always track model paths for import resolution
                     for (const model of ast.models) {
                         sdkModelOutPaths.set(model.name, typeOutPath);
                         if (model.fields.some(f => f.visibility !== 'normal')) {
                             sdkModelOutPaths.set(`${model.name}Input`, typeOutPath);
                         }
                     }
+                    // Only regenerate if source or dependencies changed
+                    const source = readFileSync(filePath, 'utf-8');
+                    if (!depsChanged && !config.force && !isFileChanged(filePath, source, typeOutPath, cache)) {
+                        console.log(`  -  ${relative(resolvedBase, typeOutPath)} (unchanged)`);
+                        continue;
+                    }
+                    const content = generatePlainTypes(ast, { modelOutPaths: sdkModelOutPaths, currentOutPath: typeOutPath, modelsWithInput });
+                    results.push({ outPath: typeOutPath, content });
                 }
             }
 
             if (config.sdk.clients) {
-                for (const { ast, filePath } of opRoots) {
+                for (const { ast, filePath } of allOpInfo) {
                     const sdkOutPath = computeSdkOutPath(
                         filePath,
                         sdkBase,
@@ -405,6 +447,18 @@ async function main() {
                         ast.meta,
                     );
                     if (!sdkOutPath) continue;
+                    // Always track client info for the aggregator
+                    sdkClientInfos.push({
+                        outPath: sdkOutPath,
+                        className: deriveClientClassName(ast.file),
+                        propertyName: deriveClientPropertyName(ast.file),
+                    });
+                    // Only regenerate if source or dependencies changed
+                    const source = readFileSync(filePath, 'utf-8');
+                    if (!depsChanged && !config.force && !isFileChanged(filePath, source, sdkOutPath, cache)) {
+                        console.log(`  -  ${relative(resolvedBase, sdkOutPath)} (unchanged)`);
+                        continue;
+                    }
                     const content = generateSdk(ast, {
                         typeImportPathTemplate: config.sdk.clients.typeImportPathTemplate ?? config.server.routes.typeImportPathTemplate,
                         outPath: sdkOutPath,
@@ -413,16 +467,16 @@ async function main() {
                         modelsWithInput,
                     });
                     results.push({ outPath: sdkOutPath, content });
-                    sdkClientInfos.push({
-                        outPath: sdkOutPath,
-                        className: deriveClientClassName(ast.file),
-                        propertyName: deriveClientPropertyName(ast.file),
-                    });
                 }
             }
 
             // Generate shared sdk-options.ts
-            results.push({ outPath: sdkOptionsPath, content: generateSdkOptions() });
+            const sdkOptionsContent = generateSdkOptions();
+            if (!isContentUnchanged(sdkOptionsPath, sdkOptionsContent)) {
+                results.push({ outPath: sdkOptionsPath, content: sdkOptionsContent });
+            } else {
+                console.log(`  -  ${relative(resolvedBase, sdkOptionsPath)} (unchanged)`);
+            }
 
             // Generate sdk.ts aggregator
             if (sdkClientInfos.length > 0) {
@@ -433,10 +487,49 @@ async function main() {
                     return { className: c.className, propertyName: c.propertyName, importPath: rel };
                 });
                 const sdkOptionsRel = relative(sdkEntryDir, sdkOptionsPath).replace(/\.ts$/, '.js');
-                results.push({
-                    outPath: sdkEntryPath,
-                    content: generateSdkAggregator(clients, sdkOptionsRel.startsWith('.') ? sdkOptionsRel : './' + sdkOptionsRel),
-                });
+                const sdkClassName = sdkName
+                    ? sdkName.split(/[-._\s]+/).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('') + 'Sdk'
+                    : 'Sdk';
+                const sdkAggregatorContent = generateSdkAggregator(clients, sdkOptionsRel.startsWith('.') ? sdkOptionsRel : './' + sdkOptionsRel, sdkClassName);
+                if (!isContentUnchanged(sdkEntryPath, sdkAggregatorContent)) {
+                    results.push({ outPath: sdkEntryPath, content: sdkAggregatorContent });
+                } else {
+                    console.log(`  -  ${relative(resolvedBase, sdkEntryPath)} (unchanged)`);
+                }
+            }
+
+            // Generate SDK barrel files: per-directory type barrels + root index.ts
+            const sdkSrcDir = dirname(sdkEntryPath);
+            const sdkTypeBarrels = generateBarrelFiles(sdkTypePaths);
+            for (const barrel of sdkTypeBarrels) {
+                if (!isContentUnchanged(barrel.outPath, barrel.content)) {
+                    results.push(barrel);
+                } else {
+                    console.log(`  -  ${relative(resolvedBase, barrel.outPath)} (unchanged)`);
+                }
+            }
+
+            const rootExports: string[] = [];
+            rootExports.push(`export * from './${basename(sdkOptionsPath).replace(/\.ts$/, '.js')}';`);
+            if (sdkClientInfos.length > 0) {
+                rootExports.push(`export * from './${basename(sdkEntryPath).replace(/\.ts$/, '.js')}';`);
+            }
+            for (const c of sdkClientInfos) {
+                let rel = relative(sdkSrcDir, c.outPath).replace(/\.ts$/, '.js');
+                if (!rel.startsWith('.')) rel = './' + rel;
+                rootExports.push(`export * from '${rel}';`);
+            }
+            for (const barrel of sdkTypeBarrels) {
+                let rel = relative(sdkSrcDir, barrel.outPath).replace(/\.ts$/, '.js');
+                if (!rel.startsWith('.')) rel = './' + rel;
+                rootExports.push(`export * from '${rel}';`);
+            }
+            const rootBarrelPath = join(sdkSrcDir, 'index.ts');
+            const rootBarrelContent = `// Auto-generated barrel file\n${rootExports.sort().join('\n')}\n`;
+            if (!isContentUnchanged(rootBarrelPath, rootBarrelContent)) {
+                results.push({ outPath: rootBarrelPath, content: rootBarrelContent });
+            } else {
+                console.log(`  -  ${relative(resolvedBase, rootBarrelPath)} (unchanged)`);
             }
         }
 
@@ -460,6 +553,10 @@ async function main() {
         // ── Generate barrel index files for DTO directories ─────────
         const barrelFiles = generateBarrelFiles(allDtoInfo.map(d => d.outPath));
         for (const { outPath, content } of barrelFiles) {
+            if (isContentUnchanged(outPath, content)) {
+                console.log(`  -  ${relative(resolvedBase, outPath)} (unchanged)`);
+                continue;
+            }
             mkdirSync(dirname(outPath), { recursive: true });
             writeFileSync(outPath, content, 'utf-8');
             console.log(`  ✓  ${relative(resolvedBase, outPath)} (barrel)`);

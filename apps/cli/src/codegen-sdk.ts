@@ -568,7 +568,7 @@ export interface SdkClientInfo {
 }
 
 /** Generate the sdk.ts aggregator that wraps all clients into a single Sdk class. */
-export function generateSdkAggregator(clients: SdkClientInfo[], sdkOptionsImportPath = './sdk-options.js'): string {
+export function generateSdkAggregator(clients: SdkClientInfo[], sdkOptionsImportPath = './sdk-options.js', sdkClassName = 'Sdk'): string {
     const lines: string[] = [];
 
     lines.push(`import type { SdkOptions } from '${sdkOptionsImportPath}';`);
@@ -577,7 +577,7 @@ export function generateSdkAggregator(clients: SdkClientInfo[], sdkOptionsImport
     }
     lines.push('');
 
-    lines.push('export class Sdk {');
+    lines.push(`export class ${sdkClassName} {`);
     for (const c of clients) {
         lines.push(`    readonly ${c.propertyName}: ${c.className};`);
     }

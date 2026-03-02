@@ -28,6 +28,7 @@ export interface SdkClientsConfig {
 
 export interface SdkConfig {
     baseDir?: string;
+    name?: string;
     output?: string;
     types?: SdkTypesConfig;
     clients?: SdkClientsConfig;
