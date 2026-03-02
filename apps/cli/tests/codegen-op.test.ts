@@ -1,6 +1,8 @@
+import { describe, it, expect } from 'vitest';
 import { generateOp } from '../src/codegen-op.js';
 import {
-  scalarType, opParam, opRequest, opResponse,
+  scalarType, arrayType, refType, inlineObjectType, field,
+  opParam, opRequest, opResponse,
   opOperation, opRoute, opRoot,
 } from './helpers.js';
 
@@ -262,6 +264,49 @@ describe('generateOp', () => {
       ]);
       const output = generateOp(root);
       expect(output).toMatch(/import.*Pagination.*from/);
+    });
+
+    it('wraps inline array query params with z.preprocess for single-value coercion', () => {
+      const root = opRoot([
+        opRoute('/offers', [
+          opOperation('get', {
+            query: [
+              opParam('status', arrayType(refType('OfferStatus'))),
+              opParam('limit', scalarType('int')),
+            ],
+          }),
+        ]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain('z.preprocess');
+      expect(output).toContain("typeof v === 'string' ? v.split(',') : v");
+      // Non-array params should not be wrapped
+      expect(output).toContain('limit: z.coerce.number().int()');
+    });
+
+    it('wraps DtoTypeNode intersection query with array fields using z.preprocess', () => {
+      const root = opRoot([
+        opRoute('/offers', [
+          opOperation('get', {
+            query: {
+              kind: 'intersection',
+              members: [
+                { kind: 'ref', name: 'Pagination' },
+                {
+                  kind: 'inlineObject',
+                  fields: [
+                    field('status', arrayType(refType('OfferStatus')), { optional: true }),
+                  ],
+                },
+              ],
+            } as any,
+          }),
+        ]),
+      ]);
+      const output = generateOp(root);
+      expect(output).toContain('Pagination.and(');
+      expect(output).toContain('z.preprocess');
+      expect(output).toContain('.optional()');
     });
   });
 

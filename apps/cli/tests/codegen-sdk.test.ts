@@ -94,7 +94,7 @@ describe('generateSdk', () => {
       expect(out).toContain('async getUser(id: string): Promise<User>');
       expect(out).toContain('encodeURIComponent(String(id))');
       expect(out).toContain("method: 'GET'");
-      expect(out).toContain('return await res.json() as User');
+      expect(out).toContain('return JSON.parse(await result.text(), bigIntReviver) as User');
     });
   });
 
@@ -112,7 +112,7 @@ describe('generateSdk', () => {
       const out = generateSdk(root);
       expect(out).toContain('async createUser(body: CreateUserInput): Promise<User>');
       expect(out).toContain("'Content-Type': 'application/json'");
-      expect(out).toContain('JSON.stringify(body)');
+      expect(out).toContain('JSON.stringify(body, bigIntReplacer)');
     });
   });
 
@@ -128,8 +128,7 @@ describe('generateSdk', () => {
       ]);
       const out = generateSdk(root);
       expect(out).toContain('async deleteUser(id: string): Promise<void>');
-      // Should not contain res.json()
-      expect(out).not.toMatch(/return await res\.json\(\)/);
+      expect(out).toContain('await result.text()');
     });
   });
 
@@ -150,6 +149,24 @@ describe('generateSdk', () => {
       const out = generateSdk(root);
       expect(out).toContain('query?: { page?: number; limit?: number }');
       expect(out).toContain('URLSearchParams');
+    });
+
+    it('handles array query params with append instead of set', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', {
+            sdk: 'listUsers',
+            query: [
+              opParam('status', arrayType(refType('Status'))),
+              opParam('limit', scalarType('int')),
+            ],
+            responses: [opResponse(200, 'array(User)', 'application/json')],
+          }),
+        ]),
+      ]);
+      const out = generateSdk(root);
+      expect(out).toContain('Array.isArray(v)');
+      expect(out).toContain('searchParams.append(k, String(item))');
     });
 
     it('handles type-ref query params', () => {
@@ -287,7 +304,7 @@ describe('generateSdk', () => {
   });
 
   describe('SdkOptions interface', () => {
-    it('emits SdkOptions interface with baseUrl, fetch, headers', () => {
+    it('emits SdkOptions interface with baseUrl, headers, fetch and SdkError', () => {
       const root = opRoot([
         opRoute('/users', [
           opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
@@ -296,22 +313,22 @@ describe('generateSdk', () => {
       const out = generateSdk(root);
       expect(out).toContain('export interface SdkOptions');
       expect(out).toContain('baseUrl: string');
-      expect(out).toContain('fetch?: typeof fetch');
       expect(out).toContain('headers?:');
+      expect(out).toContain('fetch?: SdkFetch');
+      expect(out).toContain('export class SdkError extends Error');
     });
   });
 
-  describe('fetch helper', () => {
-    it('emits private fetch method', () => {
+  describe('fetch usage', () => {
+    it('calls this.fetch in methods', () => {
       const root = opRoot([
         opRoute('/users', [
           opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
         ]),
       ]);
       const out = generateSdk(root);
-      expect(out).toContain('private async fetch(');
-      expect(out).toContain('this.options.baseUrl');
-      expect(out).toContain("throw new Error(`HTTP ${res.status}");
+      expect(out).toContain('this.fetch(');
+      expect(out).toContain('constructor(private fetch: SdkFetch)');
     });
   });
 
@@ -326,11 +343,12 @@ describe('generateSdk', () => {
         outPath: '/sdk/src/users.client.ts',
         sdkOptionsPath: '/sdk/sdk-options.ts',
       });
-      expect(out).toContain("import type { SdkOptions } from '../sdk-options.js'");
+      expect(out).toContain("import type { SdkFetch } from '../sdk-options.js'");
+      expect(out).toContain("import { SdkError, bigIntReplacer, bigIntReviver } from '../sdk-options.js'");
       expect(out).not.toContain('export interface SdkOptions');
     });
 
-    it('emits inline SdkOptions when sdkOptionsPath not provided', () => {
+    it('emits inline SdkOptions, SdkError, SdkFetch and createSdkFetch when sdkOptionsPath not provided', () => {
       const root = opRoot([
         opRoute('/users', [
           opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
@@ -338,6 +356,10 @@ describe('generateSdk', () => {
       ]);
       const out = generateSdk(root);
       expect(out).toContain('export interface SdkOptions');
+      expect(out).toContain('export class SdkError extends Error');
+      expect(out).toContain('export type SdkFetch');
+      expect(out).toContain('export function createSdkFetch(');
+      expect(out).toContain('fetch?: SdkFetch');
     });
   });
 });
@@ -363,12 +385,18 @@ describe('deriveClientPropertyName', () => {
 });
 
 describe('generateSdkOptions', () => {
-  it('emits SdkOptions interface', () => {
+  it('emits SdkOptions interface, SdkError, SdkFetch and createSdkFetch', () => {
     const out = generateSdkOptions();
     expect(out).toContain('export interface SdkOptions');
     expect(out).toContain('baseUrl: string');
-    expect(out).toContain('fetch?: typeof fetch');
     expect(out).toContain('headers?:');
+    expect(out).toContain('fetch?: SdkFetch');
+    expect(out).toContain('export class SdkError extends Error');
+    expect(out).toContain('public readonly status: number');
+    expect(out).toContain('public readonly body: unknown');
+    expect(out).toContain('throw new SdkError(');
+    expect(out).toContain('export type SdkFetch');
+    expect(out).toContain('export function createSdkFetch(options: SdkOptions): SdkFetch');
   });
 });
 
@@ -379,14 +407,16 @@ describe('generateSdkAggregator', () => {
       { className: 'CategoriesClient', propertyName: 'categories', importPath: './src/categories.client.js' },
     ]);
     expect(out).toContain("import type { SdkOptions } from './sdk-options.js'");
+    expect(out).toContain("import { createSdkFetch } from './sdk-options.js'");
     expect(out).toContain("import { UsersClient } from './src/users.client.js'");
     expect(out).toContain("import { CategoriesClient } from './src/categories.client.js'");
     expect(out).toContain('export class Sdk {');
     expect(out).toContain('readonly users: UsersClient');
     expect(out).toContain('readonly categories: CategoriesClient');
     expect(out).toContain('constructor(options: SdkOptions)');
-    expect(out).toContain('this.users = new UsersClient(options)');
-    expect(out).toContain('this.categories = new CategoriesClient(options)');
+    expect(out).toContain('options.fetch ?? createSdkFetch(options)');
+    expect(out).toContain('this.users = new UsersClient(sdkFetch)');
+    expect(out).toContain('this.categories = new CategoriesClient(sdkFetch)');
   });
 
   it('uses custom sdkOptionsImportPath', () => {

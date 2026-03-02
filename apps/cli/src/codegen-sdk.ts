@@ -31,14 +31,46 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         let rel = relative(dirname(options.outPath), options.sdkOptionsPath);
         rel = rel.replace(/\.ts$/, '.js');
         if (!rel.startsWith('.')) rel = './' + rel;
-        lines.push(`import type { SdkOptions } from '${rel}';`);
-        lines.push(`import { bigIntReplacer, bigIntReviver } from '${rel}';`);
+        lines.push(`import type { SdkFetch } from '${rel}';`);
+        lines.push(`import { SdkError, bigIntReplacer, bigIntReviver } from '${rel}';`);
     } else {
+        lines.push('');
+        lines.push('export class SdkError extends Error {');
+        lines.push('    constructor(');
+        lines.push('        public readonly status: number,');
+        lines.push('        public readonly statusText: string,');
+        lines.push('        public readonly body: unknown,');
+        lines.push('    ) {');
+        lines.push('        super(`${status} ${statusText}`);');
+        lines.push("        this.name = 'SdkError';");
+        lines.push('    }');
+        lines.push('}');
+        lines.push('');
+        lines.push('export type SdkFetch = (url: string, init: RequestInit) => Promise<Response>;');
         lines.push('');
         lines.push('export interface SdkOptions {');
         lines.push('    baseUrl: string;');
-        lines.push('    fetch?: typeof fetch;');
         lines.push('    headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);');
+        lines.push('    fetch?: SdkFetch;');
+        lines.push('}');
+        lines.push('');
+        lines.push('export function createSdkFetch(options: SdkOptions): SdkFetch {');
+        lines.push('    return async (url: string, init: RequestInit): Promise<Response> => {');
+        lines.push('        const baseHeaders = typeof options.headers === \'function\'');
+        lines.push('            ? await options.headers()');
+        lines.push('            : options.headers ?? {};');
+        lines.push('        const res = await fetch(`${options.baseUrl}${url}`, {');
+        lines.push('            ...init,');
+        lines.push('            headers: { ...baseHeaders, ...init.headers },');
+        lines.push('        });');
+        lines.push('        if (!res.ok) {');
+        lines.push('            const text = await res.text();');
+        lines.push('            let body: unknown;');
+        lines.push('            try { body = JSON.parse(text); } catch { body = text; }');
+        lines.push('            throw new SdkError(res.status, res.statusText, body);');
+        lines.push('        }');
+        lines.push('        return res;');
+        lines.push('    };');
         lines.push('}');
     }
 
@@ -50,7 +82,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     lines.push(` * generated from [${basename(root.file)}](file://./${relFile})`);
     lines.push(' */');
     lines.push(`export class ${clientClassName} {`);
-    lines.push('    constructor(private options: SdkOptions) {}');
+    lines.push('    constructor(private fetch: SdkFetch) {}');
 
     for (const route of root.routes) {
         for (const op of route.operations) {
@@ -59,8 +91,6 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         }
     }
 
-    lines.push('');
-    lines.push(...FETCH_HELPER);
     lines.push('}');
     lines.push('');
 
@@ -101,7 +131,9 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, m
         lines.push(`        const searchParams = new URLSearchParams();`);
         lines.push(`        if (query) {`);
         lines.push(`            for (const [k, v] of Object.entries(query)) {`);
-        lines.push(`                if (v !== undefined && v !== null) searchParams.set(k, String(v));`);
+        lines.push(`                if (v === undefined || v === null) continue;`);
+        lines.push(`                if (Array.isArray(v)) { for (const item of v) searchParams.append(k, String(item)); }`);
+        lines.push(`                else searchParams.set(k, String(v));`);
         lines.push(`            }`);
         lines.push(`        }`);
         lines.push(`        const qs = searchParams.toString();`);
@@ -144,9 +176,9 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, m
 
     if (fetchArgs.length <= 2 && !hasBody && !hasHeaders && !hasQuery) {
         // Simple case — inline
-        lines.push(`        const res = await this.fetch(\`${fetchUrl}\`, { method: '${httpMethod}' });`);
+        lines.push(`        const result = await this.fetch(\`${fetchUrl}\`, { method: '${httpMethod}' });`);
     } else {
-        lines.push(`        const res = await this.fetch(${fetchArgs[0]!.split(': ').slice(1).join(': ')}, {`);
+        lines.push(`        const result = await this.fetch(${fetchArgs[0]!.split(': ').slice(1).join(': ')}, {`);
         for (let i = 1; i < fetchArgs.length; i++) {
             lines.push(`            ${fetchArgs[i]},`);
         }
@@ -154,9 +186,9 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, m
     }
 
     if (isVoid) {
-        // No return for void responses
+        lines.push(`        await result.text();`);
     } else {
-        lines.push(`        return JSON.parse(await res.text(), bigIntReviver) as ${returnType};`);
+        lines.push(`        return JSON.parse(await result.text(), bigIntReviver) as ${returnType};`);
     }
 
     lines.push('    }');
@@ -188,7 +220,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     if (route.params) {
         if (Array.isArray(route.params)) {
             for (const p of route.params) {
-                params.push({ name: p.name, type: renderTsType(p.type), optional: false });
+                params.push({ name: p.name, type: renderInputTsType(p.type, modelsWithInput), optional: false });
             }
         } else if (typeof route.params === 'string') {
             const typeName = modelsWithInput?.has(route.params) ? `${route.params}Input` : route.params;
@@ -210,7 +242,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     // Query (request-side — use Input variants)
     if (op.query) {
         if (Array.isArray(op.query)) {
-            const fields = op.query.map(p => `${p.name}?: ${renderTsType(p.type)}`).join('; ');
+            const fields = op.query.map(p => `${p.name}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
             params.push({ name: 'query', type: `{ ${fields} }`, optional: true });
         } else if (typeof op.query === 'string') {
             const typeName = modelsWithInput?.has(op.query) ? `${op.query}Input` : op.query;
@@ -223,7 +255,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     // Headers (request-side — use Input variants)
     if (op.headers) {
         if (Array.isArray(op.headers)) {
-            const fields = op.headers.map(p => `${p.name}?: ${renderTsType(p.type)}`).join('; ');
+            const fields = op.headers.map(p => `${p.name}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
             params.push({ name: 'customHeaders', type: `{ ${fields} }`, optional: true });
         } else if (typeof op.headers === 'string') {
             const typeName = modelsWithInput?.has(op.headers) ? `${op.headers}Input` : op.headers;
@@ -319,6 +351,14 @@ export function renderInputTsType(type: DtoTypeNode, modelsWithInput?: Set<strin
             return modelsWithInput.has(type.name) ? `${type.name}Input` : type.name;
         case 'array':
             return `${renderInputTsType(type.item, modelsWithInput)}[]`;
+        case 'intersection':
+            return type.members.map(m => renderInputTsType(m, modelsWithInput)).join(' & ');
+        case 'union':
+            return type.members.map(m => renderInputTsType(m, modelsWithInput)).join(' | ');
+        case 'inlineObject':
+            return `{ ${type.fields.map(f => `${f.name}${f.optional ? '?' : ''}: ${renderInputTsType(f.type, modelsWithInput)}`).join('; ')} }`;
+        case 'lazy':
+            return renderInputTsType(type.inner, modelsWithInput);
         default:
             return renderTsType(type);
     }
@@ -404,7 +444,11 @@ function collectParamSourceInputRefs(source: ParamSource | undefined, out: Set<s
     if (!source || !modelsWithInput) return;
     if (typeof source === 'string') {
         if (modelsWithInput.has(source)) out.add(`${source}Input`);
-    } else if (!Array.isArray(source)) {
+    } else if (Array.isArray(source)) {
+        for (const param of source) {
+            collectInputTypeNodeRefs(param.type, out, modelsWithInput);
+        }
+    } else {
         collectInputTypeNodeRefs(source, out, modelsWithInput);
     }
 }
@@ -418,6 +462,16 @@ function collectInputTypeNodeRefs(type: DtoTypeNode, out: Set<string>, modelsWit
             break;
         case 'array':
             collectInputTypeNodeRefs(type.item, out, modelsWithInput);
+            break;
+        case 'intersection':
+        case 'union':
+            type.members.forEach(m => collectInputTypeNodeRefs(m, out, modelsWithInput));
+            break;
+        case 'inlineObject':
+            type.fields.forEach(f => collectInputTypeNodeRefs(f.type, out, modelsWithInput));
+            break;
+        case 'lazy':
+            collectInputTypeNodeRefs(type.inner, out, modelsWithInput);
             break;
     }
 }
@@ -515,33 +569,29 @@ function deriveTypeImportPath(file: string, template?: string): string {
     return `#modules/${module}/types/index.js`;
 }
 
-// ─── Fetch helper (emitted inside the class) ──────────────────────────────
-
-const FETCH_HELPER = [
-    '    private async fetch(url: string, init: RequestInit): Promise<Response> {',
-    '        const baseHeaders = typeof this.options.headers === \'function\'',
-    '            ? await this.options.headers()',
-    '            : this.options.headers ?? {};',
-    '        const res = await (this.options.fetch ?? fetch)(`${this.options.baseUrl}${url}`, {',
-    '            ...init,',
-    '            headers: { ...baseHeaders, ...init.headers },',
-    '        });',
-    '        if (!res.ok) {',
-    '            throw new Error(`HTTP ${res.status}: ${res.statusText}`);',
-    '        }',
-    '        return res;',
-    '    }',
-];
 
 // ─── Shared SDK files ──────────────────────────────────────────────────────
 
 /** Generate the shared SdkOptions interface file. */
 export function generateSdkOptions(): string {
     return [
+        'export class SdkError extends Error {',
+        '    constructor(',
+        '        public readonly status: number,',
+        '        public readonly statusText: string,',
+        '        public readonly body: unknown,',
+        '    ) {',
+        '        super(`${status} ${statusText}`);',
+        '        this.name = \'SdkError\';',
+        '    }',
+        '}',
+        '',
+        'export type SdkFetch = (url: string, init: RequestInit) => Promise<Response>;',
+        '',
         'export interface SdkOptions {',
         '    baseUrl: string;',
-        '    fetch?: typeof fetch;',
         '    headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);',
+        '    fetch?: SdkFetch;',
         '}',
         '',
         'export const bigIntReplacer = (_: string, value: any): any => {',
@@ -558,6 +608,25 @@ export function generateSdkOptions(): string {
         '    return value;',
         '};',
         '',
+        'export function createSdkFetch(options: SdkOptions): SdkFetch {',
+        '    return async (url: string, init: RequestInit): Promise<Response> => {',
+        '        const baseHeaders = typeof options.headers === \'function\'',
+        '            ? await options.headers()',
+        '            : options.headers ?? {};',
+        '        const res = await fetch(`${options.baseUrl}${url}`, {',
+        '            ...init,',
+        '            headers: { ...baseHeaders, ...init.headers },',
+        '        });',
+        '        if (!res.ok) {',
+        '            const text = await res.text();',
+        '            let body: unknown;',
+        '            try { body = JSON.parse(text); } catch { body = text; }',
+        '            throw new SdkError(res.status, res.statusText, body);',
+        '        }',
+        '        return res;',
+        '    };',
+        '}',
+        '',
     ].join('\n');
 }
 
@@ -572,6 +641,7 @@ export function generateSdkAggregator(clients: SdkClientInfo[], sdkOptionsImport
     const lines: string[] = [];
 
     lines.push(`import type { SdkOptions } from '${sdkOptionsImportPath}';`);
+    lines.push(`import { createSdkFetch } from '${sdkOptionsImportPath}';`);
     for (const c of clients) {
         lines.push(`import { ${c.className} } from '${c.importPath}';`);
     }
@@ -583,8 +653,9 @@ export function generateSdkAggregator(clients: SdkClientInfo[], sdkOptionsImport
     }
     lines.push('');
     lines.push('    constructor(options: SdkOptions) {');
+    lines.push('        const sdkFetch = options.fetch ?? createSdkFetch(options);');
     for (const c of clients) {
-        lines.push(`        this.${c.propertyName} = new ${c.className}(options);`);
+        lines.push(`        this.${c.propertyName} = new ${c.className}(sdkFetch);`);
     }
     lines.push('    }');
     lines.push('}');

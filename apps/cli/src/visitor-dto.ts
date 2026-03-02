@@ -67,7 +67,7 @@ export class DtoVisitor extends BaseDtoVisitor {
     const line = nameToken.startLine ?? 0;
 
     // Description from comments: preceding line or same line
-    const description = this.comments.get(line - 1) ?? this.comments.get(line);
+    const description = this.comments.get(line) ?? this.comments.get(line - 1);
 
     // Type alias form: Name : typeExpression (no braces, no fieldList)
     if (ctx.typeExpression && !ctx.fieldList) {
@@ -137,7 +137,7 @@ export class DtoVisitor extends BaseDtoVisitor {
     }
 
     // Description from comments
-    const description = this.comments.get(line - 1) ?? this.comments.get(line);
+    const description = this.comments.get(line) ?? this.comments.get(line - 1);
 
     return {
       name: fieldName, optional, nullable, visibility, type,

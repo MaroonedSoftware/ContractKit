@@ -397,6 +397,55 @@ function renderInputFields(fields: FieldNode[], modelsWithInput: Set<string>): s
     return fields.map(f => renderInputField(f, modelsWithInput));
 }
 
+// ─── Query type rendering ─────────────────────────────────────────────────
+
+/**
+ * Like renderType, but wraps array types with z.preprocess to handle
+ * query strings where a single value arrives as a string instead of a string[].
+ * Also uses Input variants for model refs when modelsWithInput is provided.
+ */
+export function renderQueryType(type: DtoTypeNode, modelsWithInput?: Set<string>): string {
+    switch (type.kind) {
+        case 'array': {
+            const inner = modelsWithInput ? renderInputType(type, modelsWithInput) : renderType(type);
+            return `z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, ${inner})`;
+        }
+        case 'inlineObject': {
+            const fields = type.fields.map(f => `    ${renderQueryField(f, modelsWithInput)}`).join('\n');
+            return `z.strictObject({\n${fields}\n})`;
+        }
+        case 'intersection': {
+            const [first, ...rest] = type.members;
+            let expr = renderQueryType(first!, modelsWithInput);
+            for (const member of rest) {
+                expr += `.and(${renderQueryType(member, modelsWithInput)})`;
+            }
+            return expr;
+        }
+        case 'ref':
+            return modelsWithInput?.has(type.name) ? `${type.name}Input` : type.name;
+        default:
+            return modelsWithInput ? renderInputType(type, modelsWithInput) : renderType(type);
+    }
+}
+
+function renderQueryField(field: FieldNode, modelsWithInput?: Set<string>): string {
+    let expr = field.type.kind === 'array'
+        ? renderQueryType(field.type, modelsWithInput)
+        : (modelsWithInput ? renderInputType(field.type, modelsWithInput) : renderType(field.type));
+
+    if (field.nullable) expr += '.nullable()';
+    if (field.default !== undefined) {
+        const dv = typeof field.default === 'string' ? `"${escapeString(field.default)}"` : String(field.default);
+        expr += `.default(${dv})`;
+    } else if (field.optional) {
+        expr += '.optional()';
+    }
+    if (field.description) expr += `.describe("${escapeString(field.description)}")`;
+
+    return `${field.name}: ${expr},`;
+}
+
 // ─── String escaping ──────────────────────────────────────────────────────
 
 function escapeString(s: string): string {

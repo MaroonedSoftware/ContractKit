@@ -115,7 +115,13 @@ function computeOutPath(filePath: string, opts: OutPathOptions, rootDir: string,
     return join(baseOutDir, relDir, defaultOutName);
 }
 
-function computeSdkOutPath(filePath: string, rootDir: string, clientOutput: string | undefined, commonRoot: string, meta: Record<string, string> = {}): string | null {
+function computeSdkOutPath(
+    filePath: string,
+    rootDir: string,
+    clientOutput: string | undefined,
+    commonRoot: string,
+    meta: Record<string, string> = {},
+): string | null {
     if (!filePath.endsWith('.op')) return null;
 
     const baseName = filePath.split('/').pop()!;
@@ -147,7 +153,13 @@ function computeSdkOutPath(filePath: string, rootDir: string, clientOutput: stri
     return join(baseOutDir, relDir, defaultOutName);
 }
 
-function computeSdkTypeOutPath(filePath: string, rootDir: string, typeOutput: string, commonRoot: string, meta: Record<string, string> = {}): string | null {
+function computeSdkTypeOutPath(
+    filePath: string,
+    rootDir: string,
+    typeOutput: string,
+    commonRoot: string,
+    meta: Record<string, string> = {},
+): string | null {
     if (!filePath.endsWith('.dto')) return null;
 
     const baseName = filePath.split('/').pop()!;
@@ -253,20 +265,12 @@ async function main() {
     const run = async () => {
         // Compute per-section base dirs: rootDir + baseDir
         const serverBase = resolve(config.rootDir, config.server.baseDir);
-        const sdkBase = config.sdk?.baseDir
-            ? resolve(config.rootDir, config.sdk.baseDir)
-            : config.rootDir;
+        const sdkBase = config.sdk?.baseDir ? resolve(config.rootDir, config.sdk.baseDir) : config.rootDir;
 
         // Resolve files per-section using section-specific base dirs
-        const serverFiles = await resolveFiles(
-            [...(config.server.types.include ?? []), ...(config.server.routes.include ?? [])],
-            serverBase,
-        );
+        const serverFiles = await resolveFiles([...(config.server.types.include ?? []), ...(config.server.routes.include ?? [])], serverBase);
         const sdkFiles = config.sdk
-            ? await resolveFiles(
-                  [...(config.sdk.types?.include ?? []), ...(config.sdk.clients?.include ?? [])],
-                  sdkBase,
-              )
+            ? await resolveFiles([...(config.sdk.types?.include ?? []), ...(config.sdk.clients?.include ?? [])], sdkBase)
             : [];
         const files = [...new Set([...serverFiles, ...sdkFiles])];
 
@@ -308,7 +312,7 @@ async function main() {
                 if (!outPath) continue;
                 allDtoInfo.push({ ast, filePath, outPath });
                 if (!config.force && !isFileChanged(filePath, source, outPath, cache)) {
-                    console.log(`  -  ${relative(resolvedBase, outPath)} (unchanged)`);
+                    console.log(`  -  ${outPath} (unchanged)`);
                     continue;
                 }
                 dtoRoots.push({ ast, filePath, outPath });
@@ -318,7 +322,7 @@ async function main() {
                 if (!outPath) continue;
                 allOpInfo.push({ ast, filePath, outPath });
                 if (!config.force && !isFileChanged(filePath, source, outPath, cache)) {
-                    console.log(`  -  ${relative(resolvedBase, outPath)} (unchanged)`);
+                    console.log(`  -  ${outPath} (unchanged)`);
                     continue;
                 }
                 opRoots.push({ ast, filePath, outPath });
@@ -343,9 +347,12 @@ async function main() {
         // Cross-file state (model names, output paths, input variants) flows into
         // every generated file. If this state changes, all outputs must regenerate.
         const depsFingerprint = computeHash(
-            [...modelOutPaths.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}:${v}`).join('\n')
-            + '\n'
-            + [...modelsWithInput].sort().join(','),
+            [...modelOutPaths.entries()]
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([k, v]) => `${k}:${v}`)
+                .join('\n') +
+                '\n' +
+                [...modelsWithInput].sort().join(','),
         );
         const depsChanged = cacheEnabled && cache['__deps__'] !== depsFingerprint;
         newCache['__deps__'] = depsFingerprint;
@@ -410,13 +417,7 @@ async function main() {
             if (config.sdk.types?.output) {
                 sdkModelOutPaths = new Map<string, string>();
                 for (const { ast, filePath } of allDtoInfo) {
-                    const typeOutPath = computeSdkTypeOutPath(
-                        filePath,
-                        sdkBase,
-                        config.sdk.types.output,
-                        commonRoot,
-                        ast.meta,
-                    );
+                    const typeOutPath = computeSdkTypeOutPath(filePath, sdkBase, config.sdk.types.output, commonRoot, ast.meta);
                     if (!typeOutPath) continue;
                     sdkTypePaths.push(typeOutPath);
                     // Always track model paths for import resolution
@@ -429,7 +430,7 @@ async function main() {
                     // Only regenerate if source or dependencies changed
                     const source = readFileSync(filePath, 'utf-8');
                     if (!depsChanged && !config.force && !isFileChanged(filePath, source, typeOutPath, cache)) {
-                        console.log(`  -  ${relative(resolvedBase, typeOutPath)} (unchanged)`);
+                        console.log(`  -  ${typeOutPath} (unchanged)`);
                         continue;
                     }
                     const content = generatePlainTypes(ast, { modelOutPaths: sdkModelOutPaths, currentOutPath: typeOutPath, modelsWithInput });
@@ -439,13 +440,7 @@ async function main() {
 
             if (config.sdk.clients) {
                 for (const { ast, filePath } of allOpInfo) {
-                    const sdkOutPath = computeSdkOutPath(
-                        filePath,
-                        sdkBase,
-                        config.sdk.clients.output,
-                        commonRoot,
-                        ast.meta,
-                    );
+                    const sdkOutPath = computeSdkOutPath(filePath, sdkBase, config.sdk.clients.output, commonRoot, ast.meta);
                     if (!sdkOutPath) continue;
                     // Always track client info for the aggregator
                     sdkClientInfos.push({
@@ -456,7 +451,7 @@ async function main() {
                     // Only regenerate if source or dependencies changed
                     const source = readFileSync(filePath, 'utf-8');
                     if (!depsChanged && !config.force && !isFileChanged(filePath, source, sdkOutPath, cache)) {
-                        console.log(`  -  ${relative(resolvedBase, sdkOutPath)} (unchanged)`);
+                        console.log(`  -  ${sdkOutPath} (unchanged)`);
                         continue;
                     }
                     const content = generateSdk(ast, {
@@ -472,10 +467,10 @@ async function main() {
 
             // Generate shared sdk-options.ts
             const sdkOptionsContent = generateSdkOptions();
-            if (!isContentUnchanged(sdkOptionsPath, sdkOptionsContent)) {
+            if (config.force || !isContentUnchanged(sdkOptionsPath, sdkOptionsContent)) {
                 results.push({ outPath: sdkOptionsPath, content: sdkOptionsContent });
             } else {
-                console.log(`  -  ${relative(resolvedBase, sdkOptionsPath)} (unchanged)`);
+                console.log(`  -  ${sdkOptionsPath} (unchanged)`);
             }
 
             // Generate sdk.ts aggregator
@@ -488,13 +483,20 @@ async function main() {
                 });
                 const sdkOptionsRel = relative(sdkEntryDir, sdkOptionsPath).replace(/\.ts$/, '.js');
                 const sdkClassName = sdkName
-                    ? sdkName.split(/[-._\s]+/).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('') + 'Sdk'
+                    ? sdkName
+                          .split(/[-._\s]+/)
+                          .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+                          .join('') + 'Sdk'
                     : 'Sdk';
-                const sdkAggregatorContent = generateSdkAggregator(clients, sdkOptionsRel.startsWith('.') ? sdkOptionsRel : './' + sdkOptionsRel, sdkClassName);
-                if (!isContentUnchanged(sdkEntryPath, sdkAggregatorContent)) {
+                const sdkAggregatorContent = generateSdkAggregator(
+                    clients,
+                    sdkOptionsRel.startsWith('.') ? sdkOptionsRel : './' + sdkOptionsRel,
+                    sdkClassName,
+                );
+                if (config.force || !isContentUnchanged(sdkEntryPath, sdkAggregatorContent)) {
                     results.push({ outPath: sdkEntryPath, content: sdkAggregatorContent });
                 } else {
-                    console.log(`  -  ${relative(resolvedBase, sdkEntryPath)} (unchanged)`);
+                    console.log(`  -  ${sdkEntryPath} (unchanged)`);
                 }
             }
 
@@ -502,10 +504,10 @@ async function main() {
             const sdkSrcDir = dirname(sdkEntryPath);
             const sdkTypeBarrels = generateBarrelFiles(sdkTypePaths);
             for (const barrel of sdkTypeBarrels) {
-                if (!isContentUnchanged(barrel.outPath, barrel.content)) {
+                if (config.force || !isContentUnchanged(barrel.outPath, barrel.content)) {
                     results.push(barrel);
                 } else {
-                    console.log(`  -  ${relative(resolvedBase, barrel.outPath)} (unchanged)`);
+                    console.log(`  -  ${barrel.outPath} (unchanged)`);
                 }
             }
 
@@ -526,10 +528,10 @@ async function main() {
             }
             const rootBarrelPath = join(sdkSrcDir, 'index.ts');
             const rootBarrelContent = `// Auto-generated barrel file\n${rootExports.sort().join('\n')}\n`;
-            if (!isContentUnchanged(rootBarrelPath, rootBarrelContent)) {
+            if (config.force || !isContentUnchanged(rootBarrelPath, rootBarrelContent)) {
                 results.push({ outPath: rootBarrelPath, content: rootBarrelContent });
             } else {
-                console.log(`  -  ${relative(resolvedBase, rootBarrelPath)} (unchanged)`);
+                console.log(`  -  ${rootBarrelPath} (unchanged)`);
             }
         }
 
@@ -553,13 +555,13 @@ async function main() {
         // ── Generate barrel index files for DTO directories ─────────
         const barrelFiles = generateBarrelFiles(allDtoInfo.map(d => d.outPath));
         for (const { outPath, content } of barrelFiles) {
-            if (isContentUnchanged(outPath, content)) {
-                console.log(`  -  ${relative(resolvedBase, outPath)} (unchanged)`);
+            if (!config.force && isContentUnchanged(outPath, content)) {
+                console.log(`  -  ${outPath} (unchanged)`);
                 continue;
             }
             mkdirSync(dirname(outPath), { recursive: true });
             writeFileSync(outPath, content, 'utf-8');
-            console.log(`  ✓  ${relative(resolvedBase, outPath)} (barrel)`);
+            console.log(`  ✓  ${outPath}`);
         }
 
         // Save cache
@@ -575,18 +577,10 @@ async function main() {
     if (config.watch) {
         const { watch } = await import('node:fs');
         const serverBase = resolve(config.rootDir, config.server.baseDir);
-        const sdkBase = config.sdk?.baseDir
-            ? resolve(config.rootDir, config.sdk.baseDir)
-            : config.rootDir;
-        const watchServerFiles = await resolveFiles(
-            [...(config.server.types.include ?? []), ...(config.server.routes.include ?? [])],
-            serverBase,
-        );
+        const sdkBase = config.sdk?.baseDir ? resolve(config.rootDir, config.sdk.baseDir) : config.rootDir;
+        const watchServerFiles = await resolveFiles([...(config.server.types.include ?? []), ...(config.server.routes.include ?? [])], serverBase);
         const watchSdkFiles = config.sdk
-            ? await resolveFiles(
-                  [...(config.sdk.types?.include ?? []), ...(config.sdk.clients?.include ?? [])],
-                  sdkBase,
-              )
+            ? await resolveFiles([...(config.sdk.types?.include ?? []), ...(config.sdk.clients?.include ?? [])], sdkBase)
             : [];
         const allDirs = new Set([...watchServerFiles, ...watchSdkFiles].map(f => dirname(f)));
         console.log('\nWatching for changes...');

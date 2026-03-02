@@ -1,5 +1,5 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource } from './ast.js';
-import { renderType, renderInputType, pascalToDotCase, typeNeedsDateTime } from './codegen-dto.js';
+import { renderType, renderInputType, renderQueryType, pascalToDotCase, typeNeedsDateTime } from './codegen-dto.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -215,6 +215,7 @@ function formatTypeAnnotation(bodyType: DtoTypeNode): { annotation: string; prel
 function generateParamValidation(source: ParamSource | undefined, ctxExpr: string, varName: string, schemaWrapper: string, suffix = '', modelsWithInput?: Set<string>): string[] {
     if (!source) return [];
     const lines: string[] = [];
+    const isQuery = ctxExpr === 'ctx.query';
     if (typeof source === 'string') {
         // Type reference name — use Input variant if available
         const typeName = modelsWithInput?.has(source) ? `${source}Input` : source;
@@ -230,15 +231,25 @@ function generateParamValidation(source: ParamSource | undefined, ctxExpr: strin
             lines.push(`        ${ctxExpr},`);
             lines.push(`        ${schemaWrapper}({`);
             for (const param of source) {
-                lines.push(`            ${param.name}: ${renderType(param.type)},`);
+                if (isQuery && param.type.kind === 'array') {
+                    const inner = renderType(param.type);
+                    lines.push(`            ${param.name}: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, ${inner}),`);
+                } else {
+                    lines.push(`            ${param.name}: ${renderType(param.type)},`);
+                }
             }
             lines.push(`        })${suffix},`);
             lines.push(`    );`);
             lines.push('');
         }
     } else {
-        // DtoTypeNode — use Input variant if available
-        lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${renderInputType(source, modelsWithInput)});`);
+        // DtoTypeNode — use query-aware rendering for query params (coerces single string → array),
+        // otherwise use Input variant rendering
+        if (isQuery) {
+            lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${renderQueryType(source, modelsWithInput)});`);
+        } else {
+            lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${renderInputType(source, modelsWithInput)});`);
+        }
         lines.push('');
     }
     return lines;
