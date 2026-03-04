@@ -12,29 +12,29 @@ import { CreateCounterpartyProcessorAccount } from './create.counterparty.proces
 */
 const CounterpartyBase = z.strictObject({
     createdAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The counterparty creation timestamp"),
-    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The counterparty creation timestamp"),
-    id: z.uuid().describe("The counterparty last update timestamp"),
-    name: z.string().min(1).max(100).describe("The counterparty identifier"),
-    email: z.email().optional().describe("The counterparty name"),
-    active: z.boolean().default(true).describe("The counterparty email"),
-    accounts: z.array(CounterpartyAccount).describe("Whether the counterparty is active"),
+    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The counterparty last update timestamp"),
+    id: z.uuid().describe("The counterparty identifier"),
+    name: z.string().min(1).max(100).describe("The counterparty name"),
+    email: z.email().optional().describe("The counterparty email"),
+    active: z.boolean().default(true).describe("Whether the counterparty is active"),
+    accounts: z.array(CounterpartyAccount).describe("The counterparty accounts"),
 });
 
 export const Counterparty = z.strictObject({
     createdAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The counterparty creation timestamp"),
-    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The counterparty creation timestamp"),
-    id: z.uuid().describe("The counterparty last update timestamp"),
-    name: z.string().min(1).max(100).describe("The counterparty identifier"),
-    email: z.email().optional().describe("The counterparty name"),
-    active: z.boolean().default(true).describe("The counterparty email"),
-    accounts: z.array(CounterpartyAccount).describe("Whether the counterparty is active"),
+    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The counterparty last update timestamp"),
+    id: z.uuid().describe("The counterparty identifier"),
+    name: z.string().min(1).max(100).describe("The counterparty name"),
+    email: z.email().optional().describe("The counterparty email"),
+    active: z.boolean().default(true).describe("Whether the counterparty is active"),
+    accounts: z.array(CounterpartyAccount).describe("The counterparty accounts"),
 });
 export type Counterparty = z.infer<typeof Counterparty>;
 
 export const CounterpartyInput = z.strictObject({
-    name: z.string().min(1).max(100).describe("The counterparty identifier"),
-    email: z.email().optional().describe("The counterparty name"),
-    active: z.boolean().default(true).describe("The counterparty email"),
+    name: z.string().min(1).max(100).describe("The counterparty name"),
+    email: z.email().optional().describe("The counterparty email"),
+    active: z.boolean().default(true).describe("Whether the counterparty is active"),
 });
 export type CounterpartyInput = z.infer<typeof CounterpartyInput>;
 
@@ -43,8 +43,8 @@ export type CounterpartyInput = z.infer<typeof CounterpartyInput>;
 */
 export const CreateCounterparty = z.strictObject({
     name: z.string().min(1).max(100).describe("The counterparty name"),
-    email: z.email().optional().describe("The counterparty name"),
-    accounts: z.array(z.union([CreateCounterpartyFinancialAccount, CreateCounterpartyProcessorAccount])).min(0).max(10).describe("The counterparty email"),
+    email: z.email().optional().describe("The counterparty email"),
+    accounts: z.array(z.union([CreateCounterpartyFinancialAccount, CreateCounterpartyProcessorAccount])).min(0).max(10).describe("The counterparty accounts"),
 });
 export type CreateCounterparty = z.infer<typeof CreateCounterparty>;
 "
@@ -60,32 +60,32 @@ import { CustomCurrency } from './custom.currency.js';
 */
 const LedgerAccountBase = z.strictObject({
     id: z.uuid().describe("The account identifier"),
-    name: z.string().min(3).max(100).describe("The account identifier"),
-    normality: z.enum(["credit", "debit"]).describe("Account name"),
-    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("Account normality"),
-    description: z.string().max(1024).optional().describe("Currency code or custom currency"),
-    createdAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("Optional account description"),
-    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The account creation date"),
-    version: z.coerce.number().int().describe("The account last update date"),
+    name: z.string().min(3).max(100).describe("Account name"),
+    normality: z.enum(["credit", "debit"]).describe("Account normality"),
+    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("Currency code or custom currency"),
+    description: z.string().max(1024).optional().describe("Optional account description"),
+    createdAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The account creation date"),
+    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The account last update date"),
+    version: z.coerce.number().int().describe("The account version"),
 });
 
 export const LedgerAccount = z.strictObject({
     id: z.uuid().describe("The account identifier"),
-    name: z.string().min(3).max(100).describe("The account identifier"),
-    normality: z.enum(["credit", "debit"]).describe("Account name"),
-    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("Account normality"),
-    description: z.string().max(1024).optional().describe("Currency code or custom currency"),
-    createdAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("Optional account description"),
-    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The account creation date"),
-    version: z.coerce.number().int().describe("The account last update date"),
+    name: z.string().min(3).max(100).describe("Account name"),
+    normality: z.enum(["credit", "debit"]).describe("Account normality"),
+    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("Currency code or custom currency"),
+    description: z.string().max(1024).optional().describe("Optional account description"),
+    createdAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The account creation date"),
+    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The account last update date"),
+    version: z.coerce.number().int().describe("The account version"),
 });
 export type LedgerAccount = z.infer<typeof LedgerAccount>;
 
 export const LedgerAccountInput = z.strictObject({
-    name: z.string().min(3).max(100).describe("The account identifier"),
-    normality: z.enum(["credit", "debit"]).describe("Account name"),
-    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("Account normality"),
-    description: z.string().max(1024).optional().describe("Currency code or custom currency"),
+    name: z.string().min(3).max(100).describe("Account name"),
+    normality: z.enum(["credit", "debit"]).describe("Account normality"),
+    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("Currency code or custom currency"),
+    description: z.string().max(1024).optional().describe("Optional account description"),
 });
 export type LedgerAccountInput = z.infer<typeof LedgerAccountInput>;
 "
@@ -99,23 +99,23 @@ exports[`DTO snapshot tests > pagination.dto matches snapshot 1`] = `
 */
 const PaginationBase = z.strictObject({
     page: z.coerce.number().int().min(0).default(0).describe("Page number"),
-    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("Page number"),
-    sort: z.enum(["asc", "desc"]).default("desc").describe("Page size"),
-    total: z.coerce.number().int().min(0).describe("Sort order"),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("Page size"),
+    sort: z.enum(["asc", "desc"]).default("desc").describe("Sort order"),
+    total: z.coerce.number().int().min(0).describe("Total number of items"),
 });
 
 export const Pagination = z.strictObject({
     page: z.coerce.number().int().min(0).default(0).describe("Page number"),
-    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("Page number"),
-    sort: z.enum(["asc", "desc"]).default("desc").describe("Page size"),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("Page size"),
+    sort: z.enum(["asc", "desc"]).default("desc").describe("Sort order"),
 });
 export type Pagination = z.infer<typeof Pagination>;
 
 export const PaginationInput = z.strictObject({
     page: z.coerce.number().int().min(0).default(0).describe("Page number"),
-    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("Page number"),
-    sort: z.enum(["asc", "desc"]).default("desc").describe("Page size"),
-    total: z.coerce.number().int().min(0).describe("Sort order"),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("Page size"),
+    sort: z.enum(["asc", "desc"]).default("desc").describe("Sort order"),
+    total: z.coerce.number().int().min(0).describe("Total number of items"),
 });
 export type PaginationInput = z.infer<typeof PaginationInput>;
 "

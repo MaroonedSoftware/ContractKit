@@ -52,16 +52,19 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('    baseUrl: string;');
         lines.push('    headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);');
         lines.push('    fetch?: SdkFetch;');
+        lines.push('    /** Called once per request to produce a unique X-Request-ID header value */');
+        lines.push('    requestIdFactory?: () => string;');
         lines.push('}');
         lines.push('');
         lines.push('export function createSdkFetch(options: SdkOptions): SdkFetch {');
+        lines.push('    const getRequestId = options.requestIdFactory ?? (() => crypto.randomUUID());');
         lines.push('    return async (url: string, init: RequestInit): Promise<Response> => {');
         lines.push('        const baseHeaders = typeof options.headers === \'function\'');
         lines.push('            ? await options.headers()');
         lines.push('            : options.headers ?? {};');
         lines.push('        const res = await fetch(`${options.baseUrl}${url}`, {');
         lines.push('            ...init,');
-        lines.push('            headers: { ...baseHeaders, ...init.headers },');
+        lines.push('            headers: { ...baseHeaders, \'X-Request-ID\': getRequestId(), ...init.headers as Record<string, string> },');
         lines.push('        });');
         lines.push('        if (!res.ok) {');
         lines.push('            const text = await res.text();');
@@ -143,7 +146,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, m
     // Build fetch options
     const hasBody = !!op.request;
     const isMultipart = op.request?.contentType === 'multipart/form-data';
-    const hasHeaders = !!op.headers;
+    const hasOpHeaders = !!op.headers;
 
     const fetchArgs: string[] = [];
 
@@ -164,9 +167,8 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, m
         }
     }
 
-    if (hasHeaders) {
+    if (hasOpHeaders) {
         if (hasBody && !isMultipart) {
-            // Merge content-type with custom headers
             const lastIdx = fetchArgs.findIndex(a => a.startsWith('headers:'));
             fetchArgs[lastIdx] = `headers: { 'Content-Type': 'application/json', ...customHeaders }`;
         } else {
@@ -174,7 +176,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, m
         }
     }
 
-    if (fetchArgs.length <= 2 && !hasBody && !hasHeaders && !hasQuery) {
+    if (fetchArgs.length === 2 && !hasBody && !hasOpHeaders && !hasQuery) {
         // Simple case — inline
         lines.push(`        const result = await this.fetch(\`${fetchUrl}\`, { method: '${httpMethod}' });`);
     } else {
@@ -592,6 +594,8 @@ export function generateSdkOptions(): string {
         '    baseUrl: string;',
         '    headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);',
         '    fetch?: SdkFetch;',
+        '    /** Called once per request to produce a unique X-Request-ID header value */',
+        '    requestIdFactory?: () => string;',
         '}',
         '',
         'export const bigIntReplacer = (_: string, value: any): any => {',
@@ -609,13 +613,14 @@ export function generateSdkOptions(): string {
         '};',
         '',
         'export function createSdkFetch(options: SdkOptions): SdkFetch {',
+        '    const getRequestId = options.requestIdFactory ?? (() => crypto.randomUUID());',
         '    return async (url: string, init: RequestInit): Promise<Response> => {',
         '        const baseHeaders = typeof options.headers === \'function\'',
         '            ? await options.headers()',
         '            : options.headers ?? {};',
         '        const res = await fetch(`${options.baseUrl}${url}`, {',
         '            ...init,',
-        '            headers: { ...baseHeaders, ...init.headers },',
+        '            headers: { ...baseHeaders, \'X-Request-ID\': getRequestId(), ...init.headers as Record<string, string> },',
         '        });',
         '        if (!res.ok) {',
         '            const text = await res.text();',

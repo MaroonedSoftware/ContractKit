@@ -319,6 +319,46 @@ describe('generateSdk', () => {
     });
   });
 
+  describe('requestIdFactory', () => {
+    it('emits requestIdFactory on SdkOptions', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+        ]),
+      ]);
+      const out = generateSdk(root);
+      expect(out).toContain('requestIdFactory?: () => string');
+    });
+
+    it('does not add per-call options parameter to methods', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', { sdk: 'listUsers', responses: [opResponse(200, 'User', 'application/json')] }),
+          opOperation('post', { sdk: 'createUser', request: opRequest('CreateUserInput'), responses: [opResponse(201, 'User', 'application/json')] }),
+        ]),
+        opRoute('/users/:id', [
+          opOperation('delete', { sdk: 'deleteUser', responses: [opResponse(204)] }),
+        ], [opParam('id', scalarType('uuid'))]),
+      ]);
+      const out = generateSdk(root);
+      expect(out).toContain('async listUsers(): Promise');
+      expect(out).toContain('async createUser(body: CreateUserInput): Promise');
+      expect(out).toContain('async deleteUser(id: string): Promise');
+      expect(out).not.toContain('SdkCallOptions');
+    });
+
+    it('defaults to crypto.randomUUID and injects X-Request-ID per request', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+        ]),
+      ]);
+      const out = generateSdk(root);
+      expect(out).toContain('requestIdFactory ?? (() => crypto.randomUUID())');
+      expect(out).toContain("'X-Request-ID': getRequestId()");
+    });
+  });
+
   describe('fetch usage', () => {
     it('calls this.fetch in methods', () => {
       const root = opRoot([
@@ -391,12 +431,15 @@ describe('generateSdkOptions', () => {
     expect(out).toContain('baseUrl: string');
     expect(out).toContain('headers?:');
     expect(out).toContain('fetch?: SdkFetch');
+    expect(out).toContain('requestIdFactory?: () => string');
     expect(out).toContain('export class SdkError extends Error');
     expect(out).toContain('public readonly status: number');
     expect(out).toContain('public readonly body: unknown');
     expect(out).toContain('throw new SdkError(');
     expect(out).toContain('export type SdkFetch');
     expect(out).toContain('export function createSdkFetch(options: SdkOptions): SdkFetch');
+    expect(out).toContain('requestIdFactory ?? (() => crypto.randomUUID())');
+    expect(out).toContain("'X-Request-ID': getRequestId()");
   });
 });
 
