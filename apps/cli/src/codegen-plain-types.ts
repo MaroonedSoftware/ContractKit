@@ -140,12 +140,20 @@ function renderField(field: FieldNode): string {
     const opt = field.optional || field.default !== undefined ? '?' : '';
     let typeStr = renderTsType(field.type);
     if (field.nullable) typeStr += ' | null';
-    return `${field.name}${opt}: ${typeStr};`;
+    const line = `${field.name}${opt}: ${typeStr};`;
+    if (field.description) {
+        return `/** ${field.description} */\n    ${line}`;
+    }
+    return line;
 }
 
 function renderInputField(field: FieldNode, modelsWithInput: Set<string>): string {
     const opt = field.optional || field.default !== undefined ? '?' : '';
     let typeStr = renderInputTsType(field.type, modelsWithInput);
     if (field.nullable) typeStr += ' | null';
-    return `${field.name}${opt}: ${typeStr};`;
+    const line = `${field.name}${opt}: ${typeStr};`;
+    if (field.description) {
+        return `/** ${field.description} */\n    ${line}`;
+    }
+    return line;
 }
