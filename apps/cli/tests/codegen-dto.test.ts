@@ -73,15 +73,14 @@ describe('renderType', () => {
       expect(renderType(scalarType('boolean'))).toBe('z.boolean()');
     });
 
-    it('renders DateTime custom validator for date', () => {
+    it('renders DateTime preprocess coercion for date', () => {
       const result = renderType(scalarType('date'));
-      expect(result).toContain('z.custom<DateTime>');
-      expect(result).toContain('DateTime');
+      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }))`);
     });
 
-    it('renders DateTime custom validator for datetime', () => {
+    it('renders DateTime preprocess coercion for datetime', () => {
       const result = renderType(scalarType('datetime'));
-      expect(result).toContain('z.custom<DateTime>');
+      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }))`);
     });
 
     it('renders z.email()', () => {

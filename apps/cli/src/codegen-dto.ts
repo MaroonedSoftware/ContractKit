@@ -247,7 +247,7 @@ function renderScalar(s: ScalarTypeNode): string {
             return 'z.boolean()';
         case 'date':
         case 'datetime':
-            return `z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' })`;
+            return `z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }))`;
         case 'email':
             return 'z.email()';
         case 'url':
@@ -327,9 +327,6 @@ function renderInputScalar(s: ScalarTypeNode): string {
             e += ')';
             return e;
         }
-        case 'date':
-        case 'datetime':
-            return `z.string().transform((val) => DateTime.fromISO(val)).refine((dt) => dt.isValid, { message: 'Must be in ISO 8601 format' })`;
         default:
             return renderScalar(s);
     }

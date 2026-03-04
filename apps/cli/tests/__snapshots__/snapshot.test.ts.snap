@@ -11,8 +11,8 @@ import { CreateCounterpartyProcessorAccount } from './create.counterparty.proces
  * generated from [Counterparty](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L1)
 */
 const CounterpartyBase = z.strictObject({
-    createdAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The counterparty creation timestamp"),
-    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The counterparty last update timestamp"),
+    createdAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The counterparty creation timestamp"),
+    updatedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The counterparty last update timestamp"),
     id: z.uuid().describe("The counterparty identifier"),
     name: z.string().min(1).max(100).describe("The counterparty name"),
     email: z.email().optional().describe("The counterparty email"),
@@ -21,8 +21,8 @@ const CounterpartyBase = z.strictObject({
 });
 
 export const Counterparty = z.strictObject({
-    createdAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The counterparty creation timestamp"),
-    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The counterparty last update timestamp"),
+    createdAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The counterparty creation timestamp"),
+    updatedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The counterparty last update timestamp"),
     id: z.uuid().describe("The counterparty identifier"),
     name: z.string().min(1).max(100).describe("The counterparty name"),
     email: z.email().optional().describe("The counterparty email"),
@@ -64,8 +64,8 @@ const LedgerAccountBase = z.strictObject({
     normality: z.enum(["credit", "debit"]).describe("Account normality"),
     currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("Currency code or custom currency"),
     description: z.string().max(1024).optional().describe("Optional account description"),
-    createdAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The account creation date"),
-    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The account last update date"),
+    createdAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The account creation date"),
+    updatedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The account last update date"),
     version: z.coerce.number().int().describe("The account version"),
 });
 
@@ -75,8 +75,8 @@ export const LedgerAccount = z.strictObject({
     normality: z.enum(["credit", "debit"]).describe("Account normality"),
     currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("Currency code or custom currency"),
     description: z.string().max(1024).optional().describe("Optional account description"),
-    createdAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The account creation date"),
-    updatedAt: z.custom<DateTime>((val) => val instanceof DateTime, { error: 'Must be in ISO 8601 format' }).describe("The account last update date"),
+    createdAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The account creation date"),
+    updatedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The account last update date"),
     version: z.coerce.number().int().describe("The account version"),
 });
 export type LedgerAccount = z.infer<typeof LedgerAccount>;
