@@ -1,5 +1,11 @@
+---
+area: ledger
+LedgerService: "#src/modules/ledger/ledger.service.js"
+---
+
 /ledger/settlements {
     post: {
+        service: LedgerService.createSettlement
         request: {
             application/json: LedgerSettlement
         }
@@ -10,6 +16,7 @@
         }
     }
     get: {
+        service: LedgerService.listSettlements
         query: ListSettlementsQuery
         response: {
             200: {
@@ -24,6 +31,7 @@
         settlementId: uuid
     }
     get: {
+        service: LedgerService.getSettlement
         response: {
             200: {
                 application/json: LedgerSettlement
@@ -37,6 +45,7 @@
         settlementId: uuid
     }
     post: {
+        service: LedgerService.finalizeSettlement
         request: {
             application/json: FinalizeSettlementInput
         }
@@ -53,6 +62,7 @@
         settlementId: uuid
     }
     patch: {
+        service: LedgerService.updateSettlementStatus
         request: {
             application/json: UpdateSettlementStatusInput
         }
@@ -69,10 +79,11 @@
         settlementId: uuid
     }
     get: {
-        query: ListSettlementEntriesQuery
+        service: LedgerService.listSettlementEntries
+        query: Pagination
         response: {
             200: {
-                application/json: array(LedgerEntry)
+                application/json: array(LedgerSettlementEntry)
             }
         }
     }
@@ -84,15 +95,13 @@
         entryId: uuid
     }
     put: {
-        service: LedgerService.updateSettlementEntry
+        service: LedgerService.addEntryToSettlement
         response: {
-            200: {
-                application/json: LedgerSettlement
-            }
+            204:
         }
     }
     delete: {
-        service: LedgerService.updateSettlementEntry
+        service: LedgerService.removeEntryFromSettlement
         response: {
             204:
         }
@@ -104,10 +113,11 @@
         settlementId: uuid
     }
     get: {
-        query: ListSettlementTransactionsQuery
+        service: LedgerService.listSettlementTransactions
+        query: Pagination
         response: {
             200: {
-                application/json: array(LedgerTransaction)
+                application/json: array(LedgerSettlementTransaction)
             }
         }
     }

@@ -304,7 +304,7 @@ describe('generateOp', () => {
         ]),
       ]);
       const output = generateOp(root);
-      expect(output).toContain('Pagination.and(');
+      expect(output).toContain('Pagination.extend({');
       expect(output).toContain('z.preprocess');
       expect(output).toContain('.optional()');
     });

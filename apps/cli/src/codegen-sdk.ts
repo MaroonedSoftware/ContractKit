@@ -276,8 +276,11 @@ export function renderTsType(type: DtoTypeNode): string {
     switch (type.kind) {
         case 'scalar':
             return renderTsScalar(type.name);
-        case 'array':
-            return `${renderTsType(type.item)}[]`;
+        case 'array': {
+            const inner = renderTsType(type.item);
+            const needsParens = type.item.kind === 'union' || type.item.kind === 'intersection' || type.item.kind === 'enum';
+            return needsParens ? `(${inner})[]` : `${inner}[]`;
+        }
         case 'tuple':
             return `[${type.items.map(renderTsType).join(', ')}]`;
         case 'record':
@@ -351,8 +354,11 @@ export function renderInputTsType(type: DtoTypeNode, modelsWithInput?: Set<strin
     switch (type.kind) {
         case 'ref':
             return modelsWithInput.has(type.name) ? `${type.name}Input` : type.name;
-        case 'array':
-            return `${renderInputTsType(type.item, modelsWithInput)}[]`;
+        case 'array': {
+            const inner = renderInputTsType(type.item, modelsWithInput);
+            const needsParens = type.item.kind === 'union' || type.item.kind === 'intersection' || type.item.kind === 'enum';
+            return needsParens ? `(${inner})[]` : `${inner}[]`;
+        }
         case 'intersection':
             return type.members.map(m => renderInputTsType(m, modelsWithInput)).join(' & ');
         case 'union':

@@ -130,6 +130,22 @@ describe('generatePlainTypes', () => {
       expect(output).toContain('users: User[];');
     });
 
+    it('wraps union item in parens when used as array element type', () => {
+      const root = dtoRoot([
+        model('M', [field('statuses', arrayType(enumType('pending', 'posted', 'archived')))]),
+      ]);
+      const output = generatePlainTypes(root);
+      expect(output).toContain("statuses: ('pending' | 'posted' | 'archived')[];");
+    });
+
+    it('wraps union item in parens for array of union type', () => {
+      const root = dtoRoot([
+        model('M', [field('items', arrayType(unionType(scalarType('string'), scalarType('int'))))]),
+      ]);
+      const output = generatePlainTypes(root);
+      expect(output).toContain('items: (string | number)[];');
+    });
+
     it('renders tuple type', () => {
       const root = dtoRoot([
         model('M', [field('pair', tupleType(scalarType('number'), scalarType('string')))]),
@@ -308,6 +324,86 @@ describe('generatePlainTypes', () => {
     });
   });
 
+  // ─── Transitive Input variants ─────────────────────────────────
+
+  describe('transitive Input variants', () => {
+    it('generates Input interface for model that references a visibility model (local)', () => {
+      const root = dtoRoot([
+        model('Entry', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('amount', scalarType('bigint')),
+        ]),
+        model('Transaction', [
+          field('entries', arrayType(refType('Entry'))),
+        ]),
+      ]);
+      const output = generatePlainTypes(root);
+      expect(output).toContain('export interface TransactionInput {');
+    });
+
+    it('write interface of parent uses Input variant of referenced child', () => {
+      const root = dtoRoot([
+        model('Entry', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('amount', scalarType('bigint')),
+        ]),
+        model('Transaction', [
+          field('entries', arrayType(refType('Entry'))),
+        ]),
+      ]);
+      const output = generatePlainTypes(root);
+      const inputSection = output.split('export interface TransactionInput {')[1]!.split('}')[0]!;
+      expect(inputSection).toContain('EntryInput');
+      expect(inputSection).not.toContain('Entry[]');
+    });
+
+    it('handles multi-level transitive chain', () => {
+      const root = dtoRoot([
+        model('Leaf', [field('id', scalarType('uuid'), { visibility: 'readonly' })]),
+        model('Middle', [field('leaf', refType('Leaf'))]),
+        model('Top', [field('middle', refType('Middle'))]),
+      ]);
+      const output = generatePlainTypes(root);
+      expect(output).toContain('export interface MiddleInput {');
+      expect(output).toContain('export interface TopInput {');
+      const middleInputSection = output.split('export interface MiddleInput {')[1]!.split('}')[0]!;
+      expect(middleInputSection).toContain('LeafInput');
+      const topInputSection = output.split('export interface TopInput {')[1]!.split('}')[0]!;
+      expect(topInputSection).toContain('MiddleInput');
+    });
+
+    it('handles transitive ref from external context', () => {
+      const root = dtoRoot([
+        model('Transaction', [
+          field('entries', arrayType(refType('ExternalEntry'))),
+        ]),
+      ]);
+      const context: DtoCodegenContext = {
+        currentOutPath: '/out/transaction.ts',
+        modelOutPaths: new Map([
+          ['ExternalEntry', '/out/entry.ts'],
+          ['ExternalEntryInput', '/out/entry.ts'],
+        ]),
+        modelsWithInput: new Set(['ExternalEntry']),
+      };
+      const output = generatePlainTypes(root, context);
+      expect(output).toContain('export interface TransactionInput {');
+      const inputSection = output.split('export interface TransactionInput {')[1]!.split('}')[0]!;
+      expect(inputSection).toContain('ExternalEntryInput');
+      expect(output).toContain("import type { ExternalEntryInput } from './entry.js';");
+    });
+
+    it('model without visibility that only refs plain models stays simple', () => {
+      const root = dtoRoot([
+        model('PlainChild', [field('name', scalarType('string'))]),
+        model('Parent', [field('child', refType('PlainChild'))]),
+      ]);
+      const output = generatePlainTypes(root);
+      expect(output).not.toContain('ParentInput');
+      expect(output).not.toContain('PlainChildInput');
+    });
+  });
+
   // ─── Inheritance ──────────────────────────────────────────────
 
   describe('inheritance', () => {
@@ -319,7 +415,7 @@ describe('generatePlainTypes', () => {
       expect(output).toContain('export interface Admin extends User {');
     });
 
-    it('generates extends for visibility model with base', () => {
+    it('generates extends for visibility model with base (base has no Input variant)', () => {
       const root = dtoRoot([
         model('Admin', [
           field('id', scalarType('uuid'), { visibility: 'readonly' }),
@@ -328,7 +424,92 @@ describe('generatePlainTypes', () => {
       ]);
       const output = generatePlainTypes(root);
       expect(output).toContain('export interface Admin extends User {');
+      // User not in modelsWithInput — AdminInput extends User (not UserInput)
+      expect(output).toContain('export interface AdminInput extends User {');
+    });
+
+    it('generates extends for visibility model with base (base has Input variant)', () => {
+      const root = dtoRoot([
+        model('Admin', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('role', scalarType('string')),
+        ], { base: 'User' }),
+      ]);
+      const output = generatePlainTypes(root, {
+        modelsWithInput: new Set(['User']),
+        currentOutPath: '/out/admin.ts',
+        modelOutPaths: new Map(),
+      });
+      expect(output).toContain('export interface Admin extends User {');
+      // User is in modelsWithInput — AdminInput extends UserInput
       expect(output).toContain('export interface AdminInput extends UserInput {');
+    });
+
+    it('child extends parent in same file both get Input when parent has visibility', () => {
+      const root = dtoRoot([
+        model('User', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('name', scalarType('string')),
+        ]),
+        model('Admin', [
+          field('role', scalarType('string')),
+        ], { base: 'User' }),
+      ]);
+      const output = generatePlainTypes(root);
+      // User has visibility fields → needs Input; Admin extends User → also needs Input
+      expect(output).toContain('export interface User {');
+      expect(output).toContain('export interface UserInput {');
+      expect(output).toContain('export interface Admin extends User {');
+      expect(output).toContain('export interface AdminInput extends UserInput {');
+    });
+  });
+
+  // ─── Type alias Input variants ────────────────────────────────
+
+  describe('type alias Input variants', () => {
+    it('type alias referencing model with Input variant gets its own Input variant', () => {
+      const root = dtoRoot([
+        model('Pagination', [
+          field('page', scalarType('int')),
+          field('total', scalarType('int'), { visibility: 'readonly' }),
+        ]),
+        model('ListQuery', [], { type: { kind: 'intersection', members: [
+          { kind: 'ref', name: 'Pagination' },
+          { kind: 'inlineObject', fields: [field('status', scalarType('string'), { optional: true })] },
+        ] } }),
+      ]);
+      const output = generatePlainTypes(root);
+      expect(output).toContain('export type ListQuery = Pagination & {');
+      expect(output).toContain('export type ListQueryInput = PaginationInput & {');
+    });
+
+    it('imports PaginationInput when type alias references external Pagination with Input variant', () => {
+      const root = dtoRoot([
+        model('ListQuery', [], { type: { kind: 'intersection', members: [
+          { kind: 'ref', name: 'Pagination' },
+          { kind: 'inlineObject', fields: [field('status', scalarType('string'), { optional: true })] },
+        ] } }),
+      ]);
+      const output = generatePlainTypes(root, {
+        modelsWithInput: new Set(['Pagination']),
+        currentOutPath: '/out/list.query.ts',
+        modelOutPaths: new Map([
+          ['Pagination', '/out/pagination.ts'],
+          ['PaginationInput', '/out/pagination.ts'],
+        ]),
+      });
+      expect(output).toContain("import type { Pagination } from './pagination.js';");
+      expect(output).toContain("import type { PaginationInput } from './pagination.js';");
+      expect(output).toContain('export type ListQueryInput = PaginationInput & {');
+    });
+
+    it('type alias NOT referencing any model with Input stays simple', () => {
+      const root = dtoRoot([
+        model('UserId', [], { type: { kind: 'scalar', name: 'uuid' } }),
+      ]);
+      const output = generatePlainTypes(root);
+      expect(output).toContain('export type UserId =');
+      expect(output).not.toContain('UserIdInput');
     });
   });
 

@@ -5,7 +5,7 @@ import { glob } from 'glob';
 import { DiagnosticCollector } from './diagnostics.js';
 import { parseDto } from './parser-dto.js';
 import { parseOp } from './parser-op.js';
-import { generateDto } from './codegen-dto.js';
+import { generateDto, collectTypeRefs } from './codegen-dto.js';
 import type { DtoCodegenContext } from './codegen-dto.js';
 import { generateOp } from './codegen-op.js';
 import { generateSdk, generateSdkOptions, generateSdkAggregator, deriveClientClassName, deriveClientPropertyName } from './codegen-sdk.js';
@@ -332,13 +332,40 @@ async function main() {
         // Build model → outPath map from ALL dto files for cross-file import resolution
         const modelOutPaths = new Map<string, string>();
         const modelsWithInput = new Set<string>();
+
+        // Pass 1: register all model paths and direct-visibility Input variants
+        const modelFieldRefs = new Map<string, { refs: Set<string>; outPath: string }>();
         for (const { ast, outPath } of allDtoInfo) {
             for (const model of ast.models) {
                 modelOutPaths.set(model.name, outPath);
-                // Track models that generate Input variants (have visibility modifiers)
                 if (model.fields.some(f => f.visibility !== 'normal')) {
                     modelsWithInput.add(model.name);
                     modelOutPaths.set(`${model.name}Input`, outPath);
+                }
+                // Collect type refs for transitive closure (fields + base + type alias)
+                const refs = new Set<string>();
+                for (const field of model.fields) {
+                    collectTypeRefs(field.type, refs);
+                }
+                if (model.base) refs.add(model.base);
+                if (model.type) collectTypeRefs(model.type, refs);
+                modelFieldRefs.set(model.name, { refs, outPath });
+            }
+        }
+
+        // Pass 2: transitive closure — add models that reference models with Input variants
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const [modelName, { refs, outPath }] of modelFieldRefs) {
+                if (modelsWithInput.has(modelName)) continue;
+                for (const ref of refs) {
+                    if (modelsWithInput.has(ref)) {
+                        modelsWithInput.add(modelName);
+                        modelOutPaths.set(`${modelName}Input`, outPath);
+                        changed = true;
+                        break;
+                    }
                 }
             }
         }
@@ -423,7 +450,7 @@ async function main() {
                     // Always track model paths for import resolution
                     for (const model of ast.models) {
                         sdkModelOutPaths.set(model.name, typeOutPath);
-                        if (model.fields.some(f => f.visibility !== 'normal')) {
+                        if (modelsWithInput.has(model.name)) {
                             sdkModelOutPaths.set(`${model.name}Input`, typeOutPath);
                         }
                     }

@@ -363,6 +363,118 @@ describe('generateDto', () => {
     });
   });
 
+  // ─── Transitive Input variants ─────────────────────────────────
+
+  describe('transitive Input variants', () => {
+    it('generates Input variant for model that references a visibility model (local)', () => {
+      const root = dtoRoot([
+        model('Entry', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('amount', scalarType('bigint')),
+        ]),
+        model('Transaction', [
+          field('entries', arrayType(refType('Entry'))),
+        ]),
+      ]);
+      const output = generateDto(root);
+      // Transaction references Entry (which has readonly → EntryInput exists)
+      // so Transaction must also get an Input variant
+      expect(output).toContain('export const TransactionInput = z.strictObject({');
+      expect(output).toContain('export type TransactionInput = z.infer<typeof TransactionInput>;');
+    });
+
+    it('write schema of parent uses Input variant of referenced child', () => {
+      const root = dtoRoot([
+        model('Entry', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('amount', scalarType('bigint')),
+        ]),
+        model('Transaction', [
+          field('entries', arrayType(refType('Entry'))),
+        ]),
+      ]);
+      const output = generateDto(root);
+      const inputSection = output.split('export const TransactionInput =')[1]!.split('});')[0]!;
+      expect(inputSection).toContain('EntryInput');
+      expect(inputSection).not.toContain('Entry,');
+    });
+
+    it('handles multi-level transitive chain', () => {
+      const root = dtoRoot([
+        model('Leaf', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+        ]),
+        model('Middle', [
+          field('leaf', refType('Leaf')),
+        ]),
+        model('Top', [
+          field('middle', refType('Middle')),
+        ]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('export const MiddleInput = z.strictObject({');
+      expect(output).toContain('export const TopInput = z.strictObject({');
+      // TopInput should use MiddleInput; MiddleInput should use LeafInput
+      const middleInputSection = output.split('export const MiddleInput =')[1]!.split('});')[0]!;
+      expect(middleInputSection).toContain('LeafInput');
+      const topInputSection = output.split('export const TopInput =')[1]!.split('});')[0]!;
+      expect(topInputSection).toContain('MiddleInput');
+    });
+
+    it('handles transitive ref through union type', () => {
+      const root = dtoRoot([
+        model('Child', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+        ]),
+        model('Parent', [
+          field('data', unionType(refType('Child'), scalarType('null'))),
+        ]),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('export const ParentInput = z.strictObject({');
+      const inputSection = output.split('export const ParentInput =')[1]!.split('});')[0]!;
+      expect(inputSection).toContain('ChildInput');
+    });
+
+    it('handles transitive ref from external context', () => {
+      const root = dtoRoot([
+        model('Transaction', [
+          field('entries', arrayType(refType('ExternalEntry'))),
+        ]),
+      ]);
+      const context: DtoCodegenContext = {
+        currentOutPath: '/out/transaction.ts',
+        modelOutPaths: new Map([
+          ['ExternalEntry', '/out/entry.ts'],
+          ['ExternalEntryInput', '/out/entry.ts'],
+        ]),
+        modelsWithInput: new Set(['ExternalEntry']),
+      };
+      const output = generateDto(root, context);
+      // Transaction should get an Input variant referencing ExternalEntryInput
+      expect(output).toContain('export const TransactionInput = z.strictObject({');
+      const inputSection = output.split('export const TransactionInput =')[1]!.split('});')[0]!;
+      expect(inputSection).toContain('ExternalEntryInput');
+      // Should import ExternalEntryInput from the correct path
+      expect(output).toContain("import { ExternalEntryInput } from './entry.js';");
+    });
+
+    it('model without visibility that only refs plain models stays simple', () => {
+      const root = dtoRoot([
+        model('PlainChild', [
+          field('name', scalarType('string')),
+        ]),
+        model('Parent', [
+          field('child', refType('PlainChild')),
+        ]),
+      ]);
+      const output = generateDto(root);
+      // Neither model has visibility or transitive Input deps
+      expect(output).not.toContain('ParentInput');
+      expect(output).not.toContain('PlainChildInput');
+    });
+  });
+
   // ─── Inheritance ───────────────────────────────────────────────
 
   describe('inheritance', () => {
@@ -372,6 +484,111 @@ describe('generateDto', () => {
       ]);
       const output = generateDto(root);
       expect(output).toContain('User.extend({');
+    });
+
+    it('child extends parent in same file: both get three-schema when parent has visibility', () => {
+      const root = dtoRoot([
+        model('User', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('name', scalarType('string')),
+        ]),
+        model('Admin', [
+          field('role', scalarType('string')),
+        ], { base: 'User' }),
+      ]);
+      const output = generateDto(root);
+      // User three-schema
+      expect(output).toContain('const UserBase =');
+      expect(output).toContain('export const User =');
+      expect(output).toContain('export const UserInput =');
+      // Admin inherits from User — also gets three-schema
+      expect(output).toContain('const AdminBase = UserBase.extend({');
+      expect(output).toContain('export const Admin = User.extend({');
+      expect(output).toContain('export const AdminInput = UserInput.extend({');
+    });
+
+    it('child with visibility extending parent without visibility: uses .extend() for base, read, and write', () => {
+      const root = dtoRoot([
+        model('User', [field('name', scalarType('string'))]),
+        model('Admin', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('role', scalarType('string')),
+        ], { base: 'User' }),
+      ]);
+      const output = generateDto(root);
+      // User has no visibility — simple schema
+      expect(output).not.toContain('UserBase');
+      expect(output).not.toContain('UserInput');
+      // Admin has visibility — three-schema, base is not in modelsWithInput
+      expect(output).toContain('const AdminBase = User.extend({');
+      expect(output).toContain('export const Admin = User.extend({');
+      expect(output).toContain('export const AdminInput = User.extend({');
+    });
+
+    it('child inheriting from external parent with Input variant uses ParentInput.extend()', () => {
+      const root = dtoRoot([
+        model('Admin', [
+          field('id', scalarType('uuid'), { visibility: 'readonly' }),
+          field('role', scalarType('string')),
+        ], { base: 'User' }),
+      ]);
+      const output = generateDto(root, {
+        modelsWithInput: new Set(['User']),
+        currentOutPath: '/out/admin.ts',
+        modelOutPaths: new Map(),
+      });
+      expect(output).toContain('export const AdminInput = UserInput.extend({');
+    });
+  });
+
+  // ─── Type alias Input variants ────────────────────────────────
+
+  describe('type alias Input variants', () => {
+    it('type alias referencing a model with Input variant gets its own Input variant', () => {
+      const root = dtoRoot([
+        model('Pagination', [
+          field('page', scalarType('int')),
+          field('total', scalarType('int'), { visibility: 'readonly' }),
+        ]),
+        model('ListQuery', [], { type: { kind: 'intersection', members: [
+          { kind: 'ref', name: 'Pagination' },
+          { kind: 'inlineObject', fields: [field('status', scalarType('string'), { optional: true })] },
+        ] } }),
+      ]);
+      const output = generateDto(root);
+      // ListQuery itself is a type alias — read schema
+      expect(output).toContain('export const ListQuery = Pagination.extend({');
+      // Input variant uses PaginationInput
+      expect(output).toContain('export const ListQueryInput = PaginationInput.extend({');
+    });
+
+    it('imports PaginationInput when type alias references external Pagination with Input variant', () => {
+      const root = dtoRoot([
+        model('ListQuery', [], { type: { kind: 'intersection', members: [
+          { kind: 'ref', name: 'Pagination' },
+          { kind: 'inlineObject', fields: [field('status', scalarType('string'), { optional: true })] },
+        ] } }),
+      ]);
+      const output = generateDto(root, {
+        modelsWithInput: new Set(['Pagination']),
+        currentOutPath: '/out/list.query.ts',
+        modelOutPaths: new Map([
+          ['Pagination', '/out/pagination.ts'],
+          ['PaginationInput', '/out/pagination.ts'],
+        ]),
+      });
+      expect(output).toContain("import { Pagination } from './pagination.js';");
+      expect(output).toContain("import { PaginationInput } from './pagination.js';");
+      expect(output).toContain('export const ListQueryInput = PaginationInput.extend({');
+    });
+
+    it('type alias NOT referencing any model with Input stays simple', () => {
+      const root = dtoRoot([
+        model('UserId', [], { type: { kind: 'scalar', name: 'uuid' } }),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('export const UserId = z.uuid()');
+      expect(output).not.toContain('UserIdInput');
     });
   });
 

@@ -1,3 +1,8 @@
+---
+area: transfers
+TransfersService: "#src/modules/transfers/transfers.service.js"
+---
+
 # /transfers/fi {
 #     post: {
 #         request: {
@@ -21,16 +26,17 @@
             }
         }
     }
-    post: { # create counterparty
-        request: {
-            application/json: CreateCounterparty
-        }
-        response: {
-            201: {
-                application/json: Counterparty
-            }
-        }
-    }
+    # post: { # create counterparty
+    #     service: TransfersService.createCounterparty
+    #     request: {
+    #         application/json: CreateCounterparty
+    #     }
+    #     response: {
+    #         201: {
+    #             application/json: Counterparty
+    #         }
+    #     }
+    # }
 }
 
 # /transfers {

@@ -1,20 +1,24 @@
-ProcessCacheQueue: {
+---
+area: ledger
+---
+
+ProcessCacheQueue: { # Represents a request to process the cache queue
     batchSize?: int(min=1) # Optional batch size
 }
 
-BalanceCacheDrift: {
+BalanceCacheDrift: { # Represents the balance cache drift
     accountId: uuid # The account identifier
     accountName: string # The account name
-    cachedPostedCredits: bigint # Cached posted credits
-    cachedPostedDebits: bigint # Cached posted debits
-    cachedPendingCredits: bigint # Cached pending credits
-    cachedPendingDebits: bigint # Cached pending debits
-    actualPostedCredits: bigint # Actual posted credits
-    actualPostedDebits: bigint # Actual posted debits
-    actualPendingCredits: bigint # Actual pending credits
-    actualPendingDebits: bigint # Actual pending debits
-    driftPostedCredits: bigint # Drift in posted credits
-    driftPostedDebits: bigint # Drift in posted debits
-    driftPendingCredits: bigint # Drift in pending credits
-    driftPendingDebits: bigint # Drift in pending debits
+    cachedPostedCredits: bigint # The cached posted credits
+    cachedPostedDebits: bigint # The cached posted debits
+    cachedPendingCredits: bigint # The cached pending credits
+    cachedPendingDebits: bigint # The cached pending debits
+    actualPostedCredits: bigint # The actual posted credits
+    actualPostedDebits: bigint # The actual posted debits
+    actualPendingCredits: bigint # The actual pending credits
+    actualPendingDebits: bigint # The actual pending debits
+    driftPostedCredits: bigint # The drift in posted credits
+    driftPostedDebits: bigint # The drift in posted debits
+    driftPendingCredits: bigint # The drift in pending credits
+    driftPendingDebits: bigint # The drift in pending debits
 }

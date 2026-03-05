@@ -1,5 +1,11 @@
+---
+area: ledger
+LedgerService: "#src/modules/ledger/ledger.service.js"
+---
+
 /ledger/transactions {
     post: {
+        service: LedgerService.createTransaction
         request: {
             application/json: LedgerTransaction
         }
@@ -10,10 +16,14 @@
         }
     }
     get: {
+        service: LedgerService.listAllTransactions
         query: ListTransactionsQuery
         response: {
             200: {
-                application/json: array(LedgerTransaction)
+                application/json: {
+                    meta: Pagination
+                    data: array(LedgerTransaction)
+                }
             }
         }
     }
@@ -21,8 +31,9 @@
 
 /ledger/transactions/transfer {
     post: {
+        service: LedgerService.transfer
         request: {
-            application/json: TransferInput
+            application/json: LedgerTransfer | LedgerTransferMultiple
         }
         response: {
             201: {
@@ -37,6 +48,7 @@
         transactionId: uuid
     }
     get: {
+        service: LedgerService.getTransaction
         response: {
             200: {
                 application/json: LedgerTransaction
@@ -50,6 +62,7 @@
         transactionId: uuid
     }
     get: {
+        service: LedgerService.getTransactionEntries
         response: {
             200: {
                 application/json: array(LedgerEntry)
@@ -63,6 +76,7 @@
         transactionId: uuid
     }
     post: {
+        service: LedgerService.finalizeTransaction
         request: {
             application/json: FinalizeTransactionInput
         }

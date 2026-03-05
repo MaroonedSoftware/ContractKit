@@ -30,6 +30,51 @@ export interface DtoCodegenContext {
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
+/**
+ * Compute which models need Input variants, including transitive dependencies.
+ * A model needs an Input variant if it has visibility-modified fields, OR if
+ * any of its field types (recursively) reference a model that has an Input variant.
+ */
+export function computeModelsWithInput(models: ModelNode[], externalModelsWithInput: Set<string> = new Set()): Set<string> {
+    const result = new Set<string>();
+
+    // Initial pass: direct visibility modifiers
+    for (const model of models) {
+        if (model.fields.some(f => f.visibility !== 'normal')) {
+            result.add(model.name);
+        }
+    }
+
+    // Transitive closure: add models that reference models with Input variants,
+    // including through base model inheritance.
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const model of models) {
+            if (result.has(model.name)) continue;
+            const refs = new Set<string>();
+            for (const field of model.fields) {
+                collectTypeRefs(field.type, refs);
+            }
+            // A model that extends a parent with Input variants also needs an Input variant,
+            // so that the write schema can extend ParentInput instead of Parent.
+            if (model.base) refs.add(model.base);
+            // A type alias (model.type set) that references a model with Input variants
+            // also needs an Input variant.
+            if (model.type) collectTypeRefs(model.type, refs);
+            for (const ref of refs) {
+                if (result.has(ref) || externalModelsWithInput.has(ref)) {
+                    result.add(model.name);
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 function generateComments(model: ModelNode, outPath?: string): string[] {
     const lines: string[] = [];
     lines.push('/**');
@@ -48,14 +93,10 @@ export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): str
     const externalRefs = collectExternalRefs(root);
     const lines: string[] = [];
 
-    // Compute which models have Input variants (local + external)
-    const localModelsWithInput = new Set<string>();
-    for (const model of root.models) {
-        if (model.fields.some(f => f.visibility !== 'normal')) {
-            localModelsWithInput.add(model.name);
-        }
-    }
-    const allModelsWithInput = new Set([...localModelsWithInput, ...(context?.modelsWithInput ?? [])]);
+    // Compute which models have Input variants (local, incl. transitive deps + external)
+    const externalModelsWithInput = context?.modelsWithInput ?? new Set<string>();
+    const localModelsWithInput = computeModelsWithInput(root.models, externalModelsWithInput);
+    const allModelsWithInput = new Set([...localModelsWithInput, ...externalModelsWithInput]);
 
     // Collect additional external Input refs needed for Input schema fields
     const externalInputRefs = allModelsWithInput.size > 0
@@ -84,22 +125,28 @@ export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): str
 function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
     // Type alias: Name : typeExpression
     if (model.type) {
-        return generateTypeAlias(model, outPath);
+        return generateTypeAlias(model, outPath, modelsWithInput);
     }
 
-    const hasVisibility = model.fields.some(f => f.visibility !== 'normal');
+    // A model needs Input/read split if it has visibility-modified fields OR if it
+    // transitively references models that have Input variants (captured in modelsWithInput).
+    const needsInputSplit = model.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(model.name) ?? false);
 
-    if (hasVisibility) {
+    if (needsInputSplit) {
         return generateThreeSchemaModel(model, outPath, modelsWithInput);
     }
     return generateSimpleModel(model, outPath);
 }
 
-function generateTypeAlias(model: ModelNode, outPath?: string): string[] {
+function generateTypeAlias(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
     lines.push(`export const ${model.name} = ${renderType(model.type!)};`);
     lines.push(`export type ${model.name} = z.infer<typeof ${model.name}>;`);
+    if (modelsWithInput?.has(model.name)) {
+        lines.push(`export const ${model.name}Input = ${renderInputType(model.type!, modelsWithInput)};`);
+        lines.push(`export type ${model.name}Input = z.infer<typeof ${model.name}Input>;`);
+    }
     return lines;
 }
 
@@ -129,12 +176,15 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
 
     lines.push(...generateComments(model, outPath));
 
-    // Base schema — all fields
+    // Base schema — all fields (used internally when a submodel extends this one)
     const allFields = model.fields;
     const baseBody = renderFields(allFields);
-
-    if (model.base) {
-        lines.push(`const ${name}Base = ${model.base}Base.extend({`);
+    // Use ParentBase.extend() when parent also has the three-schema pattern, else Parent.extend()
+    const baseParent = model.base
+        ? (modelsWithInput?.has(model.base) ? `${model.base}Base` : model.base)
+        : null;
+    if (baseParent) {
+        lines.push(`const ${name}Base = ${baseParent}.extend({`);
     } else {
         lines.push(`const ${name}Base = z.strictObject({`);
     }
@@ -142,19 +192,31 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
     lines.push(`});`);
     lines.push('');
 
-    // Read schema — omit writeonly fields
+    // Read schema — omit writeonly fields; extends parent read schema
     const readFields = allFields.filter(f => f.visibility !== 'writeonly');
     const readBody = renderFields(readFields);
-    lines.push(`export const ${name} = z.strictObject({`);
+    if (model.base) {
+        lines.push(`export const ${name} = ${model.base}.extend({`);
+    } else {
+        lines.push(`export const ${name} = z.strictObject({`);
+    }
     lines.push(...readBody.map(l => `    ${l}`));
     lines.push(`});`);
     lines.push(`export type ${name} = z.infer<typeof ${name}>;`);
     lines.push('');
 
-    // Write schema — omit readonly fields (use Input variants for sub-type refs)
+    // Write schema — omit readonly fields (use Input variants for sub-type refs);
+    // extends ParentInput if parent has an Input variant, else extends parent read schema
     const writeFields = allFields.filter(f => f.visibility !== 'readonly');
     const writeBody = modelsWithInput ? renderInputFields(writeFields, modelsWithInput) : renderFields(writeFields);
-    lines.push(`export const ${name}Input = z.strictObject({`);
+    const writeBase = model.base
+        ? (modelsWithInput?.has(model.base) ? `${model.base}Input` : model.base)
+        : null;
+    if (writeBase) {
+        lines.push(`export const ${name}Input = ${writeBase}.extend({`);
+    } else {
+        lines.push(`export const ${name}Input = z.strictObject({`);
+    }
     lines.push(...writeBody.map(l => `    ${l}`));
     lines.push(`});`);
     lines.push(`export type ${name}Input = z.infer<typeof ${name}Input>;`);
@@ -300,6 +362,14 @@ function renderUnion(u: UnionTypeNode): string {
 
 function renderIntersection(i: IntersectionTypeNode): string {
     const [first, ...rest] = i.members;
+    // When the pattern is ref & { inlineObject(s) }, use .extend() to produce a
+    // single merged ZodObject. Using .and(z.strictObject) breaks because each
+    // strict side rejects the other side's keys during intersection parsing.
+    if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'inlineObject')) {
+        const allFields = rest.flatMap(m => (m as InlineObjectTypeNode).fields);
+        const fieldLines = allFields.map(f => `    ${renderField(f)}`).join('\n');
+        return `${first.name}.extend({\n${fieldLines}\n})`;
+    }
     let expr = renderType(first!);
     for (const member of rest) {
         expr += `.and(${renderType(member)})`;
@@ -358,6 +428,12 @@ export function renderInputType(type: DtoTypeNode, modelsWithInput?: Set<string>
             return `z.union([${type.members.map(m => renderInputType(m, modelsWithInput)).join(', ')}])`;
         case 'intersection': {
             const [first, ...rest] = type.members;
+            if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'inlineObject')) {
+                const base = modelsWithInput?.has(first.name) ? `${first.name}Input` : first.name;
+                const allFields = rest.flatMap(m => (m as InlineObjectTypeNode).fields);
+                const fieldLines = allFields.map(f => `    ${renderInputField(f, modelsWithInput ?? new Set())}`).join('\n');
+                return `${base}.extend({\n${fieldLines}\n})`;
+            }
             let expr = renderInputType(first!, modelsWithInput);
             for (const member of rest) {
                 expr += `.and(${renderInputType(member, modelsWithInput)})`;
@@ -413,6 +489,12 @@ export function renderQueryType(type: DtoTypeNode, modelsWithInput?: Set<string>
         }
         case 'intersection': {
             const [first, ...rest] = type.members;
+            if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'inlineObject')) {
+                const base = modelsWithInput?.has(first.name) ? `${first.name}Input` : first.name;
+                const allFields = rest.flatMap(m => (m as InlineObjectTypeNode).fields);
+                const fieldLines = allFields.map(f => `    ${renderQueryField(f, modelsWithInput)}`).join('\n');
+                return `${base}.extend({\n${fieldLines}\n})`;
+            }
             let expr = renderQueryType(first!, modelsWithInput);
             for (const member of rest) {
                 expr += `.and(${renderQueryType(member, modelsWithInput)})`;
@@ -494,7 +576,17 @@ export function collectExternalInputRefs(root: DtoRootNode, modelsWithInput: Set
     const refs = new Set<string>();
 
     for (const model of root.models) {
-        if (!model.fields.some(f => f.visibility !== 'normal')) continue;
+        if (!modelsWithInput.has(model.name)) continue;
+        // Type alias: collect Input refs from the aliased type expression.
+        if (model.type) {
+            collectInputTypeRefs(model.type, refs, modelsWithInput);
+            continue;
+        }
+        // When a model extends an external parent that has an Input variant,
+        // the write schema extends ParentInput — so we need to import it.
+        if (model.base && modelsWithInput.has(model.base) && !localNames.has(model.base)) {
+            refs.add(`${model.base}Input`);
+        }
         const writeFields = model.fields.filter(f => f.visibility !== 'readonly');
         for (const field of writeFields) {
             collectInputTypeRefs(field.type, refs, modelsWithInput);
@@ -539,7 +631,7 @@ function collectInputTypeRefs(type: DtoTypeNode, out: Set<string>, modelsWithInp
     }
 }
 
-function collectTypeRefs(type: DtoTypeNode, out: Set<string>): void {
+export function collectTypeRefs(type: DtoTypeNode, out: Set<string>): void {
     switch (type.kind) {
         case 'ref':
             out.add(type.name);

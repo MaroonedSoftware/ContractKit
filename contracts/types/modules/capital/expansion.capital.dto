@@ -1,15 +1,21 @@
-ExpansionCapital: {
-    id: readonly uuid # The identifier for the expansion capital
-    name: string(min=3, max=100)
-    description?: string(max=1024) # The description of the expansion capital
-    expansionOfferId: readonly uuid # The identifier of the expansion offer
-    expansionOfferTermId: readonly uuid # The identifier of the expansion offer term
-    ledgerCashAccountId: readonly uuid # The identifier of the ledger cash account
-    ledgerReceivableAccountId: readonly uuid # The identifier of the ledger receivable account
-    ledgerEquityAccountId: readonly uuid # The identifier of the ledger equity account
-    ledgerRevenueAccountId: readonly uuid # The identifier of the ledger revenue account
-    ledgerCustomerExpenseAccountId: readonly uuid # The identifier of the ledger customer expense account
-    ledgerCustomerPayableAccountId: readonly uuid # The identifier of the ledger customer payable account
-    ledgerHomegrownCashAccountId: readonly uuid # The identifier of the ledger homegrown cash account
-    ledgerHomegrownRevenueAccountId: readonly uuid # The identifier of the ledger homegrown revenue account
+---
+area: capital
+---
+
+ExpansionCapital: { # Represents a capital expansion 
+    createdAt: readonly datetime # The capital expansion creation timestamp
+    updatedAt: readonly datetime # The capital expansion last update timestamp
+    id: readonly uuid # The capital expansion identifier
+    name: string(min=3, max=100) # The name of the capital expansion
+    description?: string(max=1024) # The description of the capital expansion
+    expansionOfferId: readonly uuid # The capital expansion offer identifier
+    expansionOfferTermId: readonly uuid # The capital expansion offer term identifier
+    ledgerCashAccountId: readonly uuid # The ledger cash account identifier
+    ledgerReceivableAccountId: readonly uuid # The ledger receivable account identifier
+    ledgerEquityAccountId: readonly uuid # The ledger equity account identifier
+    ledgerRevenueAccountId: readonly uuid # The ledger revenue account identifier
+    ledgerCustomerExpenseAccountId: readonly uuid # The ledger customer expense account identifier
+    ledgerCustomerPayableAccountId: readonly uuid # The ledger customer payable account identifier  
+    ledgerHomegrownCashAccountId: readonly uuid # The ledger homegrown cash account identifier
+    ledgerHomegrownRevenueAccountId: readonly uuid # The ledger homegrown revenue account identifier
 }

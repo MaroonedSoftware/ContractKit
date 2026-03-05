@@ -1,7 +1,13 @@
+---
+area: ledger
+LedgerService: "#src/modules/ledger/ledger.service.js"
+---
+
 /ledger/accounts {
     post: {
+        service: LedgerService.createAccount
         request: {
-            application/json: LedgerAccountInput
+            application/json: LedgerAccount
         }
         response: {
             200: {
@@ -10,10 +16,14 @@
         }
     }
     get: {
-        query: PaginationQuery
+        service: LedgerService.listAccounts
+        query: Pagination
         response: {
             200: {
-                application/json: array(LedgerAccount)
+                application/json: {
+                    meta: Pagination
+                    data: array(LedgerAccount)
+                }
             }
         }
     }
@@ -24,6 +34,7 @@
         accountId: uuid
     }
     get: {
+        service: LedgerService.getAccount
         response: {
             200: {
                 application/json: LedgerAccount
@@ -37,6 +48,7 @@
         accountId: uuid
     }
     get: {
+        service: LedgerService.getAccountBalances
         query: GetAccountBalancesQuery
         response: {
             200: {
@@ -51,6 +63,7 @@
         accountId: uuid
     }
     get: {
+        service: LedgerService.listAccountTransactions
         query: ListAccountTransactionsQuery
         response: {
             200: {
@@ -65,6 +78,7 @@
         accountId: uuid
     }
     get: {
+        service: LedgerService.getAccountCategories
         response: {
             200: {
                 application/json: array(LedgerCategory)
@@ -79,15 +93,13 @@
         categoryId: uuid
     }
     put: {
-        service: LedgerService.updateCategoryMembership
+        service: LedgerService.addAccountToCategory
         response: {
-            200: {
-                application/json: LedgerAccount
-            }
+            204:
         }
     }
     delete: {
-        service: LedgerService.updateCategoryMembership
+        service: LedgerService.removeAccountFromCategory
         response: {
             204:
         }

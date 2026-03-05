@@ -1,4 +1,8 @@
-SimpleTransferInput: {
+---
+area: transfers
+---
+
+SimpleTransferInput: { # Represents a simple transfer input
     idempotencyKey: string(min=16, max=128) # Unique idempotency key
     fromAccountId: uuid # Source account
     toAccountId: uuid # Destination account
@@ -9,7 +13,7 @@ SimpleTransferInput: {
     description?: string(max=1024) | null # Optional description
 }
 
-MultiLegTransferInput: {
+MultiLegTransferInput: { # Represents a multi leg transfer input
     idempotencyKey: string(min=16, max=128) # Unique idempotency key
     entries: array(TransferLegInput, min=2) # At least 2 legs
     status?: enum(pending, posted) # Optional transaction status
@@ -17,7 +21,7 @@ MultiLegTransferInput: {
     description?: string(max=1024) | null # Optional description
 }
 
-TransferLegInput: {
+TransferLegInput: { # Represents a transfer leg input
     accountId: uuid # Account identifier
     amount: bigint(min=1) # Positive amount
     direction: enum(credit, debit) # Entry direction

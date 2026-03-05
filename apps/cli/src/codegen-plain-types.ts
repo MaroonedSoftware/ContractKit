@@ -1,7 +1,7 @@
 import { relative, dirname } from 'node:path';
 import type { DtoRootNode, ModelNode, FieldNode } from './ast.js';
 import type { DtoCodegenContext } from './codegen-dto.js';
-import { collectExternalRefs, collectExternalInputRefs, topoSortModels, resolveImportPath } from './codegen-dto.js';
+import { collectExternalRefs, collectExternalInputRefs, computeModelsWithInput, topoSortModels, resolveImportPath } from './codegen-dto.js';
 import { renderTsType, renderInputTsType } from './codegen-sdk.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -16,14 +16,10 @@ export function generatePlainTypes(root: DtoRootNode, context?: DtoCodegenContex
     const externalRefs = collectExternalRefs(root);
     const lines: string[] = [];
 
-    // Compute which models have Input variants (local + external)
-    const localModelsWithInput = new Set<string>();
-    for (const model of root.models) {
-        if (model.fields.some(f => f.visibility !== 'normal')) {
-            localModelsWithInput.add(model.name);
-        }
-    }
-    const allModelsWithInput = new Set([...localModelsWithInput, ...(context?.modelsWithInput ?? [])]);
+    // Compute which models have Input variants (local, incl. transitive deps + external)
+    const externalModelsWithInput = context?.modelsWithInput ?? new Set<string>();
+    const localModelsWithInput = computeModelsWithInput(root.models, externalModelsWithInput);
+    const allModelsWithInput = new Set([...localModelsWithInput, ...externalModelsWithInput]);
 
     // Collect additional external Input refs needed for Input schema fields
     const externalInputRefs = allModelsWithInput.size > 0
@@ -51,12 +47,14 @@ export function generatePlainTypes(root: DtoRootNode, context?: DtoCodegenContex
 function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
     // Type alias: Name : typeExpression
     if (model.type) {
-        return generateTypeAlias(model, outPath);
+        return generateTypeAlias(model, outPath, modelsWithInput);
     }
 
-    const hasVisibility = model.fields.some(f => f.visibility !== 'normal');
+    // A model needs Input/read split if it has visibility-modified fields OR if it
+    // transitively references models that have Input variants (captured in modelsWithInput).
+    const needsInputSplit = model.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(model.name) ?? false);
 
-    if (hasVisibility) {
+    if (needsInputSplit) {
         return generateVisibilityModel(model, outPath, modelsWithInput);
     }
     return generateSimpleModel(model, outPath);
@@ -75,10 +73,13 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
     return lines;
 }
 
-function generateTypeAlias(model: ModelNode, outPath?: string): string[] {
+function generateTypeAlias(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
     lines.push(`export type ${model.name} = ${renderTsType(model.type!)};`);
+    if (modelsWithInput?.has(model.name)) {
+        lines.push(`export type ${model.name}Input = ${renderInputTsType(model.type!, modelsWithInput)};`);
+    }
     return lines;
 }
 
@@ -118,9 +119,12 @@ function generateVisibilityModel(model: ModelNode, outPath?: string, modelsWithI
     lines.push('}');
     lines.push('');
 
-    // Write type — omit readonly fields (use Input variants for sub-type refs)
+    // Write type — omit readonly fields (use Input variants for sub-type refs);
+    // extends ParentInput if parent has an Input variant, else extends parent read type
     const writeFields = model.fields.filter(f => f.visibility !== 'readonly');
-    const inputBase = model.base ? `${model.base}Input` : undefined;
+    const inputBase = model.base
+        ? (modelsWithInput?.has(model.base) ? `${model.base}Input` : model.base)
+        : undefined;
     if (inputBase) {
         lines.push(`export interface ${model.name}Input extends ${inputBase} {`);
     } else {

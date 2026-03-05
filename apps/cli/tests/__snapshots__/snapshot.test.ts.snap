@@ -3,12 +3,91 @@
 exports[`DTO snapshot tests > counterparty.dto matches snapshot 1`] = `
 "import { z } from 'zod';
 import { DateTime } from 'luxon';
-import { CounterpartyAccount } from './counterparty.account.js';
-import { CreateCounterpartyFinancialAccount } from './create.counterparty.financial.account.js';
-import { CreateCounterpartyProcessorAccount } from './create.counterparty.processor.account.js';
 
 /**
- * generated from [Counterparty](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L1)
+ * Represents a counterparty account
+ * generated from [CounterpartyAccount](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L21)
+*/
+const CounterpartyAccountBase = z.strictObject({
+    createdAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The counterparty account creation timestamp"),
+    updatedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The counterparty account last update timestamp"),
+    id: z.uuid().describe("The counterparty account identifier"),
+    counterpartyId: z.uuid().describe("The counterparty identifier"),
+    financialInstitutionId: z.uuid().describe("The financial institution identifier"),
+    active: z.boolean().default(true).describe("Whether the counterparty account is active"),
+    accountNumber: z.string().min(3).max(60).describe("The account number"),
+    accountNumberType: z.enum(["checking", "savings", "other"]).describe("The account number type"),
+    accountName: z.string().min(3).max(100).optional().describe("The account name"),
+    accountType: z.enum(["consumer", "commercial"]).describe("The account type"),
+    verifiedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).optional().describe("The date the account was verified"),
+    verificationMethod: z.string().min(3).max(100).optional().describe("The verification method"),
+});
+
+export const CounterpartyAccount = z.strictObject({
+    createdAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The counterparty account creation timestamp"),
+    updatedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The counterparty account last update timestamp"),
+    id: z.uuid().describe("The counterparty account identifier"),
+    counterpartyId: z.uuid().describe("The counterparty identifier"),
+    financialInstitutionId: z.uuid().describe("The financial institution identifier"),
+    active: z.boolean().default(true).describe("Whether the counterparty account is active"),
+    accountNumber: z.string().min(3).max(60).describe("The account number"),
+    accountNumberType: z.enum(["checking", "savings", "other"]).describe("The account number type"),
+    accountName: z.string().min(3).max(100).optional().describe("The account name"),
+    accountType: z.enum(["consumer", "commercial"]).describe("The account type"),
+    verifiedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).optional().describe("The date the account was verified"),
+    verificationMethod: z.string().min(3).max(100).optional().describe("The verification method"),
+});
+export type CounterpartyAccount = z.infer<typeof CounterpartyAccount>;
+
+export const CounterpartyAccountInput = z.strictObject({
+    active: z.boolean().default(true).describe("Whether the counterparty account is active"),
+    accountNumber: z.string().min(3).max(60).describe("The account number"),
+    accountNumberType: z.enum(["checking", "savings", "other"]).describe("The account number type"),
+    accountName: z.string().min(3).max(100).optional().describe("The account name"),
+    accountType: z.enum(["consumer", "commercial"]).describe("The account type"),
+});
+export type CounterpartyAccountInput = z.infer<typeof CounterpartyAccountInput>;
+
+/**
+ * Represents a request to create a counterparty financial account
+ * generated from [CreateCounterpartyFinancialAccount](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L36)
+*/
+export const CreateCounterpartyFinancialAccount = z.strictObject({
+    active: z.boolean().default(true).describe("Whether the counterparty account is active"),
+    routingNumber: z.string().min(3).max(60).describe("The routing number"),
+    accountNumber: z.string().min(3).max(60).describe("The account number"),
+    accountNumberType: z.enum(["checking", "savings", "other"]).default("checking").describe("The account number type"),
+    accountName: z.string().min(3).max(100).optional().describe("The account name"),
+    accountType: z.enum(["consumer", "commercial"]).default("commercial").describe("The account type"),
+});
+export type CreateCounterpartyFinancialAccount = z.infer<typeof CreateCounterpartyFinancialAccount>;
+
+/**
+ * Represents a request to create a counterparty processor account
+ * generated from [CreateCounterpartyProcessorAccount](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L45)
+*/
+const CreateCounterpartyProcessorAccountBase = z.strictObject({
+    active: z.boolean().default(true).describe("Whether the counterparty account is active"),
+    processorToken: z.string().min(3).max(100).describe("The processor token"),
+    processor: z.enum(["plaid"]).describe("The processor"),
+});
+
+export const CreateCounterpartyProcessorAccount = z.strictObject({
+    active: z.boolean().default(true).describe("Whether the counterparty account is active"),
+    processorToken: z.string().min(3).max(100).describe("The processor token"),
+    processor: z.enum(["plaid"]).describe("The processor"),
+});
+export type CreateCounterpartyProcessorAccount = z.infer<typeof CreateCounterpartyProcessorAccount>;
+
+export const CreateCounterpartyProcessorAccountInput = z.strictObject({
+    active: z.boolean().default(true).describe("Whether the counterparty account is active"),
+    processor: z.enum(["plaid"]).describe("The processor"),
+});
+export type CreateCounterpartyProcessorAccountInput = z.infer<typeof CreateCounterpartyProcessorAccountInput>;
+
+/**
+ * Represents a counterparty
+ * generated from [Counterparty](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L5)
 */
 const CounterpartyBase = z.strictObject({
     createdAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The counterparty creation timestamp"),
@@ -39,14 +118,28 @@ export const CounterpartyInput = z.strictObject({
 export type CounterpartyInput = z.infer<typeof CounterpartyInput>;
 
 /**
- * generated from [CreateCounterparty](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L11)
+ * Represents a request to create a counterparty
+ * generated from [CreateCounterparty](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/transfers/counterparty.dto#L15)
 */
+const CreateCounterpartyBase = z.strictObject({
+    name: z.string().min(1).max(100).describe("The counterparty name"),
+    email: z.email().optional().describe("The counterparty email"),
+    accounts: z.array(z.union([CreateCounterpartyFinancialAccount, CreateCounterpartyProcessorAccount])).min(0).max(10).describe("The counterparty accounts"),
+});
+
 export const CreateCounterparty = z.strictObject({
     name: z.string().min(1).max(100).describe("The counterparty name"),
     email: z.email().optional().describe("The counterparty email"),
     accounts: z.array(z.union([CreateCounterpartyFinancialAccount, CreateCounterpartyProcessorAccount])).min(0).max(10).describe("The counterparty accounts"),
 });
 export type CreateCounterparty = z.infer<typeof CreateCounterparty>;
+
+export const CreateCounterpartyInput = z.strictObject({
+    name: z.string().min(1).max(100).describe("The counterparty name"),
+    email: z.email().optional().describe("The counterparty email"),
+    accounts: z.array(z.union([CreateCounterpartyFinancialAccount, CreateCounterpartyProcessorAccountInput])).min(0).max(10).describe("The counterparty accounts"),
+});
+export type CreateCounterpartyInput = z.infer<typeof CreateCounterpartyInput>;
 "
 `;
 
@@ -54,40 +147,75 @@ exports[`DTO snapshot tests > ledger.account.dto matches snapshot 1`] = `
 "import { z } from 'zod';
 import { DateTime } from 'luxon';
 import { CustomCurrency } from './custom.currency.js';
+import { Pagination } from './pagination.js';
 
 /**
- * generated from [LedgerAccount](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/ledger/ledger.account.dto#L1)
+ * Represents a ledger account
+ * generated from [LedgerAccount](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/ledger/ledger.account.dto#L5)
 */
 const LedgerAccountBase = z.strictObject({
-    id: z.uuid().describe("The account identifier"),
-    name: z.string().min(3).max(100).describe("Account name"),
-    normality: z.enum(["credit", "debit"]).describe("Account normality"),
-    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("Currency code or custom currency"),
-    description: z.string().max(1024).optional().describe("Optional account description"),
-    createdAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The account creation date"),
-    updatedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The account last update date"),
-    version: z.coerce.number().int().describe("The account version"),
+    id: z.uuid().describe("The ledger account identifier"),
+    name: z.string().min(3).max(100).describe("The ledger account name"),
+    normality: z.enum(["credit", "debit"]).describe("The ledger account normality"),
+    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("The ledger account currency code or custom currency"),
+    exponent: z.coerce.number().int().describe("The ledger account currency exponent"),
+    description: z.string().max(1024).optional().describe("The ledger account description"),
+    createdAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The ledger account creation date"),
+    updatedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The ledger account last update date"),
+    version: z.coerce.number().int().describe("The ledger account version"),
 });
 
 export const LedgerAccount = z.strictObject({
-    id: z.uuid().describe("The account identifier"),
-    name: z.string().min(3).max(100).describe("Account name"),
-    normality: z.enum(["credit", "debit"]).describe("Account normality"),
-    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("Currency code or custom currency"),
-    description: z.string().max(1024).optional().describe("Optional account description"),
-    createdAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The account creation date"),
-    updatedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The account last update date"),
-    version: z.coerce.number().int().describe("The account version"),
+    id: z.uuid().describe("The ledger account identifier"),
+    name: z.string().min(3).max(100).describe("The ledger account name"),
+    normality: z.enum(["credit", "debit"]).describe("The ledger account normality"),
+    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("The ledger account currency code or custom currency"),
+    exponent: z.coerce.number().int().describe("The ledger account currency exponent"),
+    description: z.string().max(1024).optional().describe("The ledger account description"),
+    createdAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The ledger account creation date"),
+    updatedAt: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).describe("The ledger account last update date"),
+    version: z.coerce.number().int().describe("The ledger account version"),
 });
 export type LedgerAccount = z.infer<typeof LedgerAccount>;
 
 export const LedgerAccountInput = z.strictObject({
-    name: z.string().min(3).max(100).describe("Account name"),
-    normality: z.enum(["credit", "debit"]).describe("Account normality"),
-    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("Currency code or custom currency"),
-    description: z.string().max(1024).optional().describe("Optional account description"),
+    name: z.string().min(3).max(100).describe("The ledger account name"),
+    normality: z.enum(["credit", "debit"]).describe("The ledger account normality"),
+    currency: z.union([z.string().length(3), CustomCurrency]).default("USD").describe("The ledger account currency code or custom currency"),
+    description: z.string().max(1024).optional().describe("The ledger account description"),
 });
 export type LedgerAccountInput = z.infer<typeof LedgerAccountInput>;
+
+/**
+ * Represents a query to get ledger account balances
+ * generated from [GetAccountBalancesQuery](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/ledger/ledger.account.dto#L17)
+*/
+export const GetAccountBalancesQuery = z.strictObject({
+    date: z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' })).optional().describe("Optional ISO 8601 date to query balances at"),
+    version: z.coerce.number().int().min(0).optional().describe("Optional ledger account version to query balances at"),
+});
+export type GetAccountBalancesQuery = z.infer<typeof GetAccountBalancesQuery>;
+
+/**
+ * Represents the balances of a ledger account
+ * generated from [AccountBalances](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/ledger/ledger.account.dto#L22)
+*/
+export const AccountBalances = z.strictObject({
+    postedBalance: z.bigint().min(0n).describe("The posted balance in smallest currency units"),
+    pendingBalance: z.bigint().min(0n).describe("The pending balance in smallest currency units"),
+    availableBalance: z.bigint().min(0n).describe("The available balance in smallest currency units"),
+});
+export type AccountBalances = z.infer<typeof AccountBalances>;
+
+/**
+ * Represents a query to list ledger account transactions
+ * generated from [ListAccountTransactionsQuery](file://.//Users/robert/projects/contract-dsl/contracts/types/modules/ledger/ledger.account.dto#L28)
+*/
+export const ListAccountTransactionsQuery = Pagination.extend({
+    status: z.enum(["pending", "posted", "archived"]).optional(),
+    sortBy: z.enum(["effective_at", "created_at", "id"]).default("effective_at"),
+});
+export type ListAccountTransactionsQuery = z.infer<typeof ListAccountTransactionsQuery>;
 "
 `;
 
@@ -95,27 +223,28 @@ exports[`DTO snapshot tests > pagination.dto matches snapshot 1`] = `
 "import { z } from 'zod';
 
 /**
- * generated from [Pagination](file://.//Users/robert/projects/contract-dsl/contracts/types/shared/pagination.dto#L1)
+ * Represents a pagination object
+ * generated from [Pagination](file://.//Users/robert/projects/contract-dsl/contracts/types/shared/pagination.dto#L5)
 */
 const PaginationBase = z.strictObject({
-    page: z.coerce.number().int().min(0).default(0).describe("Page number"),
-    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("Page size"),
-    sort: z.enum(["asc", "desc"]).default("desc").describe("Sort order"),
-    total: z.coerce.number().int().min(0).describe("Total number of items"),
+    page: z.coerce.number().int().min(0).default(0).describe("The page number"),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("The page size"),
+    sort: z.enum(["asc", "desc"]).default("desc").describe("The sort order"),
+    total: z.coerce.number().int().min(0).describe("The total number of items"),
 });
 
 export const Pagination = z.strictObject({
-    page: z.coerce.number().int().min(0).default(0).describe("Page number"),
-    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("Page size"),
-    sort: z.enum(["asc", "desc"]).default("desc").describe("Sort order"),
+    page: z.coerce.number().int().min(0).default(0).describe("The page number"),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("The page size"),
+    sort: z.enum(["asc", "desc"]).default("desc").describe("The sort order"),
+    total: z.coerce.number().int().min(0).describe("The total number of items"),
 });
 export type Pagination = z.infer<typeof Pagination>;
 
 export const PaginationInput = z.strictObject({
-    page: z.coerce.number().int().min(0).default(0).describe("Page number"),
-    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("Page size"),
-    sort: z.enum(["asc", "desc"]).default("desc").describe("Sort order"),
-    total: z.coerce.number().int().min(0).describe("Total number of items"),
+    page: z.coerce.number().int().min(0).default(0).describe("The page number"),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25).describe("The page size"),
+    sort: z.enum(["asc", "desc"]).default("desc").describe("The sort order"),
 });
 export type PaginationInput = z.infer<typeof PaginationInput>;
 "
@@ -124,8 +253,8 @@ export type PaginationInput = z.infer<typeof PaginationInput>;
 exports[`OP snapshot tests > ledger.op matches snapshot 1`] = `
 "import { z } from 'zod';
 import { ServerKitRouter, bodyParserMiddleware } from '@maroonedsoftware/koa';
-import { LedgerService } from '#modules/ledger/ledger.service.js';
-import { AccountBalances, GetAccountBalancesQuery, LedgerAccount, LedgerAccountInput, LedgerCategory, LedgerTransaction, ListAccountTransactionsQuery, PaginationQuery } from '#modules/ledger/types/index.js';
+import { LedgerService } from '#src/modules/ledger/ledger.service.js';
+import { AccountBalances, GetAccountBalancesQuery, LedgerAccount, LedgerCategory, LedgerTransaction, ListAccountTransactionsQuery, Pagination } from '#modules/ledger/types/index.js';
 import { parseAndValidate } from '#src/shared/validator.js';
 
 /**
@@ -134,13 +263,13 @@ import { parseAndValidate } from '#src/shared/validator.js';
 export const LedgerRouter = ServerKitRouter();
 
 /**
- * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L2)
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L7)
 */
 LedgerRouter.post('/ledger/accounts', bodyParserMiddleware(['json']), async (ctx, next) => {
-    const body = await parseAndValidate(ctx.body, LedgerAccountInput);
+    const body = await parseAndValidate(ctx.body, LedgerAccount);
 
     const service = ctx.container.get(LedgerService);
-    const result: LedgerAccount = await service.create(body);
+    const result: LedgerAccount = await service.createAccount(body);
 
     ctx.status = 200;
     ctx.type = 'application/json';
@@ -150,13 +279,17 @@ LedgerRouter.post('/ledger/accounts', bodyParserMiddleware(['json']), async (ctx
 });
 
 /**
- * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L12)
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L18)
 */
 LedgerRouter.get('/ledger/accounts', async (ctx, next) => {
-    const query = await parseAndValidate(ctx.query, PaginationQuery);
+    const query = await parseAndValidate(ctx.query, Pagination);
 
+    const resultType = z.strictObject({
+    meta: Pagination,
+    data: z.array(LedgerAccount),
+});
     const service = ctx.container.get(LedgerService);
-    const result: LedgerAccount[] = await service.list(query);
+    const result: z.infer<typeof resultType> = await service.listAccounts(query);
 
     ctx.status = 200;
     ctx.type = 'application/json';
@@ -166,7 +299,7 @@ LedgerRouter.get('/ledger/accounts', async (ctx, next) => {
 });
 
 /**
- * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L26)
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L36)
 */
 LedgerRouter.get('/ledger/accounts/:accountId', async (ctx, next) => {
     const { accountId } = await parseAndValidate(
@@ -177,7 +310,7 @@ LedgerRouter.get('/ledger/accounts/:accountId', async (ctx, next) => {
     );
 
     const service = ctx.container.get(LedgerService);
-    const result: LedgerAccount = await service.getById(accountId);
+    const result: LedgerAccount = await service.getAccount(accountId);
 
     ctx.status = 200;
     ctx.type = 'application/json';
@@ -187,7 +320,7 @@ LedgerRouter.get('/ledger/accounts/:accountId', async (ctx, next) => {
 });
 
 /**
- * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L39)
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L50)
 */
 LedgerRouter.get('/ledger/accounts/:accountId/balances', async (ctx, next) => {
     const { accountId } = await parseAndValidate(
@@ -200,7 +333,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/balances', async (ctx, next) => {
     const query = await parseAndValidate(ctx.query, GetAccountBalancesQuery);
 
     const service = ctx.container.get(LedgerService);
-    const result: AccountBalances = await service.getById(accountId, query);
+    const result: AccountBalances = await service.getAccountBalances(accountId, query);
 
     ctx.status = 200;
     ctx.type = 'application/json';
@@ -210,7 +343,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/balances', async (ctx, next) => {
 });
 
 /**
- * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L53)
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L65)
 */
 LedgerRouter.get('/ledger/accounts/:accountId/transactions', async (ctx, next) => {
     const { accountId } = await parseAndValidate(
@@ -223,7 +356,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/transactions', async (ctx, next) =
     const query = await parseAndValidate(ctx.query, ListAccountTransactionsQuery);
 
     const service = ctx.container.get(LedgerService);
-    const result: LedgerTransaction[] = await service.getById(accountId, query);
+    const result: LedgerTransaction[] = await service.listAccountTransactions(accountId, query);
 
     ctx.status = 200;
     ctx.type = 'application/json';
@@ -233,7 +366,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/transactions', async (ctx, next) =
 });
 
 /**
- * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L67)
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L80)
 */
 LedgerRouter.get('/ledger/accounts/:accountId/categories', async (ctx, next) => {
     const { accountId } = await parseAndValidate(
@@ -244,7 +377,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/categories', async (ctx, next) => 
     );
 
     const service = ctx.container.get(LedgerService);
-    const result: LedgerCategory[] = await service.getById(accountId);
+    const result: LedgerCategory[] = await service.getAccountCategories(accountId);
 
     ctx.status = 200;
     ctx.type = 'application/json';
@@ -254,7 +387,7 @@ LedgerRouter.get('/ledger/accounts/:accountId/categories', async (ctx, next) => 
 });
 
 /**
- * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L81)
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L95)
 */
 LedgerRouter.put('/ledger/accounts/:accountId/categories/:categoryId', async (ctx, next) => {
     const { accountId, categoryId } = await parseAndValidate(
@@ -266,17 +399,15 @@ LedgerRouter.put('/ledger/accounts/:accountId/categories/:categoryId', async (ct
     );
 
     const service = ctx.container.get(LedgerService);
-    const result: LedgerAccount = await service.updateCategoryMembership(accountId, categoryId);
+    await service.addAccountToCategory(accountId, categoryId);
 
-    ctx.status = 200;
-    ctx.type = 'application/json';
-    ctx.body = result;
+    ctx.status = 204;
 
     await next();
 });
 
 /**
- * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L89)
+ * from [ledger.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/ledger.op#L101)
 */
 LedgerRouter.delete('/ledger/accounts/:accountId/categories/:categoryId', async (ctx, next) => {
     const { accountId, categoryId } = await parseAndValidate(
@@ -288,7 +419,7 @@ LedgerRouter.delete('/ledger/accounts/:accountId/categories/:categoryId', async 
     );
 
     const service = ctx.container.get(LedgerService);
-    await service.updateCategoryMembership(accountId, categoryId);
+    await service.removeAccountFromCategory(accountId, categoryId);
 
     ctx.status = 204;
 
@@ -300,8 +431,8 @@ LedgerRouter.delete('/ledger/accounts/:accountId/categories/:categoryId', async 
 exports[`OP snapshot tests > transfers.op matches snapshot 1`] = `
 "import { z } from 'zod';
 import { ServerKitRouter, bodyParserMiddleware } from '@maroonedsoftware/koa';
-import { TransfersService } from '#modules/transfers/transfers.service.js';
-import { Counterparty, CreateCounterparty, Pagination } from '#modules/transfers/types/index.js';
+import { TransfersService } from '#src/modules/transfers/transfers.service.js';
+import { Counterparty, Pagination } from '#modules/transfers/types/index.js';
 import { parseAndValidate } from '#src/shared/validator.js';
 
 /**
@@ -311,7 +442,7 @@ export const TransfersRouter = ServerKitRouter();
 
 /**
  * list counterparties
- * from [transfers.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/transfers.op#L15)
+ * from [transfers.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/transfers.op#L20)
 */
 TransfersRouter.get('/transfers/counterparties', async (ctx, next) => {
     const query = await parseAndValidate(ctx.query, Pagination);
@@ -324,23 +455,6 @@ TransfersRouter.get('/transfers/counterparties', async (ctx, next) => {
     const result: z.infer<typeof resultType> = await service.listCounterparties(query);
 
     ctx.status = 200;
-    ctx.type = 'application/json';
-    ctx.body = result;
-
-    await next();
-});
-
-/**
- * create counterparty
- * from [transfers.op](file://.//Users/robert/projects/contract-dsl/contracts/operations/transfers.op#L24)
-*/
-TransfersRouter.post('/transfers/counterparties', bodyParserMiddleware(['json']), async (ctx, next) => {
-    const body = await parseAndValidate(ctx.body, CreateCounterparty);
-
-    const service = ctx.container.get(TransfersService);
-    const result: Counterparty = await service.create(body);
-
-    ctx.status = 201;
     ctx.type = 'application/json';
     ctx.body = result;
 

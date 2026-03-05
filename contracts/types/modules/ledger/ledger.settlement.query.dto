@@ -1,9 +1,0 @@
-ListSettlementsQuery: {
-    settledAccountId?: uuid # Optional filter by settled account
-    status?: string # Optional status filter
-    limit?: int(min=1, max=100) = 25 # Maximum number of results
-    offset?: int(min=0) = 0 # Number of results to skip
-}
-
-# ListSettlementEntriesQuery and ListSettlementTransactionsQuery
-# are aliases for shared LimitOffsetQuery — see ledger.settlement.query.ts

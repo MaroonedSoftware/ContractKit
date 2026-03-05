@@ -1,7 +1,13 @@
+---
+area: ledger
+LedgerService: "#src/modules/ledger/ledger.service.js"
+---
+
 /ledger/categories {
     post: {
+        service: LedgerService.createCategory
         request: {
-            application/json: LedgerCategoryInput
+            application/json: LedgerCategory
         }
         response: {
             201: {
@@ -10,6 +16,7 @@
         }
     }
     get: {
+        service: LedgerService.listCategories
         response: {
             200: {
                 application/json: array(LedgerCategory)
@@ -23,6 +30,7 @@
         categoryId: uuid
     }
     get: {
+        service: LedgerService.getCategory
         response: {
             200: {
                 application/json: LedgerCategory
@@ -30,8 +38,9 @@
         }
     }
     patch: {
+        service: LedgerService.updateCategory
         request: {
-            application/json: UpdateCategoryInput
+            application/json: LedgerCategory
         }
         response: {
             200: {
@@ -40,6 +49,7 @@
         }
     }
     delete: {
+        service: LedgerService.deleteCategory
         response: {
             204:
         }
@@ -51,6 +61,7 @@
         categoryId: uuid
     }
     get: {
+        service: LedgerService.getCategoryAccounts
         response: {
             200: {
                 application/json: array(LedgerAccount)
@@ -64,6 +75,7 @@
         categoryId: uuid
     }
     get: {
+        service: LedgerService.getChildCategories
         response: {
             200: {
                 application/json: array(LedgerCategory)
@@ -77,6 +89,7 @@
         categoryId: uuid
     }
     get: {
+        service: LedgerService.getParentCategories
         response: {
             200: {
                 application/json: array(LedgerCategory)
@@ -90,9 +103,10 @@
         categoryId: uuid
     }
     get: {
+        service: LedgerService.getCategoryTree
         response: {
             200: {
-                application/json: CategoryTree
+                application/json: array(CategoryTree)
             }
         }
     }
@@ -103,10 +117,11 @@
         categoryId: uuid
     }
     get: {
+        service: LedgerService.getCategoryBalances
         query: GetCategoryBalancesQuery
         response: {
             200: {
-                application/json: CategoryBalances
+                application/json: array(CategoryBalance)
             }
         }
     }
@@ -117,10 +132,11 @@
         categoryId: uuid
     }
     get: {
+        service: LedgerService.getCategoryTransactions
         query: ListCategoryTransactionsQuery
         response: {
             200: {
-                application/json: array(LedgerTransaction)
+                application/json: array(LedgerCategoryTransaction)
             }
         }
     }
@@ -132,15 +148,13 @@
         childId: uuid
     }
     put: {
-        service: LedgerService.updateCategoryNesting
+        service: LedgerService.addCategoryNesting
         response: {
-            200: {
-                application/json: LedgerCategory
-            }
+            204:
         }
     }
     delete: {
-        service: LedgerService.updateCategoryNesting
+        service: LedgerService.removeCategoryNesting
         response: {
             204:
         }

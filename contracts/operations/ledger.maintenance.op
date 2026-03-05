@@ -1,5 +1,11 @@
+---
+area: ledger
+LedgerService: "#src/modules/ledger/ledger.service.js"
+---
+
 /ledger/maintenance/cache/process-queue {
     post: {
+        service: LedgerService.processEffectiveDateCacheQueue
         request: {
             application/json: ProcessCacheQueue
         }
@@ -26,7 +32,7 @@
         service: LedgerService.detectBalanceCacheDrift
         response: {
             200: {
-                application/json: BalanceCacheDrift
+                application/json: array(BalanceCacheDrift)
             }
         }
     }
@@ -40,7 +46,7 @@
         service: LedgerService.detectBalanceCacheDrift
         response: {
             200: {
-                application/json: BalanceCacheDrift
+                application/json: array(BalanceCacheDrift)
             }
         }
     }
