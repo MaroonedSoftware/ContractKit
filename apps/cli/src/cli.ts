@@ -10,6 +10,8 @@ import type { DtoCodegenContext } from './codegen-dto.js';
 import { generateOp } from './codegen-op.js';
 import { generateSdk, generateSdkOptions, generateSdkAggregator, deriveClientClassName, deriveClientPropertyName } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
+import { generateOpenApi } from './codegen-openapi.js';
+import { generateMarkdown } from './codegen-markdown.js';
 import { validateOp } from './validate-op.js';
 import { validateRefs } from './validate-refs.js';
 import { loadConfig, mergeConfig } from './config.js';
@@ -559,6 +561,67 @@ async function main() {
                 results.push({ outPath: rootBarrelPath, content: rootBarrelContent });
             } else {
                 console.log(`  -  ${rootBarrelPath} (unchanged)`);
+            }
+        }
+
+        // ── OpenAPI generation (opt-in via config.docs.openapi) ──────
+        if (config.docs?.openapi) {
+            const openapiConfig = config.docs.openapi;
+            const openapiBase = openapiConfig.baseDir ? resolve(config.rootDir, openapiConfig.baseDir) : config.rootDir;
+            const openapiOutput = openapiConfig.output ?? 'openapi.yaml';
+            const openapiOutPath = resolve(openapiBase, openapiOutput);
+
+            // Build a fingerprint from all source file hashes + config + deps,
+            // so we can skip generation entirely when nothing has changed.
+            const openapiFingerprint = computeHash(
+                Object.entries(newCache)
+                    .filter(([k]) => !k.startsWith('__'))
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([k, v]) => `${k}:${v}`)
+                    .join('\n') +
+                    '\n' +
+                    JSON.stringify(openapiConfig),
+            );
+            newCache['__openapi__'] = openapiFingerprint;
+
+            if (!config.force && cacheEnabled && cache['__openapi__'] === openapiFingerprint && existsSync(openapiOutPath)) {
+                console.log(`  -  ${openapiOutPath} (unchanged)`);
+            } else {
+                const openapiContent = generateOpenApi({
+                    dtoRoots: allDtoInfo.map(d => d.ast),
+                    opRoots: allOpInfo.map(o => o.ast),
+                    config: openapiConfig,
+                });
+                results.push({ outPath: openapiOutPath, content: openapiContent });
+            }
+        }
+
+        // ── Markdown generation (opt-in via config.docs.markdown) ──────
+        if (config.docs?.markdown) {
+            const mdConfig = config.docs.markdown;
+            const mdBase = mdConfig.baseDir ? resolve(config.rootDir, mdConfig.baseDir) : config.rootDir;
+            const mdOutput = mdConfig.output ?? 'api-reference.md';
+            const mdOutPath = resolve(mdBase, mdOutput);
+
+            const mdFingerprint = computeHash(
+                Object.entries(newCache)
+                    .filter(([k]) => !k.startsWith('__'))
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([k, v]) => `${k}:${v}`)
+                    .join('\n') +
+                    '\n' +
+                    JSON.stringify(mdConfig),
+            );
+            newCache['__markdown__'] = mdFingerprint;
+
+            if (!config.force && cacheEnabled && cache['__markdown__'] === mdFingerprint && existsSync(mdOutPath)) {
+                console.log(`  -  ${mdOutPath} (unchanged)`);
+            } else {
+                const mdContent = generateMarkdown({
+                    dtoRoots: allDtoInfo.map(d => d.ast),
+                    opRoots: allOpInfo.map(o => o.ast),
+                });
+                results.push({ outPath: mdOutPath, content: mdContent });
             }
         }
 

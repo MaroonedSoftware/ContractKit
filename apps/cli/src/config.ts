@@ -40,11 +40,48 @@ export interface ServerConfig {
     routes?: RoutesConfig;
 }
 
+export interface OpenApiServerEntry {
+    url: string;
+    description?: string;
+}
+
+export interface OpenApiSecurityScheme {
+    type: string;
+    scheme?: string;
+    bearerFormat?: string;
+    name?: string;
+    in?: string;
+}
+
+export interface OpenApiConfig {
+    baseDir?: string;
+    output?: string;
+    info?: {
+        title?: string;
+        version?: string;
+        description?: string;
+    };
+    servers?: OpenApiServerEntry[];
+    securitySchemes?: Record<string, OpenApiSecurityScheme>;
+    security?: Record<string, string[]>[];
+}
+
+export interface MarkdownConfig {
+    baseDir?: string;
+    output?: string;
+}
+
+export interface DocsConfig {
+    openapi?: OpenApiConfig;
+    markdown?: MarkdownConfig;
+}
+
 export interface DslConfig {
     rootDir?: string;
     cache?: boolean | string;
     server?: ServerConfig;
     sdk?: SdkConfig;
+    docs?: DocsConfig;
     patterns?: string[];
 }
 
@@ -93,6 +130,7 @@ export interface ResolvedConfig {
     cache: ResolvedCacheConfig;
     server: Required<ServerConfig>;
     sdk?: SdkConfig;
+    docs?: DocsConfig;
     watch: boolean;
     force: boolean;
 }
@@ -120,6 +158,7 @@ export function mergeConfig(config: DslConfig, cliArgs: { watch: boolean; force:
         cache,
         server: { baseDir: config.server?.baseDir ?? '.', types, routes },
         sdk,
+        docs: config.docs,
         watch: cliArgs.watch,
         force: cliArgs.force,
     };

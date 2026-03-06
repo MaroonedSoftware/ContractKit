@@ -26,5 +26,28 @@
             "output": "src/{area}/{filename}.client.ts",
             "include": ["contracts/operations/**/*.op"]
         }
+    },
+    "docs": {
+        "markdown": {
+            "baseDir": "docs/",
+            "output": "api-reference.md"
+        },
+        "openapi": {
+            "baseDir": "docs/api/",
+            "output": "openapi.yaml",
+            "info": {
+                "title": "Homegrown API",
+                "version": "1.0.0",
+                "description": "Homegrown API"
+            },
+            "servers": [
+                { "url": "https://api.joinhomegrown.com", "description": "Production" },
+                { "url": "https://localhost:3000", "description": "Local" }
+            ],
+            "securitySchemes": {
+                "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+            },
+            "security": [{ "bearerAuth": [] }]
+        }
     }
 }
