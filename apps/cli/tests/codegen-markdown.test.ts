@@ -89,24 +89,46 @@ describe('generateMarkdown', () => {
             expect(output).toContain('- [Order](#order)');
         });
 
-        it('groups endpoints by area in TOC', () => {
+        it('groups endpoints by area in collapsible TOC section', () => {
             const op = opRoot(
                 [opRoute('/ledger/accounts', [opOperation('get')])],
                 'ledger.op',
                 { area: 'ledger' },
             );
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('- [Ledger](#ledger)');
+            expect(output).toContain('<summary><strong>Ledger</strong> (1)</summary>');
         });
 
-        it('groups models by area in TOC', () => {
+        it('groups models by area in collapsible TOC section', () => {
             const dto = dtoRoot(
                 [model('LedgerAccount', [field('id', scalarType('uuid'))])],
                 'ledger.dto',
             );
             (dto as any).meta = { area: 'ledger' };
             const output = generateMarkdown({ dtoRoots: [dto], opRoots: [] });
-            expect(output).toContain('- [Ledger](#ledger-models)');
+            expect(output).toContain('<summary><strong>Ledger</strong> (1)</summary>');
+        });
+
+        it('shows endpoint count per area in TOC', () => {
+            const op = opRoot(
+                [opRoute('/ledger/accounts', [opOperation('get'), opOperation('post')])],
+                'ledger.op',
+                { area: 'ledger' },
+            );
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('<summary><strong>Ledger</strong> (2)</summary>');
+        });
+
+        it('does not wrap ungrouped endpoints in collapsible section', () => {
+            const op = opRoot([opRoute('/health', [opOperation('get')])]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('- [List health]');
+            // Should not have <details> in the TOC for ungrouped items
+            const tocSection = output.slice(
+                output.indexOf('**Endpoints**'),
+                output.indexOf('---'),
+            );
+            expect(tocSection).not.toContain('<details>');
         });
     });
 
@@ -198,6 +220,38 @@ describe('generateMarkdown', () => {
             expect(output).toContain('### List all users');
         });
 
+        it('normalizes third-person verbs to imperative mood', () => {
+            const op = opRoot([
+                opRoute('/accounts', [opOperation('post', { description: 'Creates a new account' })]),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('### Create a new account');
+        });
+
+        it('normalizes "Lists" to "List"', () => {
+            const op = opRoot([
+                opRoute('/accounts', [opOperation('get', { description: 'Lists all accounts' })]),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('### List all accounts');
+        });
+
+        it('normalizes "Finalizes" to "Finalize"', () => {
+            const op = opRoot([
+                opRoute('/tx', [opOperation('post', { description: 'Finalizes a transaction' })]),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('### Finalize a transaction');
+        });
+
+        it('preserves words ending in ss (e.g. Process)', () => {
+            const op = opRoot([
+                opRoute('/cache', [opOperation('post', { description: 'Process cache queue' })]),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('### Process cache queue');
+        });
+
         it('derives title from service method name', () => {
             const op = opRoot([
                 opRoute('/users', [opOperation('post', { service: 'UserService.createUser' })]),
@@ -229,29 +283,30 @@ describe('generateMarkdown', () => {
         });
     });
 
-    // ─── Method + path code block ───────────────────────────────
+    // ─── Method + path badge ────────────────────────────────────
 
-    describe('method and path code block', () => {
-        it('renders method and path in plaintext code block', () => {
+    describe('method and path badge', () => {
+        it('renders method and path as compact badge line', () => {
             const op = opRoot([opRoute('/users', [opOperation('get')])]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('```plaintext\nGET /users\n```');
+            expect(output).toContain('**`GET`** `/users`');
         });
 
         it('uppercases the method', () => {
             const op = opRoot([opRoute('/users', [opOperation('post')])]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('POST /users');
+            expect(output).toContain('**`POST`** `/users`');
         });
     });
 
     // ─── Endpoint rendering ──────────────────────────────────────
 
     describe('endpoints', () => {
-        it('renders SDK method name', () => {
+        it('renders SDK method name in GitHub admonition', () => {
             const op = opRoot([opRoute('/users', [opOperation('get')])]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('**SDK method:** `getUsers`');
+            expect(output).toContain('> [!NOTE]');
+            expect(output).toContain('> SDK method: `getUsers`');
         });
 
         it('uses explicit sdk name when provided', () => {
@@ -259,7 +314,7 @@ describe('generateMarkdown', () => {
                 opRoute('/users', [opOperation('get', { sdk: 'listAllUsers' })]),
             ]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('**SDK method:** `listAllUsers`');
+            expect(output).toContain('> SDK method: `listAllUsers`');
         });
 
         it('derives method name with path params', () => {
@@ -267,7 +322,7 @@ describe('generateMarkdown', () => {
                 opRoute('/users/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))]),
             ]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('**SDK method:** `getUsersById`');
+            expect(output).toContain('> SDK method: `getUsersById`');
         });
     });
 
@@ -396,21 +451,20 @@ describe('generateMarkdown', () => {
                 ]),
             ]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('Request body');
-            expect(output).toContain('Content type: `application/json`');
+            expect(output).toContain('Request body (`application/json`)');
         });
 
-        it('shows type link for ref body', () => {
+        it('renders reference-style text for ref body', () => {
             const op = opRoot([
                 opRoute('/users', [
                     opOperation('post', { request: opRequest('CreateUser') }),
                 ]),
             ]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('[CreateUser](#createuser)');
+            expect(output).toContain('Accepts a [CreateUser](#createuser) object.');
         });
 
-        it('expands ref body into fields table', () => {
+        it('does not expand ref body into inline field table', () => {
             const dto = dtoRoot([
                 model('CreateUser', [
                     field('name', scalarType('string'), { description: 'The user name' }),
@@ -423,49 +477,57 @@ describe('generateMarkdown', () => {
                 ]),
             ]);
             const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
+            // Should reference the model, NOT expand fields inline
+            expect(output).toContain('Accepts a [CreateUser](#createuser) object.');
+            // Only check the endpoint section (before ## Models)
+            const endpointSection = output.slice(
+                output.indexOf('## Endpoints'),
+                output.indexOf('## Models'),
+            );
+            const reqSection = endpointSection.slice(endpointSection.indexOf('Request body'));
+            // No field table in the request body section
+            expect(reqSection).not.toContain('| `name`');
+            expect(reqSection).not.toContain('| `email`');
+        });
+
+        it('expands inline object body into field table', () => {
+            const bodyType = inlineObjectType([
+                field('name', scalarType('string'), { description: 'The user name' }),
+                field('email', scalarType('email'), { description: 'The user email' }),
+            ]);
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('post', { request: { contentType: 'application/json', bodyType } }),
+                ]),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
             expect(output).toContain('| `name` | `string` | Yes | The user name |');
             expect(output).toContain('| `email` | `string` | Yes | The user email |');
         });
 
-        it('excludes readonly fields from request body', () => {
-            const dto = dtoRoot([
-                model('User', [
-                    field('id', scalarType('uuid'), { visibility: 'readonly', description: 'Auto-generated' }),
-                    field('name', scalarType('string'), { description: 'The user name' }),
-                    field('createdAt', scalarType('datetime'), { visibility: 'readonly' }),
-                ]),
+        it('excludes readonly fields from inline object request body', () => {
+            const bodyType = inlineObjectType([
+                field('id', scalarType('uuid'), { visibility: 'readonly' }),
+                field('name', scalarType('string'), { description: 'The user name' }),
             ]);
             const op = opRoot([
                 opRoute('/users', [
-                    opOperation('post', {
-                        request: opRequest('User'),
-                        responses: [opResponse(201, 'User', 'application/json')],
-                    }),
+                    opOperation('post', { request: { contentType: 'application/json', bodyType } }),
                 ]),
             ]);
-            const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
-            // Should include writable field
-            expect(output).toContain('| `name` | `string` | Yes | The user name |');
-            // Find the request body section specifically (between Request body and Response)
-            const reqBodyIdx = output.indexOf('Request body');
-            const responseIdx = output.indexOf('Response', reqBodyIdx + 12);
-            const reqBodySection = output.slice(reqBodyIdx, responseIdx);
-            expect(reqBodySection).not.toContain('`id`');
-            expect(reqBodySection).not.toContain('`createdAt`');
-            // But response DOES include readonly fields
-            const respSection = output.slice(responseIdx);
-            expect(respSection).toContain('`id`');
-            expect(respSection).toContain('`createdAt`');
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('| `name`');
+            expect(output).not.toContain('| `id`');
         });
 
-        it('falls back to type link when model not resolvable', () => {
+        it('renders reference for unresolvable ref', () => {
             const op = opRoot([
                 opRoute('/users', [
                     opOperation('post', { request: opRequest('UnknownType') }),
                 ]),
             ]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('[UnknownType](#unknowntype)');
+            expect(output).toContain('Accepts a [UnknownType](#unknowntype) object.');
         });
     });
 
@@ -484,7 +546,7 @@ describe('generateMarkdown', () => {
             expect(output).toContain('Response');
         });
 
-        it('renders status code with text', () => {
+        it('renders status code with reference-style text', () => {
             const op = opRoot([
                 opRoute('/users', [
                     opOperation('get', {
@@ -493,7 +555,7 @@ describe('generateMarkdown', () => {
                 ]),
             ]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('Status: `200 OK`');
+            expect(output).toContain('`200 OK` — Returns a [User](#user) object.');
         });
 
         it('renders 204 no content without body', () => {
@@ -503,7 +565,7 @@ describe('generateMarkdown', () => {
                 ], [opParam('id', scalarType('uuid'))]),
             ]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('Status: `204 No Content`');
+            expect(output).toContain('`204 No Content`');
         });
 
         it('renders 201 Created status text', () => {
@@ -515,10 +577,10 @@ describe('generateMarkdown', () => {
                 ]),
             ]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('Status: `201 Created`');
+            expect(output).toContain('`201 Created`');
         });
 
-        it('expands response body into fields table', () => {
+        it('does not expand ref response body inline', () => {
             const dto = dtoRoot([
                 model('User', [
                     field('id', scalarType('uuid'), { visibility: 'readonly', description: 'The user ID' }),
@@ -533,32 +595,37 @@ describe('generateMarkdown', () => {
                 ]),
             ]);
             const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
-            expect(output).toContain('| `id` | `string` | Yes | The user ID. *read-only* |');
-            expect(output).toContain('| `name` | `string` | Yes | The user name |');
+            // Should reference the model, NOT expand fields inline
+            expect(output).toContain('`200 OK` — Returns a [User](#user) object.');
+            // Only check the endpoint section (before ## Models)
+            const endpointSection = output.slice(
+                output.indexOf('## Endpoints'),
+                output.indexOf('## Models'),
+            );
+            const respSection = endpointSection.slice(endpointSection.indexOf('Response'));
+            expect(respSection).not.toContain('| `id`');
+            expect(respSection).not.toContain('| `name`');
         });
 
-        it('includes readonly fields in response body', () => {
-            const dto = dtoRoot([
-                model('User', [
-                    field('id', scalarType('uuid'), { visibility: 'readonly' }),
-                    field('name', scalarType('string')),
-                ]),
+        it('expands inline object response body into field table', () => {
+            const bodyType = inlineObjectType([
+                field('id', scalarType('uuid'), { visibility: 'readonly', description: 'The ID' }),
+                field('status', scalarType('string'), { description: 'The status' }),
             ]);
             const op = opRoot([
                 opRoute('/users', [
                     opOperation('get', {
-                        responses: [opResponse(200, 'User', 'application/json')],
+                        responses: [{ statusCode: 200, contentType: 'application/json', bodyType }],
                     }),
                 ]),
             ]);
-            const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
-            // Response should include readonly fields
-            const respIdx = output.indexOf('Response');
-            const respSection = output.slice(respIdx);
-            expect(respSection).toContain('`id`');
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('`200 OK`');
+            expect(output).toContain('| `id` | `string` | Yes | The ID. *read-only* |');
+            expect(output).toContain('| `status` | `string` | Yes | The status |');
         });
 
-        it('renders array response type with link', () => {
+        it('renders array response as list reference', () => {
             const op = opRoot([
                 opRoute('/users', [
                     opOperation('get', {
@@ -567,7 +634,20 @@ describe('generateMarkdown', () => {
                 ]),
             ]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('[User](#user)[]');
+            expect(output).toContain('Returns a list of [User](#user) objects.');
+        });
+
+        it('renders union response as alternatives', () => {
+            const bodyType = unionType(refType('SimpleResult'), refType('DetailedResult'));
+            const op = opRoot([
+                opRoute('/search', [
+                    opOperation('get', {
+                        responses: [{ statusCode: 200, contentType: 'application/json', bodyType }],
+                    }),
+                ]),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('[SimpleResult](#simpleresult) or [DetailedResult](#detailedresult)');
         });
     });
 
@@ -580,14 +660,12 @@ describe('generateMarkdown', () => {
             expect(output).toContain('### User');
         });
 
-        it('renders model description as plain text', () => {
+        it('renders model description as blockquote', () => {
             const dto = dtoRoot([
                 model('User', [field('id', scalarType('uuid'))], { description: 'A user object' }),
             ]);
             const output = generateMarkdown({ dtoRoots: [dto], opRoots: [] });
-            expect(output).toContain('A user object');
-            // Should NOT be a blockquote
-            expect(output).not.toContain('> A user object');
+            expect(output).toContain('> A user object');
         });
 
         it('renders extends link for base model', () => {
@@ -690,8 +768,8 @@ describe('generateMarkdown', () => {
             const op1 = opRoot([opRoute('/users', [opOperation('get')])]);
             const op2 = opRoot([opRoute('/orders', [opOperation('get')])]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op1, op2] });
-            expect(output).toContain('GET /users');
-            expect(output).toContain('GET /orders');
+            expect(output).toContain('**`GET`** `/users`');
+            expect(output).toContain('**`GET`** `/orders`');
         });
 
         it('merges models from multiple dto files', () => {
@@ -716,22 +794,21 @@ describe('generateMarkdown', () => {
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op1, op2] });
             const matches = output.match(/### Ledger/g);
             expect(matches).toHaveLength(1);
-            expect(output).toContain('GET /ledger/accounts');
-            expect(output).toContain('GET /ledger/transactions');
+            expect(output).toContain('**`GET`** `/ledger/accounts`');
+            expect(output).toContain('**`GET`** `/ledger/transactions`');
         });
     });
 
-    // ─── No horizontal rules ────────────────────────────────────
+    // ─── Formatting ─────────────────────────────────────────────
 
     describe('formatting', () => {
-        it('does not render horizontal rules between endpoints', () => {
+        it('renders horizontal rules between endpoints', () => {
             const op = opRoot([
                 opRoute('/users', [opOperation('get'), opOperation('post')]),
             ]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            // The only --- should be in the TOC separator
             const endpointsSection = output.slice(output.indexOf('## Endpoints'));
-            expect(endpointsSection).not.toContain('\n---\n');
+            expect(endpointsSection).toContain('\n---\n');
         });
 
         it('escapes pipe characters in enum types within tables', () => {
@@ -781,37 +858,33 @@ describe('generateMarkdown', () => {
             expect(output).toContain('</details>');
         });
 
-        it('wraps request body fields in collapsed details', () => {
-            const dto = dtoRoot([
-                model('User', [
-                    field('name', scalarType('string')),
-                    field('email', scalarType('email')),
-                ]),
+        it('wraps inline object request body fields in collapsed details', () => {
+            const bodyType = inlineObjectType([
+                field('name', scalarType('string')),
+                field('email', scalarType('email')),
             ]);
             const op = opRoot([
                 opRoute('/users', [
-                    opOperation('post', { request: opRequest('User') }),
+                    opOperation('post', { request: { contentType: 'application/json', bodyType } }),
                 ]),
             ]);
-            const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
             expect(output).toContain('<summary>Attributes (2)</summary>');
         });
 
-        it('wraps response body fields in collapsed details', () => {
-            const dto = dtoRoot([
-                model('User', [
-                    field('id', scalarType('uuid')),
-                    field('name', scalarType('string')),
-                ]),
+        it('wraps inline object response body fields in collapsed details', () => {
+            const bodyType = inlineObjectType([
+                field('id', scalarType('uuid')),
+                field('name', scalarType('string')),
             ]);
             const op = opRoot([
                 opRoute('/users', [
                     opOperation('get', {
-                        responses: [opResponse(200, 'User', 'application/json')],
+                        responses: [{ statusCode: 200, contentType: 'application/json', bodyType }],
                     }),
                 ]),
             ]);
-            const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
             expect(output).toContain('<summary>Attributes (2)</summary>');
         });
 
@@ -827,30 +900,19 @@ describe('generateMarkdown', () => {
             expect(output).toContain('<summary>Attributes (3)</summary>');
         });
 
-        it('excludes readonly fields from request body count', () => {
-            const dto = dtoRoot([
-                model('User', [
-                    field('id', scalarType('uuid'), { visibility: 'readonly' }),
-                    field('name', scalarType('string')),
-                ]),
-            ]);
-            const op = opRoot([
-                opRoute('/users', [
-                    opOperation('post', {
-                        request: opRequest('User'),
-                        responses: [opResponse(201, 'User', 'application/json')],
-                    }),
-                ]),
-            ]);
-            const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
-            // Request body: only 1 writable field
-            const reqIdx = output.indexOf('Request body');
-            const respIdx = output.indexOf('Response', reqIdx + 12);
-            const reqSection = output.slice(reqIdx, respIdx);
-            expect(reqSection).toContain('<summary>Attributes (1)</summary>');
-            // Response: both fields
-            const respSection = output.slice(respIdx);
-            expect(respSection).toContain('<summary>Attributes (2)</summary>');
+        it('wraps TOC area groups in collapsible details', () => {
+            const op = opRoot(
+                [opRoute('/ledger/accounts', [opOperation('get')])],
+                'ledger.op',
+                { area: 'ledger' },
+            );
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            const tocSection = output.slice(
+                output.indexOf('**Endpoints**'),
+                output.indexOf('---'),
+            );
+            expect(tocSection).toContain('<details>');
+            expect(tocSection).toContain('</details>');
         });
     });
 });

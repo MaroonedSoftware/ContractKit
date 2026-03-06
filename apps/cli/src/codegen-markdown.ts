@@ -45,14 +45,20 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
             lines.push('');
             for (const group of endpointGroups) {
                 if (group.area) {
-                    lines.push(`- [${titleCase(group.area)}](#${anchor(group.area)})`);
+                    lines.push('<details>');
+                    lines.push(`<summary><strong>${titleCase(group.area)}</strong> (${group.endpoints.length})</summary>`);
+                    lines.push('');
                 }
                 for (const ep of group.endpoints) {
                     const title = deriveTitle(ep.op, ep.route);
-                    lines.push(`  - [${title}](#${anchor(title)})`);
+                    lines.push(`- [${title}](#${anchor(title)})`);
                 }
+                if (group.area) {
+                    lines.push('');
+                    lines.push('</details>');
+                }
+                lines.push('');
             }
-            lines.push('');
         }
 
         if (hasModels) {
@@ -60,13 +66,19 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
             lines.push('');
             for (const group of modelGroups) {
                 if (group.area) {
-                    lines.push(`- [${titleCase(group.area)}](#${anchor(group.area + '-models')})`);
+                    lines.push('<details>');
+                    lines.push(`<summary><strong>${titleCase(group.area)}</strong> (${group.models.length})</summary>`);
+                    lines.push('');
                 }
                 for (const model of group.models) {
-                    lines.push(`  - [${model.name}](#${anchor(model.name)})`);
+                    lines.push(`- [${model.name}](#${anchor(model.name)})`);
                 }
+                if (group.area) {
+                    lines.push('');
+                    lines.push('</details>');
+                }
+                lines.push('');
             }
-            lines.push('');
         }
 
         lines.push('---');
@@ -84,7 +96,13 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
                 lines.push('');
             }
 
+            let first = true;
             for (const ep of group.endpoints) {
+                if (!first) {
+                    lines.push('---');
+                    lines.push('');
+                }
+                first = false;
                 lines.push(...renderEndpoint(ep.route, ep.op, group.area !== undefined, modelIndex));
                 lines.push('');
             }
@@ -225,17 +243,41 @@ function groupModels(dtoRoots: DtoRootNode[]): ModelGroup[] {
 // ─── Title derivation ─────────────────────────────────────────────────────
 
 /**
+ * Normalize verb to imperative mood.
+ * "Creates a new account" → "Create a new account"
+ * "Lists all accounts" → "List all accounts"
+ * "Gets a ledger account" → "Get a ledger account"
+ * "Finalizes a transaction" → "Finalize a transaction"
+ *
+ * Leaves words ending in 'ss' alone (e.g. "Process").
+ */
+function normalizeVerbTitle(title: string): string {
+    const spaceIdx = title.indexOf(' ');
+    if (spaceIdx === -1) return title;
+
+    const firstWord = title.slice(0, spaceIdx);
+    const rest = title.slice(spaceIdx);
+
+    // Strip third-person 's' from verbs (but not from words ending in 'ss' like "Process")
+    if (firstWord.length > 3 && firstWord.endsWith('s') && !firstWord.endsWith('ss')) {
+        return firstWord.slice(0, -1) + rest;
+    }
+
+    return title;
+}
+
+/**
  * Derive a human-readable verb-based title for an endpoint.
  *
  * Priority:
- * 1. op.description (title-cased)
+ * 1. op.description (title-cased, normalized to imperative mood)
  * 2. Service method name (e.g. "LedgerService.createAccount" → "Create account")
  * 3. Fallback: method + path segments (e.g. "Get ledger accounts")
  */
 function deriveTitle(op: OpOperationNode, route: OpRouteNode): string {
     // 1. Use explicit description
     if (op.description) {
-        return titleCase(op.description.trim());
+        return normalizeVerbTitle(titleCase(op.description.trim()));
     }
 
     // 2. Derive from service method name
@@ -294,14 +336,13 @@ function renderEndpoint(
     lines.push(`${h} ${title}`);
     lines.push('');
 
-    // Method + path in code block
-    lines.push('```plaintext');
-    lines.push(`${method} ${path}`);
-    lines.push('```');
+    // Method badge + path (compact line)
+    lines.push(`**\`${method}\`** \`${path}\``);
     lines.push('');
 
-    // SDK method
-    lines.push(`**SDK method:** \`${methodName}\``);
+    // SDK method (GitHub admonition)
+    lines.push('> [!NOTE]');
+    lines.push(`> SDK method: \`${methodName}\``);
     lines.push('');
 
     // Unified attributes table (path + query + headers merged)
@@ -315,21 +356,12 @@ function renderEndpoint(
 
     // Request body
     if (op.request) {
-        lines.push(`${subH} Request body`);
-        lines.push('');
-        lines.push(`Content type: \`${op.request.contentType}\``);
+        lines.push(`${subH} Request body (\`${op.request.contentType}\`)`);
         lines.push('');
 
-        const bodyFields = resolveBodyFields(op.request.bodyType, modelIndex);
-        if (bodyFields) {
-            // Show type link for navigation
-            const typeLink = renderTypeWithLink(op.request.bodyType);
-            if (typeLink !== renderTsType(op.request.bodyType) || op.request.bodyType.kind === 'ref') {
-                lines.push(`Type: ${typeLink}`);
-                lines.push('');
-            }
-            // Exclude readonly fields from request body
-            const writableFields = bodyFields.filter(f => f.visibility !== 'readonly');
+        if (op.request.bodyType.kind === 'inlineObject') {
+            // Inline objects have no model to reference — expand into field table
+            const writableFields = op.request.bodyType.fields.filter(f => f.visibility !== 'readonly');
             if (writableFields.length > 0) {
                 lines.push(...wrapCollapsible(
                     `Attributes (${writableFields.length})`,
@@ -338,7 +370,8 @@ function renderEndpoint(
                 lines.push('');
             }
         } else {
-            lines.push(renderTypeWithLink(op.request.bodyType));
+            // Named / compound type — reference it; the Models section has the full definition
+            lines.push(typeProseLink(op.request.bodyType, 'Accepts'));
             lines.push('');
         }
     }
@@ -353,32 +386,25 @@ function renderEndpoint(
             const statusLabel = statusText ? `${resp.statusCode} ${statusText}` : `${resp.statusCode}`;
 
             if (!resp.bodyType) {
-                lines.push(`Status: \`${statusLabel}\``);
+                lines.push(`\`${statusLabel}\``);
                 lines.push('');
                 continue;
             }
 
-            const ct = resp.contentType ?? 'application/json';
-            lines.push(`Status: \`${statusLabel}\`, Content type: \`${ct}\``);
-            lines.push('');
-
-            // Expand response body fields
-            const respFields = resolveBodyFields(resp.bodyType, modelIndex);
-            if (respFields) {
-                const typeLink = renderTypeWithLink(resp.bodyType);
-                if (typeLink !== renderTsType(resp.bodyType) || resp.bodyType.kind === 'ref') {
-                    lines.push(`Type: ${typeLink}`);
-                    lines.push('');
-                }
-                if (respFields.length > 0) {
+            if (resp.bodyType.kind === 'inlineObject') {
+                // Inline objects — expand into field table
+                lines.push(`\`${statusLabel}\``);
+                lines.push('');
+                if (resp.bodyType.fields.length > 0) {
                     lines.push(...wrapCollapsible(
-                        `Attributes (${respFields.length})`,
-                        renderFieldsTable(respFields, { excludeReadonly: false }),
+                        `Attributes (${resp.bodyType.fields.length})`,
+                        renderFieldsTable(resp.bodyType.fields, { excludeReadonly: false }),
                     ));
                     lines.push('');
                 }
             } else {
-                lines.push(renderTypeWithLink(resp.bodyType));
+                // Named type — reference it; the Models section has the full definition
+                lines.push(`\`${statusLabel}\` — ${typeProseLink(resp.bodyType, 'Returns')}`);
                 lines.push('');
             }
         }
@@ -470,17 +496,7 @@ function renderAttributesTable(attrs: AttributeEntry[]): string[] {
     return lines;
 }
 
-// ─── Field / body expansion ───────────────────────────────────────────────
-
-function resolveBodyFields(type: DtoTypeNode, modelIndex: Map<string, ModelNode>): FieldNode[] | undefined {
-    if (type.kind === 'ref') {
-        return resolveModelFields(type.name, modelIndex);
-    }
-    if (type.kind === 'inlineObject') {
-        return type.fields;
-    }
-    return undefined;
-}
+// ─── Field / body helpers ─────────────────────────────────────────────────
 
 interface FieldsTableOpts {
     excludeReadonly: boolean;
@@ -508,6 +524,30 @@ function renderFieldsTable(fields: FieldNode[], opts: FieldsTableOpts): string[]
     return lines;
 }
 
+/**
+ * Generate prose-style reference text for a body type.
+ * E.g. "Accepts a [CreateUser](#createuser) object."
+ *      "Returns a list of [User](#user) objects."
+ */
+function typeProseLink(type: DtoTypeNode, verb: 'Accepts' | 'Returns'): string {
+    if (type.kind === 'ref') {
+        return `${verb} a [${type.name}](#${anchor(type.name)}) object.`;
+    }
+    if (type.kind === 'array' && type.item.kind === 'ref') {
+        return `${verb} a list of [${type.item.name}](#${anchor(type.item.name)}) objects.`;
+    }
+    if (type.kind === 'union') {
+        const allRefs = type.members.every(m => m.kind === 'ref');
+        if (allRefs && type.members.length > 0) {
+            const links = type.members.map(m =>
+                m.kind === 'ref' ? `[${m.name}](#${anchor(m.name)})` : renderTsType(m),
+            );
+            return `${verb} a ${links.join(' or ')} object.`;
+        }
+    }
+    return `${verb} \`${escapeCell(renderTsType(type))}\`.`;
+}
+
 // ─── Model rendering ──────────────────────────────────────────────────────
 
 function renderModel(model: ModelNode, nested: boolean): string[] {
@@ -518,7 +558,7 @@ function renderModel(model: ModelNode, nested: boolean): string[] {
     lines.push('');
 
     if (model.description) {
-        lines.push(model.description);
+        lines.push(`> ${model.description}`);
         lines.push('');
     }
 
