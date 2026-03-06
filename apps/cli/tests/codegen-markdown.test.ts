@@ -38,6 +38,137 @@ describe('generateMarkdown', () => {
             const output = generateMarkdown({ dtoRoots: [], opRoots: [] });
             expect(output).not.toContain('## Models');
         });
+
+        it('omits Table of Contents when empty', () => {
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [] });
+            expect(output).not.toContain('## Table of Contents');
+        });
+    });
+
+    // ─── Table of Contents ──────────────────────────────────────
+
+    describe('table of contents', () => {
+        it('renders TOC when endpoints exist', () => {
+            const op = opRoot([opRoute('/users', [opOperation('get')])]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('## Table of Contents');
+            expect(output).toContain('**Endpoints**');
+        });
+
+        it('renders TOC when models exist', () => {
+            const dto = dtoRoot([model('User', [field('id', scalarType('uuid'))])]);
+            const output = generateMarkdown({ dtoRoots: [dto], opRoots: [] });
+            expect(output).toContain('## Table of Contents');
+            expect(output).toContain('**Models**');
+        });
+
+        it('lists endpoints in TOC with method and path', () => {
+            const op = opRoot([
+                opRoute('/users', [opOperation('get'), opOperation('post')]),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('`GET` /users');
+            expect(output).toContain('`POST` /users');
+        });
+
+        it('lists models in TOC', () => {
+            const dto = dtoRoot([
+                model('User', [field('id', scalarType('uuid'))]),
+                model('Order', [field('id', scalarType('uuid'))]),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [dto], opRoots: [] });
+            expect(output).toContain('- [User](#user)');
+            expect(output).toContain('- [Order](#order)');
+        });
+
+        it('groups endpoints by area in TOC', () => {
+            const op = opRoot(
+                [opRoute('/ledger/accounts', [opOperation('get')])],
+                'ledger.op',
+                { area: 'ledger' },
+            );
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('- [Ledger](#ledger)');
+        });
+
+        it('groups models by area in TOC', () => {
+            const dto = dtoRoot(
+                [model('LedgerAccount', [field('id', scalarType('uuid'))])],
+                'ledger.dto',
+            );
+            (dto as any).meta = { area: 'ledger' };
+            const output = generateMarkdown({ dtoRoots: [dto], opRoots: [] });
+            expect(output).toContain('- [Ledger](#ledger-models)');
+        });
+    });
+
+    // ─── Grouping by area ───────────────────────────────────────
+
+    describe('area grouping', () => {
+        it('renders area heading for endpoints', () => {
+            const op = opRoot(
+                [opRoute('/ledger/accounts', [opOperation('get')])],
+                'ledger.op',
+                { area: 'ledger' },
+            );
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('### Ledger');
+            expect(output).toContain('#### `GET /ledger/accounts`');
+        });
+
+        it('renders area heading for models', () => {
+            const dto = dtoRoot(
+                [model('LedgerAccount', [field('id', scalarType('uuid'))])],
+                'ledger.dto',
+            );
+            (dto as any).meta = { area: 'ledger' };
+            const output = generateMarkdown({ dtoRoots: [dto], opRoots: [] });
+            expect(output).toContain('### Ledger');
+            expect(output).toContain('#### LedgerAccount');
+        });
+
+        it('uses ### for ungrouped endpoints (no area)', () => {
+            const op = opRoot([opRoute('/users', [opOperation('get')])]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('### `GET /users`');
+            expect(output).not.toContain('#### `GET /users`');
+        });
+
+        it('uses ### for ungrouped models (no area)', () => {
+            const dto = dtoRoot([model('User', [field('id', scalarType('uuid'))])]);
+            const output = generateMarkdown({ dtoRoots: [dto], opRoots: [] });
+            expect(output).toContain('### User');
+            expect(output).not.toContain('#### User');
+        });
+
+        it('groups endpoints from multiple files by area', () => {
+            const op1 = opRoot(
+                [opRoute('/ledger/accounts', [opOperation('get')])],
+                'ledger.op',
+                { area: 'ledger' },
+            );
+            const op2 = opRoot(
+                [opRoute('/capital/offers', [opOperation('get')])],
+                'capital.op',
+                { area: 'capital' },
+            );
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op1, op2] });
+            expect(output).toContain('### Ledger');
+            expect(output).toContain('### Capital');
+        });
+
+        it('places ungrouped endpoints before grouped ones', () => {
+            const ungrouped = opRoot([opRoute('/health', [opOperation('get')])]);
+            const grouped = opRoot(
+                [opRoute('/ledger/accounts', [opOperation('get')])],
+                'ledger.op',
+                { area: 'ledger' },
+            );
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [ungrouped, grouped] });
+            const healthPos = output.indexOf('`GET /health`');
+            const ledgerPos = output.indexOf('### Ledger');
+            expect(healthPos).toBeLessThan(ledgerPos);
+        });
     });
 
     // ─── Endpoint rendering ──────────────────────────────────────
@@ -71,12 +202,12 @@ describe('generateMarkdown', () => {
             expect(output).toContain('**SDK method:** `getUsersById`');
         });
 
-        it('includes operation description', () => {
+        it('renders operation description as blockquote', () => {
             const op = opRoot([
                 opRoute('/users', [opOperation('get', { description: 'List all users' })]),
             ]);
             const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
-            expect(output).toContain('List all users');
+            expect(output).toContain('> List all users');
         });
 
         it('renders path parameters table', () => {
@@ -172,12 +303,12 @@ describe('generateMarkdown', () => {
             expect(output).toContain('### User');
         });
 
-        it('renders model description', () => {
+        it('renders model description as blockquote', () => {
             const dto = dtoRoot([
                 model('User', [field('id', scalarType('uuid'))], { description: 'A user object' }),
             ]);
             const output = generateMarkdown({ dtoRoots: [dto], opRoots: [] });
-            expect(output).toContain('A user object');
+            expect(output).toContain('> A user object');
         });
 
         it('renders extends link for base model', () => {
@@ -283,6 +414,25 @@ describe('generateMarkdown', () => {
             const output = generateMarkdown({ dtoRoots: [dto1, dto2], opRoots: [] });
             expect(output).toContain('### User');
             expect(output).toContain('### Order');
+        });
+
+        it('merges endpoints from same area into one group', () => {
+            const op1 = opRoot(
+                [opRoute('/ledger/accounts', [opOperation('get')])],
+                'ledger.op',
+                { area: 'ledger' },
+            );
+            const op2 = opRoot(
+                [opRoute('/ledger/transactions', [opOperation('get')])],
+                'ledger.transactions.op',
+                { area: 'ledger' },
+            );
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op1, op2] });
+            // Should have exactly one Ledger heading
+            const matches = output.match(/### Ledger/g);
+            expect(matches).toHaveLength(1);
+            expect(output).toContain('`GET /ledger/accounts`');
+            expect(output).toContain('`GET /ledger/transactions`');
         });
     });
 });
