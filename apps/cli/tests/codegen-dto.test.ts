@@ -60,13 +60,17 @@ describe('renderType', () => {
       expect(renderType(scalarType('int', { min: 1, max: 10 }))).toBe('z.coerce.number().int().min(1).max(10)');
     });
 
-    it('renders z.bigint()', () => {
-      expect(renderType(scalarType('bigint'))).toBe('z.bigint()');
+    it('renders z.bigint() with preprocess coercion from string or bigint', () => {
+      expect(renderType(scalarType('bigint'))).toBe(
+        `z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint())`
+      );
     });
 
     it('renders z.bigint() with constraints using n suffix', () => {
       const result = renderType(scalarType('bigint', { min: 0n, max: 100n }));
-      expect(result).toBe('z.bigint().min(0n).max(100n)');
+      expect(result).toBe(
+        `z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint().min(0n).max(100n))`
+      );
     });
 
     it('renders z.boolean()', () => {

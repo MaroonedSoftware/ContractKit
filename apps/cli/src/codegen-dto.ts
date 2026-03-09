@@ -300,10 +300,10 @@ function renderScalar(s: ScalarTypeNode): string {
             return e;
         }
         case 'bigint': {
-            let e = 'z.bigint()';
-            if (s.min !== undefined) e += `.min(${s.min}n)`;
-            if (s.max !== undefined) e += `.max(${s.max}n)`;
-            return e;
+            let inner = 'z.bigint()';
+            if (s.min !== undefined) inner += `.min(${s.min}n)`;
+            if (s.max !== undefined) inner += `.max(${s.max}n)`;
+            return `z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, ${inner})`;
         }
         case 'boolean':
             return 'z.boolean()';
@@ -389,17 +389,7 @@ function renderInlineObject(o: InlineObjectTypeNode): string {
  * Used for Input (write) schemas where data arrives as JSON strings.
  */
 function renderInputScalar(s: ScalarTypeNode): string {
-    switch (s.name) {
-        case 'bigint': {
-            let e = `z.string().transform((val) => BigInt(val.replace(/n$/, ''))).pipe(z.bigint()`;
-            if (s.min !== undefined) e += `.min(${s.min}n)`;
-            if (s.max !== undefined) e += `.max(${s.max}n)`;
-            e += ')';
-            return e;
-        }
-        default:
-            return renderScalar(s);
-    }
+    return renderScalar(s);
 }
 
 /**
