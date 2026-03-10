@@ -112,6 +112,22 @@ importers:
 
   packages/config-typescript: {}
 
+  packages/prettier-plugin-contract-dsl:
+    dependencies:
+      contract-dsl:
+        specifier: workspace:*
+        version: link:../../apps/cli
+    devDependencies:
+      '@repo/config-typescript':
+        specifier: workspace:*
+        version: link:../config-typescript
+      prettier:
+        specifier: ^3.8.1
+        version: 3.8.1
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@25.3.0)
+
 packages:
 
   '@babel/code-frame@7.29.0':
