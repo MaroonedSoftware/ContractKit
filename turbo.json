@@ -24,7 +24,8 @@
             "cache": false
         },
         "vscode:install": {
-            "dependsOn": ["build"]
+            "dependsOn": ["build"],
+            "cache": false
         },
         "vscode:uninstall": {
             "dependsOn": ["^vscode:uninstall"]

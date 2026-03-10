@@ -110,6 +110,7 @@
                 { "include": "#comment" },
                 { "include": "#service-decl" },
                 { "include": "#sdk-decl" },
+                { "include": "#security-decl" },
                 { "include": "#query-block" },
                 { "include": "#headers-block" },
                 { "include": "#request-block" },
@@ -132,12 +133,58 @@
                 "3": { "name": "entity.name.function.sdk-method.op" }
             }
         },
+        "security-decl": {
+            "begin": "\\b(security)\\s*(:)\\s*",
+            "beginCaptures": {
+                "1": { "name": "keyword.control.security.op" },
+                "2": { "name": "punctuation.separator.colon.op" }
+            },
+            "end": "(?=\\s*$)|(?=\\s*#)|(?=\\b(?:service|sdk|security|query|headers|request|response|get|post|put|patch|delete|params)\\b)|(?=\\})",
+            "patterns": [
+                { "include": "#security-scheme" },
+                { "include": "#union-pipe" }
+            ]
+        },
+        "security-scheme": {
+            "begin": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+            "beginCaptures": {
+                "1": { "name": "entity.name.function.security-scheme.op" }
+            },
+            "end": "(?=\\||\\s*$|\\s*#|\\}|\\b(?:service|sdk|security|query|headers|request|response)\\b)",
+            "patterns": [
+                { "include": "#security-scheme-args" }
+            ]
+        },
+        "security-scheme-args": {
+            "begin": "(\\()",
+            "beginCaptures": {
+                "1": { "name": "punctuation.parenthesis.open.op" }
+            },
+            "end": "(\\))",
+            "endCaptures": {
+                "1": { "name": "punctuation.parenthesis.close.op" }
+            },
+            "patterns": [
+                {
+                    "begin": "([a-zA-Z_][a-zA-Z0-9_]*)\\s*(=)\\s*",
+                    "beginCaptures": {
+                        "1": { "name": "variable.parameter.constraint.op" },
+                        "2": { "name": "keyword.operator.assignment.op" }
+                    },
+                    "end": "(?=,|\\))",
+                    "patterns": [
+                        { "include": "#string-literal" }
+                    ]
+                },
+                { "include": "#comma" }
+            ]
+        },
         "query-block": {
             "begin": "\\b(query)\\b",
             "beginCaptures": {
                 "1": { "name": "keyword.control.query.op" }
             },
-            "end": "(?<=\\})|(?=\\b(?:service|sdk|query|headers|request|response)\\b)|(?=\\})",
+            "end": "(?<=\\})|(?=\\b(?:service|sdk|security|query|headers|request|response)\\b)|(?=\\})",
             "patterns": [
                 { "include": "#comment" },
                 { "include": "#type-shorthand" },
@@ -149,7 +196,7 @@
             "beginCaptures": {
                 "1": { "name": "keyword.control.headers.op" }
             },
-            "end": "(?<=\\})|(?=\\b(?:service|sdk|query|headers|request|response)\\b)|(?=\\})",
+            "end": "(?<=\\})|(?=\\b(?:service|sdk|security|query|headers|request|response)\\b)|(?=\\})",
             "patterns": [
                 { "include": "#comment" },
                 { "include": "#type-shorthand" },
