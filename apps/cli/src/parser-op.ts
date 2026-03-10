@@ -22,7 +22,14 @@ export function parseOp(source: string, file: string, diag: DiagnosticCollector)
     diag.error(file, line, err.message);
   }
 
-  // Step 5: Visit CST to build AST
+  // Step 5: Visit CST to build AST (consumed comments are deleted from the map)
   const visitor = new OpVisitor(file, diag, comments);
-  return visitor.visit(cst);
+  const ast = visitor.visit(cst);
+
+  // Step 6: Remaining entries in comments are orphans (not attached to any node)
+  const orphanComments = Array.from(comments.entries())
+    .map(([line, text]) => ({ line, text }))
+    .sort((a, b) => a.line - b.line);
+
+  return orphanComments.length > 0 ? { ...ast, orphanComments } : ast;
 }

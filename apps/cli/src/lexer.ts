@@ -70,9 +70,10 @@ export function tokenize(source: string, file: string): Token[] {
       continue;
     }
 
-    // Standalone comment line
+    // Standalone comment line — preserve spacing after # so indentation inside
+    // comment blocks can be reconstructed by the formatter.
     if (trimmed.startsWith('#')) {
-      tokens.push({ kind: 'COMMENT', value: trimmed.slice(1).trim(), line: lineNo });
+      tokens.push({ kind: 'COMMENT', value: trimmed.slice(1), line: lineNo });
       continue;
     }
 

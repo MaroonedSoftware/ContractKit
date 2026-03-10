@@ -63,10 +63,35 @@ export class OpVisitor extends BaseOpVisitor {
     return [key, value];
   }
 
+  /** Look up a comment on the exact line only (for inline comments), delete and return trimmed text. */
+  private consumeInlineComment(line: number): string | undefined {
+    if (this.comments.has(line)) {
+      const val = this.comments.get(line)!;
+      this.comments.delete(line);
+      return val.trim();
+    }
+    return undefined;
+  }
+
+  /** Look up a comment by line (or line-1), delete it from the map, and return trimmed text. */
+  private consumeComment(line: number): string | undefined {
+    if (this.comments.has(line)) {
+      const val = this.comments.get(line)!;
+      this.comments.delete(line);
+      return val.trim();
+    }
+    if (this.comments.has(line - 1)) {
+      const val = this.comments.get(line - 1)!;
+      this.comments.delete(line - 1);
+      return val.trim();
+    }
+    return undefined;
+  }
+
   routeDecl(ctx: any): OpRouteNode {
     const path: string = this.visit(ctx.routePath[0]);
     const line = ctx.LBrace?.[0]?.startLine ?? 0;
-    const description = this.comments.get(line) ?? this.comments.get(line - 1);
+    const description = this.consumeInlineComment(line);
 
     let params: OpParamNode[] | undefined;
     let operations: OpOperationNode[] = [];
@@ -122,10 +147,12 @@ export class OpVisitor extends BaseOpVisitor {
       this.diag.warn(this.file, line, `Path parameter "${name}" has no explicit type; defaulting to string`);
     }
     const typeName = identifiers[1]?.image ?? 'string';
+    const description = this.consumeComment(line);
 
     return {
       name,
       type: resolveSimpleType(typeName),
+      description,
       loc: { file: this.file, line },
     };
   }
@@ -134,7 +161,7 @@ export class OpVisitor extends BaseOpVisitor {
     const methodToken: IToken = ctx.Identifier[0];
     const method = methodToken.image.toLowerCase() as HttpMethod;
     const line = methodToken.startLine ?? 0;
-    const description = this.comments.get(line) ?? this.comments.get(line - 1);
+    const description = this.consumeInlineComment(line);
 
     let service: string | undefined;
     let sdk: string | undefined;
@@ -431,12 +458,15 @@ export class OpVisitor extends BaseOpVisitor {
       ? this.visit(ctx.opTypeExpr[0])
       : { kind: 'scalar', name: 'unknown' };
 
+    const description = this.consumeComment(line);
+
     return {
       name,
       optional,
       nullable: false,
       visibility: 'normal',
       type,
+      description,
       loc: { file: this.file, line },
     };
   }

@@ -408,6 +408,7 @@ async function main() {
             dtoRoots.map(r => r.ast),
             opRoots.map(r => r.ast),
             diag,
+            allDtoInfo.map(r => r.ast),
         );
 
         // ── Pass 2: Generate code ───────────────────────────────────

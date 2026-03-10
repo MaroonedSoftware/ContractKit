@@ -8,26 +8,79 @@ import type {
   SecurityNode,
   DtoTypeNode,
 } from 'contract-dsl/src/ast.js';
-import { printType } from './print-type.js';
+import { printType, formatDefault } from './print-type.js';
 
 const I1 = '    ';
 const I2 = '        ';
 const I3 = '            ';
 const I4 = '                ';
 
+// ─── Orphan comment helpers ──────────────────────────────────────────────────
+
+type CommentEntry = { line: number; text: string };
+type CommentBlock = { startLine: number; lines: string[] };
+
+/** Group sorted orphan comment entries into consecutive-line blocks. */
+function groupComments(entries: CommentEntry[]): CommentBlock[] {
+  const blocks: CommentBlock[] = [];
+  let current: CommentBlock | null = null;
+  for (const { line, text } of entries) {
+    if (current && line === current.startLine + current.lines.length) {
+      current.lines.push(`#${text}`);
+    } else {
+      if (current) blocks.push(current);
+      current = { startLine: line, lines: [`#${text}`] };
+    }
+  }
+  if (current) blocks.push(current);
+  return blocks;
+}
+
+/**
+ * Emit any comment blocks whose startLine is < beforeLine.
+ * Prepends `indent` to each comment line (use '' for top-level, I1 for inside a route).
+ */
+function flushBlocks(
+  out: string[],
+  blocks: CommentBlock[],
+  idx: { value: number },
+  beforeLine: number,
+  indent = '',
+) {
+  while (idx.value < blocks.length && blocks[idx.value]!.startLine < beforeLine) {
+    for (const l of blocks[idx.value]!.lines) out.push(`${indent}${l}`);
+    idx.value++;
+  }
+}
+
 // ─── OP file printer ────────────────────────────────────────────────────────
 
 export function printOp(ast: OpRootNode): string {
   const parts: string[] = [];
+  const blocks = groupComments(ast.orphanComments ?? []);
+  const idx = { value: 0 };
 
   if (Object.keys(ast.meta).length > 0) {
     parts.push(printFrontMatter(ast.meta));
   }
 
-  for (const route of ast.routes) {
+  for (let i = 0; i < ast.routes.length; i++) {
+    const route = ast.routes[i]!;
+    const nextRouteStart = ast.routes[i + 1]?.loc.line ?? Infinity;
+
+    // Emit orphan blocks that appear before this route
+    const pending: string[] = [];
+    flushBlocks(pending, blocks, idx, route.loc.line);
+    for (const l of pending) { if (parts.length > 0 || l) parts.push(l); }
+
     if (parts.length > 0) parts.push('');
-    parts.push(printRoute(route));
+    parts.push(printRoute(route, blocks, idx, nextRouteStart));
   }
+
+  // Emit any remaining blocks after the last route
+  const trailing: string[] = [];
+  flushBlocks(trailing, blocks, idx, Infinity);
+  for (const l of trailing) { parts.push(''); parts.push(l); }
 
   return parts.join('\n') + '\n';
 }
@@ -50,17 +103,28 @@ function printMetaValue(value: string): string {
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 
-function printRoute(route: OpRouteNode): string {
+function printRoute(
+  route: OpRouteNode,
+  blocks: CommentBlock[],
+  idx: { value: number },
+  nextRouteStart: number,
+): string {
   const lines: string[] = [];
-  lines.push(`${route.path} {`);
+  const commentSuffix = route.description ? ` # ${route.description}` : '';
+  lines.push(`${route.path} {${commentSuffix}`);
 
   if (route.params !== undefined) {
     lines.push(...printParamsBlock(route.params, I1));
   }
 
   for (const op of route.operations) {
+    // Flush comment blocks that appear before this operation (inside the route)
+    flushBlocks(lines, blocks, idx, op.loc.line, I1);
     lines.push(...printOperation(op));
   }
+
+  // Flush comment blocks between last operation and the next route
+  flushBlocks(lines, blocks, idx, nextRouteStart, I1);
 
   lines.push('}');
   return lines.join('\n');
@@ -76,7 +140,8 @@ function printParamsBlock(source: ParamSource, indent: string): string[] {
     const lines: string[] = [`${indent}params: {`];
     const inner = indent + '    ';
     for (const p of source) {
-      lines.push(`${inner}${p.name}: ${printType(p.type)}`);
+      const comment = p.description ? ` # ${p.description}` : '';
+      lines.push(`${inner}${p.name}: ${printType(p.type)}${comment}`);
     }
     lines.push(`${indent}}`);
     return lines;
@@ -89,7 +154,8 @@ function printParamsBlock(source: ParamSource, indent: string): string[] {
 
 function printOperation(op: OpOperationNode): string[] {
   const lines: string[] = [];
-  lines.push(`${I1}${op.method}: {`);
+  const commentSuffix = op.description ? ` # ${op.description}` : '';
+  lines.push(`${I1}${op.method}: {${commentSuffix}`);
 
   if (op.service) lines.push(`${I2}service: ${op.service}`);
   if (op.sdk) lines.push(`${I2}sdk: ${op.sdk}`);
@@ -98,7 +164,7 @@ function printOperation(op: OpOperationNode): string[] {
   if (op.headers !== undefined) lines.push(...printQueryOrHeaders('headers', op.headers));
   if (op.request) {
     lines.push(`${I2}request: {`);
-    lines.push(`${I3}${op.request.contentType}: ${printType(op.request.bodyType)}`);
+    lines.push(...printContentTypeLine(op.request.contentType, op.request.bodyType, I3));
     lines.push(`${I2}}`);
   }
   if (op.responses.length > 0) {
@@ -143,6 +209,27 @@ function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource):
   return [`${I2}${keyword}: ${printType(source as DtoTypeNode)}`];
 }
 
+// ─── Content-type line ───────────────────────────────────────────────────────
+
+/** Print a `contentType: bodyType` line, expanding inline brace objects onto separate lines. */
+function printContentTypeLine(contentType: string, bodyType: DtoTypeNode, lineIndent: string): string[] {
+  if (bodyType.kind === 'inlineObject') {
+    const fieldIndent = lineIndent + '    ';
+    const lines: string[] = [`${lineIndent}${contentType}: {`];
+    for (const f of bodyType.fields) {
+      const opt = f.optional ? '?' : '';
+      let t = printType(f.type);
+      if (f.nullable) t += ' | null';
+      const def = f.default !== undefined ? ` = ${formatDefault(f.default)}` : '';
+      const comment = f.description ? ` # ${f.description}` : '';
+      lines.push(`${fieldIndent}${f.name}${opt}: ${t}${def}${comment}`);
+    }
+    lines.push(`${lineIndent}}`);
+    return lines;
+  }
+  return [`${lineIndent}${contentType}: ${printType(bodyType)}`];
+}
+
 // ─── Response block ──────────────────────────────────────────────────────────
 
 function printResponseBlock(responses: OpResponseNode[]): string[] {
@@ -151,7 +238,7 @@ function printResponseBlock(responses: OpResponseNode[]): string[] {
   for (const resp of responses) {
     if (resp.contentType && resp.bodyType) {
       lines.push(`${I3}${resp.statusCode}: {`);
-      lines.push(`${I4}${resp.contentType}: ${printType(resp.bodyType)}`);
+      lines.push(...printContentTypeLine(resp.contentType, resp.bodyType, I4));
       lines.push(`${I3}}`);
     } else {
       lines.push(`${I3}${resp.statusCode}:`);

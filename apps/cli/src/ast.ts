@@ -118,6 +118,8 @@ export interface DtoRootNode {
   meta: Record<string, string>;
   models: ModelNode[];
   file: string;
+  /** Comment lines not attached to any node, sorted by line number. */
+  orphanComments?: Array<{ line: number; text: string }>;
 }
 
 // ─── Operations AST (.op) ──────────────────────────────────────────────────
@@ -136,6 +138,7 @@ export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 export interface OpParamNode {
   name: string;
   type: DtoTypeNode;
+  description?: string;
   loc: SourceLocation;
 }
 
@@ -179,4 +182,6 @@ export interface OpRootNode {
   meta: Record<string, string>;
   routes: OpRouteNode[];
   file: string;
+  /** Comment lines not attached to any node, sorted by line number. */
+  orphanComments?: Array<{ line: number; text: string }>;
 }

@@ -8,19 +8,62 @@ import {
 
 const INDENT = '    ';
 
+// ─── Orphan comment helpers ──────────────────────────────────────────────────
+
+type CommentEntry = { line: number; text: string };
+type CommentBlock = { startLine: number; lines: string[] };
+
+function groupComments(entries: CommentEntry[]): CommentBlock[] {
+  const blocks: CommentBlock[] = [];
+  let current: CommentBlock | null = null;
+  for (const { line, text } of entries) {
+    if (current && line === current.startLine + current.lines.length) {
+      current.lines.push(`#${text}`);
+    } else {
+      if (current) blocks.push(current);
+      current = { startLine: line, lines: [`#${text}`] };
+    }
+  }
+  if (current) blocks.push(current);
+  return blocks;
+}
+
+function flushBlocks(
+  out: string[],
+  blocks: CommentBlock[],
+  idx: { value: number },
+  beforeLine: number,
+) {
+  while (idx.value < blocks.length && blocks[idx.value]!.startLine < beforeLine) {
+    for (const l of blocks[idx.value]!.lines) out.push(l);
+    idx.value++;
+  }
+}
+
 // ─── DTO file printer ────────────────────────────────────────────────────────
 
 export function printDto(ast: DtoRootNode): string {
   const parts: string[] = [];
+  const blocks = groupComments(ast.orphanComments ?? []);
+  const idx = { value: 0 };
 
   if (Object.keys(ast.meta).length > 0) {
     parts.push(printFrontMatter(ast.meta));
   }
 
   for (const model of ast.models) {
+    const pending: string[] = [];
+    flushBlocks(pending, blocks, idx, model.loc.line);
+    for (const l of pending) { if (parts.length > 0 || l) parts.push(l); }
+
     if (parts.length > 0) parts.push('');
     parts.push(printModelDecl(model));
   }
+
+  // Emit remaining blocks after the last model
+  const trailing: string[] = [];
+  flushBlocks(trailing, blocks, idx, Infinity);
+  for (const l of trailing) { parts.push(''); parts.push(l); }
 
   return parts.join('\n') + '\n';
 }

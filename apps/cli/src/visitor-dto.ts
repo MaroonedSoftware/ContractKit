@@ -60,6 +60,21 @@ export class DtoVisitor extends BaseDtoVisitor {
     return [key, value];
   }
 
+  /** Look up a comment by line (or line-1), delete it from the map, and return trimmed text. */
+  private consumeComment(line: number): string | undefined {
+    if (this.comments.has(line)) {
+      const val = this.comments.get(line)!;
+      this.comments.delete(line);
+      return val.trim();
+    }
+    if (this.comments.has(line - 1)) {
+      const val = this.comments.get(line - 1)!;
+      this.comments.delete(line - 1);
+      return val.trim();
+    }
+    return undefined;
+  }
+
   modelDecl(ctx: any): ModelNode {
     const identifiers: IToken[] = ctx.Identifier || [];
     const nameToken = identifiers[0]!;
@@ -67,7 +82,7 @@ export class DtoVisitor extends BaseDtoVisitor {
     const line = nameToken.startLine ?? 0;
 
     // Description from comments: preceding line or same line
-    const description = this.comments.get(line) ?? this.comments.get(line - 1);
+    const description = this.consumeComment(line);
 
     // Type alias form: Name : typeExpression (no braces, no fieldList)
     if (ctx.typeExpression && !ctx.fieldList) {
@@ -137,7 +152,7 @@ export class DtoVisitor extends BaseDtoVisitor {
     }
 
     // Description from comments
-    const description = this.comments.get(line) ?? this.comments.get(line - 1);
+    const description = this.consumeComment(line);
 
     return {
       name: fieldName, optional, nullable, visibility, type,
@@ -267,9 +282,11 @@ export class DtoVisitor extends BaseDtoVisitor {
       defaultVal = this.visit(ctx.defaultValue[0]);
     }
 
+    const description = this.consumeComment(line);
+
     return {
       name, optional, nullable, visibility: 'normal', type,
-      default: defaultVal,
+      default: defaultVal, description,
       loc: { file: this.file, line },
     };
   }

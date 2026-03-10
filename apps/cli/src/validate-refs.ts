@@ -9,10 +9,12 @@ export function validateRefs(
   dtoRoots: DtoRootNode[],
   opRoots: OpRootNode[],
   diag: DiagnosticCollector,
+  allDtoRoots?: DtoRootNode[],
 ): void {
-  // Phase 1: Collect all defined model names
+  // Phase 1: Collect all defined model names from ALL dto files (not just changed ones)
+  // so that cached/unchanged files don't cause false "not defined" warnings.
   const modelNames = new Set<string>();
-  for (const root of dtoRoots) {
+  for (const root of (allDtoRoots ?? dtoRoots)) {
     for (const model of root.models) {
       modelNames.add(model.name);
     }
