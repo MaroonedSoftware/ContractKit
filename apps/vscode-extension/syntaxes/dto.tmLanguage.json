@@ -22,10 +22,7 @@
             "endCaptures": {
                 "1": { "name": "punctuation.definition.front-matter.end.dto" }
             },
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#meta-entry" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#meta-entry" }]
         },
         "meta-entry": {
             "match": "([a-zA-Z_$][a-zA-Z0-9_$.-]*)\\s*(:)\\s*(?:(\"[^\"]*\"|'[^']*')|([a-zA-Z_$][a-zA-Z0-9_$.-]*))",
@@ -48,10 +45,7 @@
             "endCaptures": {
                 "1": { "name": "punctuation.definition.block.end.dto" }
             },
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#field-declaration" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#field-declaration" }]
         },
         "type-alias-declaration": {
             "begin": "([A-Z][a-zA-Z0-9_$]*)\\s*(:)",
@@ -60,10 +54,7 @@
                 "2": { "name": "keyword.operator.inheritance.dto" }
             },
             "end": "$",
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#type-expression" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#type-expression" }]
         },
         "field-declaration": {
             "begin": "([a-zA-Z_$][a-zA-Z0-9_$]*(?:-[a-zA-Z0-9_$]+)*)(\\?)?\\s*(:)",
@@ -114,7 +105,7 @@
         },
         "enum-value": {
             "match": "\\b([a-z][a-zA-Z0-9_$.-]*)\\b",
-            "name": "variable.other.enummember.dto"
+            "name": "string.unquoted.dto"
         },
         "type-constraints": {
             "begin": "(\\()",
@@ -138,7 +129,7 @@
         "constraint-key-value": {
             "match": "\\b(min|max|length|len|regex)\\s*(=)",
             "captures": {
-                "1": { "name": "variable.parameter.constraint.dto" },
+                "1": { "name": "entity.other.attribute-name.constraint.dto" },
                 "2": { "name": "keyword.operator.assignment.dto" }
             }
         },
@@ -159,10 +150,7 @@
             "endCaptures": {
                 "1": { "name": "punctuation.definition.block.end.dto" }
             },
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#field-declaration" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#field-declaration" }]
         },
         "default-value": {
             "match": "(=)\\s*",

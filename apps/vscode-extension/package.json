@@ -71,6 +71,15 @@
                         "settings": {
                             "foreground": "#4EC9B0"
                         }
+                    },
+                    {
+                        "scope": [
+                            "storage.modifier.dto",
+                            "storage.modifier.op"
+                        ],
+                        "settings": {
+                            "fontStyle": "italic"
+                        }
                     }
                 ]
             }

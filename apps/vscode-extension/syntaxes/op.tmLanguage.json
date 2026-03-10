@@ -2,11 +2,7 @@
     "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
     "name": "Contract DSL Operations",
     "scopeName": "source.op",
-    "patterns": [
-        { "include": "#comment" },
-        { "include": "#front-matter" },
-        { "include": "#route-declaration" }
-    ],
+    "patterns": [{ "include": "#comment" }, { "include": "#front-matter" }, { "include": "#route-declaration" }],
     "repository": {
         "comment": {
             "match": "#.*$",
@@ -21,10 +17,7 @@
             "endCaptures": {
                 "1": { "name": "punctuation.definition.front-matter.end.op" }
             },
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#meta-entry" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#meta-entry" }]
         },
         "meta-entry": {
             "match": "([a-zA-Z_$][a-zA-Z0-9_$.-]*)\\s*(:)\\s*(?:(\"[^\"]*\"|'[^']*')|([a-zA-Z_$][a-zA-Z0-9_$.-]*))",
@@ -39,9 +32,7 @@
             "begin": "(/[a-zA-Z0-9_/:.-]+)\\s*(\\{)",
             "beginCaptures": {
                 "1": {
-                    "patterns": [
-                        { "include": "#route-path" }
-                    ]
+                    "patterns": [{ "include": "#route-path" }]
                 },
                 "2": { "name": "punctuation.definition.block.begin.op" }
             },
@@ -49,11 +40,7 @@
             "endCaptures": {
                 "1": { "name": "punctuation.definition.block.end.op" }
             },
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#params-block" },
-                { "include": "#http-operation" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#params-block" }, { "include": "#http-operation" }]
         },
         "route-path": {
             "patterns": [
@@ -80,11 +67,7 @@
                 "1": { "name": "keyword.control.params.op" }
             },
             "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete)\\b)|(?=\\})",
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#type-shorthand" },
-                { "include": "#param-decl-block" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#type-shorthand" }, { "include": "#param-decl-block" }]
         },
         "http-operation": {
             "begin": "\\b(get|post|put|patch|delete)\\b\\s*(?:(:)\\s*)?",
@@ -93,9 +76,7 @@
                 "2": { "name": "punctuation.separator.colon.op" }
             },
             "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|params)\\b)|(?=\\})",
-            "patterns": [
-                { "include": "#operation-body" }
-            ]
+            "patterns": [{ "include": "#operation-body" }]
         },
         "operation-body": {
             "begin": "(\\{)",
@@ -140,10 +121,7 @@
                 "2": { "name": "punctuation.separator.colon.op" }
             },
             "end": "(?=\\s*$)|(?=\\s*#)|(?=\\b(?:service|sdk|security|query|headers|request|response|get|post|put|patch|delete|params)\\b)|(?=\\})",
-            "patterns": [
-                { "include": "#security-scheme" },
-                { "include": "#union-pipe" }
-            ]
+            "patterns": [{ "include": "#security-scheme" }, { "include": "#union-pipe" }]
         },
         "security-scheme": {
             "begin": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\b",
@@ -151,9 +129,7 @@
                 "1": { "name": "entity.name.function.security-scheme.op" }
             },
             "end": "(?=\\||\\s*$|\\s*#|\\}|\\b(?:service|sdk|security|query|headers|request|response)\\b)",
-            "patterns": [
-                { "include": "#security-scheme-args" }
-            ]
+            "patterns": [{ "include": "#security-scheme-args" }]
         },
         "security-scheme-args": {
             "begin": "(\\()",
@@ -172,9 +148,7 @@
                         "2": { "name": "keyword.operator.assignment.op" }
                     },
                     "end": "(?=,|\\))",
-                    "patterns": [
-                        { "include": "#string-literal" }
-                    ]
+                    "patterns": [{ "include": "#string-literal" }]
                 },
                 { "include": "#comma" }
             ]
@@ -185,11 +159,7 @@
                 "1": { "name": "keyword.control.query.op" }
             },
             "end": "(?<=\\})|(?=\\b(?:service|sdk|security|query|headers|request|response)\\b)|(?=\\})",
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#type-shorthand" },
-                { "include": "#param-decl-block" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#type-shorthand" }, { "include": "#param-decl-block" }]
         },
         "headers-block": {
             "begin": "\\b(headers)\\b",
@@ -197,11 +167,7 @@
                 "1": { "name": "keyword.control.headers.op" }
             },
             "end": "(?<=\\})|(?=\\b(?:service|sdk|security|query|headers|request|response)\\b)|(?=\\})",
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#type-shorthand" },
-                { "include": "#param-decl-block" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#type-shorthand" }, { "include": "#param-decl-block" }]
         },
         "request-block": {
             "begin": "\\b(request)\\s*(:)\\s*(\\{)",
@@ -214,10 +180,7 @@
             "endCaptures": {
                 "1": { "name": "punctuation.definition.block.end.op" }
             },
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#content-type-line" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#content-type-line" }]
         },
         "response-block": {
             "begin": "\\b(response)\\s*(:)\\s*(\\{)",
@@ -230,15 +193,12 @@
             "endCaptures": {
                 "1": { "name": "punctuation.definition.block.end.op" }
             },
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#status-code-block" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#status-code-block" }]
         },
         "status-code-block": {
             "begin": "\\b(\\d{3})\\b\\s*(:)\\s*",
             "beginCaptures": {
-                "1": { "name": "constant.numeric.status-code.op" },
+                "1": { "name": "keyword.control.status-code.op" },
                 "2": { "name": "punctuation.separator.colon.op" }
             },
             "end": "(?<=\\})|(?=\\d{3})|(?=\\})",
@@ -252,24 +212,18 @@
                     "endCaptures": {
                         "1": { "name": "punctuation.definition.block.end.op" }
                     },
-                    "patterns": [
-                        { "include": "#comment" },
-                        { "include": "#headers-block" },
-                        { "include": "#content-type-line" }
-                    ]
+                    "patterns": [{ "include": "#comment" }, { "include": "#headers-block" }, { "include": "#content-type-line" }]
                 }
             ]
         },
         "content-type-line": {
             "begin": "([a-zA-Z][a-zA-Z0-9-]*/[a-zA-Z][a-zA-Z0-9.+-]*)\\s*(:)\\s*",
             "beginCaptures": {
-                "1": { "name": "string.other.content-type.op" },
+                "1": { "name": "entity.name.section.content-type.op" },
                 "2": { "name": "punctuation.separator.colon.op" }
             },
             "end": "(?=\\s*$)|(?=\\s*#)|(?=\\})",
-            "patterns": [
-                { "include": "#type-expression" }
-            ]
+            "patterns": [{ "include": "#type-expression" }]
         },
         "type-shorthand": {
             "begin": "(:)\\s*",
@@ -277,9 +231,7 @@
                 "1": { "name": "punctuation.separator.colon.op" }
             },
             "end": "(?=\\s*\\{)|(?=\\s*$)|(?=\\s*#)|(?=\\})",
-            "patterns": [
-                { "include": "#type-expression" }
-            ]
+            "patterns": [{ "include": "#type-expression" }]
         },
         "param-decl-block": {
             "begin": "(\\{)",
@@ -290,10 +242,7 @@
             "endCaptures": {
                 "1": { "name": "punctuation.definition.block.end.op" }
             },
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#param-declaration" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#param-declaration" }]
         },
         "param-declaration": {
             "begin": "([a-zA-Z_][a-zA-Z0-9_]*(?:-[a-zA-Z0-9_]+)*)(\\?)?\\s*(:)\\s*",
@@ -303,9 +252,7 @@
                 "3": { "name": "punctuation.separator.colon.op" }
             },
             "end": "(?=$|#|\\}|[a-zA-Z_][a-zA-Z0-9_]*(?:-[a-zA-Z0-9_]+)*\\??\\s*:)",
-            "patterns": [
-                { "include": "#type-expression" }
-            ]
+            "patterns": [{ "include": "#type-expression" }]
         },
         "type-expression": {
             "patterns": [
@@ -364,7 +311,7 @@
         },
         "enum-value": {
             "match": "\\b([a-z][a-zA-Z0-9_$.-]*)\\b",
-            "name": "variable.other.enummember.op"
+            "name": "string.unquoted.op"
         },
         "union-pipe": {
             "match": "\\|",
@@ -387,11 +334,7 @@
             "endCaptures": {
                 "1": { "name": "punctuation.definition.block.end.op" }
             },
-            "patterns": [
-                { "include": "#comment" },
-                { "include": "#param-declaration" },
-                { "include": "#comma" }
-            ]
+            "patterns": [{ "include": "#comment" }, { "include": "#param-declaration" }, { "include": "#comma" }]
         },
         "string-literal": {
             "patterns": [
