@@ -3,6 +3,12 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { WorkspaceIndex } from './workspace-index.js';
 import type { DtoTypeNode, FieldNode, ModelNode } from 'contract-dsl/src/ast.js';
 
+const SECURITY_SCHEME_DOCS: Record<string, string> = {
+    bearer: 'Bearer token authentication\n\nAdds an `Authorization: Bearer <token>` header. Resolved at runtime via `securityHandler` in `SdkOptions`.',
+    apiKey: 'API key authentication\n\nKey passed via a named header, query parameter, or cookie.\n\n```op\nsecurity: apiKey(header="X-API-Key")\nsecurity: apiKey(query="api_key")\n```',
+    none: 'No authentication required\n\nMarks the endpoint as public, explicitly overriding any global `security` default.',
+};
+
 const BUILTIN_TYPE_DOCS: Record<string, string> = {
     string: 'Text string — Zod `z.string()`',
     number: 'Floating-point number — Zod `z.coerce.number()`',
@@ -28,6 +34,16 @@ export function getHover(
 ): Hover | null {
     const word = getWordAtPosition(document, params.position.line, params.position.character);
     if (!word) return null;
+
+    // Check security scheme keywords
+    if (word in SECURITY_SCHEME_DOCS) {
+        return {
+            contents: {
+                kind: MarkupKind.Markdown,
+                value: `**${word}**\n\n${SECURITY_SCHEME_DOCS[word]}`,
+            },
+        };
+    }
 
     // Check built-in types
     if (word in BUILTIN_TYPE_DOCS) {

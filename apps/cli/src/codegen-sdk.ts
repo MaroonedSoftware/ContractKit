@@ -13,6 +13,8 @@ export interface SdkCodegenOptions {
     sdkOptionsPath?: string;
     /** Set of model names that have Input variants (models with visibility modifiers) */
     modelsWithInput?: Set<string>;
+    /** Default security scheme from config — used when op.security is not set */
+    defaultSecurity?: string;
 }
 
 export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): string {
@@ -46,7 +48,13 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('    }');
         lines.push('}');
         lines.push('');
-        lines.push('export type SdkFetch = (url: string, init: RequestInit) => Promise<Response>;');
+        lines.push('export interface SecurityContext {');
+        lines.push('    scheme: string;');
+        lines.push('}');
+        lines.push('');
+        lines.push('export type SecurityHandler = (ctx: SecurityContext) => Record<string, string> | Promise<Record<string, string>>;');
+        lines.push('');
+        lines.push('export type SdkFetch = (url: string, init: RequestInit, security?: SecurityContext) => Promise<Response>;');
         lines.push('');
         lines.push('export interface SdkOptions {');
         lines.push('    baseUrl: string;');
@@ -54,17 +62,21 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('    fetch?: SdkFetch;');
         lines.push('    /** Called once per request to produce a unique X-Request-ID header value */');
         lines.push('    requestIdFactory?: () => string;');
+        lines.push('    securityHandler?: SecurityHandler;');
         lines.push('}');
         lines.push('');
         lines.push('export function createSdkFetch(options: SdkOptions): SdkFetch {');
         lines.push('    const getRequestId = options.requestIdFactory ?? (() => crypto.randomUUID());');
-        lines.push('    return async (url: string, init: RequestInit): Promise<Response> => {');
+        lines.push('    return async (url: string, init: RequestInit, security?: SecurityContext): Promise<Response> => {');
         lines.push('        const baseHeaders = typeof options.headers === \'function\'');
         lines.push('            ? await options.headers()');
         lines.push('            : options.headers ?? {};');
+        lines.push('        const securityHeaders = security && options.securityHandler');
+        lines.push('            ? await options.securityHandler(security)');
+        lines.push('            : {};');
         lines.push('        const res = await fetch(`${options.baseUrl}${url}`, {');
         lines.push('            ...init,');
-        lines.push('            headers: { ...baseHeaders, \'X-Request-ID\': getRequestId(), ...init.headers as Record<string, string> },');
+        lines.push('            headers: { ...baseHeaders, ...securityHeaders, \'X-Request-ID\': getRequestId(), ...init.headers as Record<string, string> },');
         lines.push('        });');
         lines.push('        if (!res.ok) {');
         lines.push('            const text = await res.text();');
@@ -90,7 +102,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     for (const route of root.routes) {
         for (const op of route.operations) {
             lines.push('');
-            lines.push(...generateMethod(route, op, root.file, options.modelsWithInput));
+            lines.push(...generateMethod(route, op, root.file, options));
         }
     }
 
@@ -102,10 +114,16 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
 
 // ─── Method generation ────────────────────────────────────────────────────
 
-function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, modelsWithInput?: Set<string>): string[] {
+function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, options: SdkCodegenOptions): string[] {
     const lines: string[] = [];
     const methodName = deriveMethodName(op, route);
     const httpMethod = op.method.toUpperCase();
+    const { modelsWithInput } = options;
+
+    // Resolve effective security scheme (operation-level wins over config default)
+    const scheme = op.security?.[0]?.name ?? options.defaultSecurity;
+    const isPublic = !scheme || scheme === 'none';
+    const securityArg = isPublic ? '' : `, { scheme: '${scheme}' }`;
 
     // Build method parameters (request-side — use Input variants)
     const params = buildMethodParams(route, op, modelsWithInput);
@@ -178,13 +196,13 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, m
 
     if (fetchArgs.length === 2 && !hasBody && !hasOpHeaders && !hasQuery) {
         // Simple case — inline
-        lines.push(`        const result = await this.fetch(\`${fetchUrl}\`, { method: '${httpMethod}' });`);
+        lines.push(`        const result = await this.fetch(\`${fetchUrl}\`, { method: '${httpMethod}' }${securityArg});`);
     } else {
         lines.push(`        const result = await this.fetch(${fetchArgs[0]!.split(': ').slice(1).join(': ')}, {`);
         for (let i = 1; i < fetchArgs.length; i++) {
             lines.push(`            ${fetchArgs[i]},`);
         }
-        lines.push(`        });`);
+        lines.push(`        }${securityArg});`);
     }
 
     if (isVoid) {
@@ -594,7 +612,13 @@ export function generateSdkOptions(): string {
         '    }',
         '}',
         '',
-        'export type SdkFetch = (url: string, init: RequestInit) => Promise<Response>;',
+        'export interface SecurityContext {',
+        '    scheme: string;',
+        '}',
+        '',
+        'export type SecurityHandler = (ctx: SecurityContext) => Record<string, string> | Promise<Record<string, string>>;',
+        '',
+        'export type SdkFetch = (url: string, init: RequestInit, security?: SecurityContext) => Promise<Response>;',
         '',
         'export interface SdkOptions {',
         '    baseUrl: string;',
@@ -602,6 +626,7 @@ export function generateSdkOptions(): string {
         '    fetch?: SdkFetch;',
         '    /** Called once per request to produce a unique X-Request-ID header value */',
         '    requestIdFactory?: () => string;',
+        '    securityHandler?: SecurityHandler;',
         '}',
         '',
         'export const bigIntReplacer = (_: string, value: any): any => {',
@@ -620,13 +645,16 @@ export function generateSdkOptions(): string {
         '',
         'export function createSdkFetch(options: SdkOptions): SdkFetch {',
         '    const getRequestId = options.requestIdFactory ?? (() => crypto.randomUUID());',
-        '    return async (url: string, init: RequestInit): Promise<Response> => {',
+        '    return async (url: string, init: RequestInit, security?: SecurityContext): Promise<Response> => {',
         '        const baseHeaders = typeof options.headers === \'function\'',
         '            ? await options.headers()',
         '            : options.headers ?? {};',
+        '        const securityHeaders = security && options.securityHandler',
+        '            ? await options.securityHandler(security)',
+        '            : {};',
         '        const res = await fetch(`${options.baseUrl}${url}`, {',
         '            ...init,',
-        '            headers: { ...baseHeaders, \'X-Request-ID\': getRequestId(), ...init.headers as Record<string, string> },',
+        '            headers: { ...baseHeaders, ...securityHeaders, \'X-Request-ID\': getRequestId(), ...init.headers as Record<string, string> },',
         '        });',
         '        if (!res.ok) {',
         '            const text = await res.text();',

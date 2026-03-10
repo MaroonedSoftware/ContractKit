@@ -12,6 +12,8 @@ export interface OpCodegenOptions {
     modelOutPaths?: Map<string, string>;
     /** Set of model names that have Input variants (models with visibility modifiers) */
     modelsWithInput?: Set<string>;
+    /** Default security scheme from config — used when op.security is not set */
+    defaultSecurity?: string;
 }
 
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
@@ -79,6 +81,15 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
     // Source location comment
     const relFile = outPath ? relative(dirname(outPath), file) : file;
     lines.push(` * from [${basename(file)}](file://./${relFile}#L${op.loc.line})`);
+
+    // Security annotation
+    const effectiveSecurity = op.security?.[0]?.name ?? options.defaultSecurity;
+    if (effectiveSecurity === 'none') {
+        lines.push(` * @public`);
+    } else if (effectiveSecurity) {
+        lines.push(` * @security ${effectiveSecurity}`);
+    }
+
     lines.push('*/');
 
     const method = op.method;

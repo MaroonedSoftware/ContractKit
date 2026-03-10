@@ -4,6 +4,7 @@ import type {
   OpRootNode, OpRouteNode, OpOperationNode, OpParamNode,
   OpRequestNode, OpResponseNode, HttpMethod, DtoTypeNode,
   FieldNode, ParamSource, ScalarTypeNode, InlineObjectTypeNode,
+  SecurityNode, SecuritySchemeNode,
 } from './ast.js';
 import { SCALAR_NAMES } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
@@ -141,6 +142,7 @@ export class OpVisitor extends BaseOpVisitor {
     let headers: ParamSource | undefined;
     let request: OpRequestNode | undefined;
     let responses: OpResponseNode[] = [];
+    let security: SecurityNode | undefined;
 
     if (ctx.operationBody) {
       const body = this.visit(ctx.operationBody[0]);
@@ -150,18 +152,20 @@ export class OpVisitor extends BaseOpVisitor {
       headers = body.headers;
       request = body.request;
       responses = body.responses;
+      security = body.security;
     }
 
-    return { method, service, sdk, query, headers, request, responses, description, loc: { file: this.file, line } };
+    return { method, service, sdk, query, headers, request, responses, security, description, loc: { file: this.file, line } };
   }
 
-  operationBody(ctx: any): { service?: string; sdk?: string; query?: ParamSource; headers?: ParamSource; request?: OpRequestNode; responses: OpResponseNode[] } {
+  operationBody(ctx: any): { service?: string; sdk?: string; query?: ParamSource; headers?: ParamSource; request?: OpRequestNode; responses: OpResponseNode[]; security?: SecurityNode } {
     let service: string | undefined;
     let sdk: string | undefined;
     let query: ParamSource | undefined;
     let headers: ParamSource | undefined;
     let request: OpRequestNode | undefined;
     let responses: OpResponseNode[] = [];
+    let security: SecurityNode | undefined;
 
     if (ctx.serviceDecl) {
       service = this.visit(ctx.serviceDecl[0]);
@@ -181,8 +185,63 @@ export class OpVisitor extends BaseOpVisitor {
     if (ctx.responseBlock) {
       responses = this.visit(ctx.responseBlock[0]);
     }
+    if (ctx.securityBlock) {
+      security = this.visit(ctx.securityBlock[0]);
+    }
 
-    return { service, sdk, query, headers, request, responses };
+    return { service, sdk, query, headers, request, responses, security };
+  }
+
+  securityBlock(ctx: any): SecurityNode {
+    return this.visit(ctx.securityExpr[0]);
+  }
+
+  securityExpr(ctx: any): SecurityNode {
+    const schemes: SecuritySchemeNode[] = [];
+    if (ctx.securityScheme) {
+      for (const s of ctx.securityScheme) {
+        schemes.push(this.visit(s));
+      }
+    }
+    return schemes;
+  }
+
+  securityScheme(ctx: any): SecuritySchemeNode {
+    const name: string = ctx.Identifier[0].image;
+    const params: Record<string, string | number | boolean> = {};
+    const scopes: string[] = [];
+
+    if (ctx.securitySchemeArgs) {
+      const args = this.visit(ctx.securitySchemeArgs[0]) as Array<{ key?: string; value: string }>;
+      for (const arg of args) {
+        if (arg.key) {
+          params[arg.key] = arg.value.replace(/^['"]|['"]$/g, '');
+        } else {
+          scopes.push(arg.value.replace(/^['"]|['"]$/g, ''));
+        }
+      }
+    }
+
+    return { name, params, scopes };
+  }
+
+  securitySchemeArgs(ctx: any): Array<{ key?: string; value: string }> {
+    const args: Array<{ key?: string; value: string }> = [];
+    if (ctx.securitySchemeArg) {
+      for (const a of ctx.securitySchemeArg) {
+        args.push(this.visit(a));
+      }
+    }
+    return args;
+  }
+
+  securitySchemeArg(ctx: any): { key?: string; value: string } {
+    const identifiers: IToken[] = ctx.Identifier || [];
+    const strings: IToken[] = ctx.StringLit || [];
+    if (identifiers.length > 0 && ctx.Equals) {
+      return { key: identifiers[0]!.image, value: strings[0]?.image ?? '' };
+    }
+    return { value: strings[0]?.image ?? '' };
   }
 
   queryBlock(ctx: any): ParamSource {

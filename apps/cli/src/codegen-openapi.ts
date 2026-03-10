@@ -329,6 +329,15 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode): Record<string,
         };
     }
 
+    // Operation-level security (overrides the global default from config)
+    if (op.security) {
+        if (op.security.length === 1 && op.security[0]!.name === 'none') {
+            operation.security = [];  // explicit public endpoint — overrides global default
+        } else {
+            operation.security = op.security.map(s => ({ [s.name]: s.scopes }));
+        }
+    }
+
     // Responses
     const responses: Record<string, unknown> = {};
     for (const resp of op.responses) {

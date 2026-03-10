@@ -122,6 +122,15 @@ export interface DtoRootNode {
 
 // ─── Operations AST (.op) ──────────────────────────────────────────────────
 
+export interface SecuritySchemeNode {
+  name: string;                                       // "bearer", "apiKey", "none", or custom
+  params: Record<string, string | number | boolean>;  // e.g. { header: "X-API-Key" }
+  scopes: string[];                                   // e.g. ["read:users", "write:users"]
+}
+
+/** Array of alternative schemes — any one satisfies the security requirement. */
+export type SecurityNode = SecuritySchemeNode[];
+
 export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 export interface OpParamNode {
@@ -152,6 +161,7 @@ export interface OpOperationNode {
   responses: OpResponseNode[];
   query?: ParamSource;
   headers?: ParamSource;
+  security?: SecurityNode; // overrides config default; "none" = explicitly public
   description?: string;
   loc: SourceLocation;
 }

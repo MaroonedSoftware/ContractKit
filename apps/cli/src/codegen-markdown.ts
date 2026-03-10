@@ -18,6 +18,7 @@ import { renderTsType } from './codegen-sdk.js';
 export interface MarkdownCodegenContext {
     dtoRoots: DtoRootNode[];
     opRoots: OpRootNode[];
+    defaultSecurity?: string;
 }
 
 export function generateMarkdown(ctx: MarkdownCodegenContext): string {
@@ -103,7 +104,7 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
                     lines.push('');
                 }
                 first = false;
-                lines.push(...renderEndpoint(ep.route, ep.op, group.area !== undefined, modelIndex));
+                lines.push(...renderEndpoint(ep.route, ep.op, group.area !== undefined, modelIndex, ctx.defaultSecurity));
                 lines.push('');
             }
         }
@@ -323,6 +324,7 @@ function renderEndpoint(
     op: OpOperationNode,
     nested: boolean,
     modelIndex: Map<string, ModelNode>,
+    defaultSecurity?: string,
 ): string[] {
     const lines: string[] = [];
     const method = op.method.toUpperCase();
@@ -340,9 +342,15 @@ function renderEndpoint(
     lines.push(`**\`${method}\`** \`${path}\``);
     lines.push('');
 
-    // SDK method (GitHub admonition)
+    // SDK method + security (GitHub admonition)
+    const effectiveSecurity = op.security?.[0]?.name ?? defaultSecurity;
     lines.push('> [!NOTE]');
     lines.push(`> SDK method: \`${methodName}\``);
+    if (effectiveSecurity === 'none') {
+        lines.push('> Security: public');
+    } else if (effectiveSecurity) {
+        lines.push(`> Security: \`${effectiveSecurity}\``);
+    }
     lines.push('');
 
     // Unified attributes table (path + query + headers merged)

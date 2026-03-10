@@ -224,7 +224,7 @@ httpOperation   = httpMethod , ":" , "{" , operationBody , "}" ;
                   (* colon and braces are mandatory                     *)
 
 operationBody   = { serviceDecl | sdkDecl | queryBlock | headersBlock
-                  | requestBlock | responseBlock } ;
+                  | requestBlock | responseBlock | securityBlock } ;
 
 (* --------------------------------------------------------------------- *)
 (* Service                                                               *)
@@ -321,6 +321,28 @@ opArgValue      = NUMBER_LIT
                 | IDENTIFIER ;
                   (* Note: OP argValue does NOT support regex literals   *)
                   (* unlike DTO argValue                                 *)
+
+(* --------------------------------------------------------------------- *)
+(* Security                                                              *)
+(* --------------------------------------------------------------------- *)
+
+securityBlock      = "security" , ":" , securityExpr ;
+                     (* Declares the authentication requirement for the operation *)
+                     (* Inherits from config default if omitted                  *)
+
+securityExpr       = securityScheme , { "|" , securityScheme } ;
+                     (* pipe-separated alternatives: bearer | apiKey             *)
+                     (* any one of the listed schemes satisfies the requirement  *)
+
+securityScheme     = IDENTIFIER , [ "(" , securitySchemeArgs , ")" ] ;
+                     (* IDENTIFIER = scheme name: bearer, apiKey, none, etc.     *)
+                     (* optional args for params/scopes                          *)
+                     (* "none" marks the operation as explicitly public          *)
+
+securitySchemeArgs = securitySchemeArg , { "," , securitySchemeArg } ;
+
+securitySchemeArg  = IDENTIFIER , "=" , STRING_LIT   (* header="X-API-Key"    *)
+                   | STRING_LIT ;                     (* "read:users" scope    *)
 
 (* --------------------------------------------------------------------- *)
 (* OP Inline Objects                                                     *)

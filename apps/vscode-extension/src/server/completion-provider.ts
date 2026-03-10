@@ -18,7 +18,15 @@ const CONSTRAINT_KEYS = ['min', 'max', 'length', 'len', 'regex'];
 
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 
-const OP_BLOCK_KEYWORDS = ['service', 'sdk', 'query', 'headers', 'request', 'response'];
+const OP_BLOCK_KEYWORDS = ['service', 'sdk', 'query', 'headers', 'request', 'response', 'security'];
+
+const SECURITY_SCHEMES: Array<{ label: string; detail: string; insertText?: string }> = [
+    { label: 'bearer', detail: 'Bearer token (Authorization: Bearer <token>)' },
+    { label: 'apiKey', detail: 'API key via header/query/cookie', insertText: 'apiKey(header="$1")' },
+    { label: 'none', detail: 'No authentication — public endpoint' },
+];
+
+const SECURITY_SCHEME_ARG_KEYS = ['header', 'query', 'cookie'];
 
 export function getCompletions(
     params: TextDocumentPositionParams,
@@ -145,6 +153,38 @@ function getOpCompletions(
         return OP_BLOCK_KEYWORDS.map((k) => ({
             label: k,
             kind: CompletionItemKind.Keyword,
+        }));
+    }
+
+    // After security: — offer security schemes
+    if (/security\s*:\s*\w*$/.test(textBefore)) {
+        return SECURITY_SCHEMES.map((s) => ({
+            label: s.label,
+            kind: CompletionItemKind.Value,
+            detail: s.detail,
+            ...(s.insertText ? { insertText: s.insertText, insertTextFormat: 2 } : {}),
+        }));
+    }
+
+    // After a pipe in a security expression — offer more schemes (not 'none')
+    if (/security\s*:\s*.+\|\s*\w*$/.test(textBefore)) {
+        return SECURITY_SCHEMES.filter((s) => s.label !== 'none').map((s) => ({
+            label: s.label,
+            kind: CompletionItemKind.Value,
+            detail: s.detail,
+            ...(s.insertText ? { insertText: s.insertText, insertTextFormat: 2 } : {}),
+        }));
+    }
+
+    // Inside a security scheme's argument list — offer arg keys
+    if (/security\s*:\s*\w+\(\s*\w*$/.test(textBefore) ||
+        /security\s*:\s*\w+\(.*,\s*\w*$/.test(textBefore)) {
+        return SECURITY_SCHEME_ARG_KEYS.map((k) => ({
+            label: k,
+            kind: CompletionItemKind.Property,
+            detail: 'Security scheme argument',
+            insertText: `${k}="$1"`,
+            insertTextFormat: 2,
         }));
     }
 

@@ -13,6 +13,7 @@ export interface RoutesConfig {
     include?: string[];
     servicePathTemplate?: string;
     typeImportPathTemplate?: string;
+    security?: string; // default scheme for all operations e.g. "bearer", "none"
 }
 
 export interface SdkTypesConfig {
@@ -24,6 +25,7 @@ export interface SdkClientsConfig {
     output?: string;
     include?: string[];
     typeImportPathTemplate?: string;
+    security?: string; // default scheme for all operations e.g. "bearer", "none"
 }
 
 export interface SdkConfig {
