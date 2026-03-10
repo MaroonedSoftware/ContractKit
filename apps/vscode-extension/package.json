@@ -57,7 +57,24 @@
                 "scopeName": "source.op",
                 "path": "./syntaxes/op.tmLanguage.json"
             }
-        ]
+        ],
+        "configurationDefaults": {
+            "editor.tokenColorCustomizations": {
+                "textMateRules": [
+                    {
+                        "scope": [
+                            "support.type.builtin.op",
+                            "support.type.builtin.dto",
+                            "support.type.compound.op",
+                            "support.type.compound.dto"
+                        ],
+                        "settings": {
+                            "foreground": "#4EC9B0"
+                        }
+                    }
+                ]
+            }
+        }
     },
     "scripts": {
         "test": "vitest run",

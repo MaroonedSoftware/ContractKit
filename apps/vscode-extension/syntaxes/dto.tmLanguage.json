@@ -105,7 +105,7 @@
             "name": "support.type.builtin.dto"
         },
         "compound-type": {
-            "match": "\\b(array|tuple|record|enum|literal|lazy)(?=\\s*\\()",
+            "match": "\\b(array|tuple|record|enum|literal|lazy)\\b",
             "name": "support.type.compound.dto"
         },
         "model-reference": {

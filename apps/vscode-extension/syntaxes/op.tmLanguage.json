@@ -329,7 +329,7 @@
             "name": "support.type.builtin.op"
         },
         "compound-type": {
-            "match": "\\b(array|tuple|record|enum|literal|lazy)(?=\\s*\\()",
+            "match": "\\b(array|tuple|record|enum|literal|lazy)\\b",
             "name": "support.type.compound.op"
         },
         "type-constraints": {
