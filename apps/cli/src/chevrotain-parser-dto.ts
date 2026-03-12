@@ -6,6 +6,8 @@ import {
   StringLit, NumberLit, BooleanLit, Eof, TripleDash,
 } from './tokens.js';
 
+const OBJECT_MODES = new Set(['strict', 'strip', 'loose']);
+
 export class DtoCstParser extends CstParser {
   constructor() {
     super(allTokens, {
@@ -49,11 +51,12 @@ export class DtoCstParser extends CstParser {
   // ─── Model ────────────────────────────────────────────────────────────
 
   // modelDecl:
-  //   IDENTIFIER COLON IDENTIFIER LBRACE fieldList RBRACE   (model with inheritance)
-  //   IDENTIFIER COLON LBRACE fieldList RBRACE               (model with fields)
-  //   IDENTIFIER COLON typeExpression                         (type alias)
+  //   [MODE] IDENTIFIER COLON IDENTIFIER LBRACE fieldList RBRACE   (model with inheritance)
+  //   [MODE] IDENTIFIER COLON LBRACE fieldList RBRACE               (model with fields)
+  //   IDENTIFIER COLON typeExpression                                (type alias — no mode)
   public modelDecl = this.RULE('modelDecl', () => {
-    this.CONSUME(Identifier);  // model name
+    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image), DEF: () => this.CONSUME(Identifier) });  // optional: strict|strip|loose
+    this.CONSUME2(Identifier);  // model name
     this.CONSUME(Colon);
     this.OR([
       {
@@ -64,7 +67,7 @@ export class DtoCstParser extends CstParser {
           return la1.tokenType === Identifier && la2.tokenType === LBrace;
         },
         ALT: () => {
-          this.CONSUME2(Identifier); // base model name
+          this.CONSUME3(Identifier); // base model name
           this.CONSUME(LBrace);
           this.SUBRULE(this.fieldList);
           this.CONSUME(RBrace);
@@ -156,10 +159,18 @@ export class DtoCstParser extends CstParser {
 
   public singleType = this.RULE('singleType', () => {
     this.OR([
-      { ALT: () => this.SUBRULE(this.inlineBraceObject) },
+      {
+        // Mode-prefixed inline object: strict { ... } / strip { ... } / loose { ... }
+        GATE: () => OBJECT_MODES.has(this.LA(1).image) && this.LA(2).tokenType === LBrace,
+        ALT: () => {
+          this.CONSUME(Identifier);       // mode keyword
+          this.SUBRULE(this.inlineBraceObject);
+        },
+      },
+      { ALT: () => this.SUBRULE2(this.inlineBraceObject) },
       {
         ALT: () => {
-          this.CONSUME(Identifier);  // type name — visitor inspects image
+          this.CONSUME2(Identifier);  // type name — visitor inspects image
           this.OPTION(() => {
             this.CONSUME(LParen);
             this.SUBRULE(this.typeArgs);

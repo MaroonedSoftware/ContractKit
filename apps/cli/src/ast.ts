@@ -80,6 +80,7 @@ export interface ModelRefTypeNode {
 export interface InlineObjectTypeNode {
   kind: 'inlineObject';
   fields: FieldNode[];
+  mode?: ObjectMode;
 }
 
 export interface IntersectionTypeNode {
@@ -109,6 +110,7 @@ export interface ModelNode {
   base?: string;
   fields: FieldNode[];
   type?: DtoTypeNode; // type alias: Name: typeExpression (fields will be empty)
+  mode?: ObjectMode;  // object validation mode — defaults to 'strict'
   description?: string;
   loc: SourceLocation;
 }
@@ -134,6 +136,12 @@ export interface SecuritySchemeNode {
 export type SecurityNode = SecuritySchemeNode[];
 
 export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
+
+/** Controls how Zod handles unknown keys on an object schema. */
+export type ObjectMode = 'strict' | 'strip' | 'loose';
+
+/** Visibility/lifecycle modifiers on routes and operations. */
+export type RouteModifier = 'internal' | 'deprecated';
 
 export interface OpParamNode {
   name: string;
@@ -163,8 +171,12 @@ export interface OpOperationNode {
   request?: OpRequestNode;
   responses: OpResponseNode[];
   query?: ParamSource;
+  queryMode?: ObjectMode;
   headers?: ParamSource;
+  headersMode?: ObjectMode;
   security?: SecurityNode; // overrides config default; "none" = explicitly public
+  /** Explicit modifiers. undefined = inherit from route; [] or array = override. */
+  modifiers?: RouteModifier[];
   description?: string;
   loc: SourceLocation;
 }
@@ -172,9 +184,20 @@ export interface OpOperationNode {
 export interface OpRouteNode {
   path: string;
   params?: ParamSource;
+  paramsMode?: ObjectMode;
   operations: OpOperationNode[];
+  /** Route-level modifiers — cascade to all operations unless overridden. */
+  modifiers?: RouteModifier[];
   description?: string;
   loc: SourceLocation;
+}
+
+/**
+ * Resolves the effective modifiers for an operation, applying route-level cascade.
+ * If the operation specifies any explicit modifiers, those replace (not merge) the route's.
+ */
+export function resolveModifiers(route: OpRouteNode, op: OpOperationNode): RouteModifier[] {
+  return op.modifiers ?? route.modifiers ?? [];
 }
 
 export interface OpRootNode {

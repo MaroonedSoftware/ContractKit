@@ -2,7 +2,7 @@ import { relative, dirname } from 'node:path';
 import type { DtoRootNode, ModelNode, FieldNode } from './ast.js';
 import type { DtoCodegenContext } from './codegen-dto.js';
 import { collectExternalRefs, collectExternalInputRefs, computeModelsWithInput, topoSortModels, resolveImportPath } from './codegen-dto.js';
-import { renderTsType, renderInputTsType } from './codegen-sdk.js';
+import { renderTsType, renderInputTsType, quoteKey } from './codegen-sdk.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -144,7 +144,7 @@ function renderField(field: FieldNode): string {
     const opt = field.optional || field.default !== undefined ? '?' : '';
     let typeStr = renderTsType(field.type);
     if (field.nullable) typeStr += ' | null';
-    const line = `${field.name}${opt}: ${typeStr};`;
+    const line = `${quoteKey(field.name)}${opt}: ${typeStr};`;
     if (field.description) {
         return `/** ${field.description} */\n    ${line}`;
     }
@@ -155,7 +155,7 @@ function renderInputField(field: FieldNode, modelsWithInput: Set<string>): strin
     const opt = field.optional || field.default !== undefined ? '?' : '';
     let typeStr = renderInputTsType(field.type, modelsWithInput);
     if (field.nullable) typeStr += ' | null';
-    const line = `${field.name}${opt}: ${typeStr};`;
+    const line = `${quoteKey(field.name)}${opt}: ${typeStr};`;
     if (field.description) {
         return `/** ${field.description} */\n    ${line}`;
     }

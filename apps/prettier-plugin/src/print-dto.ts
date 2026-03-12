@@ -95,9 +95,10 @@ function printModelDecl(model: ModelNode): string {
 
   // Regular model with fields (possibly inherited)
   const commentSuffix = model.description ? ` # ${model.description}` : '';
+  const modePrefix = model.mode ? `${model.mode} ` : '';
   const header = model.base
-    ? `${model.name}: ${model.base} {${commentSuffix}`
-    : `${model.name}: {${commentSuffix}`;
+    ? `${modePrefix}${model.name}: ${model.base} {${commentSuffix}`
+    : `${modePrefix}${model.name}: {${commentSuffix}`;
 
   const lines: string[] = [header];
   for (const field of model.fields) {
@@ -115,9 +116,10 @@ function printTypeAlias(model: ModelNode): string {
   const trailing = extractTrailingInlineObject(type);
   if (trailing) {
     const { prefix, inlineObj } = trailing;
+    const modePart = inlineObj.mode ? `${inlineObj.mode} ` : '';
     const header = prefix
-      ? `${model.name}: ${prefix} & {${commentSuffix}`
-      : `${model.name}: {${commentSuffix}`;
+      ? `${model.name}: ${prefix} & ${modePart}{${commentSuffix}`
+      : `${model.name}: ${modePart}{${commentSuffix}`;
     const lines: string[] = [header, ...printInlineObjectExpanded(inlineObj, INDENT), '}'];
     return lines.join('\n');
   }

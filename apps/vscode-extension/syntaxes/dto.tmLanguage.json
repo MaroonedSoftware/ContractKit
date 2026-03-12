@@ -34,12 +34,13 @@
             }
         },
         "model-declaration": {
-            "begin": "([A-Z][a-zA-Z0-9_$]*)\\s*(:)\\s*(?:([A-Z][a-zA-Z0-9_$]*)\\s*)?(\\{)",
+            "begin": "(?:(strict|strip|loose)\\s+)?([A-Z][a-zA-Z0-9_$]*)\\s*(:)\\s*(?:([A-Z][a-zA-Z0-9_$]*)\\s*)?(\\{)",
             "beginCaptures": {
-                "1": { "name": "entity.name.type.model.dto" },
-                "2": { "name": "keyword.operator.inheritance.dto" },
-                "3": { "name": "entity.other.inherited-class.dto" },
-                "4": { "name": "punctuation.definition.block.begin.dto" }
+                "1": { "name": "keyword.control.object-mode.dto" },
+                "2": { "name": "entity.name.type.model.dto" },
+                "3": { "name": "keyword.operator.inheritance.dto" },
+                "4": { "name": "entity.other.inherited-class.dto" },
+                "5": { "name": "punctuation.definition.block.begin.dto" }
             },
             "end": "(\\})",
             "endCaptures": {
@@ -142,9 +143,10 @@
             "name": "keyword.operator.intersection.dto"
         },
         "inline-object": {
-            "begin": "(\\{)",
+            "begin": "(?:(strict|strip|loose)\\s+)?(\\{)",
             "beginCaptures": {
-                "1": { "name": "punctuation.definition.block.begin.dto" }
+                "1": { "name": "keyword.control.object-mode.dto" },
+                "2": { "name": "punctuation.definition.block.begin.dto" }
             },
             "end": "(\\})",
             "endCaptures": {

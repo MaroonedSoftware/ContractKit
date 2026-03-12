@@ -56,11 +56,12 @@ dtoRoot         = [ frontMatter ] , { modelDecl } , EOF ;
 (* Models                                                                *)
 (* --------------------------------------------------------------------- *)
 
-modelDecl       = IDENTIFIER , ":" ,
+modelDecl       = [ objectMode ] , IDENTIFIER , ":" ,
                   ( IDENTIFIER , "{" , fieldList , "}"   (* inheritance   *)
                   | "{" , fieldList , "}"                 (* plain model   *)
-                  | typeExpression ) ;                    (* type alias    *)
-                  (* first IDENTIFIER  = model name                      *)
+                  | typeExpression ) ;                    (* type alias — mode ignored *)
+                  (* optional objectMode prefix: strict | strip | loose  *)
+                  (* IDENTIFIER = model name                             *)
                   (* second IDENTIFIER = base model for inheritance      *)
                   (* type alias form: Name : string | number             *)
 
@@ -105,10 +106,12 @@ intersectionExpr = singleType , { "&" , singleType } ;
                   (* higher precedence than union                        *)
                   (* e.g. Pagination & { sortBy?: string }               *)
 
-singleType      = inlineBraceObject
+singleType      = [ objectMode ] , inlineBraceObject
                 | IDENTIFIER , [ "(" , typeArgs , ")" ] ;
                   (* IDENTIFIER = type name (scalar, compound, or ref)   *)
                   (* optional parenthesized arguments for constraints    *)
+                  (* objectMode prefix applies to inline brace objects:  *)
+                  (*   e.g. data: loose { id: uuid, name: string }       *)
 
                   (* Known scalar types:                                 *)
                   (*   string, number, int, bigint, boolean,             *)
@@ -189,7 +192,9 @@ opRoot          = [ frontMatter ] , { routeDecl } , EOF ;
 (* Routes                                                                *)
 (* --------------------------------------------------------------------- *)
 
-routeDecl       = routePath , "{" , routeBody , "}" ;
+routeDecl       = routePath , [ ":" , { routeModifier } ] , "{" , routeBody , "}" ;
+                  (* optional ": modifier(s)" before the opening brace     *)
+                  (* e.g. /admin/users: internal {                         *)
 
 routePath       = pathSegment , { pathSegment } ;
                   (* at least one segment required                       *)
@@ -207,12 +212,22 @@ routeBody       = { paramsBlock | httpOperation } ;
 (* Path Parameters                                                       *)
 (* --------------------------------------------------------------------- *)
 
-paramsBlock     = "params" , ":" , ( IDENTIFIER               (* type ref   *)
-                                  | "{" , { paramDecl } , "}" ) ;  (* inline     *)
+paramsBlock     = [ objectMode ] , "params" , ":" ,
+                  ( IDENTIFIER               (* type ref   *)
+                  | "{" , { paramDecl } , "}" ) ;  (* inline     *)
 
 paramDecl       = IDENTIFIER , ":" , IDENTIFIER ;
                   (* first IDENTIFIER  = parameter name                  *)
                   (* second IDENTIFIER = parameter type                  *)
+
+objectMode      = "strict" | "strip" | "loose" ;
+                  (* strict = z.strictObject — rejects unknown keys       *)
+                  (* strip  = z.object       — strips unknown keys (default for params) *)
+                  (* loose  = z.looseObject  — passes unknown keys through (default for headers) *)
+                  (* Defaults: params → strict, query → strict, headers → loose *)
+                  (* Also applies as prefix to inline brace objects in    *)
+                  (* type positions: field: loose { id: uuid }            *)
+                  (* and in .op query/headers inline types                *)
 
 (* --------------------------------------------------------------------- *)
 (* HTTP Operations                                                       *)
@@ -220,8 +235,16 @@ paramDecl       = IDENTIFIER , ":" , IDENTIFIER ;
 
 httpMethod      = "get" | "post" | "put" | "patch" | "delete" ;
 
-httpOperation   = httpMethod , ":" , "{" , operationBody , "}" ;
-                  (* colon and braces are mandatory                     *)
+routeModifier   = "internal" | "deprecated" ;
+                  (* internal   = exclude from SDK and API docs generation *)
+                  (* deprecated = emit @deprecated JSDoc + OpenAPI flag    *)
+                  (* Route-level modifiers cascade to all operations;      *)
+                  (* operation-level modifiers fully replace (not merge)   *)
+                  (* the inherited route-level modifier set.               *)
+
+httpOperation   = httpMethod , ":" , { routeModifier } , "{" , operationBody , "}" ;
+                  (* zero or more modifiers between ":" and "{"           *)
+                  (* e.g. get: internal deprecated {                      *)
 
 operationBody   = { serviceDecl | sdkDecl | queryBlock | headersBlock
                   | requestBlock | responseBlock | securityBlock } ;
@@ -243,18 +266,20 @@ sdkDecl         = "sdk" , ":" , IDENTIFIER ;
 (* Query Parameters                                                      *)
 (* --------------------------------------------------------------------- *)
 
-queryBlock      = "query" , ":" , opTypeExpr ;
+queryBlock      = [ objectMode ] , "query" , ":" , opTypeExpr ;
                   (* type reference: query: Pagination                     *)
                   (* inline object:  query: { page: int, limit: int }      *)
                   (* intersection:   query: Pagination & { sortBy: string } *)
+                  (* mode prefix:    strict query: { ... }                 *)
 
 (* --------------------------------------------------------------------- *)
 (* Headers                                                               *)
 (* --------------------------------------------------------------------- *)
 
-headersBlock    = "headers" , ":" , opTypeExpr ;
+headersBlock    = [ objectMode ] , "headers" , ":" , opTypeExpr ;
                   (* type reference: headers: CommonHeaders                *)
                   (* inline object:  headers: { authorization: string }    *)
+                  (* mode prefix:    loose headers: { ... }                *)
 
 (* --------------------------------------------------------------------- *)
 (* Request                                                               *)
@@ -295,12 +320,14 @@ opTypeExpr      = opIntersectionExpr , { "|" , opIntersectionExpr } ;
 opIntersectionExpr = opAtomicType , { "&" , opAtomicType } ;
                   (* intersection: Pagination & { sortBy: string }       *)
 
-opAtomicType    = opInlineObject
+opAtomicType    = [ objectMode ] , opInlineObject
                 | IDENTIFIER , [ "(" , opTypeArgs , ")" ] ,
                   [ "[" , "]" ] ;
                   (* IDENTIFIER = type name or model reference           *)
                   (* optional parens for type args/constraints           *)
                   (* optional postfix [] for array shorthand             *)
+                  (* objectMode prefix applies to inline brace objects:  *)
+                  (*   e.g. query: loose { page?: int, limit?: int }     *)
                   (* e.g. User[], string(min=1)[], enum(a, b)            *)
 
 (* --------------------------------------------------------------------- *)
@@ -350,6 +377,7 @@ securitySchemeArg  = IDENTIFIER , "=" , STRING_LIT   (* header="X-API-Key"    *)
 
 opInlineObject  = "{" , { opInlineField , [ "," ] } , "}" ;
                   (* commas between fields are optional                  *)
+                  (* objectMode prefix is part of opAtomicType, not here *)
 
 opInlineField   = IDENTIFIER , [ "?" ] , ":" , opTypeExpr ;
                   (* Note: OP inline fields do NOT support default values *)

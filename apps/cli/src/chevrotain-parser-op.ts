@@ -7,6 +7,8 @@ import {
 } from './tokens.js';
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
+const OBJECT_MODES = new Set(['strict', 'strip', 'loose']);
+const ROUTE_MODIFIERS = new Set(['internal', 'deprecated']);
 
 export class OpCstParser extends CstParser {
   constructor() {
@@ -50,9 +52,20 @@ export class OpCstParser extends CstParser {
 
   // ─── Route ────────────────────────────────────────────────────────────
 
-  // routeDecl: routePath LBRACE routeBody RBRACE
+  // routeDecl: routePath [ COLON modifier* ] LBRACE routeBody RBRACE
   public routeDecl = this.RULE('routeDecl', () => {
     this.SUBRULE(this.routePath);
+    // Optional `: modifier+` before the opening brace
+    this.OPTION({
+      GATE: () => this.LA(1).tokenType === Colon && ROUTE_MODIFIERS.has(this.LA(2).image),
+      DEF: () => {
+        this.CONSUME(Colon);  // route modifier separator
+        this.MANY({
+          GATE: () => ROUTE_MODIFIERS.has(this.LA(1).image),
+          DEF: () => this.CONSUME(Identifier),  // modifier keyword
+        });
+      },
+    });
     this.CONSUME(LBrace);
     this.SUBRULE(this.routeBody);
     this.CONSUME(RBrace);
@@ -93,10 +106,13 @@ export class OpCstParser extends CstParser {
     this.MANY(() => {
       this.OR([
         {
-          // params block
+          // params block (optionally prefixed with strict|strip|loose)
           GATE: () => {
-            const la = this.LA(1);
-            return la.tokenType === Identifier && la.image === 'params';
+            const la1 = this.LA(1);
+            const la2 = this.LA(2);
+            if (la1.tokenType === Identifier && la1.image === 'params') return true;
+            return la1.tokenType === Identifier && OBJECT_MODES.has(la1.image)
+              && la2.tokenType === Identifier && la2.image === 'params';
           },
           ALT: () => this.SUBRULE(this.paramsBlock),
         },
@@ -114,15 +130,16 @@ export class OpCstParser extends CstParser {
 
   // ─── Params ───────────────────────────────────────────────────────────
 
-  // paramsBlock: "params" ":" ( IDENTIFIER | "{" paramDecl* "}" )
+  // paramsBlock: ("strict"|"strip"|"loose")? "params" ":" ( IDENTIFIER | "{" paramDecl* "}" )
   public paramsBlock = this.RULE('paramsBlock', () => {
-    this.CONSUME(Identifier);  // "params"
+    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image), DEF: () => this.CONSUME(Identifier) });  // optional mode: strict|strip|loose
+    this.CONSUME2(Identifier);  // "params"
     this.CONSUME(Colon);
     this.OR([
       {
         GATE: () => this.LA(1).tokenType === Identifier,
         ALT: () => {
-          this.CONSUME2(Identifier); // type reference
+          this.CONSUME3(Identifier); // type reference
         },
       },
       {
@@ -146,10 +163,14 @@ export class OpCstParser extends CstParser {
 
   // ─── HTTP Operation ───────────────────────────────────────────────────
 
-  // httpOperation: IDENTIFIER ":" LBRACE operationBody RBRACE
+  // httpOperation: IDENTIFIER ":" modifier* LBRACE operationBody RBRACE
   public httpOperation = this.RULE('httpOperation', () => {
-    this.CONSUME(Identifier);  // HTTP method name
+    this.CONSUME(Identifier);   // HTTP method name
     this.CONSUME(Colon);
+    this.MANY({                 // zero or more modifiers (internal, deprecated)
+      GATE: () => ROUTE_MODIFIERS.has(this.LA(1).image),
+      DEF: () => this.CONSUME2(Identifier),
+    });
     this.CONSUME(LBrace);
     this.SUBRULE(this.operationBody);
     this.CONSUME(RBrace);
@@ -175,15 +196,21 @@ export class OpCstParser extends CstParser {
         },
         {
           GATE: () => {
-            const la = this.LA(1);
-            return la.tokenType === Identifier && la.image === 'query';
+            const la1 = this.LA(1);
+            const la2 = this.LA(2);
+            if (la1.tokenType === Identifier && la1.image === 'query') return true;
+            return la1.tokenType === Identifier && OBJECT_MODES.has(la1.image)
+              && la2.tokenType === Identifier && la2.image === 'query';
           },
           ALT: () => this.SUBRULE(this.queryBlock),
         },
         {
           GATE: () => {
-            const la = this.LA(1);
-            return la.tokenType === Identifier && la.image === 'headers';
+            const la1 = this.LA(1);
+            const la2 = this.LA(2);
+            if (la1.tokenType === Identifier && la1.image === 'headers') return true;
+            return la1.tokenType === Identifier && OBJECT_MODES.has(la1.image)
+              && la2.tokenType === Identifier && la2.image === 'headers';
           },
           ALT: () => this.SUBRULE(this.headersBlock),
         },
@@ -292,18 +319,20 @@ export class OpCstParser extends CstParser {
 
   // ─── Query ──────────────────────────────────────────────────────────
 
-  // queryBlock: "query" ":" opTypeExpr
+  // queryBlock: ("strict"|"strip"|"loose")? "query" ":" opTypeExpr
   public queryBlock = this.RULE('queryBlock', () => {
-    this.CONSUME(Identifier);  // "query"
+    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image), DEF: () => this.CONSUME(Identifier) });  // optional mode: strict|strip|loose
+    this.CONSUME2(Identifier);  // "query"
     this.CONSUME(Colon);
     this.SUBRULE(this.opTypeExpr);
   });
 
   // ─── Headers ────────────────────────────────────────────────────────
 
-  // headersBlock: "headers" ":" opTypeExpr
+  // headersBlock: ("strict"|"strip"|"loose")? "headers" ":" opTypeExpr
   public headersBlock = this.RULE('headersBlock', () => {
-    this.CONSUME(Identifier);  // "headers"
+    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image), DEF: () => this.CONSUME(Identifier) });  // optional mode: strict|strip|loose
+    this.CONSUME2(Identifier);  // "headers"
     this.CONSUME(Colon);
     this.SUBRULE(this.opTypeExpr);
   });

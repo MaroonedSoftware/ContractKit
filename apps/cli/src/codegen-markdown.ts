@@ -11,6 +11,7 @@ import type {
     HttpMethod,
     IntersectionTypeNode,
 } from './ast.js';
+import { resolveModifiers } from './ast.js';
 import { renderTsType } from './codegen-sdk.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -186,6 +187,8 @@ function groupEndpoints(opRoots: OpRootNode[]): EndpointGroup[] {
         const area = opRoot.meta?.area;
         for (const route of opRoot.routes) {
             for (const op of route.operations) {
+                const mods = resolveModifiers(route, op);
+                if (mods.includes('internal')) continue;
                 const entry: EndpointEntry = { route, op };
                 if (area) {
                     const list = grouped.get(area) ?? [];
@@ -337,6 +340,14 @@ function renderEndpoint(
     // Title
     lines.push(`${h} ${title}`);
     lines.push('');
+
+    // Deprecation notice
+    const mods = resolveModifiers(route, op);
+    if (mods.includes('deprecated')) {
+        lines.push('> [!WARNING]');
+        lines.push('> **Deprecated** — this endpoint is deprecated and may be removed in a future version.');
+        lines.push('');
+    }
 
     // Method badge + path (compact line)
     lines.push(`**\`${method}\`** \`${path}\``);

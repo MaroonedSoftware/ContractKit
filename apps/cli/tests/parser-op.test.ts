@@ -280,6 +280,44 @@ describe('parseOp', () => {
       const { root } = parse('/users { get: {} }');
       expect(root.routes[0]!.operations[0]!.headers).toBeUndefined();
     });
+
+    it('parses strict mode prefix on headers block', () => {
+      const { root } = parse(`\
+/users {
+    get: {
+        strict headers: {
+            authorization: string
+        }
+    }
+}`);
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.headersMode).toBe('strict');
+      expect(op.headers).toHaveLength(1);
+    });
+
+    it('parses strip mode prefix on headers block', () => {
+      const { root } = parse(`\
+/users {
+    get: {
+        strip headers: {
+            authorization: string
+        }
+    }
+}`);
+      expect(root.routes[0]!.operations[0]!.headersMode).toBe('strip');
+    });
+
+    it('defaults headersMode to undefined when no prefix', () => {
+      const { root } = parse(`\
+/users {
+    get: {
+        headers: {
+            authorization: string
+        }
+    }
+}`);
+      expect(root.routes[0]!.operations[0]!.headersMode).toBeUndefined();
+    });
   });
 
   // ─── Service declaration ─────────────────────────────────────
@@ -537,6 +575,65 @@ LedgerService: #modules/ledger/ledger.service.js
     it('defaults to empty meta when no front-matter', () => {
       const { root } = parse('/users { get: {} }');
       expect(root.meta).toEqual({});
+    });
+  });
+
+  // ─── Route modifiers ───────────────────────────────────────────
+
+  describe('route modifiers', () => {
+    it('parses single internal modifier on route', () => {
+      const { root } = parse('/admin/users: internal { get: {} }');
+      expect(root.routes[0]!.modifiers).toEqual(['internal']);
+    });
+
+    it('parses deprecated modifier on route', () => {
+      const { root } = parse('/old/users: deprecated { get: {} }');
+      expect(root.routes[0]!.modifiers).toEqual(['deprecated']);
+    });
+
+    it('parses multiple modifiers on route', () => {
+      const { root } = parse('/admin/users: internal deprecated { get: {} }');
+      expect(root.routes[0]!.modifiers).toEqual(['internal', 'deprecated']);
+    });
+
+    it('route without modifier has undefined modifiers', () => {
+      const { root } = parse('/users { get: {} }');
+      expect(root.routes[0]!.modifiers).toBeUndefined();
+    });
+
+    it('parses internal modifier on operation', () => {
+      const { root } = parse('/users { post: internal { } }');
+      expect(root.routes[0]!.operations[0]!.modifiers).toEqual(['internal']);
+    });
+
+    it('parses deprecated modifier on operation', () => {
+      const { root } = parse('/users { get: deprecated { } }');
+      expect(root.routes[0]!.operations[0]!.modifiers).toEqual(['deprecated']);
+    });
+
+    it('parses multiple modifiers on operation', () => {
+      const { root } = parse('/users { get: internal deprecated { } }');
+      expect(root.routes[0]!.operations[0]!.modifiers).toEqual(['internal', 'deprecated']);
+    });
+
+    it('operation without modifier has undefined modifiers', () => {
+      const { root } = parse('/users { get: {} }');
+      expect(root.routes[0]!.operations[0]!.modifiers).toBeUndefined();
+    });
+
+    it('operation modifier overrides route modifier', () => {
+      const { root } = parse('/admin: internal { get: deprecated {} }');
+      const route = root.routes[0]!;
+      expect(route.modifiers).toEqual(['internal']);
+      expect(route.operations[0]!.modifiers).toEqual(['deprecated']);
+    });
+
+    it('operation without modifier inherits route modifier', () => {
+      const { root } = parse('/admin: internal { get: {} post: deprecated {} }');
+      const route = root.routes[0]!;
+      expect(route.modifiers).toEqual(['internal']);
+      expect(route.operations[0]!.modifiers).toBeUndefined();  // inherits via resolveModifiers
+      expect(route.operations[1]!.modifiers).toEqual(['deprecated']); // overrides
     });
   });
 });

@@ -631,3 +631,29 @@ describe('generatePlainTypes', () => {
     });
   });
 });
+
+describe('field name quoting', () => {
+  it('quotes hyphenated field names in interfaces', () => {
+    const root = dtoRoot([
+      model('WebhookHeaders', [
+        field('x-topic', scalarType('string')),
+        field('x-event-id', scalarType('string')),
+        field('normalField', scalarType('string')),
+      ]),
+    ]);
+    const output = generatePlainTypes(root);
+    expect(output).toContain("'x-topic': string;");
+    expect(output).toContain("'x-event-id': string;");
+    expect(output).toContain('normalField: string;');
+  });
+
+  it('quotes hyphenated optional fields correctly', () => {
+    const root = dtoRoot([
+      model('Headers', [
+        field('x-request-id', scalarType('string'), { optional: true }),
+      ]),
+    ]);
+    const output = generatePlainTypes(root);
+    expect(output).toContain("'x-request-id'?: string;");
+  });
+});

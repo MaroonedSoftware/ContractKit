@@ -7,6 +7,7 @@ import type {
   ParamSource,
   SecurityNode,
   DtoTypeNode,
+  ObjectMode,
 } from 'contract-dsl/src/ast.js';
 import { printType, formatDefault } from './print-type.js';
 
@@ -111,10 +112,11 @@ function printRoute(
 ): string {
   const lines: string[] = [];
   const commentSuffix = route.description ? ` # ${route.description}` : '';
-  lines.push(`${route.path} {${commentSuffix}`);
+  const modifiersPart = route.modifiers?.length ? `: ${route.modifiers.join(' ')}` : '';
+  lines.push(`${route.path}${modifiersPart} {${commentSuffix}`);
 
   if (route.params !== undefined) {
-    lines.push(...printParamsBlock(route.params, I1));
+    lines.push(...printParamsBlock(route.params, I1, route.paramsMode));
   }
 
   for (const op of route.operations) {
@@ -132,12 +134,13 @@ function printRoute(
 
 // ─── Params block ────────────────────────────────────────────────────────────
 
-function printParamsBlock(source: ParamSource, indent: string): string[] {
+function printParamsBlock(source: ParamSource, indent: string, mode?: ObjectMode): string[] {
+  const prefix = mode ? `${mode} ` : '';
   if (typeof source === 'string') {
-    return [`${indent}params: ${source}`];
+    return [`${indent}${prefix}params: ${source}`];
   }
   if (Array.isArray(source)) {
-    const lines: string[] = [`${indent}params: {`];
+    const lines: string[] = [`${indent}${prefix}params: {`];
     const inner = indent + '    ';
     for (const p of source) {
       const comment = p.description ? ` # ${p.description}` : '';
@@ -147,7 +150,7 @@ function printParamsBlock(source: ParamSource, indent: string): string[] {
     return lines;
   }
   // DtoTypeNode
-  return [`${indent}params: ${printType(source)}`];
+  return [`${indent}${prefix}params: ${printType(source)}`];
 }
 
 // ─── HTTP operation ──────────────────────────────────────────────────────────
@@ -155,13 +158,14 @@ function printParamsBlock(source: ParamSource, indent: string): string[] {
 function printOperation(op: OpOperationNode): string[] {
   const lines: string[] = [];
   const commentSuffix = op.description ? ` # ${op.description}` : '';
-  lines.push(`${I1}${op.method}: {${commentSuffix}`);
+  const modifiersPart = op.modifiers?.length ? ` ${op.modifiers.join(' ')}` : '';
+  lines.push(`${I1}${op.method}:${modifiersPart} {${commentSuffix}`);
 
   if (op.service) lines.push(`${I2}service: ${op.service}`);
   if (op.sdk) lines.push(`${I2}sdk: ${op.sdk}`);
   if (op.security) lines.push(`${I2}security: ${printSecurity(op.security)}`);
-  if (op.query !== undefined) lines.push(...printQueryOrHeaders('query', op.query));
-  if (op.headers !== undefined) lines.push(...printQueryOrHeaders('headers', op.headers));
+  if (op.query !== undefined) lines.push(...printQueryOrHeaders('query', op.query, op.queryMode));
+  if (op.headers !== undefined) lines.push(...printQueryOrHeaders('headers', op.headers, op.headersMode));
   if (op.request) {
     lines.push(`${I2}request: {`);
     lines.push(...printContentTypeLine(op.request.contentType, op.request.bodyType, I3));
@@ -192,13 +196,14 @@ function printSecurity(security: SecurityNode): string {
 
 // ─── Query / headers ─────────────────────────────────────────────────────────
 
-function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource): string[] {
+function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource, mode?: ObjectMode): string[] {
+  const prefix = mode ? `${mode} ` : '';
   if (typeof source === 'string') {
-    return [`${I2}${keyword}: ${source}`];
+    return [`${I2}${prefix}${keyword}: ${source}`];
   }
   if (Array.isArray(source)) {
     if (source.length === 0) return [];
-    const lines: string[] = [`${I2}${keyword}: {`];
+    const lines: string[] = [`${I2}${prefix}${keyword}: {`];
     for (const p of source) {
       lines.push(`${I3}${p.name}: ${printType(p.type)}`);
     }
@@ -206,7 +211,7 @@ function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource):
     return lines;
   }
   // DtoTypeNode (e.g. intersection)
-  return [`${I2}${keyword}: ${printType(source as DtoTypeNode)}`];
+  return [`${I2}${prefix}${keyword}: ${printType(source as DtoTypeNode)}`];
 }
 
 // ─── Content-type line ───────────────────────────────────────────────────────

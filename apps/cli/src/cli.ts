@@ -8,7 +8,7 @@ import { parseOp } from './parser-op.js';
 import { generateDto, collectTypeRefs } from './codegen-dto.js';
 import type { DtoCodegenContext } from './codegen-dto.js';
 import { generateOp } from './codegen-op.js';
-import { generateSdk, generateSdkOptions, generateSdkAggregator, deriveClientClassName, deriveClientPropertyName } from './codegen-sdk.js';
+import { generateSdk, generateSdkOptions, generateSdkAggregator, deriveClientClassName, deriveClientPropertyName, hasPublicOperations, collectPublicTypeNames } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
 import { generateOpenApi } from './codegen-openapi.js';
 import { generateMarkdown } from './codegen-markdown.js';
@@ -245,6 +245,62 @@ function generateBarrelFiles(dtoPaths: string[]): { outPath: string; content: st
     return results;
 }
 
+/**
+ * Returns the set of all type names needed by public (non-internal) operations,
+ * expanded transitively through the DTO model graph.
+ *
+ * Returns null when there are no .op files (no filtering should be applied).
+ */
+function computePubliclyReachableTypes(
+    opAsts: OpRootNode[],
+    dtoAsts: DtoRootNode[],
+    modelsWithInput: Set<string>,
+): Set<string> | null {
+    if (opAsts.length === 0) return null;
+
+    // Collect direct type refs from all public ops
+    const reachable = new Set<string>();
+    for (const opAst of opAsts) {
+        for (const name of collectPublicTypeNames(opAst, modelsWithInput)) {
+            reachable.add(name);
+        }
+    }
+
+    // Build model → dependency names map from all DTO files
+    const modelDeps = new Map<string, Set<string>>();
+    for (const dtoAst of dtoAsts) {
+        for (const model of dtoAst.models) {
+            const deps = new Set<string>();
+            if (model.base) deps.add(model.base);
+            if (model.type) collectTypeRefs(model.type, deps);
+            for (const field of model.fields) collectTypeRefs(field.type, deps);
+            modelDeps.set(model.name, deps);
+        }
+    }
+
+    // BFS: expand through model dependencies
+    const frontier = [...reachable];
+    while (frontier.length > 0) {
+        const name = frontier.pop()!;
+        const baseName = name.endsWith('Input') ? name.slice(0, -5) : name;
+        for (const dep of modelDeps.get(baseName) ?? []) {
+            if (!reachable.has(dep)) {
+                reachable.add(dep);
+                frontier.push(dep);
+            }
+            if (modelsWithInput.has(dep)) {
+                const inputDep = `${dep}Input`;
+                if (!reachable.has(inputDep)) {
+                    reachable.add(inputDep);
+                    frontier.push(inputDep);
+                }
+            }
+        }
+    }
+
+    return reachable;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -446,11 +502,20 @@ async function main() {
             let sdkModelOutPaths = modelOutPaths;
             if (config.sdk.types?.output) {
                 sdkModelOutPaths = new Map<string, string>();
+                // Only generate type files for DTOs that are reachable from public ops.
+                // Returns null when there are no .op files (generate everything).
+                const publicTypes = computePubliclyReachableTypes(
+                    allOpInfo.map(o => o.ast),
+                    allDtoInfo.map(d => d.ast),
+                    modelsWithInput,
+                );
                 for (const { ast, filePath } of allDtoInfo) {
                     const typeOutPath = computeSdkTypeOutPath(filePath, sdkBase, config.sdk.types.output, commonRoot, ast.meta);
                     if (!typeOutPath) continue;
+                    // Skip files where no model is reachable from a public operation
+                    if (publicTypes !== null && !ast.models.some(m => publicTypes.has(m.name))) continue;
                     sdkTypePaths.push(typeOutPath);
-                    // Always track model paths for import resolution
+                    // Track model paths for import resolution
                     for (const model of ast.models) {
                         sdkModelOutPaths.set(model.name, typeOutPath);
                         if (modelsWithInput.has(model.name)) {
@@ -472,7 +537,9 @@ async function main() {
                 for (const { ast, filePath } of allOpInfo) {
                     const sdkOutPath = computeSdkOutPath(filePath, sdkBase, config.sdk.clients.output, commonRoot, ast.meta);
                     if (!sdkOutPath) continue;
-                    // Always track client info for the aggregator
+                    // Skip files where every operation is internal — no public surface to expose
+                    if (!hasPublicOperations(ast)) continue;
+                    // Track client info for the aggregator
                     sdkClientInfos.push({
                         outPath: sdkOutPath,
                         className: deriveClientClassName(ast.file),

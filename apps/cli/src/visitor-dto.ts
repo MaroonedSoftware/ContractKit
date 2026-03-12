@@ -3,8 +3,11 @@ import { dtoCstParser } from './chevrotain-parser-dto.js';
 import type {
   DtoRootNode, ModelNode, FieldNode, DtoTypeNode,
   ScalarTypeNode, InlineObjectTypeNode, UnionTypeNode, IntersectionTypeNode,
+  ObjectMode,
 } from './ast.js';
 import { SCALAR_NAMES } from './ast.js';
+
+const OBJECT_MODES = new Set<string>(['strict', 'strip', 'loose']);
 
 const BaseDtoVisitor = dtoCstParser.getBaseCstVisitorConstructor();
 
@@ -77,7 +80,13 @@ export class DtoVisitor extends BaseDtoVisitor {
 
   modelDecl(ctx: any): ModelNode {
     const identifiers: IToken[] = ctx.Identifier || [];
-    const nameToken = identifiers[0]!;
+
+    // First identifier may be an optional mode prefix (strict|strip|loose)
+    const hasMode = identifiers.length > 0 && OBJECT_MODES.has(identifiers[0]!.image);
+    const modeOffset = hasMode ? 1 : 0;
+    const mode = hasMode ? identifiers[0]!.image as ObjectMode : undefined;
+
+    const nameToken = identifiers[modeOffset]!;
     const name = nameToken.image;
     const line = nameToken.startLine ?? 0;
 
@@ -90,11 +99,8 @@ export class DtoVisitor extends BaseDtoVisitor {
       return { kind: 'model', name, fields: [], type, description, loc: { file: this.file, line } };
     }
 
-    // Second identifier (if any) is the base model name
-    let base: string | undefined;
-    if (identifiers.length > 1) {
-      base = identifiers[1]!.image;
-    }
+    // Next identifier (if any) is the base model name
+    const base = identifiers[modeOffset + 1]?.image;
 
     // Parse fields from fieldList
     const fields: FieldNode[] = [];
@@ -103,7 +109,7 @@ export class DtoVisitor extends BaseDtoVisitor {
       if (Array.isArray(result)) fields.push(...result);
     }
 
-    return { kind: 'model', name, base, fields, description, loc: { file: this.file, line } };
+    return { kind: 'model', name, base, fields, mode, description, loc: { file: this.file, line } };
   }
 
   fieldList(ctx: any): FieldNode[] {
@@ -185,7 +191,11 @@ export class DtoVisitor extends BaseDtoVisitor {
 
   singleType(ctx: any): DtoTypeNode {
     if (ctx.inlineBraceObject) {
-      return this.visit(ctx.inlineBraceObject[0]);
+      const identifiers: IToken[] = ctx.Identifier || [];
+      const modeToken = identifiers[0];
+      const mode = modeToken && OBJECT_MODES.has(modeToken.image) ? modeToken.image as ObjectMode : undefined;
+      const node = this.visit(ctx.inlineBraceObject[0]) as InlineObjectTypeNode;
+      return mode ? { ...node, mode } : node;
     }
 
     const identToken: IToken = ctx.Identifier[0];

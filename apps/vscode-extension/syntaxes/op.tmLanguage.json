@@ -29,12 +29,14 @@
             }
         },
         "route-declaration": {
-            "begin": "(/[a-zA-Z0-9_/:.-]+)\\s*(\\{)",
+            "begin": "(/[a-zA-Z0-9_/:.-]+)(?:\\s*(:)\\s*((?:internal|deprecated)(?:\\s+(?:internal|deprecated))*))?\\s*(\\{)",
             "beginCaptures": {
                 "1": {
                     "patterns": [{ "include": "#route-path" }]
                 },
-                "2": { "name": "punctuation.definition.block.begin.op" }
+                "2": { "name": "punctuation.separator.colon.op" },
+                "3": { "patterns": [{ "match": "\\b(internal|deprecated)\\b", "name": "keyword.control.modifier.op" }] },
+                "4": { "name": "punctuation.definition.block.begin.op" }
             },
             "end": "(\\})",
             "endCaptures": {
@@ -62,9 +64,10 @@
             ]
         },
         "params-block": {
-            "begin": "\\b(params)\\b",
+            "begin": "\\b(?:(strict|strip|loose)\\s+)?(params)\\b",
             "beginCaptures": {
-                "1": { "name": "keyword.control.params.op" }
+                "1": { "name": "keyword.control.object-mode.op" },
+                "2": { "name": "keyword.control.params.op" }
             },
             "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete)\\b)|(?=\\})",
             "patterns": [{ "include": "#comment" }, { "include": "#type-shorthand" }, { "include": "#param-decl-block" }]
@@ -76,7 +79,10 @@
                 "2": { "name": "punctuation.separator.colon.op" }
             },
             "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|params)\\b)|(?=\\})",
-            "patterns": [{ "include": "#operation-body" }]
+            "patterns": [
+                { "match": "\\b(internal|deprecated)\\b", "name": "keyword.control.modifier.op" },
+                { "include": "#operation-body" }
+            ]
         },
         "operation-body": {
             "begin": "(\\{)",
@@ -120,7 +126,7 @@
                 "1": { "name": "keyword.control.security.op" },
                 "2": { "name": "punctuation.separator.colon.op" }
             },
-            "end": "(?=\\s*$)|(?=\\s*#)|(?=\\b(?:service|sdk|security|query|headers|request|response|get|post|put|patch|delete|params)\\b)|(?=\\})",
+            "end": "(?=\\s*$)|(?=\\s*#)|(?=\\b(?:service|sdk|security|strict|strip|loose|query|headers|request|response|get|post|put|patch|delete|params)\\b)|(?=\\})",
             "patterns": [{ "include": "#security-scheme" }, { "include": "#union-pipe" }]
         },
         "security-scheme": {
@@ -154,17 +160,19 @@
             ]
         },
         "query-block": {
-            "begin": "\\b(query)\\b",
+            "begin": "\\b(?:(strict|strip|loose)\\s+)?(query)\\b",
             "beginCaptures": {
-                "1": { "name": "keyword.control.query.op" }
+                "1": { "name": "keyword.control.object-mode.op" },
+                "2": { "name": "keyword.control.query.op" }
             },
             "end": "(?<=\\})|(?=\\b(?:service|sdk|security|query|headers|request|response)\\b)|(?=\\})",
             "patterns": [{ "include": "#comment" }, { "include": "#type-shorthand" }, { "include": "#param-decl-block" }]
         },
         "headers-block": {
-            "begin": "\\b(headers)\\b",
+            "begin": "\\b(?:(strict|strip|loose)\\s+)?(headers)\\b",
             "beginCaptures": {
-                "1": { "name": "keyword.control.headers.op" }
+                "1": { "name": "keyword.control.object-mode.op" },
+                "2": { "name": "keyword.control.headers.op" }
             },
             "end": "(?<=\\})|(?=\\b(?:service|sdk|security|query|headers|request|response)\\b)|(?=\\})",
             "patterns": [{ "include": "#comment" }, { "include": "#type-shorthand" }, { "include": "#param-decl-block" }]
@@ -326,9 +334,10 @@
             "name": "punctuation.definition.array.op"
         },
         "inline-object": {
-            "begin": "(\\{)",
+            "begin": "(?:(strict|strip|loose)\\s+)?(\\{)",
             "beginCaptures": {
-                "1": { "name": "punctuation.definition.block.begin.op" }
+                "1": { "name": "keyword.control.object-mode.op" },
+                "2": { "name": "punctuation.definition.block.begin.op" }
             },
             "end": "(\\})",
             "endCaptures": {

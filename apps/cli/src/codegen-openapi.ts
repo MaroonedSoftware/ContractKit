@@ -9,6 +9,7 @@ import type {
     ParamSource,
     OpParamNode,
 } from './ast.js';
+import { resolveModifiers } from './ast.js';
 import type { OpenApiConfig } from './config.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -59,7 +60,10 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
             if (!paths[oaPath]) paths[oaPath] = {};
 
             for (const op of route.operations) {
+                const mods = resolveModifiers(route, op);
+                if (mods.includes('internal')) continue;
                 const operation = buildOperation(route, op);
+                if (mods.includes('deprecated')) (operation as Record<string, unknown>).deprecated = true;
                 paths[oaPath][op.method] = operation;
             }
         }

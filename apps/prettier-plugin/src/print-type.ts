@@ -45,14 +45,15 @@ export function printType(type: DtoTypeNode): string {
 
 /** Compact single-line form — used when inline object appears nested inside another type. */
 function printInlineObjectCompact(obj: InlineObjectTypeNode): string {
-  if (obj.fields.length === 0) return '{}';
+  const prefix = obj.mode ? `${obj.mode} ` : '';
+  if (obj.fields.length === 0) return `${prefix}{}`;
   const parts = obj.fields.map(f => {
     const opt = f.optional ? '?' : '';
     let t = printType(f.type);
     if (f.nullable) t += ' | null';
     return `${f.name}${opt}: ${t}`;
   });
-  return `{ ${parts.join(', ')} }`;
+  return `${prefix}{ ${parts.join(', ')} }`;
 }
 
 // ─── Field printer ──────────────────────────────────────────────────────────
@@ -61,10 +62,26 @@ function printInlineObjectCompact(obj: InlineObjectTypeNode): string {
 export function printField(field: FieldNode, indent: string): string {
   const opt = field.optional ? '?' : '';
   const vis = field.visibility !== 'normal' ? `${field.visibility} ` : '';
-  let typeStr = printType(field.type);
-  if (field.nullable) typeStr += ' | null';
   const def = field.default !== undefined ? ` = ${formatDefault(field.default)}` : '';
   const comment = field.description ? ` # ${field.description}` : '';
+  const innerIndent = indent + '    ';
+
+  // Expand inline object types to multi-line — same rule as type aliases.
+  // Only when there's no default and no nullable union (those can't split cleanly).
+  if (!field.nullable && field.default === undefined) {
+    const trailing = extractTrailingInlineObject(field.type);
+    if (trailing) {
+      const { prefix, inlineObj } = trailing;
+      const modePart = inlineObj.mode ? `${inlineObj.mode} ` : '';
+      const header = prefix
+        ? `${indent}${field.name}${opt}: ${vis}${prefix} & ${modePart}{${comment}`
+        : `${indent}${field.name}${opt}: ${vis}${modePart}{${comment}`;
+      return [header, ...printInlineObjectExpanded(inlineObj, innerIndent), `${indent}}`].join('\n');
+    }
+  }
+
+  let typeStr = printType(field.type);
+  if (field.nullable) typeStr += ' | null';
   return `${indent}${field.name}${opt}: ${vis}${typeStr}${def}${comment}`;
 }
 

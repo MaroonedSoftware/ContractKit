@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateSdk, generateSdkOptions, generateSdkAggregator, deriveClientClassName, deriveClientPropertyName } from '../src/codegen-sdk.js';
+import { generateSdk, generateSdkOptions, generateSdkAggregator, deriveClientClassName, deriveClientPropertyName, hasPublicOperations, collectPublicTypeNames } from '../src/codegen-sdk.js';
 import {
   opRoot, opRoute, opOperation, opParam, opRequest, opResponse,
   scalarType, refType, arrayType, inlineObjectType, field,
@@ -196,7 +196,7 @@ describe('generateSdk', () => {
         ]),
       ]);
       const out = generateSdk(root);
-      expect(out).toContain('customHeaders?: { x-api-key?: string }');
+      expect(out).toContain("customHeaders?: { 'x-api-key'?: string }");
     });
   });
 
@@ -468,5 +468,139 @@ describe('generateSdkAggregator', () => {
       '../shared/sdk-options.js',
     );
     expect(out).toContain("from '../shared/sdk-options.js'");
+  });
+});
+
+describe('generateSdk — route modifiers', () => {
+  it('excludes internal operation from SDK output', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+        opOperation('post', { modifiers: ['internal'], responses: [opResponse(201, 'User', 'application/json')] }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('getUsers(');      // public GET is present
+    expect(out).not.toContain('postUsers('); // internal POST is absent
+  });
+
+  it('excludes all operations when route is internal', () => {
+    const root = opRoot([
+      opRoute('/admin/users', [
+        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+        opOperation('delete', { responses: [opResponse(204)] }),
+      ], undefined, ['internal']),
+    ]);
+    const out = generateSdk(root);
+    expect(out).not.toContain('async getAdminUsers(');
+    expect(out).not.toContain('async deleteAdminUsers(');
+  });
+
+  it('operation modifier overrides route-level internal — operation becomes visible', () => {
+    const root = opRoot([
+      opRoute('/admin/users', [
+        opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200, 'User', 'application/json')] }),
+        opOperation('post', { responses: [opResponse(201, 'User', 'application/json')] }),
+      ], undefined, ['internal']),
+    ]);
+    const out = generateSdk(root);
+    // GET has explicit modifiers=['deprecated'] (overrides internal) → included
+    expect(out).toContain('async getAdminUsers(');
+    expect(out).toContain('/** @deprecated */');
+    // POST inherits internal from route → excluded
+    expect(out).not.toContain('async postAdminUsers(');
+  });
+
+  it('adds @deprecated jsdoc for deprecated operation', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200, 'User', 'application/json')] }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('/** @deprecated */');
+  });
+});
+
+describe('hasPublicOperations', () => {
+  it('returns true when at least one operation is not internal', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+        opOperation('post', { modifiers: ['internal'], responses: [opResponse(201, 'User', 'application/json')] }),
+      ]),
+    ]);
+    expect(hasPublicOperations(root)).toBe(true);
+  });
+
+  it('returns false when all operations are internal via route modifier', () => {
+    const root = opRoot([
+      opRoute('/admin/users', [
+        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+        opOperation('post', { responses: [opResponse(201, 'User', 'application/json')] }),
+      ], undefined, ['internal']),
+    ]);
+    expect(hasPublicOperations(root)).toBe(false);
+  });
+
+  it('returns false when all operations have explicit internal modifier', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'User', 'application/json')] }),
+      ]),
+    ]);
+    expect(hasPublicOperations(root)).toBe(false);
+  });
+
+  it('returns true when an operation overrides route-level internal with empty modifiers', () => {
+    const root = opRoot([
+      opRoute('/admin/users', [
+        opOperation('get', { modifiers: [], responses: [opResponse(200, 'User', 'application/json')] }),
+      ], undefined, ['internal']),
+    ]);
+    expect(hasPublicOperations(root)).toBe(true);
+  });
+
+  it('does not include types from internal-only operations in SDK output', () => {
+    const root = opRoot([
+      opRoute('/admin/users', [
+        opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'AdminUser', 'application/json')] }),
+      ]),
+      opRoute('/users', [
+        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('User');
+    expect(out).not.toContain('AdminUser');
+  });
+});
+
+
+describe('collectPublicTypeNames', () => {
+  it('returns types from public ops only', () => {
+    const root = opRoot([
+      opRoute('/admin', [
+        opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'AdminReport', 'application/json')] }),
+      ]),
+      opRoute('/users', [
+        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+        opOperation('post', { modifiers: ['internal'], responses: [opResponse(201, 'InternalAudit', 'application/json')] }),
+      ]),
+    ]);
+    const types = collectPublicTypeNames(root);
+    expect(types.has('User')).toBe(true);
+    expect(types.has('AdminReport')).toBe(false);
+    expect(types.has('InternalAudit')).toBe(false);
+  });
+
+  it('returns empty set when all ops are internal', () => {
+    const root = opRoot([
+      opRoute('/admin', [
+        opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'AdminReport', 'application/json')] }),
+      ], undefined, ['internal']),
+    ]);
+    const types = collectPublicTypeNames(root);
+    expect(types.size).toBe(0);
   });
 });

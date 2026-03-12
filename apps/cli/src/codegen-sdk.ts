@@ -1,4 +1,5 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, DtoTypeNode, ParamSource, FieldNode } from './ast.js';
+import { resolveModifiers } from './ast.js';
 import { pascalToDotCase } from './codegen-dto.js';
 import { basename, dirname, relative } from 'path';
 
@@ -15,6 +16,25 @@ export interface SdkCodegenOptions {
     modelsWithInput?: Set<string>;
     /** Default security scheme from config — used when op.security is not set */
     defaultSecurity?: string;
+}
+
+/** Returns true if at least one operation in the root is not internal. */
+export function hasPublicOperations(root: OpRootNode): boolean {
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (!resolveModifiers(route, op).includes('internal')) return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Returns the set of type names directly referenced by public (non-internal)
+ * operations in the root. Does not include transitive dependencies — callers
+ * should expand these through the DTO model graph if needed.
+ */
+export function collectPublicTypeNames(root: OpRootNode, modelsWithInput?: Set<string>): Set<string> {
+    return new Set(collectTypes(root, modelsWithInput));
 }
 
 export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): string {
@@ -101,7 +121,10 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
 
     for (const route of root.routes) {
         for (const op of route.operations) {
+            const mods = resolveModifiers(route, op);
+            if (mods.includes('internal')) continue;
             lines.push('');
+            if (mods.includes('deprecated')) lines.push('    /** @deprecated */');
             lines.push(...generateMethod(route, op, root.file, options));
         }
     }
@@ -262,7 +285,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     // Query (request-side — use Input variants)
     if (op.query) {
         if (Array.isArray(op.query)) {
-            const fields = op.query.map(p => `${p.name}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
+            const fields = op.query.map(p => `${quoteKey(p.name)}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
             params.push({ name: 'query', type: `{ ${fields} }`, optional: true });
         } else if (typeof op.query === 'string') {
             const typeName = modelsWithInput?.has(op.query) ? `${op.query}Input` : op.query;
@@ -275,7 +298,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     // Headers (request-side — use Input variants)
     if (op.headers) {
         if (Array.isArray(op.headers)) {
-            const fields = op.headers.map(p => `${p.name}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
+            const fields = op.headers.map(p => `${quoteKey(p.name)}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
             params.push({ name: 'customHeaders', type: `{ ${fields} }`, optional: true });
         } else if (typeof op.headers === 'string') {
             const typeName = modelsWithInput?.has(op.headers) ? `${op.headers}Input` : op.headers;
@@ -286,6 +309,10 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     }
 
     return params;
+}
+
+export function quoteKey(name: string): string {
+    return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
 }
 
 // ─── TypeScript type rendering ────────────────────────────────────────────
@@ -357,7 +384,7 @@ function renderTsScalar(name: string): string {
 function renderTsInlineObject(fields: FieldNode[]): string {
     const entries = fields.map(f => {
         const opt = f.optional ? '?' : '';
-        return `${f.name}${opt}: ${renderTsType(f.type)}`;
+        return `${quoteKey(f.name)}${opt}: ${renderTsType(f.type)}`;
     });
     return `{ ${entries.join('; ')} }`;
 }
@@ -382,7 +409,7 @@ export function renderInputTsType(type: DtoTypeNode, modelsWithInput?: Set<strin
         case 'union':
             return type.members.map(m => renderInputTsType(m, modelsWithInput)).join(' | ');
         case 'inlineObject':
-            return `{ ${type.fields.map(f => `${f.name}${f.optional ? '?' : ''}: ${renderInputTsType(f.type, modelsWithInput)}`).join('; ')} }`;
+            return `{ ${type.fields.map(f => `${quoteKey(f.name)}${f.optional ? '?' : ''}: ${renderInputTsType(f.type, modelsWithInput)}`).join('; ')} }`;
         case 'lazy':
             return renderInputTsType(type.inner, modelsWithInput);
         default:
@@ -446,9 +473,12 @@ export function deriveClientPropertyName(file: string): string {
 function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[] {
     const types = new Set<string>();
     for (const route of root.routes) {
+        const publicOps = route.operations.filter(op => !resolveModifiers(route, op).includes('internal'));
+        if (publicOps.length === 0) continue;
+        // Only collect path-param types if there are public ops on this route
         collectParamSourceRefs(route.params, types);
         collectParamSourceInputRefs(route.params, types, modelsWithInput);
-        for (const op of route.operations) {
+        for (const op of publicOps) {
             if (op.request?.bodyType) {
                 collectTypeNodeRefs(op.request.bodyType, types);
                 collectInputTypeNodeRefs(op.request.bodyType, types, modelsWithInput);

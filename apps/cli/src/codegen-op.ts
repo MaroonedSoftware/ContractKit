@@ -1,5 +1,6 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource } from './ast.js';
-import { renderType, renderInputType, renderQueryType, pascalToDotCase, typeNeedsDateTime } from './codegen-dto.js';
+import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource, ObjectMode } from './ast.js';
+import { resolveModifiers } from './ast.js';
+import { renderType, renderInputType, renderQueryType, pascalToDotCase, typeNeedsDateTime, modeToWrapper } from './codegen-dto.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -90,6 +91,11 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
         lines.push(` * @security ${effectiveSecurity}`);
     }
 
+    // Modifier annotations
+    const mods = resolveModifiers(route, op);
+    if (mods.includes('internal')) lines.push(` * @internal`);
+    if (mods.includes('deprecated')) lines.push(` * @deprecated`);
+
     lines.push('*/');
 
     const method = op.method;
@@ -107,9 +113,9 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
     lines.push(`${deriveRouterName(file)}.${method}('${path}'${middlewareStr} async (ctx, next) => {`);
 
     // Params / query / headers validation (request-side — use Input variants)
-    lines.push(...generateParamValidation(route.params, 'ctx.params', 'params', 'z.strictObject', '', modelsWithInput));
-    lines.push(...generateParamValidation(op.query, 'ctx.query', 'query', 'z.strictObject', '', modelsWithInput));
-    lines.push(...generateParamValidation(op.headers, 'ctx.headers', 'headers', 'z.object', '.passthrough()', modelsWithInput));
+    lines.push(...generateParamValidation(route.params, 'ctx.params', 'params', route.paramsMode ?? 'strict', '', modelsWithInput));
+    lines.push(...generateParamValidation(op.query, 'ctx.query', 'query', op.queryMode ?? 'strict', '', modelsWithInput));
+    lines.push(...generateParamValidation(op.headers, 'ctx.headers', 'headers', op.headersMode ?? 'loose', '', modelsWithInput));
 
     // Body validation (request-side — use Input variants)
     if (hasBody && op.request) {
@@ -223,30 +229,38 @@ function formatTypeAnnotation(bodyType: DtoTypeNode): { annotation: string; prel
     };
 }
 
-function generateParamValidation(source: ParamSource | undefined, ctxExpr: string, varName: string, schemaWrapper: string, suffix = '', modelsWithInput?: Set<string>): string[] {
+function generateParamValidation(
+    source: ParamSource | undefined,
+    ctxExpr: string,
+    varName: string,
+    mode: ObjectMode,
+    suffix = '',
+    modelsWithInput?: Set<string>,
+): string[] {
     if (!source) return [];
     const lines: string[] = [];
     const isQuery = ctxExpr === 'ctx.query';
     if (typeof source === 'string') {
-        // Type reference name — use Input variant if available
+        // Type reference — apply mode as a method call on the schema
         const typeName = modelsWithInput?.has(source) ? `${source}Input` : source;
-        lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${typeName});`);
+        lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${typeName}.${mode}());`);
         lines.push('');
     } else if (Array.isArray(source)) {
-        // Inline param declarations
+        // Inline param declarations — wrap with the appropriate z.*Object constructor
         if (source.length > 0) {
             // Destructure only for params (spread individually in service call);
             // query/headers are passed as whole objects.
             const lhs = varName === 'params' ? `{ ${source.map(p => p.name).join(', ')} }` : varName;
             lines.push(`    const ${lhs} = await parseAndValidate(`);
             lines.push(`        ${ctxExpr},`);
-            lines.push(`        ${schemaWrapper}({`);
+            lines.push(`        ${modeToWrapper(mode)}({`);
             for (const param of source) {
+                const key = isValidIdentifier(param.name) ? param.name : `'${param.name}'`;
                 if (isQuery && param.type.kind === 'array') {
                     const inner = renderType(param.type);
-                    lines.push(`            ${param.name}: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, ${inner}),`);
+                    lines.push(`            ${key}: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, ${inner}),`);
                 } else {
-                    lines.push(`            ${param.name}: ${renderType(param.type)},`);
+                    lines.push(`            ${key}: ${renderType(param.type)},`);
                 }
             }
             lines.push(`        })${suffix},`);
@@ -255,12 +269,11 @@ function generateParamValidation(source: ParamSource | undefined, ctxExpr: strin
         }
     } else {
         // DtoTypeNode — use query-aware rendering for query params (coerces single string → array),
-        // otherwise use Input variant rendering
-        if (isQuery) {
-            lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${renderQueryType(source, modelsWithInput)});`);
-        } else {
-            lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${renderInputType(source, modelsWithInput)});`);
-        }
+        // otherwise use Input variant rendering; apply mode as a method call
+        const schema = isQuery
+            ? renderQueryType(source, modelsWithInput)
+            : renderInputType(source, modelsWithInput);
+        lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, (${schema}).${mode}());`);
         lines.push('');
     }
     return lines;
@@ -415,14 +428,16 @@ function paramSourceNeedsDateTime(source: ParamSource | undefined): boolean {
 }
 
 function opNeedsDateTime(root: OpRootNode): boolean {
-    return root.routes.some(route =>
-        paramSourceNeedsDateTime(route.params)
-        || route.operations.some(op =>
-            (op.request?.bodyType && typeNeedsDateTime(op.request.bodyType))
-            || op.responses.some(r => r.bodyType && typeNeedsDateTime(r.bodyType))
-            || paramSourceNeedsDateTime(op.query)
-            || paramSourceNeedsDateTime(op.headers),
-        ),
+    return root.routes.some(
+        route =>
+            paramSourceNeedsDateTime(route.params) ||
+            route.operations.some(
+                op =>
+                    (op.request?.bodyType && typeNeedsDateTime(op.request.bodyType)) ||
+                    op.responses.some(r => r.bodyType && typeNeedsDateTime(r.bodyType)) ||
+                    paramSourceNeedsDateTime(op.query) ||
+                    paramSourceNeedsDateTime(op.headers),
+            ),
     );
 }
 
@@ -453,6 +468,10 @@ function routeNeedsValidation(root: OpRootNode): boolean {
     return root.routes.some(
         r => hasParamSource(r.params) || r.operations.some(op => !!op.request || hasParamSource(op.query) || hasParamSource(op.headers)),
     );
+}
+
+function isValidIdentifier(name: string): boolean {
+    return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
 }
 
 // ─── Naming conventions ────────────────────────────────────────────────────

@@ -20,6 +20,12 @@ const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 
 const OP_BLOCK_KEYWORDS = ['service', 'sdk', 'query', 'headers', 'request', 'response', 'security'];
 
+const OBJECT_MODES: Array<{ label: string; detail: string }> = [
+    { label: 'strict', detail: 'Reject unknown keys (z.strictObject)' },
+    { label: 'strip',  detail: 'Strip unknown keys silently (z.object)' },
+    { label: 'loose',  detail: 'Pass unknown keys through (z.looseObject)' },
+];
+
 const SECURITY_SCHEMES: Array<{ label: string; detail: string; insertText?: string }> = [
     { label: 'bearer', detail: 'Bearer token (Authorization: Bearer <token>)' },
     { label: 'apiKey', detail: 'API key via header/query/cookie', insertText: 'apiKey(header="$1")' },
@@ -27,6 +33,11 @@ const SECURITY_SCHEMES: Array<{ label: string; detail: string; insertText?: stri
 ];
 
 const SECURITY_SCHEME_ARG_KEYS = ['header', 'query', 'cookie'];
+
+const ROUTE_MODIFIERS: Array<{ label: string; detail: string }> = [
+    { label: 'internal',   detail: 'Exclude from SDK and API docs' },
+    { label: 'deprecated', detail: 'Mark as deprecated in SDK and API docs' },
+];
 
 export function getCompletions(
     params: TextDocumentPositionParams,
@@ -125,6 +136,15 @@ function getDtoCompletions(
         ];
     }
 
+    // At top-level (before a model declaration) — offer object mode modifiers
+    if (/^\s*$/.test(textBefore) && !isInsideBraces(lines, line)) {
+        return OBJECT_MODES.map(({ label, detail }) => ({
+            label,
+            kind: CompletionItemKind.Keyword,
+            detail: `Model mode: ${detail}`,
+        }));
+    }
+
     return [];
 }
 
@@ -136,10 +156,33 @@ function getOpCompletions(
 ): CompletionItem[] {
     const context = getOpContext(lines, line);
 
-    // At route body level — offer HTTP methods and params
+    // After route path + `:` at top-level — offer route modifiers
+    if (context === 'top-level' && /\/[a-zA-Z0-9_/:.-]+\s*:\s*\w*$/.test(textBefore)) {
+        return ROUTE_MODIFIERS.map(({ label, detail }) => ({
+            label,
+            kind: CompletionItemKind.Keyword,
+            detail,
+        }));
+    }
+
+    // After `httpMethod:` in route-body — offer modifiers (before `{`)
+    if (context === 'route-body' && /\b(?:get|post|put|patch|delete)\s*:\s*(?:(?:internal|deprecated)\s+)*\w*$/.test(textBefore)) {
+        return ROUTE_MODIFIERS.map(({ label, detail }) => ({
+            label,
+            kind: CompletionItemKind.Keyword,
+            detail,
+        }));
+    }
+
+    // At route body level — offer HTTP methods, params, and mode modifiers
     if (context === 'route-body' && /^\s*\w*$/.test(textBefore)) {
         return [
             { label: 'params', kind: CompletionItemKind.Keyword },
+            ...OBJECT_MODES.map(({ label, detail }) => ({
+                label,
+                kind: CompletionItemKind.Keyword,
+                detail: `params mode: ${detail}`,
+            })),
             ...HTTP_METHODS.map((m) => ({
                 label: m,
                 kind: CompletionItemKind.Keyword,
@@ -148,12 +191,32 @@ function getOpCompletions(
         ];
     }
 
-    // At operation body level — offer operation keywords
+    // After a mode modifier in route-body — complete 'params'
+    if (context === 'route-body' && /^\s*(strict|strip|loose)\s+\w*$/.test(textBefore)) {
+        return [{ label: 'params', kind: CompletionItemKind.Keyword }];
+    }
+
+    // At operation body level — offer operation keywords and mode modifiers
     if (context === 'operation-body' && /^\s*\w*$/.test(textBefore)) {
-        return OP_BLOCK_KEYWORDS.map((k) => ({
-            label: k,
-            kind: CompletionItemKind.Keyword,
-        }));
+        return [
+            ...OP_BLOCK_KEYWORDS.map((k) => ({
+                label: k,
+                kind: CompletionItemKind.Keyword,
+            })),
+            ...OBJECT_MODES.map(({ label, detail }) => ({
+                label,
+                kind: CompletionItemKind.Keyword,
+                detail: `query/headers mode: ${detail}`,
+            })),
+        ];
+    }
+
+    // After a mode modifier in operation-body — complete 'query' or 'headers'
+    if (context === 'operation-body' && /^\s*(strict|strip|loose)\s+\w*$/.test(textBefore)) {
+        return [
+            { label: 'query',   kind: CompletionItemKind.Keyword },
+            { label: 'headers', kind: CompletionItemKind.Keyword },
+        ];
     }
 
     // After security: — offer security schemes
@@ -197,8 +260,8 @@ function getOpCompletions(
         }));
     }
 
-    // After query: or headers: or params: — offer types and model names
-    if (/(?:query|headers|params)\s*:\s*\w*$/.test(textBefore)) {
+    // After query: or headers: or params: (optionally preceded by a mode modifier) — offer types and model names
+    if (/(?:(?:strict|strip|loose)\s+)?(?:query|headers|params)\s*:\s*\w*$/.test(textBefore)) {
         return [
             ...BUILTIN_SCALAR_TYPES.map((t) => ({
                 label: t,

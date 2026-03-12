@@ -15,7 +15,16 @@ import type {
     InlineObjectTypeNode,
     IntersectionTypeNode,
     LazyTypeNode,
+    ObjectMode,
 } from './ast.js';
+
+export function modeToWrapper(mode: ObjectMode): string {
+    switch (mode) {
+        case 'strict': return 'z.strictObject';
+        case 'strip':  return 'z.object';
+        case 'loose':  return 'z.looseObject';
+    }
+}
 
 // ─── Cross-file import resolution ─────────────────────────────────────────
 
@@ -156,12 +165,13 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
 
     const body = renderFields(model.fields);
 
+    const wrapper = modeToWrapper(model.mode ?? 'strict');
     if (model.base) {
         lines.push(`export const ${model.name} = ${model.base}.extend({`);
         lines.push(...body.map(l => `    ${l}`));
         lines.push(`});`);
     } else {
-        lines.push(`export const ${model.name} = z.strictObject({`);
+        lines.push(`export const ${model.name} = ${wrapper}({`);
         lines.push(...body.map(l => `    ${l}`));
         lines.push(`});`);
     }
@@ -176,6 +186,8 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
 
     lines.push(...generateComments(model, outPath));
 
+    const wrapper = modeToWrapper(model.mode ?? 'strict');
+
     // Base schema — all fields (used internally when a submodel extends this one)
     const allFields = model.fields;
     const baseBody = renderFields(allFields);
@@ -186,7 +198,7 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
     if (baseParent) {
         lines.push(`const ${name}Base = ${baseParent}.extend({`);
     } else {
-        lines.push(`const ${name}Base = z.strictObject({`);
+        lines.push(`const ${name}Base = ${wrapper}({`);
     }
     lines.push(...baseBody.map(l => `    ${l}`));
     lines.push(`});`);
@@ -198,7 +210,7 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
     if (model.base) {
         lines.push(`export const ${name} = ${model.base}.extend({`);
     } else {
-        lines.push(`export const ${name} = z.strictObject({`);
+        lines.push(`export const ${name} = ${wrapper}({`);
     }
     lines.push(...readBody.map(l => `    ${l}`));
     lines.push(`});`);
@@ -215,7 +227,7 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
     if (writeBase) {
         lines.push(`export const ${name}Input = ${writeBase}.extend({`);
     } else {
-        lines.push(`export const ${name}Input = z.strictObject({`);
+        lines.push(`export const ${name}Input = ${wrapper}({`);
     }
     lines.push(...writeBody.map(l => `    ${l}`));
     lines.push(`});`);
@@ -242,7 +254,7 @@ function renderField(field: FieldNode): string {
     }
     if (field.description) expr += `.describe("${escapeString(field.description)}")`;
 
-    return `${field.name}: ${expr},`;
+    return `${quoteKey(field.name)}: ${expr},`;
 }
 
 // ─── Type rendering ────────────────────────────────────────────────────────
@@ -379,7 +391,7 @@ function renderIntersection(i: IntersectionTypeNode): string {
 
 function renderInlineObject(o: InlineObjectTypeNode): string {
     const fields = o.fields.map(f => `    ${renderField(f)}`).join('\n');
-    return `z.strictObject({\n${fields}\n})`;
+    return `${modeToWrapper(o.mode ?? 'strict')}({\n${fields}\n})`;
 }
 
 // ─── Input type rendering ─────────────────────────────────────────────────
@@ -434,7 +446,7 @@ export function renderInputType(type: DtoTypeNode, modelsWithInput?: Set<string>
             return `z.lazy(() => ${renderInputType(type.inner, modelsWithInput)})`;
         case 'inlineObject': {
             const fields = type.fields.map(f => `    ${renderInputField(f, modelsWithInput ?? new Set())}`).join('\n');
-            return `z.strictObject({\n${fields}\n})`;
+            return `${modeToWrapper(type.mode ?? 'strict')}({\n${fields}\n})`;
         }
         default:
             return renderType(type);
@@ -453,7 +465,7 @@ function renderInputField(field: FieldNode, modelsWithInput: Set<string>): strin
     }
     if (field.description) expr += `.describe("${escapeString(field.description)}")`;
 
-    return `${field.name}: ${expr},`;
+    return `${quoteKey(field.name)}: ${expr},`;
 }
 
 function renderInputFields(fields: FieldNode[], modelsWithInput: Set<string>): string[] {
@@ -475,7 +487,7 @@ export function renderQueryType(type: DtoTypeNode, modelsWithInput?: Set<string>
         }
         case 'inlineObject': {
             const fields = type.fields.map(f => `    ${renderQueryField(f, modelsWithInput)}`).join('\n');
-            return `z.strictObject({\n${fields}\n})`;
+            return `${modeToWrapper(type.mode ?? 'strict')}({\n${fields}\n})`;
         }
         case 'intersection': {
             const [first, ...rest] = type.members;
@@ -512,7 +524,15 @@ function renderQueryField(field: FieldNode, modelsWithInput?: Set<string>): stri
     }
     if (field.description) expr += `.describe("${escapeString(field.description)}")`;
 
-    return `${field.name}: ${expr},`;
+    return `${quoteKey(field.name)}: ${expr},`;
+}
+
+function isValidIdentifier(name: string): boolean {
+    return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
+}
+
+function quoteKey(name: string): string {
+    return isValidIdentifier(name) ? name : `'${name}'`;
 }
 
 // ─── String escaping ──────────────────────────────────────────────────────

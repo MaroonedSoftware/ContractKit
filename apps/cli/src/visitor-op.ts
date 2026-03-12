@@ -4,9 +4,12 @@ import type {
   OpRootNode, OpRouteNode, OpOperationNode, OpParamNode,
   OpRequestNode, OpResponseNode, HttpMethod, DtoTypeNode,
   FieldNode, ParamSource, ScalarTypeNode, InlineObjectTypeNode,
-  SecurityNode, SecuritySchemeNode,
+  SecurityNode, SecuritySchemeNode, ObjectMode, RouteModifier,
 } from './ast.js';
 import { SCALAR_NAMES } from './ast.js';
+
+const OBJECT_MODES = new Set<string>(['strict', 'strip', 'loose']);
+const ROUTE_MODIFIERS = new Set<string>(['internal', 'deprecated']);
 import type { DiagnosticCollector } from './diagnostics.js';
 
 const BaseOpVisitor = opCstParser.getBaseCstVisitorConstructor();
@@ -91,18 +94,26 @@ export class OpVisitor extends BaseOpVisitor {
   routeDecl(ctx: any): OpRouteNode {
     const path: string = this.visit(ctx.routePath[0]);
     const line = ctx.LBrace?.[0]?.startLine ?? 0;
-    const description = this.consumeInlineComment(line);
+    const description = this.consumeComment(line);
 
-    let params: OpParamNode[] | undefined;
+    // Modifier identifiers are consumed directly in routeDecl (not inside routePath sub-rule)
+    const modifierTokens: IToken[] = ctx.Identifier ?? [];
+    const modifiers: RouteModifier[] | undefined = modifierTokens.length > 0
+      ? modifierTokens.map(t => t.image as RouteModifier).filter(m => ROUTE_MODIFIERS.has(m))
+      : undefined;
+
+    let params: ParamSource | undefined;
+    let paramsMode: ObjectMode | undefined;
     let operations: OpOperationNode[] = [];
 
     if (ctx.routeBody) {
-      const body = this.visit(ctx.routeBody[0]);
+      const body = this.visit(ctx.routeBody[0]) as { params?: ParamSource; paramsMode?: ObjectMode; operations: OpOperationNode[] };
       params = body.params;
+      paramsMode = body.paramsMode;
       operations = body.operations;
     }
 
-    return { path, params, operations, description, loc: { file: this.file, line } };
+    return { path, params, paramsMode, operations, modifiers, description, loc: { file: this.file, line } };
   }
 
   routePath(ctx: any): string {
@@ -117,12 +128,15 @@ export class OpVisitor extends BaseOpVisitor {
     return allToks.map(t => t.image || t.tokenType.name.charAt(0).toLowerCase()).join('');
   }
 
-  routeBody(ctx: any): { params?: OpParamNode[]; operations: OpOperationNode[] } {
-    let params: OpParamNode[] | undefined;
+  routeBody(ctx: any): { params?: ParamSource; paramsMode?: ObjectMode; operations: OpOperationNode[] } {
+    let params: ParamSource | undefined;
+    let paramsMode: ObjectMode | undefined;
     const operations: OpOperationNode[] = [];
 
     if (ctx.paramsBlock) {
-      params = this.visit(ctx.paramsBlock[0]);
+      const result = this.visit(ctx.paramsBlock[0]) as { source: ParamSource; mode?: ObjectMode };
+      params = result.source;
+      paramsMode = result.mode;
     }
     if (ctx.httpOperation) {
       for (const opCst of ctx.httpOperation) {
@@ -131,10 +145,10 @@ export class OpVisitor extends BaseOpVisitor {
       }
     }
 
-    return { params, operations };
+    return { params, paramsMode, operations };
   }
 
-  paramsBlock(ctx: any): ParamSource {
+  paramsBlock(ctx: any): { source: ParamSource; mode?: ObjectMode } {
     return this.visitParamSource(ctx);
   }
 
@@ -158,38 +172,51 @@ export class OpVisitor extends BaseOpVisitor {
   }
 
   httpOperation(ctx: any): OpOperationNode {
-    const methodToken: IToken = ctx.Identifier[0];
+    const identifiers: IToken[] = ctx.Identifier || [];
+    const methodToken = identifiers[0]!;
     const method = methodToken.image.toLowerCase() as HttpMethod;
     const line = methodToken.startLine ?? 0;
-    const description = this.consumeInlineComment(line);
+    const description = this.consumeComment(line);
+
+    // Modifier tokens follow the HTTP method identifier (index 1+)
+    const modifierTokens = identifiers.slice(1);
+    const modifiers: RouteModifier[] | undefined = modifierTokens.length > 0
+      ? modifierTokens.map(t => t.image as RouteModifier).filter(m => ROUTE_MODIFIERS.has(m))
+      : undefined;
 
     let service: string | undefined;
     let sdk: string | undefined;
     let query: ParamSource | undefined;
+    let queryMode: ObjectMode | undefined;
     let headers: ParamSource | undefined;
+    let headersMode: ObjectMode | undefined;
     let request: OpRequestNode | undefined;
     let responses: OpResponseNode[] = [];
     let security: SecurityNode | undefined;
 
     if (ctx.operationBody) {
-      const body = this.visit(ctx.operationBody[0]);
+      const body = this.visit(ctx.operationBody[0]) as { service?: string; sdk?: string; query?: ParamSource; queryMode?: ObjectMode; headers?: ParamSource; headersMode?: ObjectMode; request?: OpRequestNode; responses: OpResponseNode[]; security?: SecurityNode };
       service = body.service;
       sdk = body.sdk;
       query = body.query;
+      queryMode = body.queryMode;
       headers = body.headers;
+      headersMode = body.headersMode;
       request = body.request;
       responses = body.responses;
       security = body.security;
     }
 
-    return { method, service, sdk, query, headers, request, responses, security, description, loc: { file: this.file, line } };
+    return { method, service, sdk, query, queryMode, headers, headersMode, request, responses, security, modifiers, description, loc: { file: this.file, line } };
   }
 
-  operationBody(ctx: any): { service?: string; sdk?: string; query?: ParamSource; headers?: ParamSource; request?: OpRequestNode; responses: OpResponseNode[]; security?: SecurityNode } {
+  operationBody(ctx: any): { service?: string; sdk?: string; query?: ParamSource; queryMode?: ObjectMode; headers?: ParamSource; headersMode?: ObjectMode; request?: OpRequestNode; responses: OpResponseNode[]; security?: SecurityNode } {
     let service: string | undefined;
     let sdk: string | undefined;
     let query: ParamSource | undefined;
+    let queryMode: ObjectMode | undefined;
     let headers: ParamSource | undefined;
+    let headersMode: ObjectMode | undefined;
     let request: OpRequestNode | undefined;
     let responses: OpResponseNode[] = [];
     let security: SecurityNode | undefined;
@@ -201,10 +228,14 @@ export class OpVisitor extends BaseOpVisitor {
       sdk = this.visit(ctx.sdkDecl[0]);
     }
     if (ctx.queryBlock) {
-      query = this.visit(ctx.queryBlock[0]);
+      const result = this.visit(ctx.queryBlock[0]) as { source: ParamSource; mode?: ObjectMode };
+      query = result.source;
+      queryMode = result.mode;
     }
     if (ctx.headersBlock) {
-      headers = this.visit(ctx.headersBlock[0]);
+      const result = this.visit(ctx.headersBlock[0]) as { source: ParamSource; mode?: ObjectMode };
+      headers = result.source;
+      headersMode = result.mode;
     }
     if (ctx.requestBlock) {
       request = this.visit(ctx.requestBlock[0]);
@@ -216,7 +247,7 @@ export class OpVisitor extends BaseOpVisitor {
       security = this.visit(ctx.securityBlock[0]);
     }
 
-    return { service, sdk, query, headers, request, responses, security };
+    return { service, sdk, query, queryMode, headers, headersMode, request, responses, security };
   }
 
   securityBlock(ctx: any): SecurityNode {
@@ -271,17 +302,29 @@ export class OpVisitor extends BaseOpVisitor {
     return { value: strings[0]?.image ?? '' };
   }
 
-  queryBlock(ctx: any): ParamSource {
+  queryBlock(ctx: any): { source: ParamSource; mode?: ObjectMode } {
+    const identifiers: IToken[] = ctx.Identifier || [];
+    const mode = identifiers.length > 0 && OBJECT_MODES.has(identifiers[0]!.image)
+      ? identifiers[0]!.image as ObjectMode
+      : undefined;
     const typeNode: DtoTypeNode = this.visit(ctx.opTypeExpr[0]);
-    return typeNodeToParamSource(typeNode);
+    return { source: typeNodeToParamSource(typeNode), mode };
   }
 
-  headersBlock(ctx: any): ParamSource {
+  headersBlock(ctx: any): { source: ParamSource; mode?: ObjectMode } {
+    const identifiers: IToken[] = ctx.Identifier || [];
+    const mode = identifiers.length > 0 && OBJECT_MODES.has(identifiers[0]!.image)
+      ? identifiers[0]!.image as ObjectMode
+      : undefined;
     const typeNode: DtoTypeNode = this.visit(ctx.opTypeExpr[0]);
-    return typeNodeToParamSource(typeNode);
+    return { source: typeNodeToParamSource(typeNode), mode };
   }
 
-  private visitParamSource(ctx: any): ParamSource {
+  private visitParamSource(ctx: any): { source: ParamSource; mode?: ObjectMode } {
+    const identifiers: IToken[] = ctx.Identifier || [];
+    const hasMode = identifiers.length > 0 && OBJECT_MODES.has(identifiers[0]!.image);
+    const mode = hasMode ? identifiers[0]!.image as ObjectMode : undefined;
+
     // Block form: keyword { name: type ... }
     if (ctx.LBrace) {
       const params: OpParamNode[] = [];
@@ -291,11 +334,12 @@ export class OpVisitor extends BaseOpVisitor {
           if (param) params.push(param);
         }
       }
-      return params;
+      return { source: params, mode };
     }
     // Declaration form: keyword: TypeName
-    const identifiers: IToken[] = ctx.Identifier || [];
-    return identifiers[1]?.image ?? '';
+    // identifiers layout: [mode?, keyword, typeRef?]
+    const typeRef = identifiers[hasMode ? 2 : 1]?.image ?? '';
+    return { source: typeRef, mode };
   }
 
   serviceDecl(ctx: any): string {
