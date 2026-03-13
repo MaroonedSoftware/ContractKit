@@ -98,7 +98,7 @@ describe('OP pipeline (source -> parse -> codegen)', () => {
   it('compiles a simple operation to Koa router code', () => {
     const { output, diag } = compileOpSource(SIMPLE_USERS_OP);
     expect(diag.hasErrors()).toBe(false);
-    expect(output).toContain("import { z } from 'zod';");
+    expect(output).not.toContain("import { z } from 'zod';");
     expect(output).toContain('ServerKitRouter');
     expect(output).toContain("UsersRouter.get('/users'");
     expect(output).toContain("UsersRouter.post('/users'");

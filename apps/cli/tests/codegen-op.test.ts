@@ -22,10 +22,16 @@ describe('generateOp', () => {
     // ─── Imports ───────────────────────────────────────────────────
 
     describe('imports', () => {
-        it('generates zod import', () => {
-            const root = opRoot([opRoute('/x', [opOperation('get')])]);
+        it('generates zod import when inline params are used', () => {
+            const root = opRoot([opRoute('/users/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
             const output = generateOp(root);
             expect(output).toContain("import { z } from 'zod';");
+        });
+
+        it('omits zod import when no inline schemas are generated', () => {
+            const root = opRoot([opRoute('/x', [opOperation('get')])]);
+            const output = generateOp(root);
+            expect(output).not.toContain("import { z } from 'zod';");
         });
 
         it('generates ServerKitRouter import', () => {

@@ -18,34 +18,35 @@ export interface OpCodegenOptions {
 }
 
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
-    const lines: string[] = [];
-
     // Collect all referenced types across all routes
     const types = collectTypes(root, options.modelsWithInput);
     const services = collectServices(root);
     const routerName = deriveRouterName(root.file);
     const needsParseAndValidate = routeNeedsValidation(root);
 
-    // Imports
-    lines.push(`import { z } from 'zod';`);
-    lines.push(`import { ServerKitRouter, bodyParserMiddleware } from '@maroonedsoftware/koa';`);
+    // Generate the body first so we can detect whether `z.` is actually referenced
+    // before deciding whether to emit the zod import.
+    const body: string[] = [];
+    body.push(`import { ServerKitRouter, bodyParserMiddleware } from '@maroonedsoftware/koa';`);
 
     for (const svc of services) {
         const modulePath = root.meta[svc] ?? deriveModulePath(svc, options.servicePathTemplate);
-        lines.push(`import { ${svc} } from '${modulePath}';`);
+        body.push(`import { ${svc} } from '${modulePath}';`);
     }
 
     if (types.length > 0) {
-        lines.push(...generateTypeImports(types, root.file, options));
+        body.push(...generateTypeImports(types, root.file, options));
     }
 
     if (opNeedsDateTime(root)) {
-        lines.push(`import { DateTime } from 'luxon';`);
+        body.push(`import { DateTime } from 'luxon';`);
     }
 
     if (needsParseAndValidate) {
-        lines.push(`import { parseAndValidate } from '#src/shared/validator.js';`);
+        body.push(`import { parseAndValidate } from '#src/shared/validator.js';`);
     }
+
+    const lines: string[] = [];
 
     lines.push('');
     lines.push('/**');
@@ -62,7 +63,9 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
         }
     }
 
-    return lines.join('\n');
+    const allContent = [...body, ...lines].join('\n');
+    const needsZod = /\bz\./.test(allContent);
+    return (needsZod ? `import { z } from 'zod';\n` : '') + allContent;
 }
 
 // ─── Handler generation ────────────────────────────────────────────────────
