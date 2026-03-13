@@ -18,22 +18,15 @@ pnpm test
 ### CLI Usage
 
 ```bash
-dsl-compile [files/globs...] [options]
+dsl-compile [options]
 
 Options:
-  -o, --out-dir <path>          Output directory for generated files
-  -w, --watch                   Watch for changes and recompile
-  --service-path <template>     Service module path template
-  --force                       Skip incremental cache, recompile all
+  -c, --config <path>  Path to config file (default: searches for contract-dsl.config.json)
+  -w, --watch          Watch for changes and recompile
+      --force          Skip incremental cache, recompile all
 ```
 
-Examples:
-
-```bash
-dsl-compile src/contracts/**/*.dto --out-dir dist/types
-dsl-compile user.dto ledger.op --out-dir out
-dsl-compile --service-path "#services/{kebab}.service.js"
-```
+The compiler searches upward from the current directory for `contract-dsl.config.json`. All configuration is done through the config file.
 
 ## Configuration File
 
@@ -41,21 +34,112 @@ Create `contract-dsl.config.json` in your project root (or any parent directory)
 
 ```json
 {
-  "outDir": "dist/generated",
-  "patterns": ["contracts/**/*.{dto,op}"],
-  "servicePathTemplate": "#services/{kebab}.service.js",
-  "typeImportPathTemplate": "#types/{kebab}.dto.js"
+    "rootDir": ".",
+    "cache": true,
+    "prettier": true,
+    "server": {
+        "baseDir": "apps/api/",
+        "types": {
+            "include": ["contracts/types/**/*.dto"],
+            "output": "src/types"
+        },
+        "routes": {
+            "include": ["contracts/operations/**/*.op"],
+            "output": "src/routes",
+            "servicePathTemplate": "#modules/{module}/{module}.service.js",
+            "typeImportPathTemplate": "#types/{kebab}.dto.js",
+            "security": "bearer"
+        }
+    },
+    "sdk": {
+        "baseDir": "packages/sdk/",
+        "name": "myapp",
+        "output": "src/{name}.sdk.ts",
+        "types": {
+            "include": ["contracts/types/**/*.dto"],
+            "output": "src/types"
+        },
+        "clients": {
+            "include": ["contracts/operations/**/*.op"],
+            "output": "src/clients",
+            "typeImportPathTemplate": "#sdk/types/{kebab}.js"
+        }
+    },
+    "docs": {
+        "openapi": {
+            "output": "openapi.yaml",
+            "info": {
+                "title": "My API",
+                "version": "1.0.0"
+            },
+            "servers": [{ "url": "https://api.example.com" }]
+        },
+        "markdown": {
+            "output": "api-reference.md"
+        }
+    }
 }
 ```
 
-CLI flags override config file values. The compiler searches upward from the current directory for the config file.
+### Config Reference
 
-| Field | Description |
-|-------|-------------|
-| `outDir` | Output directory for generated files |
-| `patterns` | Glob patterns for source files |
-| `servicePathTemplate` | Template for service import paths (`{name}`, `{kebab}`, `{module}`) |
-| `typeImportPathTemplate` | Template for type import paths (`{name}`, `{kebab}`, `{module}`) |
+| Field      | Type                | Description                                                                                       |
+| ---------- | ------------------- | ------------------------------------------------------------------------------------------------- |
+| `rootDir`  | `string`            | Base directory for resolving relative paths. Default: `.`                                         |
+| `cache`    | `boolean \| string` | Enable incremental compilation cache. Pass a string for a custom cache filename. Default: `false` |
+| `prettier` | `boolean`           | Format generated TypeScript files with your local prettier. Default: `false`                      |
+| `patterns` | `string[]`          | Additional glob patterns to include (supplements `server` and `sdk` includes)                     |
+| `server`   | `object`            | Server-side codegen configuration                                                                 |
+| `sdk`      | `object`            | SDK/client codegen configuration (opt-in)                                                         |
+| `docs`     | `object`            | Documentation generation configuration (opt-in)                                                   |
+
+#### `server`
+
+| Field                           | Type       | Description                                                            |
+| ------------------------------- | ---------- | ---------------------------------------------------------------------- |
+| `baseDir`                       | `string`   | Base directory for resolving server-side globs                         |
+| `types.include`                 | `string[]` | Glob patterns for `.dto` files                                         |
+| `types.output`                  | `string`   | Output directory (or template) for generated Zod schemas               |
+| `routes.include`                | `string[]` | Glob patterns for `.op` files                                          |
+| `routes.output`                 | `string`   | Output directory (or template) for generated Koa routers               |
+| `routes.servicePathTemplate`    | `string`   | Template for service import paths (`{module}`, `{name}`, `{kebab}`)    |
+| `routes.typeImportPathTemplate` | `string`   | Template for type import paths                                         |
+| `routes.security`               | `string`   | Default security scheme for all operations (e.g. `"bearer"`, `"none"`) |
+
+#### `sdk`
+
+| Field                            | Type       | Description                                                 |
+| -------------------------------- | ---------- | ----------------------------------------------------------- |
+| `baseDir`                        | `string`   | Base directory for the SDK package                          |
+| `name`                           | `string`   | SDK class name prefix                                       |
+| `output`                         | `string`   | Path for the aggregator entry file. Template vars: `{name}` |
+| `types.include`                  | `string[]` | Glob patterns for `.dto` files to include in SDK types      |
+| `types.output`                   | `string`   | Output directory for plain TypeScript types (no Zod)        |
+| `clients.include`                | `string[]` | Glob patterns for `.op` files                               |
+| `clients.output`                 | `string`   | Output directory for client classes                         |
+| `clients.typeImportPathTemplate` | `string`   | Template for type imports within the SDK                    |
+
+#### `docs.openapi`
+
+| Field              | Type     | Description                                   |
+| ------------------ | -------- | --------------------------------------------- |
+| `baseDir`          | `string` | Base directory for the output file            |
+| `output`           | `string` | Output filename. Default: `openapi.yaml`      |
+| `info.title`       | `string` | API title                                     |
+| `info.version`     | `string` | API version                                   |
+| `info.description` | `string` | API description                               |
+| `servers`          | `array`  | List of `{ url, description }` server entries |
+| `securitySchemes`  | `object` | OpenAPI security scheme definitions           |
+| `security`         | `array`  | Global security requirements                  |
+
+Only types referenced by public (non-`internal`) operations are included in the generated schema. Types used only by internal operations are automatically excluded.
+
+#### `docs.markdown`
+
+| Field     | Type     | Description                                  |
+| --------- | -------- | -------------------------------------------- |
+| `baseDir` | `string` | Base directory for the output file           |
+| `output`  | `string` | Output filename. Default: `api-reference.md` |
 
 ## DSL Language Reference
 
@@ -86,42 +170,42 @@ Admin: User {
 
 #### Scalar Types
 
-| Type | Zod Output |
-|------|------------|
-| `string` | `z.string()` |
-| `number` | `z.number()` |
-| `int` | `z.number().int()` |
-| `bigint` | `z.bigint()` |
-| `boolean` | `z.boolean()` |
-| `date` | `z.string().date()` |
-| `datetime` | Luxon `DateTime` |
-| `email` | `z.string().email()` |
-| `url` | `z.string().url()` |
-| `uuid` | `z.string().uuid()` |
-| `any` | `z.any()` |
-| `unknown` | `z.unknown()` |
-| `null` | `z.null()` |
-| `object` | `z.object({})` |
-| `binary` | `z.instanceof(Buffer)` |
+| Type       | Zod Output             |
+| ---------- | ---------------------- |
+| `string`   | `z.string()`           |
+| `number`   | `z.number()`           |
+| `int`      | `z.number().int()`     |
+| `bigint`   | `z.bigint()`           |
+| `boolean`  | `z.boolean()`          |
+| `date`     | `z.string().date()`    |
+| `datetime` | Luxon `DateTime`       |
+| `email`    | `z.string().email()`   |
+| `url`      | `z.string().url()`     |
+| `uuid`     | `z.string().uuid()`    |
+| `any`      | `z.any()`              |
+| `unknown`  | `z.unknown()`          |
+| `null`     | `z.null()`             |
+| `object`   | `z.object({})`         |
+| `binary`   | `z.instanceof(Buffer)` |
 
 #### Compound Types
 
-| Syntax | Zod Output |
-|--------|------------|
-| `array(T)` | `z.array(T)` |
-| `tuple(A, B)` | `z.tuple([A, B])` |
-| `record(K, V)` | `z.record(K, V)` |
-| `enum(a, b, c)` | `z.enum(["a", "b", "c"])` |
-| `literal("val")` | `z.literal("val")` |
-| `lazy(T)` | `z.lazy(() => T)` |
-| `A \| B` | `z.union([A, B])` |
+| Syntax           | Zod Output                |
+| ---------------- | ------------------------- |
+| `array(T)`       | `z.array(T)`              |
+| `tuple(A, B)`    | `z.tuple([A, B])`         |
+| `record(K, V)`   | `z.record(K, V)`          |
+| `enum(a, b, c)`  | `z.enum(["a", "b", "c"])` |
+| `literal("val")` | `z.literal("val")`        |
+| `lazy(T)`        | `z.lazy(() => T)`         |
+| `A \| B`         | `z.union([A, B])`         |
 
 #### Field Modifiers
 
-- **`readonly`** -- Field only in read schema (excluded from write/input schema)
-- **`writeonly`** -- Field only in write schema (excluded from read schema)
-- **`?`** -- Optional (nullable) field
-- **`= value`** -- Default value
+- **`readonly`** — Field only in read schema (excluded from write/input schema)
+- **`writeonly`** — Field only in write schema (excluded from read schema)
+- **`?`** — Optional (nullable) field
+- **`= value`** — Default value
 
 When a model uses `readonly` or `writeonly` modifiers, the compiler generates a three-schema pattern: `ModelBase`, `Model` (read), and `ModelInput` (write).
 
@@ -135,12 +219,12 @@ tags: array(string, min=1, max=10)
 slug: string(regex=[a-z0-9-]+)
 ```
 
-| Constraint | Applies To | Description |
-|------------|-----------|-------------|
-| `min=N` | string, number, array | Minimum length/value/count |
-| `max=N` | string, number, array | Maximum length/value/count |
-| `length=N` | string | Exact length |
-| `regex=PATTERN` | string | Regex validation |
+| Constraint      | Applies To            | Description                |
+| --------------- | --------------------- | -------------------------- |
+| `min=N`         | string, number, array | Minimum length/value/count |
+| `max=N`         | string, number, array | Maximum length/value/count |
+| `length=N`      | string                | Exact length               |
+| `regex=PATTERN` | string                | Regex validation           |
 
 #### Descriptions
 
@@ -207,6 +291,39 @@ Define API endpoints that compile to Koa router code.
 #### HTTP Methods
 
 `get`, `post`, `put`, `patch`, `delete`
+
+#### Route Modifiers
+
+Modifiers appear after `:` on route or operation declarations:
+
+```
+# Exclude from SDK and API docs (server code still generated)
+/admin/users: internal {
+    get
+    post
+}
+
+# Mark as deprecated
+/v1/users: deprecated {
+    get
+}
+
+# Override route-level internal for a specific operation
+/admin/users: internal {
+    get: public {
+        response { 200 { application/json: array(User) } }
+    }
+    post   # still internal
+}
+```
+
+| Modifier     | Scope              | Effect                                                                                                         |
+| ------------ | ------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `internal`   | route or operation | Excluded from SDK client generation, markdown docs, and OpenAPI output. Server router code is still generated. |
+| `deprecated` | route or operation | Adds `@deprecated` JSDoc and `deprecated: true` in OpenAPI output.                                             |
+| `public`     | operation only     | Overrides a route-level `internal` modifier to make a specific operation public.                               |
+
+Operation-level modifiers replace (not merge with) route-level modifiers. Use `public` to selectively expose individual operations on an otherwise-internal route.
 
 #### Path Parameters
 
@@ -291,6 +408,23 @@ delete {
 }
 ```
 
+#### Security
+
+```
+post {
+    security: bearer
+    request {
+        application/json: CreateTransferIntent
+    }
+}
+
+get {
+    security: none
+}
+```
+
+Security can also be set as a default at the route level via `routes.security` in the config.
+
 #### Service Binding
 
 ```
@@ -319,6 +453,43 @@ post {
 
 Comments before routes and operations are emitted as JSDoc in generated code.
 
+## SDK Generation
+
+When `sdk` is configured, the compiler generates a typed HTTP client package alongside the server code.
+
+Each `.op` file produces a client class (e.g. `users.op` → `UsersClient`). An aggregator class and barrel exports are generated automatically.
+
+Operations marked `internal` are excluded from the SDK. Only types reachable from public operations are included in the SDK types package.
+
+```typescript
+import { MyappSdk } from '@myapp/sdk';
+
+const sdk = new MyappSdk({ baseUrl: 'https://api.example.com' });
+const users = await sdk.users.list({ query: { page: 1 } });
+```
+
+## Documentation Generation
+
+### OpenAPI
+
+When `docs.openapi` is configured, an OpenAPI 3.0 YAML file is generated from all public (non-`internal`) operations. The generated schema includes only types reachable from those public operations.
+
+### Markdown
+
+When `docs.markdown` is configured, a Markdown API reference is generated. Internal operations are excluded.
+
+## Incremental Compilation
+
+The compiler caches file hashes and skips unchanged files on subsequent runs. Set `"cache": true` in your config to enable. Use `--force` to bypass the cache and recompile everything.
+
+## Cross-File Validation
+
+The compiler validates type references across files. If a `.dto` field references a model name that doesn't exist in any parsed file, or an `.op` response references an undefined type, a warning is emitted.
+
+## Prettier Integration
+
+Set `"prettier": true` in your config to format all generated TypeScript files using your project's local prettier installation (must be installed as a `devDependency`). Prettier config is resolved per-file using your existing `.prettierrc` or `prettier.config.js`.
+
 ## VS Code Extension
 
 The `contract-dsl-vscode` extension provides:
@@ -332,45 +503,51 @@ The `contract-dsl-vscode` extension provides:
 ### Setup
 
 1. Build the extension:
-   ```bash
-   cd apps/vscode-extension
-   pnpm install && pnpm build
-   ```
+    ```bash
+    cd apps/vscode-extension
+    pnpm install && pnpm build
+    ```
 2. Install in VS Code via the generated `.vsix` file, or use the Extension Development Host (`F5` from the extension directory).
+
+## Prettier Plugin
+
+The `prettier-plugin-contract-dsl` package provides formatting for `.dto` and `.op` files via prettier. Add it to your prettier config:
+
+```json
+{
+    "plugins": ["prettier-plugin-contract-dsl"]
+}
+```
 
 ## Project Structure
 
 ```
 contract-dsl/
   apps/
-    cli/                 # Compiler CLI (dsl-compile)
+    cli/                     # Compiler CLI (dsl-compile)
       src/
-        ast.ts           # AST type definitions
-        parser-dto.ts    # .dto file parser
-        parser-op.ts     # .op file parser
-        codegen-dto.ts   # Zod schema code generation
-        codegen-op.ts    # Koa router code generation
-        validate-op.ts   # Operation validation
-        validate-refs.ts # Cross-file type reference validation
-        config.ts        # Configuration file loading
-        cache.ts         # Incremental compilation cache
-        cli.ts           # CLI entry point
-      tests/             # Test suite
-    vscode-extension/    # VS Code language support
+        ast.ts               # AST type definitions
+        parser-dto.ts        # .dto file parser
+        parser-op.ts         # .op file parser
+        codegen-dto.ts       # Zod schema code generation
+        codegen-op.ts        # Koa router code generation
+        codegen-sdk.ts       # SDK client code generation
+        codegen-plain-types.ts  # Plain TypeScript types (no Zod)
+        codegen-openapi.ts   # OpenAPI YAML generation
+        codegen-markdown.ts  # Markdown docs generation
+        validate-op.ts       # Operation validation
+        validate-refs.ts     # Cross-file type reference validation
+        config.ts            # Configuration file loading
+        cache.ts             # Incremental compilation cache
+        cli.ts               # CLI entry point
+      tests/                 # Test suite
+    vscode-extension/        # VS Code language support
       src/
-        server/          # Language server (LSP)
-        client/          # VS Code client extension
-  contracts/             # Example contract files
-    types/               # .dto files
-    operations/          # .op files
+        server/              # Language server (LSP)
+        client/              # VS Code client extension
+  contracts/                 # Example contract files
+    types/                   # .dto files
+    operations/              # .op files
   packages/
-    parser/              # Shared Chevrotain lexer/parser
+    prettier-plugin-contract-dsl/  # Prettier plugin for .dto and .op files
 ```
-
-## Incremental Compilation
-
-When using `--out-dir`, the compiler caches file hashes and skips unchanged files on subsequent runs. Use `--force` to bypass the cache and recompile everything.
-
-## Cross-File Validation
-
-The compiler validates type references across files. If a `.dto` field references a model name that doesn't exist in any parsed file, or an `.op` response references an undefined type, a warning is emitted.
