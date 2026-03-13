@@ -127,13 +127,16 @@ export interface DtoRootNode {
 // ─── Operations AST (.op) ──────────────────────────────────────────────────
 
 export interface SecuritySchemeNode {
-  name: string;                                       // "bearer", "apiKey", "none", or custom
-  params: Record<string, string | number | boolean>;  // e.g. { header: "X-API-Key" }
-  scopes: string[];                                   // e.g. ["read:users", "write:users"]
+  name: string;       // scheme name e.g. "bearerAuth", "apiKey"
+  scopes: string[];   // e.g. ["read:users", "write:users"]
 }
 
-/** Array of alternative schemes — any one satisfies the security requirement. */
-export type SecurityNode = SecuritySchemeNode[];
+/** Sentinel value for explicitly public endpoints (`security: none`). */
+export const SECURITY_NONE = 'none' as const;
+export type SecurityNone = typeof SECURITY_NONE;
+
+/** Array of alternative schemes (any one satisfies), or SECURITY_NONE for public endpoints. */
+export type SecurityNode = SecurityNone | SecuritySchemeNode[];
 
 export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
@@ -189,6 +192,8 @@ export interface OpRouteNode {
   operations: OpOperationNode[];
   /** Route-level modifiers — cascade to all operations unless overridden. */
   modifiers?: RouteModifier[];
+  /** Route-level security default — cascades to operations that have no explicit security declaration. */
+  security?: SecurityNode;
   description?: string;
   loc: SourceLocation;
 }
@@ -202,6 +207,14 @@ export interface OpRouteNode {
 export function resolveModifiers(route: OpRouteNode, op: OpOperationNode): RouteModifier[] {
   const raw = op.modifiers ?? route.modifiers ?? [];
   return raw.filter(m => m !== 'public');
+}
+
+/**
+ * Resolves the effective security for an operation, applying route-level cascade.
+ * Operation-level security always wins; if absent, the route's security is used.
+ */
+export function resolveSecurity(route: OpRouteNode, op: OpOperationNode): SecurityNode | undefined {
+  return op.security !== undefined ? op.security : route.security;
 }
 
 export interface OpRootNode {

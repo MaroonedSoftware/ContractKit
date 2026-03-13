@@ -12,7 +12,7 @@ import { generateSdk, generateSdkOptions, generateSdkAggregator, deriveClientCla
 import { generatePlainTypes } from './codegen-plain-types.js';
 import { generateOpenApi } from './codegen-openapi.js';
 import { generateMarkdown } from './codegen-markdown.js';
-import { validateOp } from './validate-op.js';
+import { validateOp, validateSecurity } from './validate-op.js';
 import { validateRefs } from './validate-refs.js';
 import { loadConfig, mergeConfig } from './config.js';
 import { loadCache, saveCache, computeHash, isFileChanged } from './cache.js';
@@ -499,6 +499,7 @@ async function main() {
 
         // ── Pass 2: Generate code ───────────────────────────────────
         const results: { outPath: string; content: string }[] = [];
+        const knownSchemes = new Set(Object.keys(config.security?.schemes ?? {}));
 
         for (const { ast, outPath } of dtoRoots) {
             const content = generateDto(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput });
@@ -507,12 +508,15 @@ async function main() {
 
         for (const { ast, outPath } of opRoots) {
             validateOp(ast, diag);
+            validateSecurity(ast, knownSchemes, diag);
             const content = generateOp(ast, {
                 servicePathTemplate: config.server.routes.servicePathTemplate,
                 typeImportPathTemplate: config.server.routes.typeImportPathTemplate,
                 outPath,
                 modelOutPaths,
                 modelsWithInput,
+                defaultSecurity: config.security?.default,
+                securitySchemes: config.security?.schemes,
             });
             results.push({ outPath, content });
         }
@@ -587,6 +591,7 @@ async function main() {
                         modelOutPaths: sdkModelOutPaths,
                         sdkOptionsPath,
                         modelsWithInput,
+                        defaultSecurity: config.security?.default,
                     });
                     results.push({ outPath: sdkOutPath, content });
                 }
@@ -689,6 +694,7 @@ async function main() {
                     dtoRoots: allDtoInfo.map(d => d.ast),
                     opRoots: allOpInfo.map(o => o.ast),
                     config: openapiConfig,
+                    securitySchemes: config.security?.schemes,
                 });
                 results.push({ outPath: openapiOutPath, content: openapiContent });
             }
@@ -718,6 +724,7 @@ async function main() {
                 const mdContent = generateMarkdown({
                     dtoRoots: allDtoInfo.map(d => d.ast),
                     opRoots: allOpInfo.map(o => o.ast),
+                    defaultSecurity: config.security?.default,
                 });
                 results.push({ outPath: mdOutPath, content: mdContent });
             }

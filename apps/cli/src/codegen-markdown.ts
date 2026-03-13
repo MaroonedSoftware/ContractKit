@@ -11,7 +11,7 @@ import type {
     HttpMethod,
     IntersectionTypeNode,
 } from './ast.js';
-import { resolveModifiers } from './ast.js';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
 import { renderTsType, collectPublicTypeNames } from './codegen-sdk.js';
 import { collectTypeRefs } from './codegen-dto.js';
 
@@ -403,13 +403,14 @@ function renderEndpoint(
     lines.push('');
 
     // SDK method + security (GitHub admonition)
-    const effectiveSecurity = op.security?.[0]?.name ?? defaultSecurity;
     lines.push('> [!NOTE]');
     lines.push(`> SDK method: \`${methodName}\``);
-    if (effectiveSecurity === 'none') {
+    const effectiveSecurity = resolveSecurity(route, op);
+    if (effectiveSecurity === SECURITY_NONE) {
         lines.push('> Security: public');
-    } else if (effectiveSecurity) {
-        lines.push(`> Security: \`${effectiveSecurity}\``);
+    } else {
+        const scheme = (Array.isArray(effectiveSecurity) ? effectiveSecurity[0]?.name : undefined) ?? defaultSecurity;
+        if (scheme) lines.push(`> Security: \`${scheme}\``);
     }
     lines.push('');
 

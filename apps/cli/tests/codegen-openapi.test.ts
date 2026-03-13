@@ -119,10 +119,10 @@ describe('generateOpenApi', () => {
                 dtoRoots: [],
                 opRoots: [],
                 config: {
-                    securitySchemes: {
-                        bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-                    },
                     security: [{ bearerAuth: [] }],
+                },
+                securitySchemes: {
+                    bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
                 },
             });
             expect(output).toContain('securitySchemes:');

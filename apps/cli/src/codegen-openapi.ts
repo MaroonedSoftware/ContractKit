@@ -9,8 +9,9 @@ import type {
     ParamSource,
     OpParamNode,
 } from './ast.js';
-import { resolveModifiers } from './ast.js';
-import type { OpenApiConfig } from './config.js';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
+import type { OpenApiConfig, OpenApiSecurityScheme, SecuritySchemeConfig } from './config.js';
+import { isHmacScheme } from './config.js';
 
 // ─── Type reachability ────────────────────────────────────────────────────
 
@@ -93,10 +94,11 @@ export interface OpenApiCodegenContext {
     dtoRoots: DtoRootNode[];
     opRoots: OpRootNode[];
     config: OpenApiConfig;
+    securitySchemes?: Record<string, SecuritySchemeConfig>;
 }
 
 export function generateOpenApi(ctx: OpenApiCodegenContext): string {
-    const { dtoRoots, opRoots, config } = ctx;
+    const { dtoRoots, opRoots, config, securitySchemes } = ctx;
 
     const doc: Record<string, unknown> = {
         openapi: '3.1.0',
@@ -165,8 +167,11 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
     if (Object.keys(schemas).length > 0) {
         components.schemas = schemas;
     }
-    if (config.securitySchemes && Object.keys(config.securitySchemes).length > 0) {
-        components.securitySchemes = config.securitySchemes;
+    if (securitySchemes) {
+        const openApiSchemes = Object.fromEntries(
+            Object.entries(securitySchemes).filter(([, v]) => !isHmacScheme(v)),
+        ) as Record<string, OpenApiSecurityScheme>;
+        if (Object.keys(openApiSchemes).length > 0) components.securitySchemes = openApiSchemes;
     }
     if (Object.keys(components).length > 0) {
         doc.components = components;
@@ -423,12 +428,13 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode): Record<string,
         };
     }
 
-    // Operation-level security (overrides the global default from config)
-    if (op.security) {
-        if (op.security.length === 1 && op.security[0]!.name === 'none') {
+    // Effective security (operation-level wins; falls back to route-level)
+    const effectiveSecurity = resolveSecurity(route, op);
+    if (effectiveSecurity !== undefined) {
+        if (effectiveSecurity === SECURITY_NONE) {
             operation.security = [];  // explicit public endpoint — overrides global default
         } else {
-            operation.security = op.security.map(s => ({ [s.name]: s.scopes }));
+            operation.security = effectiveSecurity.map(s => ({ [s.name]: s.scopes }));
         }
     }
 

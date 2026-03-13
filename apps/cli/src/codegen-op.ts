@@ -1,6 +1,8 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource, ObjectMode } from './ast.js';
-import { resolveModifiers } from './ast.js';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
 import { renderType, renderInputType, renderQueryType, pascalToDotCase, typeNeedsDateTime, modeToWrapper } from './codegen-dto.js';
+import type { SecuritySchemeConfig, HmacSecurityScheme } from './config.js';
+import { isHmacScheme } from './config.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -15,6 +17,8 @@ export interface OpCodegenOptions {
     modelsWithInput?: Set<string>;
     /** Default security scheme from config — used when op.security is not set */
     defaultSecurity?: string;
+    /** Security scheme definitions from config — used to generate inline HMAC middleware */
+    securitySchemes?: Record<string, SecuritySchemeConfig>;
 }
 
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
@@ -27,6 +31,9 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     // Generate the body first so we can detect whether `z.` is actually referenced
     // before deciding whether to emit the zod import.
     const body: string[] = [];
+    if (fileNeedsHmac(root, options)) {
+        body.push(`import { createHmac, timingSafeEqual } from 'node:crypto';`);
+    }
     body.push(`import { ServerKitRouter, bodyParserMiddleware } from '@maroonedsoftware/koa';`);
 
     for (const svc of services) {
@@ -86,12 +93,13 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
     const relFile = outPath ? relative(dirname(outPath), file) : file;
     lines.push(` * from [${basename(file)}](file://./${relFile}#L${op.loc.line})`);
 
-    // Security annotation
-    const effectiveSecurity = op.security?.[0]?.name ?? options.defaultSecurity;
-    if (effectiveSecurity === 'none') {
+    // Security annotation (operation-level wins; falls back to route-level)
+    const effectiveSecurity = resolveSecurity(route, op);
+    if (effectiveSecurity === SECURITY_NONE) {
         lines.push(` * @public`);
-    } else if (effectiveSecurity) {
-        lines.push(` * @security ${effectiveSecurity}`);
+    } else {
+        const scheme = (Array.isArray(effectiveSecurity) ? effectiveSecurity[0]?.name : undefined) ?? options.defaultSecurity;
+        if (scheme) lines.push(` * @security ${scheme}`);
     }
 
     // Modifier annotations
@@ -114,6 +122,12 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
     const middlewareStr = middlewares.length > 0 ? `, ${middlewares.join(', ')},` : ',';
 
     lines.push(`${deriveRouterName(file)}.${method}('${path}'${middlewareStr} async (ctx, next) => {`);
+
+    // HMAC signature verification (inline, before all other logic)
+    const hmacScheme = getHmacScheme(route, op, options);
+    if (hmacScheme) {
+        lines.push(...generateHmacCheck(hmacScheme));
+    }
 
     // Params / query / headers validation (request-side — use Input variants)
     lines.push(...generateParamValidation(route.params, 'ctx.params', 'params', route.paramsMode ?? 'strict', '', modelsWithInput));
@@ -475,6 +489,39 @@ function routeNeedsValidation(root: OpRootNode): boolean {
 
 function isValidIdentifier(name: string): boolean {
     return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
+}
+
+// ─── HMAC helpers ─────────────────────────────────────────────────────────
+
+function getHmacScheme(route: OpRouteNode, op: OpOperationNode, options: OpCodegenOptions) {
+    const eff = resolveSecurity(route, op);
+    if (eff === SECURITY_NONE) return undefined;
+    const name = (Array.isArray(eff) ? eff[0]?.name : undefined) ?? options.defaultSecurity;
+    if (!name || !options.securitySchemes) return undefined;
+    const scheme = options.securitySchemes[name];
+    return scheme && isHmacScheme(scheme) ? scheme : undefined;
+}
+
+function fileNeedsHmac(root: OpRootNode, options: OpCodegenOptions): boolean {
+    return root.routes.some(route =>
+        route.operations.some(op => !!getHmacScheme(route, op, options)),
+    );
+}
+
+function generateHmacCheck(scheme: HmacSecurityScheme): string[] {
+    return [
+        `    // HMAC signature verification`,
+        `    const _hmacSig = ctx.headers['${scheme.header.toLowerCase()}'] as string | undefined;`,
+        `    const _hmacBody = (ctx.request as any).rawBody as Buffer | string | undefined;`,
+        `    if (!_hmacSig || _hmacBody == null) { ctx.status = 401; return; }`,
+        `    const _hmacExpected = createHmac('${scheme.algorithm}', process.env.${scheme.secretEnv}!)`,
+        `        .update(typeof _hmacBody === 'string' ? Buffer.from(_hmacBody) : _hmacBody)`,
+        `        .digest('${scheme.digest}');`,
+        `    const _hmacSigBuf = Buffer.from(_hmacSig);`,
+        `    const _hmacExpBuf = Buffer.from(_hmacExpected);`,
+        `    if (_hmacSigBuf.length !== _hmacExpBuf.length || !timingSafeEqual(_hmacSigBuf, _hmacExpBuf)) { ctx.status = 401; return; }`,
+        ``,
+    ];
 }
 
 // ─── Naming conventions ────────────────────────────────────────────────────

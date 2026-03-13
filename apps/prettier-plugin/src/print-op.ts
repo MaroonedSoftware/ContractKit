@@ -9,6 +9,7 @@ import type {
   DtoTypeNode,
   ObjectMode,
 } from 'contract-dsl/src/ast.js';
+import { SECURITY_NONE } from 'contract-dsl/src/ast.js';
 import { printType, formatDefault } from './print-type.js';
 
 const I1 = '    ';
@@ -119,6 +120,10 @@ function printRoute(
     lines.push(...printParamsBlock(route.params, I1, route.paramsMode));
   }
 
+  if (route.security !== undefined) {
+    lines.push(...printSecurity(route.security, I1, I2));
+  }
+
   for (const op of route.operations) {
     // Flush comment blocks that appear before this operation (inside the route)
     flushBlocks(lines, blocks, idx, op.loc.line, I1);
@@ -163,7 +168,7 @@ function printOperation(op: OpOperationNode): string[] {
 
   if (op.service) lines.push(`${I2}service: ${op.service}`);
   if (op.sdk) lines.push(`${I2}sdk: ${op.sdk}`);
-  if (op.security) lines.push(`${I2}security: ${printSecurity(op.security)}`);
+  if (op.security !== undefined) lines.push(...printSecurity(op.security));
   if (op.query !== undefined) lines.push(...printQueryOrHeaders('query', op.query, op.queryMode));
   if (op.headers !== undefined) lines.push(...printQueryOrHeaders('headers', op.headers, op.headersMode));
   if (op.request) {
@@ -181,17 +186,17 @@ function printOperation(op: OpOperationNode): string[] {
 
 // ─── Security ────────────────────────────────────────────────────────────────
 
-function printSecurity(security: SecurityNode): string {
-  return security.map(scheme => {
-    const args: string[] = [];
-    for (const [key, val] of Object.entries(scheme.params)) {
-      args.push(`${key}="${val}"`);
-    }
-    for (const scope of scheme.scopes) {
-      args.push(`"${scope}"`);
-    }
-    return args.length > 0 ? `${scheme.name}(${args.join(', ')})` : scheme.name;
-  }).join(' | ');
+// indent: indentation for the `security` keyword line
+// innerIndent: indentation for scheme lines inside the block
+function printSecurity(security: SecurityNode, indent = I2, innerIndent = I3): string[] {
+  if (security === SECURITY_NONE) return [`${indent}security: none`];
+  const lines = [`${indent}security {`];
+  for (const scheme of security) {
+    const scopes = scheme.scopes.map(s => ` "${s}"`).join('');
+    lines.push(`${innerIndent}${scheme.name}${scopes}`);
+  }
+  lines.push(`${indent}}`);
+  return lines;
 }
 
 // ─── Query / headers ─────────────────────────────────────────────────────────

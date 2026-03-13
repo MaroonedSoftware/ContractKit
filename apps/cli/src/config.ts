@@ -13,7 +13,6 @@ export interface RoutesConfig {
     include?: string[];
     servicePathTemplate?: string;
     typeImportPathTemplate?: string;
-    security?: string; // default scheme for all operations e.g. "bearer", "none"
 }
 
 export interface SdkTypesConfig {
@@ -25,7 +24,6 @@ export interface SdkClientsConfig {
     output?: string;
     include?: string[];
     typeImportPathTemplate?: string;
-    security?: string; // default scheme for all operations e.g. "bearer", "none"
 }
 
 export interface SdkConfig {
@@ -64,8 +62,34 @@ export interface OpenApiConfig {
         description?: string;
     };
     servers?: OpenApiServerEntry[];
-    securitySchemes?: Record<string, OpenApiSecurityScheme>;
+    /** Global OpenAPI security requirements (e.g. [{ bearerAuth: [] }]). Distinct from scheme definitions. */
     security?: Record<string, string[]>[];
+}
+
+export interface HmacSecurityScheme {
+    type: 'hmac';
+    /** Request header carrying the signature (e.g. 'X-Signature'). */
+    header: string;
+    /** Name of the environment variable holding the HMAC secret. */
+    secretEnv: string;
+    /** HMAC algorithm passed to createHmac (e.g. 'sha256', 'sha512'). */
+    algorithm: string;
+    /** Output encoding for hmac.digest() ('hex' | 'base64' | 'base64url'). */
+    digest: 'hex' | 'base64' | 'base64url';
+}
+
+export type SecuritySchemeConfig = OpenApiSecurityScheme | HmacSecurityScheme;
+
+/** Type guard — narrows a SecuritySchemeConfig to HmacSecurityScheme. */
+export function isHmacScheme(scheme: SecuritySchemeConfig): scheme is HmacSecurityScheme {
+    return 'secretEnv' in scheme;
+}
+
+export interface SecurityConfig {
+    /** Global default security scheme name used when an operation has no explicit security declaration. */
+    default?: string;
+    /** Security scheme definitions. HMAC schemes generate inline middleware; OpenAPI schemes are emitted into components.securitySchemes. */
+    schemes?: Record<string, SecuritySchemeConfig>;
 }
 
 export interface MarkdownConfig {
@@ -87,6 +111,8 @@ export interface DslConfig {
     patterns?: string[];
     /** Run prettier on generated TypeScript files after compilation. Default: false. */
     prettier?: boolean;
+    /** Security configuration: default scheme and scheme definitions. */
+    security?: SecurityConfig;
 }
 
 export interface ResolvedCacheConfig {
@@ -135,6 +161,7 @@ export interface ResolvedConfig {
     server: Required<ServerConfig>;
     sdk?: SdkConfig;
     docs?: DocsConfig;
+    security?: SecurityConfig;
     watch: boolean;
     force: boolean;
     prettier: boolean;
@@ -164,6 +191,7 @@ export function mergeConfig(config: DslConfig, cliArgs: { watch: boolean; force:
         server: { baseDir: config.server?.baseDir ?? '.', types, routes },
         sdk,
         docs: config.docs,
+        security: config.security,
         watch: cliArgs.watch,
         force: cliArgs.force,
         prettier: config.prettier ?? false,

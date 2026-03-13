@@ -1,5 +1,5 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, DtoTypeNode, ParamSource, FieldNode } from './ast.js';
-import { resolveModifiers } from './ast.js';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
 import { pascalToDotCase } from './codegen-dto.js';
 import { basename, dirname, relative } from 'path';
 
@@ -70,6 +70,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('');
         lines.push('export interface SecurityContext {');
         lines.push('    scheme: string;');
+        lines.push('    scopes: string[];');
         lines.push('}');
         lines.push('');
         lines.push('export type SecurityHandler = (ctx: SecurityContext) => Record<string, string> | Promise<Record<string, string>>;');
@@ -144,9 +145,12 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
     const { modelsWithInput } = options;
 
     // Resolve effective security scheme (operation-level wins over config default)
-    const scheme = op.security?.[0]?.name ?? options.defaultSecurity;
-    const isPublic = !scheme || scheme === 'none';
-    const securityArg = isPublic ? '' : `, { scheme: '${scheme}' }`;
+    const effectiveSecurity = resolveSecurity(route, op);
+    const secSchemes = Array.isArray(effectiveSecurity) ? effectiveSecurity : undefined;
+    const scheme = effectiveSecurity === SECURITY_NONE ? undefined : (secSchemes?.[0]?.name ?? options.defaultSecurity);
+    const isPublic = !scheme;
+    const scopesJson = JSON.stringify(secSchemes?.[0]?.scopes ?? []);
+    const securityArg = isPublic ? '' : `, { scheme: '${scheme}', scopes: ${scopesJson} }`;
 
     // Build method parameters (request-side — use Input variants)
     const params = buildMethodParams(route, op, modelsWithInput);
@@ -644,6 +648,7 @@ export function generateSdkOptions(): string {
         '',
         'export interface SecurityContext {',
         '    scheme: string;',
+        '    scopes: string[];',
         '}',
         '',
         'export type SecurityHandler = (ctx: SecurityContext) => Record<string, string> | Promise<Record<string, string>>;',

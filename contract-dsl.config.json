@@ -28,6 +28,12 @@
             "include": ["contracts/operations/**/*.op"]
         }
     },
+    "security": {
+        "default": "bearerAuth",
+        "schemes": {
+            "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+        }
+    },
     "docs": {
         "markdown": {
             "baseDir": "docs/",
@@ -45,9 +51,6 @@
                 { "url": "https://api.joinhomegrown.com", "description": "Production" },
                 { "url": "https://localhost:3000", "description": "Local" }
             ],
-            "securitySchemes": {
-                "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
-            },
             "security": [{ "bearerAuth": [] }]
         }
     }

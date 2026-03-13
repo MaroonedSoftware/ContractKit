@@ -1,9 +1,38 @@
 import type { OpRootNode } from './ast.js';
+import { SECURITY_NONE } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
 
 /** Extract `:paramName` segments from a route path. */
 function extractPathParams(path: string): string[] {
   return [...path.matchAll(/:(\w+)/g)].map(m => m[1]!);
+}
+
+/**
+ * Error when security block references a scheme name not present in the registry.
+ * Skips validation when `knownSchemes` is empty (registry not configured).
+ */
+export function validateSecurity(root: OpRootNode, knownSchemes: Set<string>, diag: DiagnosticCollector): void {
+  if (knownSchemes.size === 0) return;
+  for (const route of root.routes) {
+    // Route-level security
+    if (Array.isArray(route.security)) {
+      for (const scheme of route.security) {
+        if (!knownSchemes.has(scheme.name)) {
+          diag.error(root.file, route.loc.line, `Unknown security scheme "${scheme.name}"`);
+        }
+      }
+    }
+    // Operation-level security
+    for (const op of route.operations) {
+      if (op.security !== undefined && op.security !== SECURITY_NONE) {
+        for (const scheme of op.security) {
+          if (!knownSchemes.has(scheme.name)) {
+            diag.error(root.file, op.loc.line, `Unknown security scheme "${scheme.name}"`);
+          }
+        }
+      }
+    }
+  }
 }
 
 /**

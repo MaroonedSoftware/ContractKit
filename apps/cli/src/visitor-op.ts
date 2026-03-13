@@ -6,7 +6,7 @@ import type {
   FieldNode, ParamSource, ScalarTypeNode, InlineObjectTypeNode,
   SecurityNode, SecuritySchemeNode, ObjectMode, RouteModifier,
 } from './ast.js';
-import { SCALAR_NAMES } from './ast.js';
+import { SCALAR_NAMES, SECURITY_NONE } from './ast.js';
 
 const OBJECT_MODES = new Set<string>(['strict', 'strip', 'loose']);
 const ROUTE_MODIFIERS = new Set<string>(['internal', 'deprecated', 'public']);
@@ -104,16 +104,18 @@ export class OpVisitor extends BaseOpVisitor {
 
     let params: ParamSource | undefined;
     let paramsMode: ObjectMode | undefined;
+    let security: SecurityNode | undefined;
     let operations: OpOperationNode[] = [];
 
     if (ctx.routeBody) {
-      const body = this.visit(ctx.routeBody[0]) as { params?: ParamSource; paramsMode?: ObjectMode; operations: OpOperationNode[] };
+      const body = this.visit(ctx.routeBody[0]) as { params?: ParamSource; paramsMode?: ObjectMode; security?: SecurityNode; operations: OpOperationNode[] };
       params = body.params;
       paramsMode = body.paramsMode;
+      security = body.security;
       operations = body.operations;
     }
 
-    return { path, params, paramsMode, operations, modifiers, description, loc: { file: this.file, line } };
+    return { path, params, paramsMode, security, operations, modifiers, description, loc: { file: this.file, line } };
   }
 
   routePath(ctx: any): string {
@@ -128,15 +130,19 @@ export class OpVisitor extends BaseOpVisitor {
     return allToks.map(t => t.image || t.tokenType.name.charAt(0).toLowerCase()).join('');
   }
 
-  routeBody(ctx: any): { params?: ParamSource; paramsMode?: ObjectMode; operations: OpOperationNode[] } {
+  routeBody(ctx: any): { params?: ParamSource; paramsMode?: ObjectMode; security?: SecurityNode; operations: OpOperationNode[] } {
     let params: ParamSource | undefined;
     let paramsMode: ObjectMode | undefined;
+    let security: SecurityNode | undefined;
     const operations: OpOperationNode[] = [];
 
     if (ctx.paramsBlock) {
       const result = this.visit(ctx.paramsBlock[0]) as { source: ParamSource; mode?: ObjectMode };
       params = result.source;
       paramsMode = result.mode;
+    }
+    if (ctx.securityBlock) {
+      security = this.visit(ctx.securityBlock[0]) as SecurityNode;
     }
     if (ctx.httpOperation) {
       for (const opCst of ctx.httpOperation) {
@@ -145,7 +151,7 @@ export class OpVisitor extends BaseOpVisitor {
       }
     }
 
-    return { params, paramsMode, operations };
+    return { params, paramsMode, security, operations };
   }
 
   paramsBlock(ctx: any): { source: ParamSource; mode?: ObjectMode } {
@@ -253,55 +259,19 @@ export class OpVisitor extends BaseOpVisitor {
   }
 
   securityBlock(ctx: any): SecurityNode {
-    return this.visit(ctx.securityExpr[0]);
+    if (ctx.Colon) {
+      // security: none
+      return SECURITY_NONE;
+    }
+    // security { ... }
+    return (ctx.securityLine ?? []).map((l: any) => this.visit(l));
   }
 
-  securityExpr(ctx: any): SecurityNode {
-    const schemes: SecuritySchemeNode[] = [];
-    if (ctx.securityScheme) {
-      for (const s of ctx.securityScheme) {
-        schemes.push(this.visit(s));
-      }
-    }
-    return schemes;
-  }
-
-  securityScheme(ctx: any): SecuritySchemeNode {
-    const name: string = ctx.Identifier[0].image;
-    const params: Record<string, string | number | boolean> = {};
-    const scopes: string[] = [];
-
-    if (ctx.securitySchemeArgs) {
-      const args = this.visit(ctx.securitySchemeArgs[0]) as Array<{ key?: string; value: string }>;
-      for (const arg of args) {
-        if (arg.key) {
-          params[arg.key] = arg.value.replace(/^['"]|['"]$/g, '');
-        } else {
-          scopes.push(arg.value.replace(/^['"]|['"]$/g, ''));
-        }
-      }
-    }
-
-    return { name, params, scopes };
-  }
-
-  securitySchemeArgs(ctx: any): Array<{ key?: string; value: string }> {
-    const args: Array<{ key?: string; value: string }> = [];
-    if (ctx.securitySchemeArg) {
-      for (const a of ctx.securitySchemeArg) {
-        args.push(this.visit(a));
-      }
-    }
-    return args;
-  }
-
-  securitySchemeArg(ctx: any): { key?: string; value: string } {
-    const identifiers: IToken[] = ctx.Identifier || [];
-    const strings: IToken[] = ctx.StringLit || [];
-    if (identifiers.length > 0 && ctx.Equals) {
-      return { key: identifiers[0]!.image, value: strings[0]?.image ?? '' };
-    }
-    return { value: strings[0]?.image ?? '' };
+  securityLine(ctx: any): SecuritySchemeNode {
+    return {
+      name: ctx.Identifier[0].image,
+      scopes: (ctx.StringLit ?? []).map((t: IToken) => t.image.replace(/^['"]|['"]$/g, '')),
+    };
   }
 
   queryBlock(ctx: any): { source: ParamSource; mode?: ObjectMode } {

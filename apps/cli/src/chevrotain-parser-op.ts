@@ -101,7 +101,7 @@ export class OpCstParser extends CstParser {
     });
   });
 
-  // routeBody: (paramsBlock | httpOperation)*
+  // routeBody: (paramsBlock | securityBlock | httpOperation)*
   public routeBody = this.RULE('routeBody', () => {
     this.MANY(() => {
       this.OR([
@@ -115,6 +115,14 @@ export class OpCstParser extends CstParser {
               && la2.tokenType === Identifier && la2.image === 'params';
           },
           ALT: () => this.SUBRULE(this.paramsBlock),
+        },
+        {
+          // route-level security default
+          GATE: () => {
+            const la = this.LA(1);
+            return la.tokenType === Identifier && la.image === 'security';
+          },
+          ALT: () => this.SUBRULE(this.securityBlock),
         },
         {
           // http operation (get, post, put, patch, delete)
@@ -259,62 +267,34 @@ export class OpCstParser extends CstParser {
 
   // ─── Security ───────────────────────────────────────────────────────
 
-  // securityBlock: "security" COLON securityExpr
+  // securityBlock: "security" COLON "none"
+  //              | "security" LBRACE securityLine* RBRACE
   public securityBlock = this.RULE('securityBlock', () => {
     this.CONSUME(Identifier);  // "security"
-    this.CONSUME(Colon);
-    this.SUBRULE(this.securityExpr);
-  });
-
-  // securityExpr: securityScheme (PIPE securityScheme)*
-  public securityExpr = this.RULE('securityExpr', () => {
-    this.SUBRULE(this.securityScheme);
-    this.MANY(() => {
-      this.CONSUME(Pipe);
-      this.SUBRULE2(this.securityScheme);
-    });
-  });
-
-  // securityScheme: IDENTIFIER (LPAREN securitySchemeArgs RPAREN)?
-  public securityScheme = this.RULE('securityScheme', () => {
-    this.CONSUME(Identifier);  // scheme name e.g. "bearer", "apiKey", "none"
-    this.OPTION(() => {
-      this.CONSUME(LParen);
-      this.SUBRULE(this.securitySchemeArgs);
-      this.CONSUME(RParen);
-    });
-  });
-
-  // securitySchemeArgs: securitySchemeArg (COMMA securitySchemeArg)*
-  public securitySchemeArgs = this.RULE('securitySchemeArgs', () => {
-    this.SUBRULE(this.securitySchemeArg);
-    this.MANY(() => {
-      this.CONSUME(Comma);
-      this.SUBRULE2(this.securitySchemeArg);
-    });
-  });
-
-  // securitySchemeArg: IDENTIFIER EQUALS STRING_LIT | STRING_LIT
-  public securitySchemeArg = this.RULE('securitySchemeArg', () => {
     this.OR([
       {
-        // key="value" form: header="X-API-Key"
-        GATE: () => {
-          const la1 = this.LA(1);
-          const la2 = this.LA(2);
-          return la1.tokenType === Identifier && la2.tokenType === Equals;
-        },
+        // security: none
+        GATE: () => this.LA(1).tokenType === Colon,
         ALT: () => {
-          this.CONSUME(Identifier);   // key
-          this.CONSUME(Equals);
-          this.CONSUME(StringLit);    // value
+          this.CONSUME(Colon);
+          this.CONSUME2(Identifier);  // "none"
         },
       },
       {
-        // Bare string: scope e.g. "read:users"
-        ALT: () => this.CONSUME2(StringLit),
+        // security { ... }
+        ALT: () => {
+          this.CONSUME(LBrace);
+          this.MANY(() => this.SUBRULE(this.securityLine));
+          this.CONSUME(RBrace);
+        },
       },
     ]);
+  });
+
+  // securityLine: IDENTIFIER StringLit*
+  public securityLine = this.RULE('securityLine', () => {
+    this.CONSUME(Identifier);   // scheme name e.g. "bearerAuth"
+    this.MANY(() => this.CONSUME(StringLit));  // optional scopes e.g. "read:users"
   });
 
   // ─── Query ──────────────────────────────────────────────────────────

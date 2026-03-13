@@ -121,43 +121,36 @@
             }
         },
         "security-decl": {
-            "begin": "\\b(security)\\s*(:)\\s*",
-            "beginCaptures": {
-                "1": { "name": "keyword.control.security.op" },
-                "2": { "name": "punctuation.separator.colon.op" }
-            },
-            "end": "(?=\\s*$)|(?=\\s*#)|(?=\\b(?:service|sdk|security|strict|strip|loose|query|headers|request|response|get|post|put|patch|delete|params)\\b)|(?=\\})",
-            "patterns": [{ "include": "#security-scheme" }, { "include": "#union-pipe" }]
-        },
-        "security-scheme": {
-            "begin": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\b",
-            "beginCaptures": {
-                "1": { "name": "entity.name.function.security-scheme.op" }
-            },
-            "end": "(?=\\||\\s*$|\\s*#|\\}|\\b(?:service|sdk|security|query|headers|request|response)\\b)",
-            "patterns": [{ "include": "#security-scheme-args" }]
-        },
-        "security-scheme-args": {
-            "begin": "(\\()",
-            "beginCaptures": {
-                "1": { "name": "punctuation.parenthesis.open.op" }
-            },
-            "end": "(\\))",
-            "endCaptures": {
-                "1": { "name": "punctuation.parenthesis.close.op" }
-            },
             "patterns": [
                 {
-                    "begin": "([a-zA-Z_][a-zA-Z0-9_]*)\\s*(=)\\s*",
-                    "beginCaptures": {
-                        "1": { "name": "variable.parameter.constraint.op" },
-                        "2": { "name": "keyword.operator.assignment.op" }
-                    },
-                    "end": "(?=,|\\))",
-                    "patterns": [{ "include": "#string-literal" }]
+                    "comment": "security: none — inline public form",
+                    "match": "\\b(security)\\s*(:)\\s*(none)\\b",
+                    "captures": {
+                        "1": { "name": "keyword.control.security.op" },
+                        "2": { "name": "punctuation.separator.colon.op" },
+                        "3": { "name": "constant.language.none.op" }
+                    }
                 },
-                { "include": "#comma" }
+                {
+                    "comment": "security { ... } — block form",
+                    "begin": "\\b(security)\\s*(\\{)",
+                    "beginCaptures": {
+                        "1": { "name": "keyword.control.security.op" },
+                        "2": { "name": "punctuation.curlybrace.open.op" }
+                    },
+                    "end": "(\\})",
+                    "endCaptures": {
+                        "1": { "name": "punctuation.curlybrace.close.op" }
+                    },
+                    "patterns": [{ "include": "#security-scheme" }, { "include": "#string-literal" }, { "include": "#comment" }]
+                }
             ]
+        },
+        "security-scheme": {
+            "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+            "captures": {
+                "1": { "name": "entity.name.function.security-scheme.op" }
+            }
         },
         "query-block": {
             "begin": "\\b(?:(strict|strip|loose)\\s+)?(query)\\b",

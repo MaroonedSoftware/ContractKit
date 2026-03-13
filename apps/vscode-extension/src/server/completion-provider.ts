@@ -26,13 +26,14 @@ const OBJECT_MODES: Array<{ label: string; detail: string }> = [
     { label: 'loose',  detail: 'Pass unknown keys through (z.looseObject)' },
 ];
 
-const SECURITY_SCHEMES: Array<{ label: string; detail: string; insertText?: string }> = [
-    { label: 'bearer', detail: 'Bearer token (Authorization: Bearer <token>)' },
-    { label: 'apiKey', detail: 'API key via header/query/cookie', insertText: 'apiKey(header="$1")' },
-    { label: 'none', detail: 'No authentication — public endpoint' },
+const SECURITY_SCHEMES: Array<{ label: string; detail: string }> = [
+    { label: 'bearer',   detail: 'Bearer token (Authorization: Bearer <token>)' },
+    { label: 'apiKey',   detail: 'API key via header/query/cookie' },
+    { label: 'oauth2',   detail: 'OAuth 2.0' },
 ];
 
-const SECURITY_SCHEME_ARG_KEYS = ['header', 'query', 'cookie'];
+// 'none' is only valid in `security: none` form, not inside a block
+const SECURITY_NONE_SCHEME = { label: 'none', detail: 'No authentication — public endpoint' };
 
 const ROUTE_MODIFIERS: Array<{ label: string; detail: string }> = [
     { label: 'internal',   detail: 'Exclude from SDK and API docs' },
@@ -224,35 +225,17 @@ function getOpCompletions(
         ];
     }
 
-    // After security: — offer security schemes
+    // After `security:` — only 'none' is valid here
     if (/security\s*:\s*\w*$/.test(textBefore)) {
+        return [{ label: SECURITY_NONE_SCHEME.label, kind: CompletionItemKind.Value, detail: SECURITY_NONE_SCHEME.detail }];
+    }
+
+    // Inside a security block — offer scheme names (not 'none')
+    if (/security\s*\{[^}]*$/.test(textBefore)) {
         return SECURITY_SCHEMES.map((s) => ({
             label: s.label,
             kind: CompletionItemKind.Value,
             detail: s.detail,
-            ...(s.insertText ? { insertText: s.insertText, insertTextFormat: 2 } : {}),
-        }));
-    }
-
-    // After a pipe in a security expression — offer more schemes (not 'none')
-    if (/security\s*:\s*.+\|\s*\w*$/.test(textBefore)) {
-        return SECURITY_SCHEMES.filter((s) => s.label !== 'none').map((s) => ({
-            label: s.label,
-            kind: CompletionItemKind.Value,
-            detail: s.detail,
-            ...(s.insertText ? { insertText: s.insertText, insertTextFormat: 2 } : {}),
-        }));
-    }
-
-    // Inside a security scheme's argument list — offer arg keys
-    if (/security\s*:\s*\w+\(\s*\w*$/.test(textBefore) ||
-        /security\s*:\s*\w+\(.*,\s*\w*$/.test(textBefore)) {
-        return SECURITY_SCHEME_ARG_KEYS.map((k) => ({
-            label: k,
-            kind: CompletionItemKind.Property,
-            detail: 'Security scheme argument',
-            insertText: `${k}="$1"`,
-            insertTextFormat: 2,
         }));
     }
 
