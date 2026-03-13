@@ -1,6 +1,7 @@
 {
     "rootDir": "~/projects/homegrown_v2/",
     "cache": true,
+    "prettier": true,
     "server": {
         "baseDir": "apps/api/",
         "types": {

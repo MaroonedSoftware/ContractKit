@@ -1003,3 +1003,94 @@ describe('route modifiers', () => {
         });
     });
 });
+
+describe('model filtering by public reachability', () => {
+    it('excludes models only referenced by internal operations', () => {
+        const dto = dtoRoot([
+            model('WebhookPayload', [field('event', scalarType('string'))]),
+        ]);
+        const op = opRoot([
+            opRoute('/webhooks/internal', [
+                opOperation('post', {
+                    request: opRequest('WebhookPayload'),
+                    responses: [opResponse(204)],
+                }),
+            ], undefined, ['internal']),
+        ]);
+        const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
+        expect(output).not.toContain('WebhookPayload');
+    });
+
+    it('includes models referenced by at least one public operation', () => {
+        const dto = dtoRoot([
+            model('User', [field('id', scalarType('string'))]),
+        ]);
+        const op = opRoot([
+            opRoute('/users', [
+                opOperation('get', { responses: [opResponse(200, 'User')] }),
+            ]),
+        ]);
+        const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
+        expect(output).toContain('User');
+    });
+
+    it('includes models reachable transitively through a public op reference', () => {
+        const dto = dtoRoot([
+            model('Order', [field('item', refType('OrderItem'))]),
+            model('OrderItem', [field('sku', scalarType('string'))]),
+        ]);
+        const op = opRoot([
+            opRoute('/orders', [
+                opOperation('get', { responses: [opResponse(200, 'Order')] }),
+            ]),
+        ]);
+        const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
+        expect(output).toContain('Order');
+        expect(output).toContain('OrderItem');
+    });
+
+    it('excludes transitively-internal-only models even if named by another internal op', () => {
+        const dto = dtoRoot([
+            model('InternalPayload', [field('data', scalarType('string'))]),
+            model('InternalChild', [field('x', scalarType('number'))]),
+        ], 'webhooks.dto');
+        const op = opRoot([
+            opRoute('/internal/hook', [
+                opOperation('post', {
+                    request: opRequest('InternalPayload'),
+                    responses: [opResponse(204)],
+                }),
+            ], undefined, ['internal']),
+        ]);
+        const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
+        expect(output).not.toContain('InternalPayload');
+        expect(output).not.toContain('InternalChild');
+    });
+
+    it('shows all models when no .op files are present', () => {
+        const dto = dtoRoot([
+            model('Standalone', [field('x', scalarType('string'))]),
+        ]);
+        const output = generateMarkdown({ dtoRoots: [dto], opRoots: [] });
+        expect(output).toContain('Standalone');
+    });
+
+    it('keeps public model when shared by both internal and public ops', () => {
+        const dto = dtoRoot([
+            model('SharedModel', [field('id', scalarType('string'))]),
+        ]);
+        const op = opRoot([
+            opRoute('/public', [
+                opOperation('get', { responses: [opResponse(200, 'SharedModel')] }),
+            ]),
+            opRoute('/internal', [
+                opOperation('post', {
+                    request: opRequest('SharedModel'),
+                    responses: [opResponse(204)],
+                }),
+            ], undefined, ['internal']),
+        ]);
+        const output = generateMarkdown({ dtoRoots: [dto], opRoots: [op] });
+        expect(output).toContain('SharedModel');
+    });
+});

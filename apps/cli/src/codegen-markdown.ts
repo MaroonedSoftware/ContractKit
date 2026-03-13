@@ -12,7 +12,8 @@ import type {
     IntersectionTypeNode,
 } from './ast.js';
 import { resolveModifiers } from './ast.js';
-import { renderTsType } from './codegen-sdk.js';
+import { renderTsType, collectPublicTypeNames } from './codegen-sdk.js';
+import { collectTypeRefs } from './codegen-dto.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -32,7 +33,8 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
 
     // ── Collect grouped data ─────────────────────────────────────
     const endpointGroups = groupEndpoints(opRoots);
-    const modelGroups = groupModels(dtoRoots);
+    const publicModels = computePubliclyReachableModels(opRoots, dtoRoots);
+    const modelGroups = groupModels(dtoRoots, publicModels);
 
     // ── Table of Contents ────────────────────────────────────────
     const hasEndpoints = endpointGroups.length > 0;
@@ -214,13 +216,60 @@ function groupEndpoints(opRoots: OpRootNode[]): EndpointGroup[] {
     return result;
 }
 
-function groupModels(dtoRoots: DtoRootNode[]): ModelGroup[] {
+/**
+ * Returns the set of DTO model names reachable from public (non-internal) operations,
+ * transitively through model dependencies. Returns null when there are no .op files,
+ * meaning all models should be shown.
+ */
+function computePubliclyReachableModels(
+    opRoots: OpRootNode[],
+    dtoRoots: DtoRootNode[],
+): Set<string> | null {
+    if (opRoots.length === 0) return null;
+
+    // Seed with type names directly referenced by public ops
+    const reachable = new Set<string>();
+    for (const opRoot of opRoots) {
+        for (const name of collectPublicTypeNames(opRoot)) {
+            reachable.add(name);
+        }
+    }
+
+    // Build model → dependency map
+    const modelDeps = new Map<string, Set<string>>();
+    for (const dtoRoot of dtoRoots) {
+        for (const model of dtoRoot.models) {
+            const deps = new Set<string>();
+            if (model.base) deps.add(model.base);
+            if (model.type) collectTypeRefs(model.type, deps);
+            for (const field of model.fields) collectTypeRefs(field.type, deps);
+            modelDeps.set(model.name, deps);
+        }
+    }
+
+    // BFS expand through dependencies
+    const frontier = [...reachable];
+    while (frontier.length > 0) {
+        const name = frontier.pop()!;
+        for (const dep of modelDeps.get(name) ?? []) {
+            if (!reachable.has(dep)) {
+                reachable.add(dep);
+                frontier.push(dep);
+            }
+        }
+    }
+
+    return reachable;
+}
+
+function groupModels(dtoRoots: DtoRootNode[], publicModels: Set<string> | null): ModelGroup[] {
     const grouped = new Map<string, ModelNode[]>();
     const ungrouped: ModelNode[] = [];
 
     for (const dtoRoot of dtoRoots) {
         const area = dtoRoot.meta?.area;
         for (const model of dtoRoot.models) {
+            if (publicModels !== null && !publicModels.has(model.name)) continue;
             if (area) {
                 const list = grouped.get(area) ?? [];
                 list.push(model);

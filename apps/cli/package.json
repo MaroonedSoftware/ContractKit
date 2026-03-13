@@ -26,6 +26,14 @@
         "chevrotain": "^11.1.1",
         "glob": "^13.0.6"
     },
+    "peerDependencies": {
+        "prettier": ">=3.0.0"
+    },
+    "peerDependenciesMeta": {
+        "prettier": {
+            "optional": true
+        }
+    },
     "devDependencies": {
         "@repo/config-eslint": "workspace:*",
         "@repo/config-typescript": "workspace:*"

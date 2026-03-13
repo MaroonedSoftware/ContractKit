@@ -88,4 +88,19 @@ describe('mergeConfig', () => {
     const result = mergeConfig({}, baseCli);
     expect(result.cache.enabled).toBe(false);
   });
+
+  it('defaults prettier to false', () => {
+    const result = mergeConfig({}, baseCli);
+    expect(result.prettier).toBe(false);
+  });
+
+  it('passes through prettier: true', () => {
+    const result = mergeConfig({ prettier: true }, baseCli);
+    expect(result.prettier).toBe(true);
+  });
+
+  it('passes through prettier: false explicitly', () => {
+    const result = mergeConfig({ prettier: false }, baseCli);
+    expect(result.prettier).toBe(false);
+  });
 });

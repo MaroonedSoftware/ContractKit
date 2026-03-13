@@ -85,6 +85,8 @@ export interface DslConfig {
     sdk?: SdkConfig;
     docs?: DocsConfig;
     patterns?: string[];
+    /** Run prettier on generated TypeScript files after compilation. Default: false. */
+    prettier?: boolean;
 }
 
 export interface ResolvedCacheConfig {
@@ -135,6 +137,7 @@ export interface ResolvedConfig {
     docs?: DocsConfig;
     watch: boolean;
     force: boolean;
+    prettier: boolean;
 }
 
 /** Merge config file values with CLI flags. */
@@ -163,5 +166,6 @@ export function mergeConfig(config: DslConfig, cliArgs: { watch: boolean; force:
         docs: config.docs,
         watch: cliArgs.watch,
         force: cliArgs.force,
+        prettier: config.prettier ?? false,
     };
 }

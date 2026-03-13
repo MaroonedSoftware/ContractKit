@@ -12,6 +12,81 @@ import type {
 import { resolveModifiers } from './ast.js';
 import type { OpenApiConfig } from './config.js';
 
+// ─── Type reachability ────────────────────────────────────────────────────
+
+function collectRefsFromType(type: DtoTypeNode, out: Set<string>): void {
+    switch (type.kind) {
+        case 'ref':
+            out.add(type.name);
+            break;
+        case 'array':
+            collectRefsFromType(type.item, out);
+            break;
+        case 'tuple':
+            for (const item of type.items) collectRefsFromType(item, out);
+            break;
+        case 'record':
+            collectRefsFromType(type.value, out);
+            break;
+        case 'union':
+        case 'intersection':
+            for (const member of type.members) collectRefsFromType(member, out);
+            break;
+        case 'lazy':
+            collectRefsFromType(type.inner, out);
+            break;
+        case 'inlineObject':
+            for (const field of type.fields) collectRefsFromType(field.type, out);
+            break;
+    }
+}
+
+function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string>): void {
+    if (!source) return;
+    if (typeof source === 'string') { out.add(source); return; }
+    if (Array.isArray(source)) { for (const p of source) collectRefsFromType(p.type, out); return; }
+    collectRefsFromType(source, out);
+}
+
+/** Collect all type names directly referenced by public operations (seed set). */
+function collectPublicTypeRefs(opRoots: OpRootNode[]): Set<string> {
+    const refs = new Set<string>();
+    for (const opRoot of opRoots) {
+        for (const route of opRoot.routes) {
+            for (const op of route.operations) {
+                if (resolveModifiers(route, op).includes('internal')) continue;
+                if (op.request) collectRefsFromType(op.request.bodyType, refs);
+                for (const resp of op.responses) {
+                    if (resp.bodyType) collectRefsFromType(resp.bodyType, refs);
+                }
+                collectParamSourceRefs(route.params, refs);
+                collectParamSourceRefs(op.query, refs);
+                collectParamSourceRefs(op.headers, refs);
+            }
+        }
+    }
+    return refs;
+}
+
+/** BFS-expand seed type names through the DTO model graph. */
+function computeReachableSchemas(seeds: Set<string>, modelMap: Map<string, ModelNode>): Set<string> {
+    const reachable = new Set<string>(seeds);
+    const frontier = [...seeds];
+    while (frontier.length > 0) {
+        const name = frontier.pop()!;
+        const model = modelMap.get(name);
+        if (!model) continue;
+        const refs = new Set<string>();
+        if (model.type) collectRefsFromType(model.type, refs);
+        for (const field of model.fields) collectRefsFromType(field.type, refs);
+        if (model.base) refs.add(model.base);
+        for (const ref of refs) {
+            if (!reachable.has(ref)) { reachable.add(ref); frontier.push(ref); }
+        }
+    }
+    return reachable;
+}
+
 // ─── Public entry point ────────────────────────────────────────────────────
 
 export interface OpenApiCodegenContext {
@@ -41,13 +116,13 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
     }
 
     // Build component schemas from all DTO models
-    const schemas: Record<string, unknown> = {};
+    const allSchemas: Record<string, unknown> = {};
     const modelMap = new Map<string, ModelNode>();
 
     for (const dtoRoot of dtoRoots) {
         for (const model of dtoRoot.models) {
             modelMap.set(model.name, model);
-            schemas[model.name] = modelToSchema(model);
+            allSchemas[model.name] = modelToSchema(model);
         }
     }
 
@@ -72,6 +147,19 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
     }
 
     doc.paths = paths;
+
+    // Filter schemas to only include types reachable from public operations.
+    // When there are no op files, all schemas are included (no filtering).
+    const schemas: Record<string, unknown> = opRoots.length > 0
+        ? (() => {
+            const reachable = computeReachableSchemas(collectPublicTypeRefs(opRoots), modelMap);
+            const filtered: Record<string, unknown> = {};
+            for (const [name, schema] of Object.entries(allSchemas)) {
+                if (reachable.has(name)) filtered[name] = schema;
+            }
+            return filtered;
+        })()
+        : allSchemas;
 
     const components: Record<string, unknown> = {};
     if (Object.keys(schemas).length > 0) {

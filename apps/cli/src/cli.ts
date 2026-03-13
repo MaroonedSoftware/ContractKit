@@ -206,6 +206,36 @@ function commonDir(files: string[], rootDir: string): string {
     return first.slice(0, depth).join('/') || '/';
 }
 
+// ─── Prettier formatting ──────────────────────────────────────────────────
+
+/**
+ * Format generated files with the user's local prettier installation.
+ * Mutates each entry's `content` in place. Silently skips if prettier is not
+ * installed or if a file's content cannot be parsed by prettier.
+ */
+async function formatWithPrettier(
+    results: { outPath: string; content: string }[],
+): Promise<void> {
+    let prettier: typeof import('prettier');
+    try {
+        prettier = await import('prettier');
+    } catch {
+        console.warn('  ⚠  prettier not found — skipping format step');
+        return;
+    }
+    for (const result of results) {
+        try {
+            const options = await prettier.resolveConfig(result.outPath) ?? {};
+            result.content = await prettier.format(result.content, {
+                ...options,
+                filepath: result.outPath,
+            });
+        } catch {
+            // Leave content unformatted if prettier fails (e.g. unsupported parser)
+        }
+    }
+}
+
 // ─── Content comparison ───────────────────────────────────────────────────
 
 function isContentUnchanged(outPath: string, content: string): boolean {
@@ -701,6 +731,18 @@ async function main() {
             return;
         }
 
+        // ── Generate barrel index files for DTO directories ─────────
+        const barrelFiles = generateBarrelFiles(allDtoInfo.map(d => d.outPath));
+
+        // ── Format with prettier (opt-in) ────────────────────────────
+        // Format before writing so barrel unchanged-check uses formatted content.
+        if (config.prettier) {
+            const toFormat = [...results, ...barrelFiles];
+            if (toFormat.length > 0) {
+                await formatWithPrettier(toFormat);
+            }
+        }
+
         // ── Write output files ──────────────────────────────────────
         mkdirSync(resolvedBase, { recursive: true });
 
@@ -710,8 +752,6 @@ async function main() {
             console.log(`  ✓  ${outPath}`);
         }
 
-        // ── Generate barrel index files for DTO directories ─────────
-        const barrelFiles = generateBarrelFiles(allDtoInfo.map(d => d.outPath));
         for (const { outPath, content } of barrelFiles) {
             if (!config.force && isContentUnchanged(outPath, content)) {
                 console.log(`  -  ${outPath} (unchanged)`);

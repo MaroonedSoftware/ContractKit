@@ -555,6 +555,77 @@ describe('route modifiers', () => {
         });
     });
 
+    describe('schema filtering — internal operations', () => {
+        it('excludes schemas only referenced by internal operations', () => {
+            const dto = dtoRoot([
+                model('PublicModel', [field('id', scalarType('uuid'))]),
+                model('InternalModel', [field('secret', scalarType('string'))]),
+            ]);
+            const op = opRoot([
+                opRoute('/public', [
+                    opOperation('get', { responses: [opResponse(200, refType('PublicModel'))] }),
+                ]),
+                opRoute('/internal', [
+                    opOperation('post', {
+                        modifiers: ['internal'],
+                        responses: [opResponse(201, refType('InternalModel'))],
+                    }),
+                ]),
+            ]);
+            const output = generateOpenApi({ dtoRoots: [dto], opRoots: [op], config: {} });
+            expect(output).toContain('PublicModel:');
+            expect(output).not.toContain('InternalModel:');
+        });
+
+        it('transitively includes schemas referenced by public types', () => {
+            const dto = dtoRoot([
+                model('Order', [field('item', refType('OrderItem'))]),
+                model('OrderItem', [field('name', scalarType('string'))]),
+                model('InternalData', [field('x', scalarType('string'))]),
+            ]);
+            const op = opRoot([
+                opRoute('/orders', [
+                    opOperation('get', { responses: [opResponse(200, refType('Order'))] }),
+                ]),
+                opRoute('/admin', [
+                    opOperation('get', {
+                        modifiers: ['internal'],
+                        responses: [opResponse(200, refType('InternalData'))],
+                    }),
+                ]),
+            ]);
+            const output = generateOpenApi({ dtoRoots: [dto], opRoots: [op], config: {} });
+            expect(output).toContain('Order:');
+            expect(output).toContain('OrderItem:');
+            expect(output).not.toContain('InternalData:');
+        });
+
+        it('excludes all schemas when all operations are internal', () => {
+            const dto = dtoRoot([model('Secret', [field('key', scalarType('string'))])]);
+            const op = opRoot([
+                opRoute('/admin', [
+                    opOperation('get', {
+                        modifiers: ['internal'],
+                        responses: [opResponse(200, refType('Secret'))],
+                    }),
+                ], undefined, ['internal']),
+            ]);
+            const output = generateOpenApi({ dtoRoots: [dto], opRoots: [op], config: {} });
+            expect(output).not.toContain('Secret:');
+            expect(output).not.toContain('schemas:');
+        });
+
+        it('includes all schemas when there are no op files', () => {
+            const dto = dtoRoot([
+                model('Foo', [field('id', scalarType('uuid'))]),
+                model('Bar', [field('name', scalarType('string'))]),
+            ]);
+            const output = generateOpenApi({ dtoRoots: [dto], opRoots: [], config: {} });
+            expect(output).toContain('Foo:');
+            expect(output).toContain('Bar:');
+        });
+    });
+
     describe('deprecated', () => {
         it('sets deprecated: true for a deprecated operation', () => {
             const op = opRoot([
