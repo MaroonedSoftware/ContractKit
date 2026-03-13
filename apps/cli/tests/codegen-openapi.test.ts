@@ -515,3 +515,77 @@ describe('generateOpenApi', () => {
         });
     });
 });
+
+describe('route modifiers', () => {
+    describe('internal', () => {
+        it('excludes an internal operation from paths', () => {
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { responses: [opResponse(200)] }),
+                    opOperation('post', { modifiers: ['internal'], responses: [opResponse(201)] }),
+                ]),
+            ]);
+            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            expect(output).toContain('get:');
+            expect(output).not.toContain('post:');
+        });
+
+        it('excludes all operations when route is internal', () => {
+            const op = opRoot([
+                opRoute('/admin/users', [
+                    opOperation('get', { responses: [opResponse(200)] }),
+                    opOperation('delete', { responses: [opResponse(204)] }),
+                ], undefined, ['internal']),
+            ]);
+            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            expect(output).not.toContain('/admin/users');
+        });
+
+        it('operation-level override on internal route makes that operation visible', () => {
+            const op = opRoot([
+                opRoute('/admin/users', [
+                    opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200)] }),
+                    opOperation('post', { responses: [opResponse(201)] }),
+                ], undefined, ['internal']),
+            ]);
+            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            expect(output).toContain('/admin/users');
+            expect(output).toContain('get:');
+            expect(output).not.toContain('post:');
+        });
+    });
+
+    describe('deprecated', () => {
+        it('sets deprecated: true for a deprecated operation', () => {
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200)] }),
+                ]),
+            ]);
+            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            expect(output).toContain('deprecated: true');
+        });
+
+        it('does not set deprecated for a normal operation', () => {
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { responses: [opResponse(200)] }),
+                ]),
+            ]);
+            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            expect(output).not.toContain('deprecated:');
+        });
+
+        it('cascades route-level deprecated to all operations', () => {
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { responses: [opResponse(200)] }),
+                    opOperation('post', { responses: [opResponse(201)] }),
+                ], undefined, ['deprecated']),
+            ]);
+            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            const deprecatedCount = (output.match(/deprecated: true/g) ?? []).length;
+            expect(deprecatedCount).toBe(2);
+        });
+    });
+});

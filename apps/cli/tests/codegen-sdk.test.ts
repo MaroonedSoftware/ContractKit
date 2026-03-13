@@ -604,3 +604,36 @@ describe('collectPublicTypeNames', () => {
     expect(types.size).toBe(0);
   });
 });
+
+describe('generateSdk — route-level deprecated cascade', () => {
+  it('adds @deprecated jsdoc when route is deprecated and operation has no modifiers', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+        opOperation('post', { responses: [opResponse(201, 'User', 'application/json')] }),
+      ], undefined, ['deprecated']),
+    ]);
+    const out = generateSdk(root);
+    // Both operations inherit deprecated from the route
+    const deprecatedCount = (out.match(/\/\*\* @deprecated \*\//g) ?? []).length;
+    expect(deprecatedCount).toBe(2);
+  });
+
+  it('operation-level modifiers override route-level deprecated', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', { modifiers: [], responses: [opResponse(200, 'User', 'application/json')] }),
+      ], undefined, ['deprecated']),
+    ]);
+    const out = generateSdk(root);
+    // GET has explicit empty modifiers — overrides route deprecated → no jsdoc
+    expect(out).not.toContain('/** @deprecated */');
+  });
+});
+
+describe('hasPublicOperations — edge cases', () => {
+  it('returns false for a root with no routes', () => {
+    const root = opRoot([]);
+    expect(hasPublicOperations(root)).toBe(false);
+  });
+});

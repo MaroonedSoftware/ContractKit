@@ -916,3 +916,90 @@ describe('generateMarkdown', () => {
         });
     });
 });
+
+describe('route modifiers', () => {
+    describe('internal', () => {
+        it('excludes an internal operation from the output', () => {
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { responses: [opResponse(200)] }),
+                    opOperation('post', { modifiers: ['internal'], responses: [opResponse(201)] }),
+                ]),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('**`GET`** `/users`');
+            expect(output).not.toContain('**`POST`** `/users`');
+        });
+
+        it('excludes all operations when route is internal', () => {
+            const op = opRoot([
+                opRoute('/admin/users', [
+                    opOperation('get', { responses: [opResponse(200)] }),
+                    opOperation('delete', { responses: [opResponse(204)] }),
+                ], undefined, ['internal']),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).not.toContain('`/admin/users`');
+        });
+
+        it('operation-level override on internal route makes that operation visible', () => {
+            const op = opRoot([
+                opRoute('/admin/users', [
+                    opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200)] }),
+                    opOperation('post', { responses: [opResponse(201)] }),
+                ], undefined, ['internal']),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('**`GET`** `/admin/users`');
+            expect(output).not.toContain('**`POST`** `/admin/users`');
+        });
+
+        it('does not count internal operations in TOC group summary', () => {
+            const op = opRoot([
+                opRoute('/ledger/accounts', [
+                    opOperation('get', { responses: [opResponse(200)] }),
+                    opOperation('post', { modifiers: ['internal'], responses: [opResponse(201)] }),
+                ]),
+            ], 'ledger.op', { area: 'ledger' });
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            // Only 1 public operation — summary should say (1), not (2)
+            expect(output).toContain('<strong>Ledger</strong> (1)');
+        });
+    });
+
+    describe('deprecated', () => {
+        it('renders a warning admonition for a deprecated operation', () => {
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200)] }),
+                ]),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).toContain('> [!WARNING]');
+            expect(output).toContain('**Deprecated**');
+        });
+
+        it('does not render a warning admonition for a normal operation', () => {
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { responses: [opResponse(200)] }),
+                ]),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            expect(output).not.toContain('> [!WARNING]');
+        });
+
+        it('cascades route-level deprecated to operations', () => {
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { responses: [opResponse(200)] }),
+                    opOperation('post', { responses: [opResponse(201)] }),
+                ], undefined, ['deprecated']),
+            ]);
+            const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
+            // Both operations inherit deprecated from route — both get the warning
+            const warningCount = (output.match(/> \[\!WARNING\]/g) ?? []).length;
+            expect(warningCount).toBe(2);
+        });
+    });
+});

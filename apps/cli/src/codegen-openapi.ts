@@ -57,11 +57,13 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
     for (const opRoot of opRoots) {
         for (const route of opRoot.routes) {
             const oaPath = convertPath(route.path);
-            if (!paths[oaPath]) paths[oaPath] = {};
 
             for (const op of route.operations) {
                 const mods = resolveModifiers(route, op);
                 if (mods.includes('internal')) continue;
+                // Lazily initialize the path object so all-internal routes
+                // leave no empty entry in the output
+                if (!paths[oaPath]) paths[oaPath] = {};
                 const operation = buildOperation(route, op);
                 if (mods.includes('deprecated')) (operation as Record<string, unknown>).deprecated = true;
                 paths[oaPath][op.method] = operation;

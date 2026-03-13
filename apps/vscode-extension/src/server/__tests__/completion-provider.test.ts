@@ -150,4 +150,78 @@ describe('getCompletions', () => {
       expect(items.some(i => i.label === 'cookie')).toBe(true);
     });
   });
+
+  describe('modifier completions', () => {
+    it('offers internal and deprecated after route path + colon (top-level)', () => {
+      const doc = makeDoc('file:///test.op', '/admin/users: ');
+      const index = new WorkspaceIndex();
+      const items = getCompletions(
+        { textDocument: { uri: doc.uri }, position: { line: 0, character: 14 } },
+        doc, index,
+      );
+      expect(items.some(i => i.label === 'internal')).toBe(true);
+      expect(items.some(i => i.label === 'deprecated')).toBe(true);
+    });
+
+    it('offers internal and deprecated after HTTP method + colon (route-body)', () => {
+      const doc = makeDoc('file:///test.op', '/users {\n    get: \n}');
+      const index = new WorkspaceIndex();
+      const items = getCompletions(
+        { textDocument: { uri: doc.uri }, position: { line: 1, character: 9 } },
+        doc, index,
+      );
+      expect(items.some(i => i.label === 'internal')).toBe(true);
+      expect(items.some(i => i.label === 'deprecated')).toBe(true);
+    });
+
+    it('offers second modifier after first modifier already typed (get: internal )', () => {
+      const doc = makeDoc('file:///test.op', '/users {\n    get: internal \n}');
+      const index = new WorkspaceIndex();
+      const items = getCompletions(
+        { textDocument: { uri: doc.uri }, position: { line: 1, character: 18 } },
+        doc, index,
+      );
+      expect(items.some(i => i.label === 'internal')).toBe(true);
+      expect(items.some(i => i.label === 'deprecated')).toBe(true);
+    });
+
+    it('offers second modifier after deprecated already typed (post: deprecated )', () => {
+      const doc = makeDoc('file:///test.op', '/users {\n    post: deprecated \n}');
+      const index = new WorkspaceIndex();
+      const items = getCompletions(
+        { textDocument: { uri: doc.uri }, position: { line: 1, character: 20 } },
+        doc, index,
+      );
+      expect(items.some(i => i.label === 'internal')).toBe(true);
+      expect(items.some(i => i.label === 'deprecated')).toBe(true);
+    });
+
+    it('does not offer route modifiers in operation body (wrong context)', () => {
+      const doc = makeDoc('file:///test.op', '/users {\n    get: {\n        \n    }\n}');
+      const index = new WorkspaceIndex();
+      const items = getCompletions(
+        { textDocument: { uri: doc.uri }, position: { line: 2, character: 8 } },
+        doc, index,
+      );
+      expect(items.some(i => i.label === 'security')).toBe(true);
+      expect(items.some(i => i.label === 'service')).toBe(true);
+      expect(items.some(i => i.label === 'internal')).toBe(false);
+      expect(items.some(i => i.label === 'deprecated')).toBe(false);
+    });
+
+    it('route modifier completions are kind Keyword', () => {
+      const doc = makeDoc('file:///test.op', '/admin: ');
+      const index = new WorkspaceIndex();
+      const items = getCompletions(
+        { textDocument: { uri: doc.uri }, position: { line: 0, character: 8 } },
+        doc, index,
+      );
+      const internalItem = items.find(i => i.label === 'internal');
+      const deprecatedItem = items.find(i => i.label === 'deprecated');
+      expect(internalItem).toBeDefined();
+      expect(deprecatedItem).toBeDefined();
+      expect(internalItem?.kind).toBe(14 /* Keyword */);
+      expect(deprecatedItem?.kind).toBe(14 /* Keyword */);
+    });
+  });
 });
