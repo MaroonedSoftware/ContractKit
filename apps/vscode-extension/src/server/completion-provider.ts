@@ -39,6 +39,11 @@ const ROUTE_MODIFIERS: Array<{ label: string; detail: string }> = [
     { label: 'deprecated', detail: 'Mark as deprecated in SDK and API docs' },
 ];
 
+const OP_MODIFIERS: Array<{ label: string; detail: string }> = [
+    ...ROUTE_MODIFIERS,
+    { label: 'public', detail: 'Override route-level internal/deprecated — make this operation public' },
+];
+
 export function getCompletions(
     params: TextDocumentPositionParams,
     document: TextDocument,
@@ -166,8 +171,8 @@ function getOpCompletions(
     }
 
     // After `httpMethod:` in route-body — offer modifiers (before `{`)
-    if (context === 'route-body' && /\b(?:get|post|put|patch|delete)\s*:\s*(?:(?:internal|deprecated)\s+)*\w*$/.test(textBefore)) {
-        return ROUTE_MODIFIERS.map(({ label, detail }) => ({
+    if (context === 'route-body' && /\b(?:get|post|put|patch|delete)\s*:\s*(?:(?:internal|deprecated|public)\s+)*\w*$/.test(textBefore)) {
+        return OP_MODIFIERS.map(({ label, detail }) => ({
             label,
             kind: CompletionItemKind.Keyword,
             detail,

@@ -235,12 +235,17 @@ objectMode      = "strict" | "strip" | "loose" ;
 
 httpMethod      = "get" | "post" | "put" | "patch" | "delete" ;
 
-routeModifier   = "internal" | "deprecated" ;
+routeModifier   = "internal" | "deprecated" | "public" ;
                   (* internal   = exclude from SDK and API docs generation *)
                   (* deprecated = emit @deprecated JSDoc + OpenAPI flag    *)
+                  (* public     = operation-only: override a route-level   *)
+                  (*              internal/deprecated, making this op      *)
+                  (*              visible. Cannot be used on a route.      *)
                   (* Route-level modifiers cascade to all operations;      *)
                   (* operation-level modifiers fully replace (not merge)   *)
                   (* the inherited route-level modifier set.               *)
+                  (* 'public' strips all inherited modifiers → op is       *)
+                  (* treated as if it had no modifiers at all.             *)
 
 httpOperation   = httpMethod , ":" , { routeModifier } , "{" , operationBody , "}" ;
                   (* zero or more modifiers between ":" and "{"           *)

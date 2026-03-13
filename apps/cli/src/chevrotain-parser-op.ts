@@ -8,7 +8,7 @@ import {
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
 const OBJECT_MODES = new Set(['strict', 'strip', 'loose']);
-const ROUTE_MODIFIERS = new Set(['internal', 'deprecated']);
+const ROUTE_MODIFIERS = new Set(['internal', 'deprecated', 'public']);
 
 export class OpCstParser extends CstParser {
   constructor() {

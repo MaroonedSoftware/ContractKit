@@ -140,8 +140,9 @@ export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 /** Controls how Zod handles unknown keys on an object schema. */
 export type ObjectMode = 'strict' | 'strip' | 'loose';
 
-/** Visibility/lifecycle modifiers on routes and operations. */
-export type RouteModifier = 'internal' | 'deprecated';
+/** Visibility/lifecycle modifiers on routes and operations.
+ * `public` is operation-only: overrides inherited route-level modifiers. */
+export type RouteModifier = 'internal' | 'deprecated' | 'public';
 
 export interface OpParamNode {
   name: string;
@@ -195,9 +196,12 @@ export interface OpRouteNode {
 /**
  * Resolves the effective modifiers for an operation, applying route-level cascade.
  * If the operation specifies any explicit modifiers, those replace (not merge) the route's.
+ * `public` on an operation acts as an explicit override that clears inherited modifiers;
+ * it is stripped from the returned array (it is not a codegen modifier itself).
  */
 export function resolveModifiers(route: OpRouteNode, op: OpOperationNode): RouteModifier[] {
-  return op.modifiers ?? route.modifiers ?? [];
+  const raw = op.modifiers ?? route.modifiers ?? [];
+  return raw.filter(m => m !== 'public');
 }
 
 export interface OpRootNode {

@@ -9,7 +9,7 @@ import type {
 import { SCALAR_NAMES } from './ast.js';
 
 const OBJECT_MODES = new Set<string>(['strict', 'strip', 'loose']);
-const ROUTE_MODIFIERS = new Set<string>(['internal', 'deprecated']);
+const ROUTE_MODIFIERS = new Set<string>(['internal', 'deprecated', 'public']);
 import type { DiagnosticCollector } from './diagnostics.js';
 
 const BaseOpVisitor = opCstParser.getBaseCstVisitorConstructor();
@@ -178,7 +178,9 @@ export class OpVisitor extends BaseOpVisitor {
     const line = methodToken.startLine ?? 0;
     const description = this.consumeComment(line);
 
-    // Modifier tokens follow the HTTP method identifier (index 1+)
+    // Modifier tokens follow the HTTP method identifier (index 1+).
+    // 'public' is stored in the array (for round-trip formatting); resolveModifiers
+    // interprets it as an explicit override that clears inherited route modifiers.
     const modifierTokens = identifiers.slice(1);
     const modifiers: RouteModifier[] | undefined = modifierTokens.length > 0
       ? modifierTokens.map(t => t.image as RouteModifier).filter(m => ROUTE_MODIFIERS.has(m))

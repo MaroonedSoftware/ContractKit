@@ -80,7 +80,7 @@
             },
             "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|params)\\b)|(?=\\})",
             "patterns": [
-                { "match": "\\b(internal|deprecated)\\b", "name": "keyword.control.modifier.op" },
+                { "match": "\\b(internal|deprecated|public)\\b", "name": "keyword.control.modifier.op" },
                 { "include": "#operation-body" }
             ]
         },

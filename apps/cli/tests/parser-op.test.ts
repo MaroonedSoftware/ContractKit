@@ -1,6 +1,7 @@
 import { parseOp } from '../src/parser-op.js';
 import { DiagnosticCollector } from '../src/diagnostics.js';
 import type { ScalarTypeNode } from '../src/ast.js';
+import { resolveModifiers } from '../src/ast.js';
 
 function parse(source: string) {
   const diag = new DiagnosticCollector();
@@ -634,6 +635,28 @@ LedgerService: #modules/ledger/ledger.service.js
       expect(route.modifiers).toEqual(['internal']);
       expect(route.operations[0]!.modifiers).toBeUndefined();  // inherits via resolveModifiers
       expect(route.operations[1]!.modifiers).toEqual(['deprecated']); // overrides
+    });
+
+    it('public modifier on operation is stored in AST for round-trip fidelity', () => {
+      const { root } = parse('/admin: internal { get: public {} }');
+      const route = root.routes[0]!;
+      expect(route.modifiers).toEqual(['internal']);
+      expect(route.operations[0]!.modifiers).toEqual(['public']);
+    });
+
+    it('public modifier strips inherited internal via resolveModifiers', () => {
+      const { root } = parse('/admin: internal { get: public {} }');
+      const route = root.routes[0]!;
+      const op = route.operations[0]!;
+      expect(resolveModifiers(route, op)).toEqual([]);
+    });
+
+    it('public combined with deprecated: AST keeps both, resolveModifiers strips public', () => {
+      const { root } = parse('/admin: internal { get: public deprecated {} }');
+      const route = root.routes[0]!;
+      const op = route.operations[0]!;
+      expect(op.modifiers).toEqual(['public', 'deprecated']);
+      expect(resolveModifiers(route, op)).toEqual(['deprecated']);
     });
   });
 });
