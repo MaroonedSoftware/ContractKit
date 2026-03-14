@@ -42,7 +42,7 @@
             "endCaptures": {
                 "1": { "name": "punctuation.definition.block.end.op" }
             },
-            "patterns": [{ "include": "#comment" }, { "include": "#params-block" }, { "include": "#http-operation" }]
+            "patterns": [{ "include": "#comment" }, { "include": "#security-decl" }, { "include": "#params-block" }, { "include": "#http-operation" }]
         },
         "route-path": {
             "patterns": [
@@ -69,7 +69,7 @@
                 "1": { "name": "keyword.control.object-mode.op" },
                 "2": { "name": "keyword.control.params.op" }
             },
-            "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete)\\b)|(?=\\})",
+            "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|security)\\b)|(?=\\})",
             "patterns": [{ "include": "#comment" }, { "include": "#type-shorthand" }, { "include": "#param-decl-block" }]
         },
         "http-operation": {
@@ -78,7 +78,7 @@
                 "1": { "name": "keyword.control.http-method.op" },
                 "2": { "name": "punctuation.separator.colon.op" }
             },
-            "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|params)\\b)|(?=\\})",
+            "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|params|security)\\b)|(?=\\})",
             "patterns": [
                 { "match": "\\b(internal|deprecated|public)\\b", "name": "keyword.control.modifier.op" },
                 { "include": "#operation-body" }

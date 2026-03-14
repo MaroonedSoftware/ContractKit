@@ -1,7 +1,7 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource, ObjectMode } from './ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
 import { renderType, renderInputType, renderQueryType, pascalToDotCase, typeNeedsDateTime, modeToWrapper } from './codegen-dto.js';
-import type { SecuritySchemeConfig, HmacSecurityScheme } from './config.js';
+import type { SecuritySchemeConfig } from './config.js';
 import { isHmacScheme } from './config.js';
 import { basename, dirname, relative } from 'path';
 
@@ -31,10 +31,9 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     // Generate the body first so we can detect whether `z.` is actually referenced
     // before deciding whether to emit the zod import.
     const body: string[] = [];
-    if (fileNeedsHmac(root, options)) {
-        body.push(`import { createHmac, timingSafeEqual } from 'node:crypto';`);
-    }
-    body.push(`import { ServerKitRouter, bodyParserMiddleware } from '@maroonedsoftware/koa';`);
+    const koaExports = ['ServerKitRouter', 'bodyParserMiddleware'];
+    if (fileNeedsHmac(root, options)) koaExports.push('requireSignature');
+    body.push(`import { ${koaExports.join(', ')} } from '@maroonedsoftware/koa';`);
 
     for (const svc of services) {
         const modulePath = root.meta[svc] ?? deriveModulePath(svc, options.servicePathTemplate);
@@ -119,15 +118,13 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
     if (hasBody) {
         middlewares.push(isMultipart ? `bodyParserMiddleware(['multipart'])` : `bodyParserMiddleware(['json'])`);
     }
+    const hmacSchemeName = getHmacSchemeName(route, op, options);
+    if (hmacSchemeName) {
+        middlewares.push(`requireSignature('${hmacSchemeName}')`);
+    }
     const middlewareStr = middlewares.length > 0 ? `, ${middlewares.join(', ')},` : ',';
 
     lines.push(`${deriveRouterName(file)}.${method}('${path}'${middlewareStr} async (ctx, next) => {`);
-
-    // HMAC signature verification (inline, before all other logic)
-    const hmacScheme = getHmacScheme(route, op, options);
-    if (hmacScheme) {
-        lines.push(...generateHmacCheck(hmacScheme));
-    }
 
     // Params / query / headers validation (request-side — use Input variants)
     lines.push(...generateParamValidation(route.params, 'ctx.params', 'params', route.paramsMode ?? 'strict', '', modelsWithInput));
@@ -493,35 +490,20 @@ function isValidIdentifier(name: string): boolean {
 
 // ─── HMAC helpers ─────────────────────────────────────────────────────────
 
-function getHmacScheme(route: OpRouteNode, op: OpOperationNode, options: OpCodegenOptions) {
+/** Returns the HMAC scheme name if the resolved security for this op is an HMAC scheme, else undefined. */
+function getHmacSchemeName(route: OpRouteNode, op: OpOperationNode, options: OpCodegenOptions): string | undefined {
     const eff = resolveSecurity(route, op);
     if (eff === SECURITY_NONE) return undefined;
     const name = (Array.isArray(eff) ? eff[0]?.name : undefined) ?? options.defaultSecurity;
     if (!name || !options.securitySchemes) return undefined;
     const scheme = options.securitySchemes[name];
-    return scheme && isHmacScheme(scheme) ? scheme : undefined;
+    return scheme && isHmacScheme(scheme) ? name : undefined;
 }
 
 function fileNeedsHmac(root: OpRootNode, options: OpCodegenOptions): boolean {
     return root.routes.some(route =>
-        route.operations.some(op => !!getHmacScheme(route, op, options)),
+        route.operations.some(op => !!getHmacSchemeName(route, op, options)),
     );
-}
-
-function generateHmacCheck(scheme: HmacSecurityScheme): string[] {
-    return [
-        `    // HMAC signature verification`,
-        `    const _hmacSig = ctx.headers['${scheme.header.toLowerCase()}'] as string | undefined;`,
-        `    const _hmacBody = (ctx.request as any).rawBody as Buffer | string | undefined;`,
-        `    if (!_hmacSig || _hmacBody == null) { ctx.status = 401; return; }`,
-        `    const _hmacExpected = createHmac('${scheme.algorithm}', process.env.${scheme.secretEnv}!)`,
-        `        .update(typeof _hmacBody === 'string' ? Buffer.from(_hmacBody) : _hmacBody)`,
-        `        .digest('${scheme.digest}');`,
-        `    const _hmacSigBuf = Buffer.from(_hmacSig);`,
-        `    const _hmacExpBuf = Buffer.from(_hmacExpected);`,
-        `    if (_hmacSigBuf.length !== _hmacExpBuf.length || !timingSafeEqual(_hmacSigBuf, _hmacExpBuf)) { ctx.status = 401; return; }`,
-        ``,
-    ];
 }
 
 // ─── Naming conventions ────────────────────────────────────────────────────

@@ -37,6 +37,23 @@ Create `contract-dsl.config.json` in your project root (or any parent directory)
     "rootDir": ".",
     "cache": true,
     "prettier": true,
+    "security": {
+        "default": "bearer",
+        "schemes": {
+            "bearer": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT"
+            },
+            "webhookAuth": {
+                "type": "hmac",
+                "header": "X-Signature",
+                "secretEnv": "WEBHOOK_SECRET",
+                "algorithm": "sha256",
+                "digest": "hex"
+            }
+        }
+    },
     "server": {
         "baseDir": "apps/api/",
         "types": {
@@ -47,8 +64,7 @@ Create `contract-dsl.config.json` in your project root (or any parent directory)
             "include": ["contracts/operations/**/*.op"],
             "output": "src/routes",
             "servicePathTemplate": "#modules/{module}/{module}.service.js",
-            "typeImportPathTemplate": "#types/{kebab}.dto.js",
-            "security": "bearer"
+            "typeImportPathTemplate": "#types/{kebab}.dto.js"
         }
     },
     "sdk": {
@@ -89,22 +105,38 @@ Create `contract-dsl.config.json` in your project root (or any parent directory)
 | `cache`    | `boolean \| string` | Enable incremental compilation cache. Pass a string for a custom cache filename. Default: `false` |
 | `prettier` | `boolean`           | Format generated TypeScript files with your local prettier. Default: `false`                      |
 | `patterns` | `string[]`          | Additional glob patterns to include (supplements `server` and `sdk` includes)                     |
+| `security` | `object`            | Global security scheme definitions and default                                                    |
 | `server`   | `object`            | Server-side codegen configuration                                                                 |
 | `sdk`      | `object`            | SDK/client codegen configuration (opt-in)                                                         |
 | `docs`     | `object`            | Documentation generation configuration (opt-in)                                                   |
 
+#### `security`
+
+| Field                              | Type     | Description                                                                              |
+| ---------------------------------- | -------- | ---------------------------------------------------------------------------------------- |
+| `default`                          | `string` | Default scheme name applied when an operation has no explicit `security` declaration      |
+| `schemes`                          | `object` | Map of scheme name → scheme definition                                                   |
+| `schemes[name].type`               | `string` | `"http"`, `"apiKey"`, `"oauth2"`, `"openIdConnect"`, or `"hmac"`                        |
+| `schemes[name].scheme`             | `string` | (http only) `"bearer"`, `"basic"`, etc.                                                  |
+| `schemes[name].bearerFormat`       | `string` | (http/bearer only) e.g. `"JWT"`                                                          |
+| `schemes[name].header`             | `string` | (hmac only) Request header carrying the signature, e.g. `"X-Signature"`                  |
+| `schemes[name].secretEnv`          | `string` | (hmac only) Environment variable name holding the HMAC secret, e.g. `"WEBHOOK_SECRET"`  |
+| `schemes[name].algorithm`          | `string` | (hmac only) HMAC algorithm: `"sha256"` or `"sha512"`                                    |
+| `schemes[name].digest`             | `string` | (hmac only) Output encoding: `"hex"`, `"base64"`, or `"base64url"`                      |
+
+HMAC schemes generate `requireSignature('schemeName')` middleware in the router. OpenAPI-type schemes are emitted into the generated spec's `components.securitySchemes`.
+
 #### `server`
 
-| Field                           | Type       | Description                                                            |
-| ------------------------------- | ---------- | ---------------------------------------------------------------------- |
-| `baseDir`                       | `string`   | Base directory for resolving server-side globs                         |
-| `types.include`                 | `string[]` | Glob patterns for `.dto` files                                         |
-| `types.output`                  | `string`   | Output directory (or template) for generated Zod schemas               |
-| `routes.include`                | `string[]` | Glob patterns for `.op` files                                          |
-| `routes.output`                 | `string`   | Output directory (or template) for generated Koa routers               |
-| `routes.servicePathTemplate`    | `string`   | Template for service import paths (`{module}`, `{name}`, `{kebab}`)    |
-| `routes.typeImportPathTemplate` | `string`   | Template for type import paths                                         |
-| `routes.security`               | `string`   | Default security scheme for all operations (e.g. `"bearer"`, `"none"`) |
+| Field                           | Type       | Description                                                         |
+| ------------------------------- | ---------- | ------------------------------------------------------------------- |
+| `baseDir`                       | `string`   | Base directory for resolving server-side globs                      |
+| `types.include`                 | `string[]` | Glob patterns for `.dto` files                                      |
+| `types.output`                  | `string`   | Output directory (or template) for generated Zod schemas            |
+| `routes.include`                | `string[]` | Glob patterns for `.op` files                                       |
+| `routes.output`                 | `string`   | Output directory (or template) for generated Koa routers            |
+| `routes.servicePathTemplate`    | `string`   | Template for service import paths (`{module}`, `{name}`, `{kebab}`) |
+| `routes.typeImportPathTemplate` | `string`   | Template for type import paths                                      |
 
 #### `sdk`
 
@@ -410,20 +442,43 @@ delete {
 
 #### Security
 
+Use `security: none` to mark an endpoint as public, or `security { ... }` block form to require a specific scheme with optional OAuth scopes:
+
 ```
-post {
-    security: bearer
-    request {
-        application/json: CreateTransferIntent
+# Route-level security — applies to all operations in the block
+/webhooks/stripe {
+    security {
+        webhookAuth
+    }
+    post {
+        request {
+            application/json: StripeEvent
+        }
     }
 }
 
-get {
-    security: none
+/users/:id {
+    # Inline block form with scopes
+    get {
+        security {
+            bearer "read:users"
+        }
+        response {
+            200 { application/json: User }
+        }
+    }
+
+    # Explicitly public — overrides any route-level or default security
+    delete {
+        security: none
+        response { 204 }
+    }
 }
 ```
 
-Security can also be set as a default at the route level via `routes.security` in the config.
+Security cascades in priority order: operation-level → route-level → `security.default` in config.
+
+Scheme names must match a key in `security.schemes`. HMAC schemes generate a `requireSignature('schemeName')` middleware call in the Koa router; standard OpenAPI schemes emit a `@security` annotation and appear in the generated OpenAPI spec.
 
 #### Service Binding
 

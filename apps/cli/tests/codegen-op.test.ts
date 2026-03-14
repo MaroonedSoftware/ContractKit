@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateOp } from '../src/codegen-op.js';
+import { SECURITY_NONE } from '../src/ast.js';
 import { scalarType, arrayType, refType, inlineObjectType, field, opParam, opRequest, opResponse, opOperation, opRoute, opRoot } from './helpers.js';
 
 describe('generateOp', () => {
@@ -543,5 +544,57 @@ describe('generateOp — route modifiers JSDoc', () => {
         const out = generateOp(root);
         // Handler is always generated (internal only affects SDK/docs)
         expect(out).toContain("UsersRouter.get('/admin/users'");
+    });
+
+    // ─── Security middleware ────────────────────────────────────────
+
+    describe('security middleware', () => {
+        it('adds requireSignature middleware for HMAC scheme', () => {
+            const schemes = { webhookAuth: { type: 'hmac' as const, header: 'X-Signature', secretEnv: 'WEBHOOK_SECRET', algorithm: 'sha256', digest: 'hex' as const } };
+            const op = opOperation('post', { security: [{ name: 'webhookAuth', scopes: [] }] });
+            const root = opRoot([opRoute('/webhooks/stripe', [op])]);
+            const out = generateOp(root, { securitySchemes: schemes });
+            expect(out).toContain("requireSignature('webhookAuth')");
+            expect(out).toContain('requireSignature');
+            expect(out).toMatch(/import \{[^}]*requireSignature[^}]*\} from '@maroonedsoftware\/koa'/);
+        });
+
+        it('places requireSignature after bodyParserMiddleware', () => {
+            const schemes = { webhookAuth: { type: 'hmac' as const, header: 'X-Signature', secretEnv: 'WEBHOOK_SECRET', algorithm: 'sha256', digest: 'hex' as const } };
+            const op = opOperation('post', { security: [{ name: 'webhookAuth', scopes: [] }], request: opRequest('Payload') });
+            const root = opRoot([opRoute('/webhooks/stripe', [op])]);
+            const out = generateOp(root, { securitySchemes: schemes });
+            // bodyParser comes before requireSignature in the route definition
+            const bodyParserPos = out.indexOf('bodyParserMiddleware');
+            const requireSigPos = out.indexOf("requireSignature('webhookAuth')");
+            expect(bodyParserPos).toBeGreaterThan(-1);
+            expect(requireSigPos).toBeGreaterThan(bodyParserPos);
+        });
+
+        it('does not add requireSignature for non-HMAC scheme', () => {
+            const schemes = { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } };
+            const op = opOperation('get', { security: [{ name: 'bearerAuth', scopes: [] }] });
+            const root = opRoot([opRoute('/users', [op])]);
+            const out = generateOp(root, { securitySchemes: schemes });
+            expect(out).not.toContain('requireSignature');
+            expect(out).not.toMatch(/import \{[^}]*requireSignature/);
+        });
+
+        it('emits @public annotation for security: none', () => {
+            const op = opOperation('get', { security: SECURITY_NONE });
+            const root = opRoot([opRoute('/health', [op])]);
+            const out = generateOp(root);
+            expect(out).toContain('@public');
+            expect(out).not.toContain('requireSignature');
+        });
+
+        it('inherits route-level HMAC scheme for operations without explicit security', () => {
+            const schemes = { webhookAuth: { type: 'hmac' as const, header: 'X-Sig', secretEnv: 'SECRET', algorithm: 'sha256', digest: 'hex' as const } };
+            const op = opOperation('post'); // no op.security
+            const route = { ...opRoute('/webhooks', [op]), security: [{ name: 'webhookAuth', scopes: [] }] };
+            const root = opRoot([route]);
+            const out = generateOp(root, { securitySchemes: schemes });
+            expect(out).toContain("requireSignature('webhookAuth')");
+        });
     });
 });

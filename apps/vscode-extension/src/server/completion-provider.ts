@@ -231,7 +231,7 @@ function getOpCompletions(
     }
 
     // Inside a security block — offer scheme names (not 'none')
-    if (/security\s*\{[^}]*$/.test(textBefore)) {
+    if (isInsideSecurityBlock(lines, line)) {
         return SECURITY_SCHEMES.map((s) => ({
             label: s.label,
             kind: CompletionItemKind.Value,
@@ -370,6 +370,25 @@ function getOpContext(lines: string[], currentLine: number): OpContext {
     }
 
     return (contextStack[0] as OpContext) ?? 'top-level';
+}
+
+/** Returns true when the cursor is inside an unclosed `security { ... }` block. */
+function isInsideSecurityBlock(lines: string[], currentLine: number): boolean {
+    let braceDepth = 0;
+    for (let i = currentLine; i >= 0; i--) {
+        const ln = lines[i]!;
+        for (let j = ln.length - 1; j >= 0; j--) {
+            const ch = ln[j];
+            if (ch === '}') { braceDepth++; }
+            else if (ch === '{') {
+                if (braceDepth === 0) {
+                    return /\bsecurity\b/.test(ln.slice(0, j));
+                }
+                braceDepth--;
+            }
+        }
+    }
+    return false;
 }
 
 function isInsideTypeConstraints(lines: string[], currentLine: number, textBefore: string): boolean {
