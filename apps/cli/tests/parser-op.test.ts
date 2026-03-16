@@ -668,39 +668,47 @@ LedgerService: #modules/ledger/ledger.service.js
       expect(root.routes[0]!.operations[0]!.security).toBe(SECURITY_NONE);
     });
 
-    it('parses security block with scheme name', () => {
-      const { root } = parse('/users { get: { security { bearerAuth } } }');
+    it('parses security: { ... } with scheme name', () => {
+      const { root } = parse('/users { get: { security: { bearerAuth } } }');
       const sec = root.routes[0]!.operations[0]!.security;
       expect(Array.isArray(sec)).toBe(true);
       expect((sec as any)[0]).toMatchObject({ name: 'bearerAuth', scopes: [] });
     });
 
-    it('parses security block with scheme name and scopes', () => {
-      const { root } = parse('/users { get: { security { bearerAuth "read:users" "write:users" } } }');
+    it('parses security: { ... } with scheme name and scopes', () => {
+      const { root } = parse('/users { get: { security: { bearerAuth "read:users" "write:users" } } }');
       const sec = root.routes[0]!.operations[0]!.security;
       expect(Array.isArray(sec)).toBe(true);
       expect((sec as any)[0]).toMatchObject({ name: 'bearerAuth', scopes: ['read:users', 'write:users'] });
     });
 
-    it('parses route-level security block', () => {
-      const { root } = parse('/users { security { webhookAuth } get: {} }');
+    it('parses route-level security: { ... }', () => {
+      const { root } = parse('/users { security: { webhookAuth } get: {} }');
       expect(root.routes[0]!.security).toMatchObject([{ name: 'webhookAuth', scopes: [] }]);
     });
 
     it('resolveSecurity: op-level wins over route-level', () => {
-      const { root } = parse('/users { security { routeAuth } get: { security: none } }');
+      const { root } = parse('/users { security: { routeAuth } get: { security: none } }');
       const route = root.routes[0]!;
       const op = route.operations[0]!;
       expect(resolveSecurity(route, op)).toBe(SECURITY_NONE);
     });
 
     it('resolveSecurity: falls back to route-level when op has no security', () => {
-      const { root } = parse('/users { security { routeAuth } get: {} }');
+      const { root } = parse('/users { security: { routeAuth } get: {} }');
       const route = root.routes[0]!;
       const op = route.operations[0]!;
       const sec = resolveSecurity(route, op);
       expect(Array.isArray(sec)).toBe(true);
       expect((sec as any)[0]).toMatchObject({ name: 'routeAuth' });
+    });
+
+    it('security: { ... } does not break subsequent fields', () => {
+      const { root } = parse('/users { get: { security: { bearerAuth } response: { 200: } } }');
+      const op = root.routes[0]!.operations[0]!;
+      expect(Array.isArray(op.security)).toBe(true);
+      expect(op.responses).toHaveLength(1);
+      expect(op.responses[0]!.statusCode).toBe(200);
     });
   });
 });

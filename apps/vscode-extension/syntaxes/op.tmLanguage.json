@@ -132,11 +132,12 @@
                     }
                 },
                 {
-                    "comment": "security { ... } — block form",
-                    "begin": "\\b(security)\\s*(\\{)",
+                    "comment": "security: { ... } — block form",
+                    "begin": "\\b(security)\\s*(:)\\s*(\\{)",
                     "beginCaptures": {
                         "1": { "name": "keyword.control.security.op" },
-                        "2": { "name": "punctuation.curlybrace.open.op" }
+                        "2": { "name": "punctuation.separator.colon.op" },
+                        "3": { "name": "punctuation.curlybrace.open.op" }
                     },
                     "end": "(\\})",
                     "endCaptures": {

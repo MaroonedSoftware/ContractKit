@@ -206,7 +206,9 @@ pathSegment     = "/" , ( ":" , IDENTIFIER              (* param  :id    *)
 (* Route Body                                                            *)
 (* --------------------------------------------------------------------- *)
 
-routeBody       = { paramsBlock | httpOperation } ;
+routeBody       = { paramsBlock | securityBlock | httpOperation } ;
+                  (* securityBlock sets a route-level default that          *)
+                  (* cascades to all operations in this route               *)
 
 (* --------------------------------------------------------------------- *)
 (* Path Parameters                                                       *)
@@ -358,23 +360,25 @@ opArgValue      = NUMBER_LIT
 (* Security                                                              *)
 (* --------------------------------------------------------------------- *)
 
-securityBlock      = "security" , ":" , securityExpr ;
-                     (* Declares the authentication requirement for the operation *)
-                     (* Inherits from config default if omitted                  *)
+securityBlock      = "security" , ":" , "none"                    (* explicit public endpoint *)
+                   | "security" , ":" , "{" , { securityLine } , "}" ;
+                     (* Two forms:                                               *)
+                     (*   security: none               — no auth required        *)
+                     (*   security: { schemeName ... } — one or more schemes     *)
+                     (*                                                          *)
+                     (* May appear at route level (default for all operations)   *)
+                     (* or inside an operationBody (overrides route-level).      *)
+                     (* Inherits from config.security.default if omitted.        *)
 
-securityExpr       = securityScheme , { "|" , securityScheme } ;
-                     (* pipe-separated alternatives: bearer | apiKey             *)
-                     (* any one of the listed schemes satisfies the requirement  *)
-
-securityScheme     = IDENTIFIER , [ "(" , securitySchemeArgs , ")" ] ;
-                     (* IDENTIFIER = scheme name: bearer, apiKey, none, etc.     *)
-                     (* optional args for params/scopes                          *)
-                     (* "none" marks the operation as explicitly public          *)
-
-securitySchemeArgs = securitySchemeArg , { "," , securitySchemeArg } ;
-
-securitySchemeArg  = IDENTIFIER , "=" , STRING_LIT   (* header="X-API-Key"    *)
-                   | STRING_LIT ;                     (* "read:users" scope    *)
+securityLine       = IDENTIFIER , { STRING_LIT } ;
+                     (* IDENTIFIER = scheme name from config (e.g. bearerAuth)  *)
+                     (* STRING_LIT = OAuth 2.0 scope (e.g. "read:users")        *)
+                     (* Multiple securityLines = alternatives (any one satisfies) *)
+                     (*                                                          *)
+                     (* Examples:                                                *)
+                     (*   bearerAuth                   — scheme, no scopes       *)
+                     (*   bearerAuth "read:users"       — scheme with one scope  *)
+                     (*   bearerAuth "read" "write"     — scheme with two scopes *)
 
 (* --------------------------------------------------------------------- *)
 (* OP Inline Objects                                                     *)

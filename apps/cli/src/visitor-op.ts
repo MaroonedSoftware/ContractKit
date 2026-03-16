@@ -259,11 +259,11 @@ export class OpVisitor extends BaseOpVisitor {
   }
 
   securityBlock(ctx: any): SecurityNode {
-    if (ctx.Colon) {
-      // security: none
+    if (!ctx.LBrace) {
+      // security: none  (colon + identifier, no brace)
       return SECURITY_NONE;
     }
-    // security { ... }
+    // security { ... }  OR  security: { ... }  (brace form — colon is optional)
     return (ctx.securityLine ?? []).map((l: any) => this.visit(l));
   }
 

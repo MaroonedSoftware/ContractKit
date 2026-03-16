@@ -190,7 +190,7 @@ function printOperation(op: OpOperationNode): string[] {
 // innerIndent: indentation for scheme lines inside the block
 function printSecurity(security: SecurityNode, indent = I2, innerIndent = I3): string[] {
   if (security === SECURITY_NONE) return [`${indent}security: none`];
-  const lines = [`${indent}security {`];
+  const lines = [`${indent}security: {`];
   for (const scheme of security) {
     const scopes = scheme.scopes.map(s => ` "${s}"`).join('');
     lines.push(`${innerIndent}${scheme.name}${scopes}`);
@@ -210,7 +210,8 @@ function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource, 
     if (source.length === 0) return [];
     const lines: string[] = [`${I2}${prefix}${keyword}: {`];
     for (const p of source) {
-      lines.push(`${I3}${p.name}: ${printType(p.type)}`);
+      const comment = p.description ? ` # ${p.description}` : '';
+      lines.push(`${I3}${p.name}: ${printType(p.type)}${comment}`);
     }
     lines.push(`${I2}}`);
     return lines;

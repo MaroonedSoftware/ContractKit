@@ -268,20 +268,20 @@ export class OpCstParser extends CstParser {
   // ─── Security ───────────────────────────────────────────────────────
 
   // securityBlock: "security" COLON "none"
-  //              | "security" LBRACE securityLine* RBRACE
+  //              | "security" COLON LBRACE securityLine* RBRACE
   public securityBlock = this.RULE('securityBlock', () => {
     this.CONSUME(Identifier);  // "security"
+    this.CONSUME(Colon);
     this.OR([
       {
         // security: none
-        GATE: () => this.LA(1).tokenType === Colon,
+        GATE: () => this.LA(1).tokenType !== LBrace,
         ALT: () => {
-          this.CONSUME(Colon);
           this.CONSUME2(Identifier);  // "none"
         },
       },
       {
-        // security { ... }
+        // security: { ... }
         ALT: () => {
           this.CONSUME(LBrace);
           this.MANY(() => this.SUBRULE(this.securityLine));

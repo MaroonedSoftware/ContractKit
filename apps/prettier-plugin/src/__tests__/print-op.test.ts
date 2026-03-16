@@ -160,6 +160,122 @@ describe('printOp — route and operation modifiers combined', () => {
   });
 });
 
+// ─── Security printing ────────────────────────────────────────────────────────
+
+describe('printOp — security', () => {
+  it('prints operation-level security: none', () => {
+    const ast = makeRoot([
+      makeRoute('/health', [makeOp('get', { security: 'none' })]),
+    ]);
+    expect(printOp(ast)).toContain('        security: none');
+  });
+
+  it('prints operation-level security block with single scheme', () => {
+    const ast = makeRoot([
+      makeRoute('/users', [makeOp('get', { security: [{ name: 'bearerAuth', scopes: [] }] })]),
+    ]);
+    const out = printOp(ast);
+    expect(out).toContain('        security: {');
+    expect(out).toContain('            bearerAuth');
+    expect(out).toContain('        }');
+  });
+
+  it('prints operation-level security with scopes', () => {
+    const ast = makeRoot([
+      makeRoute('/users', [
+        makeOp('get', { security: [{ name: 'bearerAuth', scopes: ['read:users', 'write:users'] }] }),
+      ]),
+    ]);
+    expect(printOp(ast)).toContain('            bearerAuth "read:users" "write:users"');
+  });
+
+  it('prints multiple security schemes as separate lines', () => {
+    const ast = makeRoot([
+      makeRoute('/users', [
+        makeOp('get', { security: [
+          { name: 'bearerAuth', scopes: ['read:users'] },
+          { name: 'apiKey', scopes: [] },
+        ] }),
+      ]),
+    ]);
+    const out = printOp(ast);
+    expect(out).toContain('            bearerAuth "read:users"');
+    expect(out).toContain('            apiKey');
+  });
+
+  it('prints route-level security with shallower indentation', () => {
+    const ast = makeRoot([
+      makeRoute('/users', [makeOp('get')], {
+        security: [{ name: 'bearerAuth', scopes: [] }],
+      }),
+    ]);
+    const out = printOp(ast);
+    expect(out).toContain('    security: {');
+    expect(out).toContain('        bearerAuth');
+  });
+
+  it('prints route-level security: none', () => {
+    const ast = makeRoot([
+      makeRoute('/public', [makeOp('get')], { security: 'none' }),
+    ]);
+    expect(printOp(ast)).toContain('    security: none');
+  });
+
+  it('prints route-level and operation-level security independently', () => {
+    const ast = makeRoot([
+      makeRoute('/users', [
+        makeOp('get', { security: 'none' }),
+        makeOp('post', { security: [{ name: 'adminAuth', scopes: [] }] }),
+      ], { security: [{ name: 'bearerAuth', scopes: [] }] }),
+    ]);
+    const out = printOp(ast);
+    expect(out).toContain('    security: {');      // route-level
+    expect(out).toContain('        bearerAuth');
+    expect(out).toContain('        security: none');  // op-level override
+    expect(out).toContain('        security: {');     // op-level block
+    expect(out).toContain('            adminAuth');
+  });
+
+  it('emits no security line when security is undefined', () => {
+    const ast = makeRoot([
+      makeRoute('/users', [makeOp('get')]),
+    ]);
+    expect(printOp(ast)).not.toContain('security');
+  });
+});
+
+// ─── Query / headers with descriptions ───────────────────────────────────────
+
+describe('printOp — query and headers descriptions', () => {
+  it('emits inline comment on query params that have descriptions', () => {
+    const loc = makeLoc();
+    const ast = makeRoot([
+      makeRoute('/users', [makeOp('get', {
+        query: [
+          { name: 'page', type: { kind: 'scalar', name: 'int' }, description: 'Page number', loc },
+          { name: 'limit', type: { kind: 'scalar', name: 'int' }, loc },
+        ],
+      })]),
+    ]);
+    const out = printOp(ast);
+    expect(out).toContain('            page: int # Page number');
+    expect(out).toContain('            limit: int');
+    expect(out).not.toMatch(/limit: int #/);
+  });
+
+  it('emits inline comment on headers params that have descriptions', () => {
+    const loc = makeLoc();
+    const ast = makeRoot([
+      makeRoute('/users', [makeOp('get', {
+        headers: [
+          { name: 'X-Request-Id', type: { kind: 'scalar', name: 'uuid' }, description: 'Idempotency key', loc },
+        ],
+      })]),
+    ]);
+    expect(printOp(ast)).toContain('            X-Request-Id: uuid # Idempotency key');
+  });
+});
+
 // ─── Idempotency: output is valid and parseable structure ─────────────────────
 
 describe('printOp — modifier output structure', () => {
