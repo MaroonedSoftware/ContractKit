@@ -77,9 +77,24 @@ describe('renderType', () => {
       expect(renderType(scalarType('boolean'))).toBe('z.boolean()');
     });
 
-    it('renders DateTime preprocess coercion for date', () => {
+    it('renders DateTime preprocess coercion for date (default format)', () => {
       const result = renderType(scalarType('date'));
-      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }))`);
+      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' }))`);
+    });
+
+    it('renders DateTime preprocess coercion for date with custom format', () => {
+      const result = renderType({ kind: 'scalar', name: 'date', format: 'MM/dd/yyyy' });
+      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'MM/dd/yyyy') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format MM/dd/yyyy' }))`);
+    });
+
+    it('renders DateTime preprocess coercion for time (default format)', () => {
+      const result = renderType(scalarType('time'));
+      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'HH:mm:ss') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a time in format HH:mm:ss' }))`);
+    });
+
+    it('renders DateTime preprocess coercion for time with format', () => {
+      const result = renderType({ kind: 'scalar', name: 'time', format: 'HH:mm' });
+      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'HH:mm') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a time in format HH:mm' }))`);
     });
 
     it('renders DateTime preprocess coercion for datetime', () => {

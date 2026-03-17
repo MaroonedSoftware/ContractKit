@@ -10,8 +10,7 @@ import type {
     OpParamNode,
 } from './ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
-import type { OpenApiConfig, OpenApiSecurityScheme, SecuritySchemeConfig } from './config.js';
-import { isHmacScheme } from './config.js';
+import type { OpenApiConfig, OpenApiSecurityScheme } from './config.js';
 
 // ─── Type reachability ────────────────────────────────────────────────────
 
@@ -94,7 +93,8 @@ export interface OpenApiCodegenContext {
     dtoRoots: DtoRootNode[];
     opRoots: OpRootNode[];
     config: OpenApiConfig;
-    securitySchemes?: Record<string, SecuritySchemeConfig>;
+    /** Named OpenAPI security scheme definitions to include in components.securitySchemes */
+    securitySchemes?: Record<string, OpenApiSecurityScheme>;
 }
 
 export function generateOpenApi(ctx: OpenApiCodegenContext): string {
@@ -167,11 +167,8 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
     if (Object.keys(schemas).length > 0) {
         components.schemas = schemas;
     }
-    if (securitySchemes) {
-        const openApiSchemes = Object.fromEntries(
-            Object.entries(securitySchemes).filter(([, v]) => !isHmacScheme(v)),
-        ) as Record<string, OpenApiSecurityScheme>;
-        if (Object.keys(openApiSchemes).length > 0) components.securitySchemes = openApiSchemes;
+    if (securitySchemes && Object.keys(securitySchemes).length > 0) {
+        components.securitySchemes = securitySchemes;
     }
     if (Object.keys(components).length > 0) {
         doc.components = components;
@@ -429,13 +426,11 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode): Record<string,
     }
 
     // Effective security (operation-level wins; falls back to route-level)
+    // security: none → empty array (explicit public endpoint, overrides global default)
+    // security: { fields } → omit operation-level entry (rely on global security from config)
     const effectiveSecurity = resolveSecurity(route, op);
-    if (effectiveSecurity !== undefined) {
-        if (effectiveSecurity === SECURITY_NONE) {
-            operation.security = [];  // explicit public endpoint — overrides global default
-        } else {
-            operation.security = effectiveSecurity.map(s => ({ [s.name]: s.scopes }));
-        }
+    if (effectiveSecurity === SECURITY_NONE) {
+        operation.security = [];
     }
 
     // Responses

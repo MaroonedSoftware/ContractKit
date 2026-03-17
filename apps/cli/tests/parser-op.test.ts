@@ -668,45 +668,70 @@ LedgerService: #modules/ledger/ledger.service.js
       expect(root.routes[0]!.operations[0]!.security).toBe(SECURITY_NONE);
     });
 
-    it('parses security: { ... } with scheme name', () => {
-      const { root } = parse('/users { get: { security: { bearerAuth } } }');
-      const sec = root.routes[0]!.operations[0]!.security;
-      expect(Array.isArray(sec)).toBe(true);
-      expect((sec as any)[0]).toMatchObject({ name: 'bearerAuth', scopes: [] });
+    it('parses security: { roles: admin } with single role', () => {
+      const { root } = parse('/users { get: { security: { roles: admin } } }');
+      const sec = root.routes[0]!.operations[0]!.security as any;
+      expect(sec.roles).toEqual(['admin']);
     });
 
-    it('parses security: { ... } with scheme name and scopes', () => {
-      const { root } = parse('/users { get: { security: { bearerAuth "read:users" "write:users" } } }');
-      const sec = root.routes[0]!.operations[0]!.security;
-      expect(Array.isArray(sec)).toBe(true);
-      expect((sec as any)[0]).toMatchObject({ name: 'bearerAuth', scopes: ['read:users', 'write:users'] });
+    it('parses security: { roles: admin moderator } with multiple roles', () => {
+      const { root } = parse('/users { get: { security: { roles: admin moderator editor } } }');
+      const sec = root.routes[0]!.operations[0]!.security as any;
+      expect(sec.roles).toEqual(['admin', 'moderator', 'editor']);
     });
 
-    it('parses route-level security: { ... }', () => {
-      const { root } = parse('/users { security: { webhookAuth } get: {} }');
-      expect(root.routes[0]!.security).toMatchObject([{ name: 'webhookAuth', scopes: [] }]);
+    it('parses signature: "key" as a top-level operation field', () => {
+      const { root } = parse('/users { post: { signature: "hmac-sha256" } }');
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.signature).toBe('hmac-sha256');
+      expect(op.security).toBeUndefined();
+    });
+
+    it('parses signature: UNQUOTED_KEY with unquoted identifier', () => {
+      const { root } = parse('/users { post: { signature: MODERN_TREASURY_WEBHOOK } }');
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.signature).toBe('MODERN_TREASURY_WEBHOOK');
+    });
+
+    it('parses signature: alongside security: { roles }', () => {
+      const { root } = parse('/users { post: { signature: "hmac-sha256" security: { roles: admin } } }');
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.signature).toBe('hmac-sha256');
+      expect((op.security as any).roles).toEqual(['admin']);
+    });
+
+    it('parses signature: before or after security:', () => {
+      const { root } = parse('/users { post: { security: { roles: admin } signature: MODERN_TREASURY_WEBHOOK } }');
+      const op = root.routes[0]!.operations[0]!;
+      expect(op.signature).toBe('MODERN_TREASURY_WEBHOOK');
+      expect((op.security as any).roles).toEqual(['admin']);
+    });
+
+    it('parses route-level security: { roles: admin }', () => {
+      const { root } = parse('/users { security: { roles: admin } get: {} }');
+      const sec = root.routes[0]!.security as any;
+      expect(sec.roles).toEqual(['admin']);
     });
 
     it('resolveSecurity: op-level wins over route-level', () => {
-      const { root } = parse('/users { security: { routeAuth } get: { security: none } }');
+      const { root } = parse('/users { security: { roles: admin } get: { security: none } }');
       const route = root.routes[0]!;
       const op = route.operations[0]!;
       expect(resolveSecurity(route, op)).toBe(SECURITY_NONE);
     });
 
     it('resolveSecurity: falls back to route-level when op has no security', () => {
-      const { root } = parse('/users { security: { routeAuth } get: {} }');
+      const { root } = parse('/users { security: { roles: admin } get: {} }');
       const route = root.routes[0]!;
       const op = route.operations[0]!;
-      const sec = resolveSecurity(route, op);
-      expect(Array.isArray(sec)).toBe(true);
-      expect((sec as any)[0]).toMatchObject({ name: 'routeAuth' });
+      const sec = resolveSecurity(route, op) as any;
+      expect(sec.roles).toEqual(['admin']);
     });
 
     it('security: { ... } does not break subsequent fields', () => {
-      const { root } = parse('/users { get: { security: { bearerAuth } response: { 200: } } }');
+      const { root } = parse('/users { get: { security: { roles: admin } response: { 200: } } }');
       const op = root.routes[0]!.operations[0]!;
-      expect(Array.isArray(op.security)).toBe(true);
+      expect((op.security as any).roles).toEqual(['admin']);
       expect(op.responses).toHaveLength(1);
       expect(op.responses[0]!.statusCode).toBe(200);
     });

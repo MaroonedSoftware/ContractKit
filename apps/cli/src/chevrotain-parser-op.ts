@@ -239,6 +239,13 @@ export class OpCstParser extends CstParser {
         {
           GATE: () => {
             const la = this.LA(1);
+            return la.tokenType === Identifier && la.image === 'signature';
+          },
+          ALT: () => this.SUBRULE(this.signatureDecl),
+        },
+        {
+          GATE: () => {
+            const la = this.LA(1);
             return la.tokenType === Identifier && la.image === 'security';
           },
           ALT: () => this.SUBRULE(this.securityBlock),
@@ -265,10 +272,20 @@ export class OpCstParser extends CstParser {
     this.CONSUME2(Identifier); // method name e.g. "getUser"
   });
 
+  // signatureDecl: "signature" COLON (StringLit | Identifier)
+  public signatureDecl = this.RULE('signatureDecl', () => {
+    this.CONSUME(Identifier);  // "signature"
+    this.CONSUME(Colon);
+    this.OR([
+      { ALT: () => this.CONSUME(StringLit) },    // "quoted-key"
+      { ALT: () => this.CONSUME2(Identifier) },  // UNQUOTED_KEY
+    ]);
+  });
+
   // ─── Security ───────────────────────────────────────────────────────
 
   // securityBlock: "security" COLON "none"
-  //              | "security" COLON LBRACE securityLine* RBRACE
+  //              | "security" COLON LBRACE securityRolesLine? RBRACE
   public securityBlock = this.RULE('securityBlock', () => {
     this.CONSUME(Identifier);  // "security"
     this.CONSUME(Colon);
@@ -281,20 +298,27 @@ export class OpCstParser extends CstParser {
         },
       },
       {
-        // security: { ... }
+        // security: { roles: admin moderator }
         ALT: () => {
           this.CONSUME(LBrace);
-          this.MANY(() => this.SUBRULE(this.securityLine));
+          this.OPTION(() => this.SUBRULE(this.securityRolesLine));
           this.CONSUME(RBrace);
         },
       },
     ]);
   });
 
-  // securityLine: IDENTIFIER StringLit*
-  public securityLine = this.RULE('securityLine', () => {
-    this.CONSUME(Identifier);   // scheme name e.g. "bearerAuth"
-    this.MANY(() => this.CONSUME(StringLit));  // optional scopes e.g. "read:users"
+  // securityRolesLine: "roles" COLON Identifier+
+  // Stops consuming identifiers when the next identifier is followed by ':'
+  // (which would be a new field).
+  public securityRolesLine = this.RULE('securityRolesLine', () => {
+    this.CONSUME(Identifier);   // "roles"
+    this.CONSUME(Colon);
+    this.CONSUME2(Identifier);  // first (mandatory) role name
+    this.MANY({
+      GATE: () => this.LA(1).tokenType === Identifier && this.LA(2).tokenType !== Colon,
+      DEF: () => this.CONSUME3(Identifier),  // additional role names
+    });
   });
 
   // ─── Query ──────────────────────────────────────────────────────────

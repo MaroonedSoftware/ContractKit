@@ -163,9 +163,23 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
 
-    const body = renderFields(model.fields);
-
     const wrapper = modeToWrapper(model.mode ?? 'strict');
+
+    if (model.camelCase) {
+        const snakeBody = renderFieldsAsSnakeCase(model.fields);
+        lines.push(`export const ${model.name} = ${wrapper}({`);
+        lines.push(...snakeBody.map(l => `    ${l}`));
+        lines.push(`}).transform(data => ({`);
+        for (const field of model.fields) {
+            const snakeKey = camelToSnake(field.name);
+            lines.push(`    ${quoteKey(field.name)}: data.${snakeKey},`);
+        }
+        lines.push(`}));`);
+        lines.push(`export type ${model.name} = z.output<typeof ${model.name}>;`);
+        return lines;
+    }
+
+    const body = renderFields(model.fields);
     if (model.base) {
         lines.push(`export const ${model.name} = ${model.base}.extend({`);
         lines.push(...body.map(l => `    ${l}`));
@@ -238,8 +252,31 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
 
 // ─── Fields ────────────────────────────────────────────────────────────────
 
+function camelToSnake(s: string): string {
+    return s.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`);
+}
+
 function renderFields(fields: FieldNode[]): string[] {
     return fields.map(f => renderField(f));
+}
+
+function renderFieldsAsSnakeCase(fields: FieldNode[]): string[] {
+    return fields.map(f => {
+        const snakeKey = camelToSnake(f.name);
+        let expr = renderType(f.type, true);
+        if (f.default !== undefined) {
+            if (f.nullable) expr += '.nullable()';
+            const dv = typeof f.default === 'string' ? `"${escapeString(f.default)}"` : String(f.default);
+            expr += `.default(${dv})`;
+        } else if (f.optional) {
+            // .nullish() accepts null or undefined from the API; the transform coerces null → undefined
+            expr += '.nullish()';
+        } else if (f.nullable) {
+            expr += '.nullable()';
+        }
+        if (f.description) expr += `.describe("${escapeString(f.description)}")`;
+        return `${quoteKey(snakeKey)}: ${expr},`;
+    });
 }
 
 function renderField(field: FieldNode): string {
@@ -259,12 +296,12 @@ function renderField(field: FieldNode): string {
 
 // ─── Type rendering ────────────────────────────────────────────────────────
 
-export function renderType(type: DtoTypeNode): string {
+export function renderType(type: DtoTypeNode, camel = false): string {
     switch (type.kind) {
         case 'scalar':
             return renderScalar(type);
         case 'array':
-            return renderArray(type);
+            return renderArray(type, camel);
         case 'tuple':
             return renderTuple(type);
         case 'record':
@@ -274,15 +311,15 @@ export function renderType(type: DtoTypeNode): string {
         case 'literal':
             return renderLiteral(type);
         case 'union':
-            return renderUnion(type);
+            return renderUnion(type, camel);
         case 'intersection':
-            return renderIntersection(type);
+            return renderIntersection(type, camel);
         case 'ref':
             return type.name;
         case 'lazy':
-            return `z.lazy(() => ${renderType(type.inner)})`;
+            return `z.lazy(() => ${renderType(type.inner, camel)})`;
         case 'inlineObject':
-            return renderInlineObject(type);
+            return renderInlineObject(type, camel);
         default:
             return 'z.unknown()';
     }
@@ -319,7 +356,14 @@ function renderScalar(s: ScalarTypeNode): string {
         }
         case 'boolean':
             return 'z.boolean()';
-        case 'date':
+        case 'date': {
+            const fmt = s.format ?? 'yyyy-MM-dd';
+            return `z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, '${escapeString(fmt)}') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format ${escapeString(fmt)}' }))`;
+        }
+        case 'time': {
+            const fmt = s.format ?? 'HH:mm:ss';
+            return `z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, '${escapeString(fmt)}') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a time in format ${escapeString(fmt)}' }))`;
+        }
         case 'datetime':
             return `z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }))`;
         case 'email':
@@ -343,15 +387,15 @@ function renderScalar(s: ScalarTypeNode): string {
     }
 }
 
-function renderArray(a: ArrayTypeNode): string {
-    let e = `z.array(${renderType(a.item)})`;
+function renderArray(a: ArrayTypeNode, camel = false): string {
+    let e = `z.array(${renderType(a.item, camel)})`;
     if (a.min !== undefined) e += `.min(${a.min})`;
     if (a.max !== undefined) e += `.max(${a.max})`;
     return e;
 }
 
 function renderTuple(t: TupleTypeNode): string {
-    return `z.tuple([${t.items.map(renderType).join(', ')}])`;
+    return `z.tuple([${t.items.map(i => renderType(i)).join(', ')}])`;
 }
 
 function renderRecord(r: RecordTypeNode): string {
@@ -368,30 +412,46 @@ function renderLiteral(l: LiteralTypeNode): string {
     return `z.literal(${l.value})`;
 }
 
-function renderUnion(u: UnionTypeNode): string {
-    return `z.union([${u.members.map(renderType).join(', ')}])`;
+function renderUnion(u: UnionTypeNode, camel = false): string {
+    return `z.union([${u.members.map(m => renderType(m, camel)).join(', ')}])`;
 }
 
-function renderIntersection(i: IntersectionTypeNode): string {
+function renderIntersection(i: IntersectionTypeNode, camel = false): string {
     const [first, ...rest] = i.members;
     // When the pattern is ref & { inlineObject(s) }, use .extend() to produce a
     // single merged ZodObject. Using .and(z.strictObject) breaks because each
     // strict side rejects the other side's keys during intersection parsing.
     if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'inlineObject')) {
         const allFields = rest.flatMap(m => (m as InlineObjectTypeNode).fields);
-        const fieldLines = allFields.map(f => `    ${renderField(f)}`).join('\n');
+        const fieldLines = camel
+            ? renderFieldsAsSnakeCase(allFields).map(l => `    ${l}`).join('\n')
+            : allFields.map(f => `    ${renderField(f)}`).join('\n');
         return `${first.name}.extend({\n${fieldLines}\n})`;
     }
-    let expr = renderType(first!);
+    let expr = renderType(first!, camel);
     for (const member of rest) {
-        expr += `.and(${renderType(member)})`;
+        expr += `.and(${renderType(member, camel)})`;
     }
     return expr;
 }
 
-function renderInlineObject(o: InlineObjectTypeNode): string {
+function renderInlineObject(o: InlineObjectTypeNode, camel = false): string {
+    const wrapper = modeToWrapper(o.mode ?? 'strict');
+    if (camel) {
+        const snakeLines = renderFieldsAsSnakeCase(o.fields);
+        const joined = snakeLines.map(l => `    ${l}`).join('\n');
+        const transformEntries = o.fields
+            .map(f => {
+                const snakeKey = camelToSnake(f.name);
+                // Optional fields use .nullish() on input; coerce null → undefined in output
+                const val = f.optional ? `data.${snakeKey} ?? undefined` : `data.${snakeKey}`;
+                return `    ${quoteKey(f.name)}: ${val},`;
+            })
+            .join('\n');
+        return `${wrapper}({\n${joined}\n}).transform(data => ({\n${transformEntries}\n}))`;
+    }
     const fields = o.fields.map(f => `    ${renderField(f)}`).join('\n');
-    return `${modeToWrapper(o.mode ?? 'strict')}({\n${fields}\n})`;
+    return `${wrapper}({\n${fields}\n})`;
 }
 
 // ─── Input type rendering ─────────────────────────────────────────────────
@@ -550,7 +610,7 @@ function rootNeedsDateTime(root: DtoRootNode): boolean {
 export function typeNeedsDateTime(type: DtoTypeNode): boolean {
     switch (type.kind) {
         case 'scalar':
-            return type.name === 'date' || type.name === 'datetime';
+            return type.name === 'date' || type.name === 'time' || type.name === 'datetime';
         case 'array':
             return typeNeedsDateTime(type.item);
         case 'union':

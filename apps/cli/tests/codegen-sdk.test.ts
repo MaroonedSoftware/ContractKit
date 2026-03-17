@@ -440,6 +440,9 @@ describe('generateSdkOptions', () => {
     expect(out).toContain('export function createSdkFetch(options: SdkOptions): SdkFetch');
     expect(out).toContain('requestIdFactory ?? (() => crypto.randomUUID())');
     expect(out).toContain("'X-Request-ID': getRequestId()");
+    // SecurityContext/securityHandler removed — auth is handled via headers option
+    expect(out).not.toContain('SecurityContext');
+    expect(out).not.toContain('securityHandler');
   });
 });
 

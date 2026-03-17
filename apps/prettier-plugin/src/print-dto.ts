@@ -95,7 +95,8 @@ function printModelDecl(model: ModelNode): string {
 
   // Regular model with fields (possibly inherited)
   const commentSuffix = model.description ? ` # ${model.description}` : '';
-  const modePrefix = model.mode ? `${model.mode} ` : '';
+  const modifiers = [model.camelCase ? 'camel' : '', model.mode ?? ''].filter(Boolean).join(' ');
+  const modePrefix = modifiers ? `${modifiers} ` : '';
   const header = model.base
     ? `${modePrefix}${model.name}: ${model.base} {${commentSuffix}`
     : `${modePrefix}${model.name}: {${commentSuffix}`;
@@ -111,6 +112,8 @@ function printModelDecl(model: ModelNode): string {
 function printTypeAlias(model: ModelNode): string {
   const type = model.type!;
   const commentSuffix = model.description ? ` # ${model.description}` : '';
+  const modifiers = [model.camelCase ? 'camel' : '', model.mode ?? ''].filter(Boolean).join(' ');
+  const modePrefix = modifiers ? `${modifiers} ` : '';
 
   // If the type ends with an inline brace object, expand it as a pseudo-model block.
   const trailing = extractTrailingInlineObject(type);
@@ -118,12 +121,12 @@ function printTypeAlias(model: ModelNode): string {
     const { prefix, inlineObj } = trailing;
     const modePart = inlineObj.mode ? `${inlineObj.mode} ` : '';
     const header = prefix
-      ? `${model.name}: ${prefix} & ${modePart}{${commentSuffix}`
-      : `${model.name}: ${modePart}{${commentSuffix}`;
+      ? `${modePrefix}${model.name}: ${prefix} & ${modePart}{${commentSuffix}`
+      : `${modePrefix}${model.name}: ${modePart}{${commentSuffix}`;
     const lines: string[] = [header, ...printInlineObjectExpanded(inlineObj, INDENT), '}'];
     return lines.join('\n');
   }
 
   // Simple type alias — single line.
-  return `${model.name}: ${printType(type)}${commentSuffix}`;
+  return `${modePrefix}${model.name}: ${printType(type)}${commentSuffix}`;
 }

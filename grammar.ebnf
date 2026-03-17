@@ -360,25 +360,27 @@ opArgValue      = NUMBER_LIT
 (* Security                                                              *)
 (* --------------------------------------------------------------------- *)
 
-securityBlock      = "security" , ":" , "none"                    (* explicit public endpoint *)
-                   | "security" , ":" , "{" , { securityLine } , "}" ;
+securityBlock      = "security" , ":" , "none"                      (* explicit public endpoint *)
+                   | "security" , ":" , "{" , [ securityRolesLine ] , [ securitySignatureLine ] , "}" ;
                      (* Two forms:                                               *)
                      (*   security: none               — no auth required        *)
-                     (*   security: { schemeName ... } — one or more schemes     *)
+                     (*   security: { ... }            — constrained auth fields *)
                      (*                                                          *)
                      (* May appear at route level (default for all operations)   *)
                      (* or inside an operationBody (overrides route-level).      *)
-                     (* Inherits from config.security.default if omitted.        *)
 
-securityLine       = IDENTIFIER , { STRING_LIT } ;
-                     (* IDENTIFIER = scheme name from config (e.g. bearerAuth)  *)
-                     (* STRING_LIT = OAuth 2.0 scope (e.g. "read:users")        *)
-                     (* Multiple securityLines = alternatives (any one satisfies) *)
-                     (*                                                          *)
+securityRolesLine  = "roles" , ":" , IDENTIFIER , { IDENTIFIER } ;
+                     (* One or more role name identifiers (unquoted).            *)
                      (* Examples:                                                *)
-                     (*   bearerAuth                   — scheme, no scopes       *)
-                     (*   bearerAuth "read:users"       — scheme with one scope  *)
-                     (*   bearerAuth "read" "write"     — scheme with two scopes *)
+                     (*   roles: admin                  — single role            *)
+                     (*   roles: admin moderator editor — multiple roles         *)
+
+securitySignatureLine = "signature" , ":" , ( STRING | IDENTIFIER ) ;
+                     (* Key name as a quoted string or unquoted identifier.      *)
+                     (* Quoted form required when name contains special chars.   *)
+                     (* Examples:                                                *)
+                     (*   signature: "hmac-sha256"        — quoted (has hyphen) *)
+                     (*   signature: MODERN_TREASURY_WEBHOOK — unquoted ident   *)
 
 (* --------------------------------------------------------------------- *)
 (* OP Inline Objects                                                     *)

@@ -55,7 +55,9 @@ export class DtoCstParser extends CstParser {
   //   [MODE] IDENTIFIER COLON LBRACE fieldList RBRACE               (model with fields)
   //   IDENTIFIER COLON typeExpression                                (type alias — no mode)
   public modelDecl = this.RULE('modelDecl', () => {
-    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image), DEF: () => this.CONSUME(Identifier) });  // optional: strict|strip|loose
+    // Optional modifier prefixes: camel and/or strict|strip|loose in any order (max one each)
+    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image) || this.LA(1).image === 'camel', DEF: () => this.CONSUME(Identifier) });
+    this.OPTION2({ GATE: () => OBJECT_MODES.has(this.LA(1).image) || this.LA(1).image === 'camel', DEF: () => this.CONSUME4(Identifier) });
     this.CONSUME2(Identifier);  // model name
     this.CONSUME(Colon);
     this.OR([

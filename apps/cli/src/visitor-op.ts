@@ -4,7 +4,7 @@ import type {
   OpRootNode, OpRouteNode, OpOperationNode, OpParamNode,
   OpRequestNode, OpResponseNode, HttpMethod, DtoTypeNode,
   FieldNode, ParamSource, ScalarTypeNode, InlineObjectTypeNode,
-  SecurityNode, SecuritySchemeNode, ObjectMode, RouteModifier,
+  SecurityNode, SecurityFields, ObjectMode, RouteModifier,
 } from './ast.js';
 import { SCALAR_NAMES, SECURITY_NONE } from './ast.js';
 
@@ -202,10 +202,15 @@ export class OpVisitor extends BaseOpVisitor {
     let responses: OpResponseNode[] = [];
     let security: SecurityNode | undefined;
 
+    let signature: string | undefined;
+    let signatureDescription: string | undefined;
+
     if (ctx.operationBody) {
-      const body = this.visit(ctx.operationBody[0]) as { service?: string; sdk?: string; query?: ParamSource; queryMode?: ObjectMode; headers?: ParamSource; headersMode?: ObjectMode; request?: OpRequestNode; responses: OpResponseNode[]; security?: SecurityNode };
+      const body = this.visit(ctx.operationBody[0]) as { service?: string; sdk?: string; signature?: string; signatureDescription?: string; query?: ParamSource; queryMode?: ObjectMode; headers?: ParamSource; headersMode?: ObjectMode; request?: OpRequestNode; responses: OpResponseNode[]; security?: SecurityNode };
       service = body.service;
       sdk = body.sdk;
+      signature = body.signature;
+      signatureDescription = body.signatureDescription;
       query = body.query;
       queryMode = body.queryMode;
       headers = body.headers;
@@ -215,12 +220,14 @@ export class OpVisitor extends BaseOpVisitor {
       security = body.security;
     }
 
-    return { method, service, sdk, query, queryMode, headers, headersMode, request, responses, security, modifiers, description, loc: { file: this.file, line } };
+    return { method, service, sdk, signature, signatureDescription, query, queryMode, headers, headersMode, request, responses, security, modifiers, description, loc: { file: this.file, line } };
   }
 
-  operationBody(ctx: any): { service?: string; sdk?: string; query?: ParamSource; queryMode?: ObjectMode; headers?: ParamSource; headersMode?: ObjectMode; request?: OpRequestNode; responses: OpResponseNode[]; security?: SecurityNode } {
+  operationBody(ctx: any): { service?: string; sdk?: string; signature?: string; signatureDescription?: string; query?: ParamSource; queryMode?: ObjectMode; headers?: ParamSource; headersMode?: ObjectMode; request?: OpRequestNode; responses: OpResponseNode[]; security?: SecurityNode } {
     let service: string | undefined;
     let sdk: string | undefined;
+    let signature: string | undefined;
+    let signatureDescription: string | undefined;
     let query: ParamSource | undefined;
     let queryMode: ObjectMode | undefined;
     let headers: ParamSource | undefined;
@@ -234,6 +241,11 @@ export class OpVisitor extends BaseOpVisitor {
     }
     if (ctx.sdkDecl) {
       sdk = this.visit(ctx.sdkDecl[0]);
+    }
+    if (ctx.signatureDecl) {
+      const result = this.visit(ctx.signatureDecl[0]) as { signature: string; description?: string };
+      signature = result.signature;
+      signatureDescription = result.description;
     }
     if (ctx.queryBlock) {
       const result = this.visit(ctx.queryBlock[0]) as { source: ParamSource; mode?: ObjectMode };
@@ -255,23 +267,42 @@ export class OpVisitor extends BaseOpVisitor {
       security = this.visit(ctx.securityBlock[0]);
     }
 
-    return { service, sdk, query, queryMode, headers, headersMode, request, responses, security };
+    return { service, sdk, signature, signatureDescription, query, queryMode, headers, headersMode, request, responses, security };
   }
 
   securityBlock(ctx: any): SecurityNode {
     if (!ctx.LBrace) {
-      // security: none  (colon + identifier, no brace)
+      // security: none
       return SECURITY_NONE;
     }
-    // security { ... }  OR  security: { ... }  (brace form — colon is optional)
-    return (ctx.securityLine ?? []).map((l: any) => this.visit(l));
+    // security: { roles: admin moderator }
+    const line = ctx.LBrace[0].startLine ?? 0;
+    const fields: SecurityFields = { loc: { file: this.file, line } };
+
+    if (ctx.securityRolesLine) {
+      const result = this.visit(ctx.securityRolesLine[0]) as { roles: string[]; description?: string };
+      fields.roles = result.roles;
+      if (result.description) fields.rolesDescription = result.description;
+    }
+
+    return fields;
   }
 
-  securityLine(ctx: any): SecuritySchemeNode {
-    return {
-      name: ctx.Identifier[0].image,
-      scopes: (ctx.StringLit ?? []).map((t: IToken) => t.image.replace(/^['"]|['"]$/g, '')),
-    };
+  securityRolesLine(ctx: any): { roles: string[]; description?: string } {
+    const identifiers: IToken[] = ctx.Identifier ?? [];
+    // First identifier is "roles" keyword, rest are role names
+    const roles = identifiers.slice(1).map((t: IToken) => t.image);
+    const line: number = identifiers[0]?.startLine ?? 0;
+    return { roles, description: this.consumeComment(line) };
+  }
+
+  signatureDecl(ctx: any): { signature: string; description?: string } {
+    // Accept either a quoted string ("key") or an unquoted identifier (KEY_NAME)
+    const signature: string = ctx.StringLit?.[0]
+      ? ctx.StringLit[0].image as string
+      : ctx.Identifier[1].image as string;
+    const line: number = ctx.Identifier[0]?.startLine ?? 0;
+    return { signature, description: this.consumeComment(line) };
   }
 
   queryBlock(ctx: any): { source: ParamSource; mode?: ObjectMode } {
@@ -560,11 +591,19 @@ function buildCompoundType(name: string, args: any[]): DtoTypeNode {
       if (SCALAR_NAMES.has(name)) {
         const scalar: ScalarTypeNode = { kind: 'scalar', name: name as ScalarTypeNode['name'] };
         for (const a of args) {
-          if (!a?.key) continue;
+          // Positional string (quoted) or ref (unquoted identifier): format for date/time
+          if (!a?.key) {
+            if ((a?.type === 'string' || (a?.type === 'type' && a.value?.kind === 'ref')) &&
+                (name === 'date' || name === 'time' || name === 'datetime')) {
+              scalar.format = a.type === 'string' ? String(a.value) : String(a.value.name);
+            }
+            continue;
+          }
           if (a.key === 'min') scalar.min = name === 'bigint' ? BigInt(a.value) : Number(a.value);
           if (a.key === 'max') scalar.max = name === 'bigint' ? BigInt(a.value) : Number(a.value);
           if (a.key === 'len' || a.key === 'length') scalar.len = Number(a.value);
           if (a.key === 'regex') scalar.regex = String(a.value);
+          if (a.key === 'format') scalar.format = String(a.value);
         }
         return scalar;
       }

@@ -81,12 +81,18 @@ export class DtoVisitor extends BaseDtoVisitor {
   modelDecl(ctx: any): ModelNode {
     const identifiers: IToken[] = ctx.Identifier || [];
 
-    // First identifier may be an optional mode prefix (strict|strip|loose)
-    const hasMode = identifiers.length > 0 && OBJECT_MODES.has(identifiers[0]!.image);
-    const modeOffset = hasMode ? 1 : 0;
-    const mode = hasMode ? identifiers[0]!.image as ObjectMode : undefined;
+    // Scan leading modifier keywords (mode and/or camel) in any order
+    let offset = 0;
+    let mode: ObjectMode | undefined;
+    let camelCase = false;
+    while (offset < identifiers.length) {
+      const img = identifiers[offset]!.image;
+      if (OBJECT_MODES.has(img)) { mode = img as ObjectMode; offset++; }
+      else if (img === 'camel') { camelCase = true; offset++; }
+      else break;
+    }
 
-    const nameToken = identifiers[modeOffset]!;
+    const nameToken = identifiers[offset]!;
     const name = nameToken.image;
     const line = nameToken.startLine ?? 0;
 
@@ -100,7 +106,7 @@ export class DtoVisitor extends BaseDtoVisitor {
     }
 
     // Next identifier (if any) is the base model name
-    const base = identifiers[modeOffset + 1]?.image;
+    const base = identifiers[offset + 1]?.image;
 
     // Parse fields from fieldList
     const fields: FieldNode[] = [];
@@ -109,7 +115,7 @@ export class DtoVisitor extends BaseDtoVisitor {
       if (Array.isArray(result)) fields.push(...result);
     }
 
-    return { kind: 'model', name, base, fields, mode, description, loc: { file: this.file, line } };
+    return { kind: 'model', name, base, fields, mode, camelCase: camelCase || undefined, description, loc: { file: this.file, line } };
   }
 
   fieldList(ctx: any): FieldNode[] {
@@ -384,11 +390,26 @@ export class DtoVisitor extends BaseDtoVisitor {
   private buildScalarWithModifiers(name: ScalarTypeNode['name'], args: any[]): ScalarTypeNode {
     const scalar: ScalarTypeNode = { kind: 'scalar', name };
     for (const a of args) {
+      // Positional string argument (quoted): used as format for date/time types
+      if (a?.type === 'string' && !a.key) {
+        if (name === 'date' || name === 'time' || name === 'datetime') {
+          scalar.format = String(a.value);
+        }
+        continue;
+      }
+      // Positional ref argument (unquoted identifier): used as format for date/time types
+      if (a?.type === 'type' && a.value?.kind === 'ref' && !a.key) {
+        if (name === 'date' || name === 'time' || name === 'datetime') {
+          scalar.format = String(a.value.name);
+        }
+        continue;
+      }
       if (!a?.key) continue;
       if (a.key === 'min') scalar.min = name === 'bigint' ? BigInt(a.value) : Number(a.value);
       if (a.key === 'max') scalar.max = name === 'bigint' ? BigInt(a.value) : Number(a.value);
       if (a.key === 'len' || a.key === 'length') scalar.len = Number(a.value);
       if (a.key === 'regex') scalar.regex = String(a.value);
+      if (a.key === 'format') scalar.format = String(a.value);
     }
     return scalar;
   }

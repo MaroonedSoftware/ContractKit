@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { printOp } from '../print-op.js';
-import type { OpRootNode, OpRouteNode, OpOperationNode } from 'contract-dsl/src/ast.js';
+import type { OpRootNode, OpRouteNode, OpOperationNode, SecurityFields } from 'contract-dsl/src/ast.js';
 
 // ─── Minimal AST builders ────────────────────────────────────────────────────
 
@@ -162,6 +162,10 @@ describe('printOp — route and operation modifiers combined', () => {
 
 // ─── Security printing ────────────────────────────────────────────────────────
 
+function makeSecFields(fields: Partial<Pick<SecurityFields, 'roles'>>): SecurityFields {
+  return { ...fields, loc: makeLoc() };
+}
+
 describe('printOp — security', () => {
   it('prints operation-level security: none', () => {
     const ast = makeRoot([
@@ -170,48 +174,59 @@ describe('printOp — security', () => {
     expect(printOp(ast)).toContain('        security: none');
   });
 
-  it('prints operation-level security block with single scheme', () => {
+  it('prints security block with roles only', () => {
     const ast = makeRoot([
-      makeRoute('/users', [makeOp('get', { security: [{ name: 'bearerAuth', scopes: [] }] })]),
+      makeRoute('/users', [makeOp('get', { security: makeSecFields({ roles: ['admin'] }) })]),
     ]);
     const out = printOp(ast);
     expect(out).toContain('        security: {');
-    expect(out).toContain('            bearerAuth');
+    expect(out).toContain('            roles: admin');
     expect(out).toContain('        }');
   });
 
-  it('prints operation-level security with scopes', () => {
+  it('prints security block with multiple roles space-separated', () => {
     const ast = makeRoot([
-      makeRoute('/users', [
-        makeOp('get', { security: [{ name: 'bearerAuth', scopes: ['read:users', 'write:users'] }] }),
-      ]),
+      makeRoute('/users', [makeOp('get', { security: makeSecFields({ roles: ['admin', 'moderator'] }) })]),
     ]);
-    expect(printOp(ast)).toContain('            bearerAuth "read:users" "write:users"');
+    expect(printOp(ast)).toContain('            roles: admin moderator');
   });
 
-  it('prints multiple security schemes as separate lines', () => {
+  it('prints operation-level signature as its own keyword', () => {
+    const ast = makeRoot([
+      makeRoute('/users', [makeOp('post', { signature: 'hmac-sha256' })]),
+    ]);
+    const out = printOp(ast);
+    expect(out).toContain('        signature: "hmac-sha256"');
+    expect(out).not.toContain('security: {');
+  });
+
+  it('prints signature and security: { roles } together', () => {
     const ast = makeRoot([
       makeRoute('/users', [
-        makeOp('get', { security: [
-          { name: 'bearerAuth', scopes: ['read:users'] },
-          { name: 'apiKey', scopes: [] },
-        ] }),
+        makeOp('post', { signature: 'hmac-sha256', security: makeSecFields({ roles: ['admin'] }) }),
       ]),
     ]);
     const out = printOp(ast);
-    expect(out).toContain('            bearerAuth "read:users"');
-    expect(out).toContain('            apiKey');
+    expect(out).toContain('        signature: "hmac-sha256"');
+    expect(out).toContain('            roles: admin');
+  });
+
+  it('prints unquoted identifier signature without quotes', () => {
+    const ast = makeRoot([
+      makeRoute('/webhooks', [makeOp('post', { signature: 'MODERN_TREASURY_WEBHOOK' })]),
+    ]);
+    expect(printOp(ast)).toContain('        signature: MODERN_TREASURY_WEBHOOK');
   });
 
   it('prints route-level security with shallower indentation', () => {
     const ast = makeRoot([
       makeRoute('/users', [makeOp('get')], {
-        security: [{ name: 'bearerAuth', scopes: [] }],
+        security: makeSecFields({ roles: ['admin'] }),
       }),
     ]);
     const out = printOp(ast);
     expect(out).toContain('    security: {');
-    expect(out).toContain('        bearerAuth');
+    expect(out).toContain('        roles: admin');
   });
 
   it('prints route-level security: none', () => {
@@ -225,15 +240,15 @@ describe('printOp — security', () => {
     const ast = makeRoot([
       makeRoute('/users', [
         makeOp('get', { security: 'none' }),
-        makeOp('post', { security: [{ name: 'adminAuth', scopes: [] }] }),
-      ], { security: [{ name: 'bearerAuth', scopes: [] }] }),
+        makeOp('post', { security: makeSecFields({ roles: ['admin'] }) }),
+      ], { security: makeSecFields({ roles: ['user'] }) }),
     ]);
     const out = printOp(ast);
-    expect(out).toContain('    security: {');      // route-level
-    expect(out).toContain('        bearerAuth');
-    expect(out).toContain('        security: none');  // op-level override
-    expect(out).toContain('        security: {');     // op-level block
-    expect(out).toContain('            adminAuth');
+    expect(out).toContain('    security: {');          // route-level
+    expect(out).toContain('        roles: user');
+    expect(out).toContain('        security: none');   // op-level override
+    expect(out).toContain('        security: {');      // op-level block
+    expect(out).toContain('            roles: admin');
   });
 
   it('emits no security line when security is undefined', () => {

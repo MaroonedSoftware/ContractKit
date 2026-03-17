@@ -36,6 +36,12 @@ export function tokenize(source: string, file: string): Token[] {
   const lines = source.split('\n');
   const tokens: Token[] = [];
   let inFrontMatter = false;
+  let parenDepth = 0;
+  let braceDepth = 0;
+  // Tracks the brace depth at which each open paren was opened.
+  // Used to detect when : or / appears inside a type-arg () at the same brace level
+  // (format strings) vs inside a nested {} within those parens (field separators).
+  const parenBraceStack: number[] = [];
 
   for (let lineNum = 0; lineNum < lines.length; lineNum++) {
     const rawLine = lines[lineNum]!;
@@ -133,10 +139,10 @@ export function tokenize(source: string, file: string): Token[] {
         case '?': tokens.push({ kind: 'QUESTION', value: '?', line: lineNo }); pos++; continue;
         case '=': tokens.push({ kind: 'EQUALS', value: '=', line: lineNo }); pos++; continue;
         case '|': tokens.push({ kind: 'PIPE', value: '|', line: lineNo }); pos++; continue;
-        case '(': tokens.push({ kind: 'LPAREN', value: '(', line: lineNo }); pos++; continue;
-        case ')': tokens.push({ kind: 'RPAREN', value: ')', line: lineNo }); pos++; continue;
-        case '{': tokens.push({ kind: 'LBRACE', value: '{', line: lineNo }); pos++; continue;
-        case '}': tokens.push({ kind: 'RBRACE', value: '}', line: lineNo }); pos++; continue;
+        case '(': parenBraceStack.push(braceDepth); parenDepth++; tokens.push({ kind: 'LPAREN', value: '(', line: lineNo }); pos++; continue;
+        case ')': parenBraceStack.pop(); parenDepth--; tokens.push({ kind: 'RPAREN', value: ')', line: lineNo }); pos++; continue;
+        case '{': braceDepth++; tokens.push({ kind: 'LBRACE', value: '{', line: lineNo }); pos++; continue;
+        case '}': braceDepth--; tokens.push({ kind: 'RBRACE', value: '}', line: lineNo }); pos++; continue;
         case ',': tokens.push({ kind: 'COMMA', value: ',', line: lineNo }); pos++; continue;
         case '/': tokens.push({ kind: 'SLASH', value: '/', line: lineNo }); pos++; continue;
         case '[': tokens.push({ kind: 'LBRACKET', value: '[', line: lineNo }); pos++; continue;
@@ -153,7 +159,22 @@ export function tokenize(source: string, file: string): Token[] {
       // Identifiers and keywords
       if (/[a-zA-Z_$]/.test(content[pos]!)) {
         let end = pos;
-        while (end < content.length && /[a-zA-Z0-9_$\-.]/.test(content[end]!)) end++;
+        while (end < content.length) {
+          const ch = content[end]!;
+          if (/[a-zA-Z0-9_$\-.]/.test(ch)) {
+            end++;
+          } else if (
+            parenDepth > 0 &&
+            parenBraceStack[parenBraceStack.length - 1] === braceDepth &&
+            (ch === ':' || ch === '/') &&
+            end + 1 < content.length && /[a-zA-Z0-9]/.test(content[end + 1]!)
+          ) {
+            // Inside type-arg parens at the same brace level: treat : and / as format-string separators
+            end++;
+          } else {
+            break;
+          }
+        }
         const word = content.slice(pos, end);
         if (word === 'true' || word === 'false') {
           tokens.push({ kind: 'BOOLEAN', value: word, line: lineNo });

@@ -1,8 +1,6 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource, ObjectMode } from './ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
 import { renderType, renderInputType, renderQueryType, pascalToDotCase, typeNeedsDateTime, modeToWrapper } from './codegen-dto.js';
-import type { SecuritySchemeConfig } from './config.js';
-import { isHmacScheme } from './config.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -15,10 +13,6 @@ export interface OpCodegenOptions {
     modelOutPaths?: Map<string, string>;
     /** Set of model names that have Input variants (models with visibility modifiers) */
     modelsWithInput?: Set<string>;
-    /** Default security scheme from config — used when op.security is not set */
-    defaultSecurity?: string;
-    /** Security scheme definitions from config — used to generate inline HMAC middleware */
-    securitySchemes?: Record<string, SecuritySchemeConfig>;
 }
 
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
@@ -31,9 +25,12 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     // Generate the body first so we can detect whether `z.` is actually referenced
     // before deciding whether to emit the zod import.
     const body: string[] = [];
-    const koaExports = ['ServerKitRouter', 'bodyParserMiddleware'];
-    if (fileNeedsHmac(root, options)) koaExports.push('requireSignature');
-    body.push(`import { ${koaExports.join(', ')} } from '@maroonedsoftware/koa';`);
+    const needsSignature = fileNeedsSignature(root);
+    const needsSecurity = fileNeedsSecurity(root);
+    const koaImports = ['ServerKitRouter', 'bodyParserMiddleware'];
+    if (needsSecurity) koaImports.push('requireSecurity');
+    if (needsSignature) koaImports.push('requireSignature');
+    body.push(`import { ${koaImports.join(', ')} } from '@maroonedsoftware/koa';`);
 
     for (const svc of services) {
         const modulePath = root.meta[svc] ?? deriveModulePath(svc, options.servicePathTemplate);
@@ -96,9 +93,6 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
     const effectiveSecurity = resolveSecurity(route, op);
     if (effectiveSecurity === SECURITY_NONE) {
         lines.push(` * @public`);
-    } else {
-        const scheme = (Array.isArray(effectiveSecurity) ? effectiveSecurity[0]?.name : undefined) ?? options.defaultSecurity;
-        if (scheme) lines.push(` * @security ${scheme}`);
     }
 
     // Modifier annotations
@@ -115,12 +109,15 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
 
     // Middleware list
     const middlewares: string[] = [];
+    if (effectiveSecurity !== SECURITY_NONE) {
+        const roles = effectiveSecurity && effectiveSecurity.roles?.length ? `[${effectiveSecurity.roles.map(r => `'${r}'`).join(', ')}]` : '';
+        middlewares.push(`requireSecurity({ roles: ${roles} })`);
+    }
     if (hasBody) {
         middlewares.push(isMultipart ? `bodyParserMiddleware(['multipart'])` : `bodyParserMiddleware(['json'])`);
     }
-    const hmacSchemeName = getHmacSchemeName(route, op, options);
-    if (hmacSchemeName) {
-        middlewares.push(`requireSignature('${hmacSchemeName}')`);
+    if (op.signature) {
+        middlewares.push(`requireSignature('${op.signature}')`);
     }
     const middlewareStr = middlewares.length > 0 ? `, ${middlewares.join(', ')},` : ',';
 
@@ -284,9 +281,7 @@ function generateParamValidation(
     } else {
         // DtoTypeNode — use query-aware rendering for query params (coerces single string → array),
         // otherwise use Input variant rendering; apply mode as a method call
-        const schema = isQuery
-            ? renderQueryType(source, modelsWithInput)
-            : renderInputType(source, modelsWithInput);
+        const schema = isQuery ? renderQueryType(source, modelsWithInput) : renderInputType(source, modelsWithInput);
         lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, (${schema}).${mode}());`);
         lines.push('');
     }
@@ -484,26 +479,16 @@ function routeNeedsValidation(root: OpRootNode): boolean {
     );
 }
 
+function fileNeedsSecurity(root: OpRootNode): boolean {
+    return root.routes.some(route => route.operations.some(op => resolveSecurity(route, op) !== SECURITY_NONE));
+}
+
+function fileNeedsSignature(root: OpRootNode): boolean {
+    return root.routes.some(route => route.operations.some(op => !!op.signature));
+}
+
 function isValidIdentifier(name: string): boolean {
     return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
-}
-
-// ─── HMAC helpers ─────────────────────────────────────────────────────────
-
-/** Returns the HMAC scheme name if the resolved security for this op is an HMAC scheme, else undefined. */
-function getHmacSchemeName(route: OpRouteNode, op: OpOperationNode, options: OpCodegenOptions): string | undefined {
-    const eff = resolveSecurity(route, op);
-    if (eff === SECURITY_NONE) return undefined;
-    const name = (Array.isArray(eff) ? eff[0]?.name : undefined) ?? options.defaultSecurity;
-    if (!name || !options.securitySchemes) return undefined;
-    const scheme = options.securitySchemes[name];
-    return scheme && isHmacScheme(scheme) ? name : undefined;
-}
-
-function fileNeedsHmac(root: OpRootNode, options: OpCodegenOptions): boolean {
-    return root.routes.some(route =>
-        route.operations.some(op => !!getHmacSchemeName(route, op, options)),
-    );
 }
 
 // ─── Naming conventions ────────────────────────────────────────────────────

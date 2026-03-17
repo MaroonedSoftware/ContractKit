@@ -34,7 +34,7 @@
             }
         },
         "model-declaration": {
-            "begin": "(?:(strict|strip|loose)\\s+)?([A-Z][a-zA-Z0-9_$]*)\\s*(:)\\s*(?:([A-Z][a-zA-Z0-9_$]*)\\s*)?(\\{)",
+            "begin": "(?:((?:strict|strip|loose|camel)(?:\\s+(?:strict|strip|loose|camel))*)\\s+)?([A-Z][a-zA-Z0-9_$]*)\\s*(:)\\s*(?:([A-Z][a-zA-Z0-9_$]*)\\s*)?(\\{)",
             "beginCaptures": {
                 "1": { "name": "keyword.control.object-mode.dto" },
                 "2": { "name": "entity.name.type.model.dto" },
@@ -93,7 +93,7 @@
             ]
         },
         "builtin-type": {
-            "match": "\\b(string|number|int|bigint|boolean|date|datetime|email|url|uuid|any|unknown|null|object|binary)\\b",
+            "match": "\\b(string|number|int|bigint|boolean|date|time|datetime|email|url|uuid|any|unknown|null|object|binary)\\b",
             "name": "support.type.builtin.dto"
         },
         "compound-type": {
@@ -128,7 +128,7 @@
             ]
         },
         "constraint-key-value": {
-            "match": "\\b(min|max|length|len|regex)\\s*(=)",
+            "match": "\\b(min|max|length|len|regex|format)\\s*(=)",
             "captures": {
                 "1": { "name": "entity.other.attribute-name.constraint.dto" },
                 "2": { "name": "keyword.operator.assignment.dto" }
@@ -143,7 +143,7 @@
             "name": "keyword.operator.intersection.dto"
         },
         "inline-object": {
-            "begin": "(?:(strict|strip|loose)\\s+)?(\\{)",
+            "begin": "(?:((?:strict|strip|loose|camel)(?:\\s+(?:strict|strip|loose|camel))*)\\s+)?(\\{)",
             "beginCaptures": {
                 "1": { "name": "keyword.control.object-mode.dto" },
                 "2": { "name": "punctuation.definition.block.begin.dto" }

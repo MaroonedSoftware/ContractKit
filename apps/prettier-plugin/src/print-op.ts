@@ -6,6 +6,7 @@ import type {
   OpParamNode,
   ParamSource,
   SecurityNode,
+  SecurityFields,
   DtoTypeNode,
   ObjectMode,
 } from 'contract-dsl/src/ast.js';
@@ -168,6 +169,10 @@ function printOperation(op: OpOperationNode): string[] {
 
   if (op.service) lines.push(`${I2}service: ${op.service}`);
   if (op.sdk) lines.push(`${I2}sdk: ${op.sdk}`);
+  if (op.signature) {
+    const comment = op.signatureDescription ? ` # ${op.signatureDescription}` : '';
+    lines.push(`${I2}signature: ${formatSignatureValue(op.signature)}${comment}`);
+  }
   if (op.security !== undefined) lines.push(...printSecurity(op.security));
   if (op.query !== undefined) lines.push(...printQueryOrHeaders('query', op.query, op.queryMode));
   if (op.headers !== undefined) lines.push(...printQueryOrHeaders('headers', op.headers, op.headersMode));
@@ -186,15 +191,21 @@ function printOperation(op: OpOperationNode): string[] {
 
 // ─── Security ────────────────────────────────────────────────────────────────
 
+/** Print a signature key: unquoted when it's a plain identifier, quoted otherwise. */
+function formatSignatureValue(value: string): string {
+  return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(value) ? value : `"${value}"`;
+}
+
 // indent: indentation for the `security` keyword line
-// innerIndent: indentation for scheme lines inside the block
+// innerIndent: indentation for field lines inside the block
 function printSecurity(security: SecurityNode, indent = I2, innerIndent = I3): string[] {
   if (security === SECURITY_NONE) return [`${indent}security: none`];
+  const fields = security as SecurityFields;
+  const hasRoles = fields.roles && fields.roles.length > 0;
+  if (!hasRoles) return [];
   const lines = [`${indent}security: {`];
-  for (const scheme of security) {
-    const scopes = scheme.scopes.map(s => ` "${s}"`).join('');
-    lines.push(`${innerIndent}${scheme.name}${scopes}`);
-  }
+  const comment = fields.rolesDescription ? ` # ${fields.rolesDescription}` : '';
+  lines.push(`${innerIndent}roles: ${fields.roles!.join(' ')}${comment}`);
   lines.push(`${indent}}`);
   return lines;
 }

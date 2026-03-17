@@ -6,6 +6,11 @@ export function printType(type: DtoTypeNode): string {
   switch (type.kind) {
     case 'scalar': {
       const constraints: string[] = [];
+      if (type.format !== undefined) {
+        // Print unquoted when format contains only safe chars; quote otherwise
+        const fmt = type.format;
+        constraints.push(/^[a-zA-Z0-9\-.:\/]+$/.test(fmt) ? fmt : `"${fmt}"`);
+      }
       if (type.min !== undefined) constraints.push(`min=${type.min}`);
       if (type.max !== undefined) constraints.push(`max=${type.max}`);
       if (type.len !== undefined) constraints.push(`len=${type.len}`);
@@ -87,14 +92,7 @@ export function printField(field: FieldNode, indent: string): string {
 
 /** Print inline-object fields expanded (used when an inline brace object trails a type alias). */
 export function printInlineObjectExpanded(obj: InlineObjectTypeNode, indent: string): string[] {
-  return obj.fields.map(f => {
-    const opt = f.optional ? '?' : '';
-    let t = printType(f.type);
-    if (f.nullable) t += ' | null';
-    const def = f.default !== undefined ? ` = ${formatDefault(f.default)}` : '';
-    const comment = f.description ? ` # ${f.description}` : '';
-    return `${indent}${f.name}${opt}: ${t}${def}${comment}`;
-  });
+  return obj.fields.map(f => printField(f, indent));
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

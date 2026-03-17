@@ -20,7 +20,6 @@ import { collectTypeRefs } from './codegen-dto.js';
 export interface MarkdownCodegenContext {
     dtoRoots: DtoRootNode[];
     opRoots: OpRootNode[];
-    defaultSecurity?: string;
 }
 
 export function generateMarkdown(ctx: MarkdownCodegenContext): string {
@@ -107,7 +106,7 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
                     lines.push('');
                 }
                 first = false;
-                lines.push(...renderEndpoint(ep.route, ep.op, group.area !== undefined, modelIndex, ctx.defaultSecurity));
+                lines.push(...renderEndpoint(ep.route, ep.op, group.area !== undefined, modelIndex));
                 lines.push('');
             }
         }
@@ -376,7 +375,6 @@ function renderEndpoint(
     op: OpOperationNode,
     nested: boolean,
     modelIndex: Map<string, ModelNode>,
-    defaultSecurity?: string,
 ): string[] {
     const lines: string[] = [];
     const method = op.method.toUpperCase();
@@ -408,9 +406,15 @@ function renderEndpoint(
     const effectiveSecurity = resolveSecurity(route, op);
     if (effectiveSecurity === SECURITY_NONE) {
         lines.push('> Security: public');
-    } else {
-        const scheme = (Array.isArray(effectiveSecurity) ? effectiveSecurity[0]?.name : undefined) ?? defaultSecurity;
-        if (scheme) lines.push(`> Security: \`${scheme}\``);
+    } else if (effectiveSecurity !== undefined) {
+        const parts: string[] = [];
+        if (effectiveSecurity.roles && effectiveSecurity.roles.length > 0) {
+            parts.push(`roles: ${effectiveSecurity.roles.join(', ')}`);
+        }
+        if (op.signature) {
+            parts.push(`signature: ${op.signature}`);
+        }
+        lines.push(`> Security: authenticated${parts.length > 0 ? ` (${parts.join('; ')})` : ''}`);
     }
     lines.push('');
 

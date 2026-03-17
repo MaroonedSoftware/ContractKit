@@ -546,55 +546,174 @@ describe('generateOp — route modifiers JSDoc', () => {
         expect(out).toContain("UsersRouter.get('/admin/users'");
     });
 
-    // ─── Security middleware ────────────────────────────────────────
+    // ─── Security JSDoc ────────────────────────────────────────────
 
-    describe('security middleware', () => {
-        it('adds requireSignature middleware for HMAC scheme', () => {
-            const schemes = { webhookAuth: { type: 'hmac' as const, header: 'X-Signature', secretEnv: 'WEBHOOK_SECRET', algorithm: 'sha256', digest: 'hex' as const } };
-            const op = opOperation('post', { security: [{ name: 'webhookAuth', scopes: [] }] });
-            const root = opRoot([opRoute('/webhooks/stripe', [op])]);
-            const out = generateOp(root, { securitySchemes: schemes });
-            expect(out).toContain("requireSignature('webhookAuth')");
-            expect(out).toContain('requireSignature');
-            expect(out).toMatch(/import \{[^}]*requireSignature[^}]*\} from '@maroonedsoftware\/koa'/);
-        });
-
-        it('places requireSignature after bodyParserMiddleware', () => {
-            const schemes = { webhookAuth: { type: 'hmac' as const, header: 'X-Signature', secretEnv: 'WEBHOOK_SECRET', algorithm: 'sha256', digest: 'hex' as const } };
-            const op = opOperation('post', { security: [{ name: 'webhookAuth', scopes: [] }], request: opRequest('Payload') });
-            const root = opRoot([opRoute('/webhooks/stripe', [op])]);
-            const out = generateOp(root, { securitySchemes: schemes });
-            // bodyParser comes before requireSignature in the route definition
-            const bodyParserPos = out.indexOf('bodyParserMiddleware');
-            const requireSigPos = out.indexOf("requireSignature('webhookAuth')");
-            expect(bodyParserPos).toBeGreaterThan(-1);
-            expect(requireSigPos).toBeGreaterThan(bodyParserPos);
-        });
-
-        it('does not add requireSignature for non-HMAC scheme', () => {
-            const schemes = { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } };
-            const op = opOperation('get', { security: [{ name: 'bearerAuth', scopes: [] }] });
-            const root = opRoot([opRoute('/users', [op])]);
-            const out = generateOp(root, { securitySchemes: schemes });
-            expect(out).not.toContain('requireSignature');
-            expect(out).not.toMatch(/import \{[^}]*requireSignature/);
-        });
-
+    describe('security JSDoc', () => {
         it('emits @public annotation for security: none', () => {
             const op = opOperation('get', { security: SECURITY_NONE });
             const root = opRoot([opRoute('/health', [op])]);
             const out = generateOp(root);
             expect(out).toContain('@public');
-            expect(out).not.toContain('requireSignature');
         });
 
-        it('inherits route-level HMAC scheme for operations without explicit security', () => {
-            const schemes = { webhookAuth: { type: 'hmac' as const, header: 'X-Sig', secretEnv: 'SECRET', algorithm: 'sha256', digest: 'hex' as const } };
-            const op = opOperation('post'); // no op.security
-            const route = { ...opRoute('/webhooks', [op]), security: [{ name: 'webhookAuth', scopes: [] }] };
+        it('emits no annotation for security with roles', () => {
+            const op = opOperation('get', {
+                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+            });
+            const root = opRoot([opRoute('/users', [op])]);
+            const out = generateOp(root);
+            expect(out).not.toContain('@authenticated');
+        });
+
+        it('emits no annotation for operation with signature', () => {
+            const op = opOperation('post', {
+                signature: 'hmac-sha256',
+                request: opRequest('Payload'),
+            });
+            const root = opRoot([opRoute('/webhooks', [op])]);
+            const out = generateOp(root);
+            expect(out).not.toContain('@authenticated');
+        });
+
+        it('emits no annotation when security is not set', () => {
+            const op = opOperation('get');
+            const root = opRoot([opRoute('/users', [op])]);
+            const out = generateOp(root);
+            expect(out).not.toContain('@public');
+            expect(out).not.toContain('@authenticated');
+        });
+    });
+
+    // ─── Signature middleware ───────────────────────────────────────
+
+    describe('signature middleware', () => {
+        it('injects requireSignature middleware and imports it when signature is set', () => {
+            const op = opOperation('post', {
+                signature: 'MODERN_TREASURY_WEBHOOK',
+                request: opRequest('Payload'),
+            });
+            const root = opRoot([opRoute('/webhooks', [op])]);
+            const out = generateOp(root);
+            expect(out).toContain(`import { ServerKitRouter, bodyParserMiddleware, requireSecurity, requireSignature }`);
+            expect(out).toContain(`requireSignature('MODERN_TREASURY_WEBHOOK')`);
+        });
+
+        it('places requireSignature after bodyParserMiddleware in the route line', () => {
+            const op = opOperation('post', {
+                signature: 'MY_KEY',
+                request: opRequest('Payload'),
+            });
+            const root = opRoot([opRoute('/webhooks', [op])]);
+            const routeLine = generateOp(root).split('\n').find(l => l.includes('.post('));
+            expect(routeLine).toBeDefined();
+            const sigIdx = routeLine!.indexOf(`requireSignature('MY_KEY')`);
+            const bodyIdx = routeLine!.indexOf(`bodyParserMiddleware`);
+            expect(sigIdx).toBeGreaterThan(-1);
+            expect(sigIdx).toBeGreaterThan(bodyIdx);
+        });
+
+        it('does not import requireSignature when no signature is set', () => {
+            const op = opOperation('get', {
+                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+            });
+            const root = opRoot([opRoute('/users', [op])]);
+            const out = generateOp(root);
+            expect(out).not.toContain('requireSignature');
+            expect(out).toContain(`import { ServerKitRouter, bodyParserMiddleware, requireSecurity }`);
+        });
+    });
+
+    // ─── Security (roles) middleware ────────────────────────────────
+
+    describe('security middleware', () => {
+        it('injects requireSecurity() with no args for unannotated routes', () => {
+            const op = opOperation('get');
+            const root = opRoot([opRoute('/users', [op])]);
+            const out = generateOp(root);
+            expect(out).toContain(`import { ServerKitRouter, bodyParserMiddleware, requireSecurity }`);
+            expect(out).toContain(`requireSecurity()`);
+        });
+
+        it('injects requireSecurity with roles when roles are set', () => {
+            const op = opOperation('get', {
+                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+            });
+            const root = opRoot([opRoute('/users', [op])]);
+            const out = generateOp(root);
+            expect(out).toContain(`requireSecurity(['admin'])`);
+        });
+
+        it('passes multiple roles as an array', () => {
+            const op = opOperation('get', {
+                security: { roles: ['admin', 'support'], loc: { file: 'test.op', line: 1 } },
+            });
+            const root = opRoot([opRoute('/users', [op])]);
+            const routeLine = generateOp(root).split('\n').find(l => l.includes('.get('));
+            expect(routeLine).toContain(`requireSecurity(['admin', 'support'])`);
+        });
+
+        it('does not inject requireSecurity for public (security: none) routes', () => {
+            const op = opOperation('get', { security: SECURITY_NONE });
+            const root = opRoot([opRoute('/health', [op])]);
+            const out = generateOp(root);
+            expect(out).not.toContain('requireSecurity');
+        });
+
+        it('does not import requireSecurity when all routes are public', () => {
+            const op = opOperation('get', { security: SECURITY_NONE });
+            const root = opRoot([opRoute('/health', [op])]);
+            const out = generateOp(root);
+            expect(out).toContain(`import { ServerKitRouter, bodyParserMiddleware }`);
+            expect(out).not.toContain('requireSecurity');
+        });
+
+        it('places requireSecurity before bodyParserMiddleware in the route line', () => {
+            const op = opOperation('post', {
+                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+                request: opRequest('Payload'),
+            });
+            const root = opRoot([opRoute('/users', [op])]);
+            const routeLine = generateOp(root).split('\n').find(l => l.includes('.post('));
+            expect(routeLine).toBeDefined();
+            const secIdx = routeLine!.indexOf(`requireSecurity`);
+            const bodyIdx = routeLine!.indexOf(`bodyParserMiddleware`);
+            expect(secIdx).toBeGreaterThan(-1);
+            expect(bodyIdx).toBeGreaterThan(secIdx);
+        });
+
+        it('places requireSecurity before requireSignature when both are set', () => {
+            const op = opOperation('post', {
+                signature: 'MY_KEY',
+                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+                request: opRequest('Payload'),
+            });
+            const root = opRoot([opRoute('/webhooks', [op])]);
+            const routeLine = generateOp(root).split('\n').find(l => l.includes('.post('));
+            expect(routeLine).toBeDefined();
+            const secIdx = routeLine!.indexOf(`requireSecurity`);
+            const sigIdx = routeLine!.indexOf(`requireSignature`);
+            expect(secIdx).toBeGreaterThan(-1);
+            expect(sigIdx).toBeGreaterThan(secIdx);
+        });
+
+        it('imports both requireSecurity and requireSignature when both are set', () => {
+            const op = opOperation('post', {
+                signature: 'MY_KEY',
+                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+                request: opRequest('Payload'),
+            });
+            const root = opRoot([opRoute('/webhooks', [op])]);
+            const out = generateOp(root);
+            expect(out).toContain(`import { ServerKitRouter, bodyParserMiddleware, requireSecurity, requireSignature }`);
+        });
+
+        it('works with route-level roles security', () => {
+            const op = opOperation('get');
+            const route = opRoute('/users', [op]);
+            route.security = { roles: ['admin'], loc: { file: 'test.op', line: 1 } };
             const root = opRoot([route]);
-            const out = generateOp(root, { securitySchemes: schemes });
-            expect(out).toContain("requireSignature('webhookAuth')");
+            const out = generateOp(root);
+            expect(out).toContain(`requireSecurity(['admin'])`);
         });
     });
 });

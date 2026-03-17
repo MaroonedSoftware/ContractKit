@@ -7,7 +7,7 @@ export interface SourceLocation {
 
 export const SCALAR_NAMES: ReadonlySet<string> = new Set<ScalarTypeNode['name']>([
   'string', 'number', 'int', 'bigint', 'boolean',
-  'date', 'datetime', 'email', 'url', 'uuid',
+  'date', 'time', 'datetime', 'email', 'url', 'uuid',
   'any', 'unknown', 'null', 'object', 'binary',
 ]);
 
@@ -30,12 +30,13 @@ export interface ScalarTypeNode {
   kind: 'scalar';
   name:
     | 'string' | 'number' | 'int' | 'bigint' | 'boolean'
-    | 'date' | 'datetime' | 'email' | 'url' | 'uuid'
+    | 'date' | 'time' | 'datetime' | 'email' | 'url' | 'uuid'
     | 'any' | 'unknown' | 'null' | 'object' | 'binary';
   min?: number | bigint;
   max?: number | bigint;
   len?: number;
   regex?: string;
+  format?: string;
 }
 
 export interface ArrayTypeNode {
@@ -111,6 +112,7 @@ export interface ModelNode {
   fields: FieldNode[];
   type?: DtoTypeNode; // type alias: Name: typeExpression (fields will be empty)
   mode?: ObjectMode;  // object validation mode — defaults to 'strict'
+  camelCase?: boolean; // keys are defined in camelCase but parsed from snake_case input
   description?: string;
   loc: SourceLocation;
 }
@@ -126,17 +128,21 @@ export interface DtoRootNode {
 
 // ─── Operations AST (.op) ──────────────────────────────────────────────────
 
-export interface SecuritySchemeNode {
-  name: string;       // scheme name e.g. "bearerAuth", "apiKey"
-  scopes: string[];   // e.g. ["read:users", "write:users"]
+/** Constrained security declaration — roles-only auth fields. */
+export interface SecurityFields {
+  /** Allowlisted role names required for this endpoint (e.g. `["admin", "moderator"]`). */
+  roles?: string[];
+  /** Inline comment attached to the `roles:` line. */
+  rolesDescription?: string;
+  loc: SourceLocation;
 }
 
 /** Sentinel value for explicitly public endpoints (`security: none`). */
 export const SECURITY_NONE = 'none' as const;
 export type SecurityNone = typeof SECURITY_NONE;
 
-/** Array of alternative schemes (any one satisfies), or SECURITY_NONE for public endpoints. */
-export type SecurityNode = SecurityNone | SecuritySchemeNode[];
+/** Security declaration: explicit public (`none`), or constrained auth fields. */
+export type SecurityNode = SecurityNone | SecurityFields;
 
 export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
@@ -172,6 +178,10 @@ export interface OpOperationNode {
   method: HttpMethod;
   service?: string; // e.g. "LedgerService.updateCategoryNesting"
   sdk?: string; // e.g. "getUser" — explicit SDK method name
+  /** HMAC signature key name for this endpoint (e.g. `WEBHOOK_SECRET`). */
+  signature?: string;
+  /** Inline comment attached to the `signature:` line. */
+  signatureDescription?: string;
   request?: OpRequestNode;
   responses: OpResponseNode[];
   query?: ParamSource;
