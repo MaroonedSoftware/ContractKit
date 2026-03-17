@@ -61,7 +61,7 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
     for (const route of root.routes) {
         for (const op of route.operations) {
-            lines.push(...generateHandler(route, op, root.file, options));
+            lines.push(...generateHandler(route, op, root, options));
             lines.push('');
         }
     }
@@ -73,8 +73,9 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
 // ─── Handler generation ────────────────────────────────────────────────────
 
-function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, options: OpCodegenOptions): string[] {
+function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNode, options: OpCodegenOptions): string[] {
     const lines: string[] = [];
+    const file = root.file;
     const outPath = options.outPath;
     const modelsWithInput = options.modelsWithInput;
 
@@ -89,8 +90,8 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
     const relFile = outPath ? relative(dirname(outPath), file) : file;
     lines.push(` * from [${basename(file)}](file://./${relFile}#L${op.loc.line})`);
 
-    // Security annotation (operation-level wins; falls back to route-level)
-    const effectiveSecurity = resolveSecurity(route, op);
+    // Security annotation (operation-level wins; falls back to route → file level)
+    const effectiveSecurity = resolveSecurity(route, op, root);
     if (effectiveSecurity === SECURITY_NONE) {
         lines.push(` * @public`);
     }
@@ -480,7 +481,11 @@ function routeNeedsValidation(root: OpRootNode): boolean {
 }
 
 function fileNeedsSecurity(root: OpRootNode): boolean {
-    return root.routes.some(route => route.operations.some(op => resolveSecurity(route, op) !== SECURITY_NONE));
+    if (root.security && root.security !== SECURITY_NONE) return true;
+    return root.routes.some(route => route.operations.some(op => {
+        const eff = resolveSecurity(route, op, root);
+        return eff !== undefined && eff !== SECURITY_NONE;
+    }));
 }
 
 function fileNeedsSignature(root: OpRootNode): boolean {

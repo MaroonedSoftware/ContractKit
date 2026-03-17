@@ -25,6 +25,10 @@ export class OpCstParser extends CstParser {
     this.OPTION(() => {
       this.SUBRULE(this.frontMatter);
     });
+    this.OPTION2({
+      GATE: () => this.LA(1).tokenType === Identifier && this.LA(1).image === 'security',
+      DEF: () => this.SUBRULE(this.securityBlock),
+    });
     this.MANY(() => {
       this.SUBRULE(this.routeDecl);
     });

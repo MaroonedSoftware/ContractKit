@@ -220,16 +220,20 @@ export function resolveModifiers(route: OpRouteNode, op: OpOperationNode): Route
 }
 
 /**
- * Resolves the effective security for an operation, applying route-level cascade.
- * Operation-level security always wins; if absent, the route's security is used.
+ * Resolves the effective security for an operation, applying cascade from operation → route → file.
+ * Operation-level security always wins; if absent, the route's security is used; if absent, the file's.
  */
-export function resolveSecurity(route: OpRouteNode, op: OpOperationNode): SecurityNode | undefined {
-  return op.security !== undefined ? op.security : route.security;
+export function resolveSecurity(route: OpRouteNode, op: OpOperationNode, root?: OpRootNode): SecurityNode | undefined {
+  if (op.security !== undefined) return op.security;
+  if (route.security !== undefined) return route.security;
+  return root?.security;
 }
 
 export interface OpRootNode {
   kind: 'opRoot';
   meta: Record<string, string>;
+  /** File-level security default — cascades to all routes/operations unless overridden. */
+  security?: SecurityNode;
   routes: OpRouteNode[];
   file: string;
   /** Comment lines not attached to any node, sorted by line number. */

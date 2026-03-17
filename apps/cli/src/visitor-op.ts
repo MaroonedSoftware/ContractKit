@@ -35,6 +35,9 @@ export class OpVisitor extends BaseOpVisitor {
         meta[key] = value;
       }
     }
+    const security: SecurityNode | undefined = ctx.securityBlock
+      ? this.visit(ctx.securityBlock[0]) as SecurityNode
+      : undefined;
     const routes: OpRouteNode[] = [];
     if (ctx.routeDecl) {
       for (const routeCst of ctx.routeDecl) {
@@ -42,7 +45,7 @@ export class OpVisitor extends BaseOpVisitor {
         if (route) routes.push(route);
       }
     }
-    return { kind: 'opRoot', meta, routes, file: this.file };
+    return { kind: 'opRoot', meta, security, routes, file: this.file };
   }
 
   frontMatter(ctx: any): [string, string][] {

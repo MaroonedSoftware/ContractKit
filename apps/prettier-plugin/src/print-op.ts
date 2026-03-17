@@ -67,6 +67,11 @@ export function printOp(ast: OpRootNode): string {
     parts.push(printFrontMatter(ast.meta));
   }
 
+  if (ast.security !== undefined) {
+    if (parts.length > 0) parts.push('');
+    parts.push(...printSecurity(ast.security, '', I1));
+  }
+
   for (let i = 0; i < ast.routes.length; i++) {
     const route = ast.routes[i]!;
     const nextRouteStart = ast.routes[i + 1]?.loc.line ?? Infinity;

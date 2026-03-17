@@ -2,7 +2,7 @@
     "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
     "name": "Contract DSL Operations",
     "scopeName": "source.op",
-    "patterns": [{ "include": "#comment" }, { "include": "#front-matter" }, { "include": "#route-declaration" }],
+    "patterns": [{ "include": "#comment" }, { "include": "#front-matter" }, { "include": "#security-decl" }, { "include": "#route-declaration" }],
     "repository": {
         "comment": {
             "match": "#.*$",
