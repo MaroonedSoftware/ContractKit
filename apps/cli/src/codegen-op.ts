@@ -110,8 +110,8 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, file: string, 
     // Middleware list
     const middlewares: string[] = [];
     if (effectiveSecurity !== SECURITY_NONE) {
-        const roles = effectiveSecurity && effectiveSecurity.roles?.length ? `[${effectiveSecurity.roles.map(r => `'${r}'`).join(', ')}]` : '';
-        middlewares.push(`requireSecurity({ roles: ${roles} })`);
+        const roles = effectiveSecurity && effectiveSecurity.roles?.length ? `roles: [${effectiveSecurity.roles.map(r => `'${r}'`).join(', ')}]` : '';
+        middlewares.push(`requireSecurity({ ${roles} })`);
     }
     if (hasBody) {
         middlewares.push(isMultipart ? `bodyParserMiddleware(['multipart'])` : `bodyParserMiddleware(['json'])`);
