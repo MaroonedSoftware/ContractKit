@@ -292,19 +292,27 @@ describe('generateOp', () => {
         });
 
         it('uses strict mode for headers when specified', () => {
-            const root = opRoot([opRoute('/users', [opOperation('get', {
-                headers: [opParam('authorization', scalarType('string'))],
-                headersMode: 'strict',
-            })])]);
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        headers: [opParam('authorization', scalarType('string'))],
+                        headersMode: 'strict',
+                    }),
+                ]),
+            ]);
             const output = generateOp(root);
             expect(output).toContain('z.strictObject({');
         });
 
         it('uses strip mode for headers when specified', () => {
-            const root = opRoot([opRoute('/users', [opOperation('get', {
-                headers: [opParam('authorization', scalarType('string'))],
-                headersMode: 'strip',
-            })])]);
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        headers: [opParam('authorization', scalarType('string'))],
+                        headersMode: 'strip',
+                    }),
+                ]),
+            ]);
             const output = generateOp(root);
             expect(output).toContain('z.object({');
         });
@@ -492,55 +500,34 @@ describe('generateOp', () => {
     });
 });
 
-
 describe('generateOp — route modifiers JSDoc', () => {
     it('adds @internal to JSDoc for internal operation', () => {
-        const root = opRoot([
-            opRoute('/admin/users', [
-                opOperation('get', { modifiers: ['internal'] }),
-            ]),
-        ]);
+        const root = opRoot([opRoute('/admin/users', [opOperation('get', { modifiers: ['internal'] })])]);
         const out = generateOp(root);
         expect(out).toContain('* @internal');
     });
 
     it('adds @deprecated to JSDoc for deprecated operation', () => {
-        const root = opRoot([
-            opRoute('/users', [
-                opOperation('get', { modifiers: ['deprecated'] }),
-            ]),
-        ]);
+        const root = opRoot([opRoute('/users', [opOperation('get', { modifiers: ['deprecated'] })])]);
         const out = generateOp(root);
         expect(out).toContain('* @deprecated');
     });
 
     it('inherits route-level internal modifier for JSDoc', () => {
-        const root = opRoot([
-            opRoute('/admin', [
-                opOperation('get'),
-            ], undefined, ['internal']),
-        ]);
+        const root = opRoot([opRoute('/admin', [opOperation('get')], undefined, ['internal'])]);
         const out = generateOp(root);
         expect(out).toContain('* @internal');
     });
 
     it('operation modifier overrides route modifier in JSDoc', () => {
-        const root = opRoot([
-            opRoute('/admin', [
-                opOperation('get', { modifiers: ['deprecated'] }),
-            ], undefined, ['internal']),
-        ]);
+        const root = opRoot([opRoute('/admin', [opOperation('get', { modifiers: ['deprecated'] })], undefined, ['internal'])]);
         const out = generateOp(root);
         expect(out).toContain('* @deprecated');
         expect(out).not.toContain('* @internal');
     });
 
     it('still generates router handler for internal operations', () => {
-        const root = opRoot([
-            opRoute('/admin/users', [
-                opOperation('get', { modifiers: ['internal'] }),
-            ]),
-        ]);
+        const root = opRoot([opRoute('/admin/users', [opOperation('get', { modifiers: ['internal'] })])]);
         const out = generateOp(root);
         // Handler is always generated (internal only affects SDK/docs)
         expect(out).toContain("UsersRouter.get('/admin/users'");
@@ -549,11 +536,11 @@ describe('generateOp — route modifiers JSDoc', () => {
     // ─── Security JSDoc ────────────────────────────────────────────
 
     describe('security JSDoc', () => {
-        it('emits @public annotation for security: none', () => {
+        it('emits anonymous access, no security required for security: none', () => {
             const op = opOperation('get', { security: SECURITY_NONE });
             const root = opRoot([opRoute('/health', [op])]);
             const out = generateOp(root);
-            expect(out).toContain('@public');
+            expect(out).toContain('anonymous access, no security required');
         });
 
         it('emits no annotation for security with roles', () => {
@@ -579,7 +566,7 @@ describe('generateOp — route modifiers JSDoc', () => {
             const op = opOperation('get');
             const root = opRoot([opRoute('/users', [op])]);
             const out = generateOp(root);
-            expect(out).not.toContain('@public');
+            expect(out).not.toContain('anonymous access, no security required');
             expect(out).not.toContain('@authenticated');
         });
     });
@@ -604,7 +591,9 @@ describe('generateOp — route modifiers JSDoc', () => {
                 request: opRequest('Payload'),
             });
             const root = opRoot([opRoute('/webhooks', [op])]);
-            const routeLine = generateOp(root).split('\n').find(l => l.includes('.post('));
+            const routeLine = generateOp(root)
+                .split('\n')
+                .find(l => l.includes('.post('));
             expect(routeLine).toBeDefined();
             const sigIdx = routeLine!.indexOf(`requireSignature('MY_KEY')`);
             const bodyIdx = routeLine!.indexOf(`bodyParserMiddleware`);
@@ -631,7 +620,7 @@ describe('generateOp — route modifiers JSDoc', () => {
             const root = opRoot([opRoute('/users', [op])]);
             const out = generateOp(root);
             expect(out).toContain(`import { ServerKitRouter, bodyParserMiddleware, requireSecurity }`);
-            expect(out).toContain(`requireSecurity()`);
+            expect(out).toContain(`requireSecurity({  })`);
         });
 
         it('injects requireSecurity with roles when roles are set', () => {
@@ -640,7 +629,7 @@ describe('generateOp — route modifiers JSDoc', () => {
             });
             const root = opRoot([opRoute('/users', [op])]);
             const out = generateOp(root);
-            expect(out).toContain(`requireSecurity(['admin'])`);
+            expect(out).toContain(`requireSecurity({ roles: ['admin'] })`);
         });
 
         it('passes multiple roles as an array', () => {
@@ -648,8 +637,10 @@ describe('generateOp — route modifiers JSDoc', () => {
                 security: { roles: ['admin', 'support'], loc: { file: 'test.op', line: 1 } },
             });
             const root = opRoot([opRoute('/users', [op])]);
-            const routeLine = generateOp(root).split('\n').find(l => l.includes('.get('));
-            expect(routeLine).toContain(`requireSecurity(['admin', 'support'])`);
+            const routeLine = generateOp(root)
+                .split('\n')
+                .find(l => l.includes('.get('));
+            expect(routeLine).toContain(`requireSecurity({ roles: ['admin', 'support'] })`);
         });
 
         it('does not inject requireSecurity for public (security: none) routes', () => {
@@ -673,7 +664,9 @@ describe('generateOp — route modifiers JSDoc', () => {
                 request: opRequest('Payload'),
             });
             const root = opRoot([opRoute('/users', [op])]);
-            const routeLine = generateOp(root).split('\n').find(l => l.includes('.post('));
+            const routeLine = generateOp(root)
+                .split('\n')
+                .find(l => l.includes('.post('));
             expect(routeLine).toBeDefined();
             const secIdx = routeLine!.indexOf(`requireSecurity`);
             const bodyIdx = routeLine!.indexOf(`bodyParserMiddleware`);
@@ -688,7 +681,9 @@ describe('generateOp — route modifiers JSDoc', () => {
                 request: opRequest('Payload'),
             });
             const root = opRoot([opRoute('/webhooks', [op])]);
-            const routeLine = generateOp(root).split('\n').find(l => l.includes('.post('));
+            const routeLine = generateOp(root)
+                .split('\n')
+                .find(l => l.includes('.post('));
             expect(routeLine).toBeDefined();
             const secIdx = routeLine!.indexOf(`requireSecurity`);
             const sigIdx = routeLine!.indexOf(`requireSignature`);
@@ -713,7 +708,7 @@ describe('generateOp — route modifiers JSDoc', () => {
             route.security = { roles: ['admin'], loc: { file: 'test.op', line: 1 } };
             const root = opRoot([route]);
             const out = generateOp(root);
-            expect(out).toContain(`requireSecurity(['admin'])`);
+            expect(out).toContain(`requireSecurity({ roles: ['admin'] })`);
         });
     });
 });

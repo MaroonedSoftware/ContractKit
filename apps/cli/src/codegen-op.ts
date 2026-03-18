@@ -93,7 +93,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     // Security annotation (operation-level wins; falls back to route → file level)
     const effectiveSecurity = resolveSecurity(route, op, root);
     if (effectiveSecurity === SECURITY_NONE) {
-        lines.push(` * @public`);
+        lines.push(` * anonymous access, no security required`);
     }
 
     // Modifier annotations
@@ -481,11 +481,7 @@ function routeNeedsValidation(root: OpRootNode): boolean {
 }
 
 function fileNeedsSecurity(root: OpRootNode): boolean {
-    if (root.security && root.security !== SECURITY_NONE) return true;
-    return root.routes.some(route => route.operations.some(op => {
-        const eff = resolveSecurity(route, op, root);
-        return eff !== undefined && eff !== SECURITY_NONE;
-    }));
+    return root.routes.some(route => route.operations.some(op => resolveSecurity(route, op, root) !== SECURITY_NONE));
 }
 
 function fileNeedsSignature(root: OpRootNode): boolean {
