@@ -18,10 +18,10 @@ function groupComments(entries: CommentEntry[]): CommentBlock[] {
   let current: CommentBlock | null = null;
   for (const { line, text } of entries) {
     if (current && line === current.startLine + current.lines.length) {
-      current.lines.push(`#${text}`);
+      current.lines.push(text);
     } else {
       if (current) blocks.push(current);
-      current = { startLine: line, lines: [`#${text}`] };
+      current = { startLine: line, lines: [text] };
     }
   }
   if (current) blocks.push(current);

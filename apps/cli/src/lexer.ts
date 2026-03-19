@@ -77,7 +77,9 @@ export function tokenize(source: string, file: string): Token[] {
     }
 
     if (trimmed.startsWith('#')) {
-      tokens.push({ kind: 'COMMENT', value: trimmed.slice(1).trim(), line: lineNo });
+      // Store the full raw line so the printer can round-trip it verbatim.
+      // consumeComment() strips the leading `# ` when extracting node descriptions.
+      tokens.push({ kind: 'COMMENT', value: rawLine, line: lineNo });
       continue;
     }
 

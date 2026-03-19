@@ -74,7 +74,7 @@ export class OpVisitor extends BaseOpVisitor {
     if (this.comments.has(line)) {
       const val = this.comments.get(line)!;
       this.comments.delete(line);
-      return val.trim();
+      return val.replace(/^\s*#\s*/, '').trim();
     }
     return undefined;
   }
@@ -84,12 +84,12 @@ export class OpVisitor extends BaseOpVisitor {
     if (this.comments.has(line)) {
       const val = this.comments.get(line)!;
       this.comments.delete(line);
-      return val.trim();
+      return val.replace(/^\s*#\s*/, '').trim();
     }
     if (this.comments.has(line - 1)) {
       const val = this.comments.get(line - 1)!;
       this.comments.delete(line - 1);
-      return val.trim();
+      return val.replace(/^\s*#\s*/, '').trim();
     }
     return undefined;
   }

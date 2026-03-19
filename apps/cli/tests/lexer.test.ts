@@ -72,7 +72,8 @@ describe('tokenize', () => {
   describe('comments', () => {
     it('tokenizes standalone comment lines', () => {
       const tokens = tokenize('# this is a comment', 'test');
-      expect(tokens[0]).toMatchObject({ kind: 'COMMENT', value: 'this is a comment' });
+      // Standalone comments store the full raw line so the printer can round-trip them verbatim.
+      expect(tokens[0]).toMatchObject({ kind: 'COMMENT', value: '# this is a comment' });
     });
 
     it('tokenizes inline comments', () => {

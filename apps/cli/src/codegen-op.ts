@@ -127,7 +127,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     // Params / query / headers validation (request-side — use Input variants)
     lines.push(...generateParamValidation(route.params, 'ctx.params', 'params', route.paramsMode ?? 'strict', '', modelsWithInput));
     lines.push(...generateParamValidation(op.query, 'ctx.query', 'query', op.queryMode ?? 'strict', '', modelsWithInput));
-    lines.push(...generateParamValidation(op.headers, 'ctx.headers', 'headers', op.headersMode ?? 'loose', '', modelsWithInput));
+    lines.push(...generateParamValidation(op.headers, 'ctx.headers', 'headers', op.headersMode ?? 'strip', '', modelsWithInput));
 
     // Body validation (request-side — use Input variants)
     if (hasBody && op.request) {

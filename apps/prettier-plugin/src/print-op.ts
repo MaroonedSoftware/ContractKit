@@ -29,10 +29,10 @@ function groupComments(entries: CommentEntry[]): CommentBlock[] {
   let current: CommentBlock | null = null;
   for (const { line, text } of entries) {
     if (current && line === current.startLine + current.lines.length) {
-      current.lines.push(`#${text}`);
+      current.lines.push(text);
     } else {
       if (current) blocks.push(current);
-      current = { startLine: line, lines: [`#${text}`] };
+      current = { startLine: line, lines: [text] };
     }
   }
   if (current) blocks.push(current);
@@ -41,17 +41,17 @@ function groupComments(entries: CommentEntry[]): CommentBlock[] {
 
 /**
  * Emit any comment blocks whose startLine is < beforeLine.
- * Prepends `indent` to each comment line (use '' for top-level, I1 for inside a route).
+ * Lines are emitted verbatim — they already carry their original indentation.
  */
 function flushBlocks(
   out: string[],
   blocks: CommentBlock[],
   idx: { value: number },
   beforeLine: number,
-  indent = '',
+  _indent = '',
 ) {
   while (idx.value < blocks.length && blocks[idx.value]!.startLine < beforeLine) {
-    for (const l of blocks[idx.value]!.lines) out.push(`${indent}${l}`);
+    for (const l of blocks[idx.value]!.lines) out.push(l);
     idx.value++;
   }
 }
