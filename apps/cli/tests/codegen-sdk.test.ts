@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { generateSdk, generateSdkOptions, generateSdkAggregator, deriveClientClassName, deriveClientPropertyName, hasPublicOperations, collectPublicTypeNames } from '../src/codegen-sdk.js';
+import { generateSdk, generateSdkOptions, generateSdkAggregator, deriveClientClassName, deriveClientPropertyName, hasPublicOperations, collectPublicTypeNames, renderTsType, renderInputTsType } from '../src/codegen-sdk.js';
 import {
   opRoot, opRoute, opOperation, opParam, opRequest, opResponse,
-  scalarType, refType, arrayType, inlineObjectType, field,
+  scalarType, refType, arrayType, inlineObjectType, tupleType, recordType,
+  enumType, literalType, lazyType, unionType, field,
 } from './helpers.js';
 
 describe('generateSdk', () => {
@@ -634,9 +635,492 @@ describe('generateSdk — route-level deprecated cascade', () => {
   });
 });
 
+describe('generateSdk — json type', () => {
+  it('emits JsonValue type declaration when response uses json scalar', () => {
+    const root = opRoot([
+      opRoute('/data', [
+        opOperation('get', { responses: [opResponse(200, scalarType('json'), 'application/json')] }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('export type JsonValue =');
+    expect(out).toContain('async getData(');
+    expect(out).toContain('Promise<JsonValue>');
+  });
+
+  it('emits JsonValue type declaration when request body uses json scalar', () => {
+    const root = opRoot([
+      opRoute('/data', [
+        opOperation('post', {
+          request: { bodyType: scalarType('json'), contentType: 'application/json' },
+          responses: [opResponse(201)],
+        }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('export type JsonValue =');
+    expect(out).toContain('body: JsonValue');
+  });
+
+  it('omits JsonValue type declaration when no json scalar used', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).not.toContain('JsonValue');
+  });
+});
+
 describe('hasPublicOperations — edge cases', () => {
   it('returns false for a root with no routes', () => {
     const root = opRoot([]);
     expect(hasPublicOperations(root)).toBe(false);
+  });
+});
+
+// ─── renderTsType — type kind coverage ────────────────────────────────────
+
+describe('renderTsType', () => {
+  describe('scalar mappings', () => {
+    it('maps email, url, uuid to string', () => {
+      expect(renderTsType(scalarType('email'))).toBe('string');
+      expect(renderTsType(scalarType('url'))).toBe('string');
+      expect(renderTsType(scalarType('uuid'))).toBe('string');
+    });
+
+    it('maps date and datetime to string', () => {
+      expect(renderTsType(scalarType('date'))).toBe('string');
+      expect(renderTsType(scalarType('datetime'))).toBe('string');
+    });
+
+    it('maps bigint to bigint', () => {
+      expect(renderTsType(scalarType('bigint'))).toBe('bigint');
+    });
+
+    it('maps null to null', () => {
+      expect(renderTsType(scalarType('null'))).toBe('null');
+    });
+
+    it('maps any to any', () => {
+      expect(renderTsType(scalarType('any'))).toBe('any');
+    });
+
+    it('maps unknown to unknown', () => {
+      expect(renderTsType(scalarType('unknown'))).toBe('unknown');
+    });
+
+    it('maps object to Record<string, unknown>', () => {
+      expect(renderTsType(scalarType('object'))).toBe('Record<string, unknown>');
+    });
+
+    it('maps binary to Blob', () => {
+      expect(renderTsType(scalarType('binary'))).toBe('Blob');
+    });
+
+    it('maps json to JsonValue', () => {
+      expect(renderTsType(scalarType('json'))).toBe('JsonValue');
+    });
+  });
+
+  it('renders tuple type', () => {
+    expect(renderTsType(tupleType(scalarType('string'), scalarType('int')))).toBe('[string, number]');
+  });
+
+  it('renders record type', () => {
+    expect(renderTsType(recordType(scalarType('string'), refType('User')))).toBe('Record<string, User>');
+  });
+
+  it('renders inline enum type', () => {
+    expect(renderTsType(enumType('active', 'inactive'))).toBe("'active' | 'inactive'");
+  });
+
+  it('wraps enum in parens when used as array item', () => {
+    expect(renderTsType(arrayType(enumType('a', 'b')))).toBe("('a' | 'b')[]");
+  });
+
+  it('renders string literal type', () => {
+    expect(renderTsType(literalType('draft'))).toBe("'draft'");
+  });
+
+  it('renders numeric literal type without quotes', () => {
+    expect(renderTsType(literalType(42))).toBe('42');
+  });
+
+  it('renders intersection type', () => {
+    expect(renderTsType({ kind: 'intersection', members: [refType('A'), refType('B')] })).toBe('A & B');
+  });
+
+  it('renders lazy type by unwrapping inner type', () => {
+    expect(renderTsType(lazyType(refType('User')))).toBe('User');
+  });
+
+  it('renders inline object with optional field', () => {
+    const type = inlineObjectType([
+      field('id', scalarType('uuid')),
+      field('name', scalarType('string'), { optional: true }),
+    ]);
+    expect(renderTsType(type)).toBe('{ id: string; name?: string }');
+  });
+
+  it('wraps union in parens when used as array item', () => {
+    expect(renderTsType(arrayType(unionType(scalarType('string'), scalarType('null'))))).toBe('(string | null)[]');
+  });
+
+  it('wraps intersection in parens when used as array item', () => {
+    expect(renderTsType(arrayType({ kind: 'intersection', members: [refType('A'), refType('B')] }))).toBe('(A & B)[]');
+  });
+});
+
+// ─── renderInputTsType — modelsWithInput substitution ─────────────────────
+
+describe('renderInputTsType', () => {
+  const withInput = new Set(['User']);
+
+  it('substitutes ref with Input variant when in modelsWithInput', () => {
+    expect(renderInputTsType(refType('User'), withInput)).toBe('UserInput');
+  });
+
+  it('leaves ref unchanged when not in modelsWithInput', () => {
+    expect(renderInputTsType(refType('Category'), withInput)).toBe('Category');
+  });
+
+  it('substitutes ref inside array', () => {
+    expect(renderInputTsType(arrayType(refType('User')), withInput)).toBe('UserInput[]');
+  });
+
+  it('substitutes ref inside union', () => {
+    expect(renderInputTsType(unionType(refType('User'), scalarType('null')), withInput)).toBe('UserInput | null');
+  });
+
+  it('substitutes ref inside intersection', () => {
+    expect(renderInputTsType({ kind: 'intersection', members: [refType('User'), refType('Extra')] }, withInput)).toBe('UserInput & Extra');
+  });
+
+  it('substitutes ref inside inlineObject field', () => {
+    const type = inlineObjectType([field('user', refType('User'))]);
+    expect(renderInputTsType(type, withInput)).toBe('{ user: UserInput }');
+  });
+
+  it('substitutes ref inside lazy', () => {
+    expect(renderInputTsType(lazyType(refType('User')), withInput)).toBe('UserInput');
+  });
+
+  it('falls back to renderTsType when modelsWithInput is empty', () => {
+    expect(renderInputTsType(refType('User'), new Set())).toBe('User');
+  });
+
+  it('falls back to renderTsType when modelsWithInput is undefined', () => {
+    expect(renderInputTsType(refType('User'), undefined)).toBe('User');
+  });
+});
+
+// ─── buildMethodParams — ParamSource shapes ───────────────────────────────
+
+describe('generateSdk — path param shapes', () => {
+  it('handles string-typed route params (model ref)', () => {
+    const root = opRoot([
+      opRoute('/things/:id', [
+        opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] }),
+      ], 'ThingParams'),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('async getThing(params: ThingParams)');
+  });
+
+  it('substitutes Input variant for string-typed route params when in modelsWithInput', () => {
+    const root = opRoot([
+      opRoute('/things/:id', [
+        opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] }),
+      ], 'ThingParams'),
+    ]);
+    const out = generateSdk(root, { modelsWithInput: new Set(['ThingParams']) });
+    expect(out).toContain('params: ThingParamsInput');
+  });
+
+  it('handles DtoTypeNode-typed route params', () => {
+    const root = opRoot([
+      opRoute('/things/:id', [
+        opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] }),
+      ], inlineObjectType([field('id', scalarType('uuid'))])),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('async getThing(params: { id: string })');
+  });
+});
+
+describe('generateSdk — headers shapes', () => {
+  it('handles string-typed headers (model ref)', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', { sdk: 'listUsers', headers: 'AuthHeaders', responses: [opResponse(200, 'User', 'application/json')] }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('customHeaders?: AuthHeaders');
+  });
+
+  it('handles DtoTypeNode-typed headers', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', {
+          sdk: 'listUsers',
+          headers: inlineObjectType([field('authorization', scalarType('string'))]),
+          responses: [opResponse(200, 'User', 'application/json')],
+        }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('customHeaders?: { authorization: string }');
+  });
+
+  it('handles DtoTypeNode-typed query', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', {
+          sdk: 'listUsers',
+          query: inlineObjectType([field('page', scalarType('int')), field('size', scalarType('int'))]),
+          responses: [opResponse(200, 'User', 'application/json')],
+        }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('query?: { page: number; size: number }');
+  });
+});
+
+describe('generateSdk — multipart/form-data', () => {
+  it('uses FormData body type and omits Content-Type header', () => {
+    const root = opRoot([
+      opRoute('/uploads', [
+        opOperation('post', {
+          sdk: 'upload',
+          request: opRequest(scalarType('string'), 'multipart/form-data'),
+          responses: [opResponse(201, 'Upload', 'application/json')],
+        }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('async upload(body: FormData)');
+    expect(out).toContain('body: body');
+    expect(out).not.toContain("'Content-Type': 'application/json'");
+    expect(out).not.toContain('JSON.stringify');
+  });
+});
+
+// ─── generateMethod fetch assembly ────────────────────────────────────────
+
+describe('generateSdk — fetch call assembly', () => {
+  it('passes headers: customHeaders for GET with headers and no body', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', {
+          sdk: 'listUsers',
+          headers: [opParam('x-api-key', scalarType('string'))],
+          responses: [opResponse(200, 'User', 'application/json')],
+        }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('headers: customHeaders');
+    expect(out).not.toContain("'Content-Type': 'application/json'");
+  });
+
+  it('merges Content-Type and customHeaders for JSON body + headers', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('post', {
+          sdk: 'createUser',
+          request: opRequest('CreateUserInput'),
+          headers: [opParam('x-idempotency-key', scalarType('string'))],
+          responses: [opResponse(201, 'User', 'application/json')],
+        }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain("'Content-Type': 'application/json', ...customHeaders");
+    expect(out).toContain('JSON.stringify(body, bigIntReplacer)');
+  });
+
+  it('emits both URLSearchParams and JSON.stringify for query + body', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('post', {
+          sdk: 'searchUsers',
+          query: [opParam('page', scalarType('int'))],
+          request: opRequest('SearchInput'),
+          responses: [opResponse(200, 'User', 'application/json')],
+        }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('URLSearchParams');
+    expect(out).toContain('JSON.stringify(body, bigIntReplacer)');
+  });
+});
+
+// ─── generateTypeImports ──────────────────────────────────────────────────
+
+describe('generateSdk — type import paths', () => {
+  it('uses default #modules/ path when no modelOutPaths or template', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User', 'application/json')] }),
+      ]),
+    ], 'users.op');
+    const out = generateSdk(root);
+    expect(out).toContain("from '#modules/users/types/index.js'");
+  });
+
+  it('substitutes {module} and {base} in typeImportPathTemplate', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User', 'application/json')] }),
+      ]),
+    ], 'users.op');
+    const out = generateSdk(root, { typeImportPathTemplate: '@myapp/{module}/types' });
+    expect(out).toContain("from '@myapp/users/types'");
+  });
+
+  it('splits types from different output files into separate import lines', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('post', {
+          sdk: 'createUser',
+          request: opRequest('CreateUserInput'),
+          responses: [opResponse(201, 'User', 'application/json')],
+        }),
+      ]),
+    ]);
+    const out = generateSdk(root, {
+      outPath: '/out/users.client.ts',
+      modelOutPaths: new Map([
+        ['User', '/out/types/user.ts'],
+        ['CreateUserInput', '/out/types/create-user-input.ts'],
+      ]),
+    });
+    expect(out).toContain("import type { User } from './types/user.js'");
+    expect(out).toContain("import type { CreateUserInput } from './types/create-user-input.js'");
+  });
+
+  it('falls back to pascalToDotCase for types not in modelOutPaths', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('post', {
+          sdk: 'createUser',
+          request: opRequest('CreateUserInput'),
+          responses: [opResponse(201, 'User', 'application/json')],
+        }),
+      ]),
+    ]);
+    const out = generateSdk(root, {
+      outPath: '/out/users.client.ts',
+      modelOutPaths: new Map([['User', '/out/types/user.ts']]),
+    });
+    expect(out).toContain("from './types/user.js'");
+    expect(out).toContain("from './create.user.input.js'");
+  });
+});
+
+// ─── generateSdkAggregator — additional cases ─────────────────────────────
+
+describe('generateSdkAggregator — additional cases', () => {
+  it('uses custom sdkClassName', () => {
+    const out = generateSdkAggregator(
+      [{ className: 'UsersClient', propertyName: 'users', importPath: './users.client.js' }],
+      './sdk-options.js',
+      'ApiClient',
+    );
+    expect(out).toContain('export class ApiClient {');
+    expect(out).not.toContain('export class Sdk {');
+  });
+
+  it('handles empty clients array', () => {
+    const out = generateSdkAggregator([]);
+    expect(out).toContain('export class Sdk {');
+    expect(out).toContain('constructor(options: SdkOptions)');
+    expect(out).not.toContain('readonly ');
+  });
+});
+
+// ─── collectPublicTypeNames — modelsWithInput ─────────────────────────────
+
+describe('collectPublicTypeNames — modelsWithInput', () => {
+  it('includes Input variant ref when model is in modelsWithInput and used in request body', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('post', {
+          request: opRequest('User'),
+          responses: [opResponse(201, 'User', 'application/json')],
+        }),
+      ]),
+    ]);
+    const types = collectPublicTypeNames(root, new Set(['User']));
+    expect(types.has('UserInput')).toBe(true);
+  });
+
+  it('does not include Input variant when model is not in modelsWithInput', () => {
+    const root = opRoot([
+      opRoute('/users', [
+        opOperation('post', {
+          request: opRequest('User'),
+          responses: [opResponse(201, 'User', 'application/json')],
+        }),
+      ]),
+    ]);
+    const types = collectPublicTypeNames(root, new Set());
+    expect(types.has('UserInput')).toBe(false);
+    expect(types.has('User')).toBe(true);
+  });
+
+  it('includes Input variant for string-typed route params', () => {
+    const root = opRoot([
+      opRoute('/things/:id', [
+        opOperation('get', { responses: [opResponse(200, 'Thing', 'application/json')] }),
+      ], 'ThingParams'),
+    ]);
+    const types = collectPublicTypeNames(root, new Set(['ThingParams']));
+    expect(types.has('ThingParamsInput')).toBe(true);
+  });
+});
+
+// ─── sdkNeedsJson — query, headers, path params ───────────────────────────
+
+describe('generateSdk — json type in query / headers / params', () => {
+  it('emits JsonValue when json scalar used in query params', () => {
+    const root = opRoot([
+      opRoute('/search', [
+        opOperation('get', {
+          query: [opParam('filter', scalarType('json'))],
+          responses: [opResponse(200, 'Result', 'application/json')],
+        }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('export type JsonValue =');
+  });
+
+  it('emits JsonValue when json scalar used in headers', () => {
+    const root = opRoot([
+      opRoute('/data', [
+        opOperation('get', {
+          headers: [opParam('x-context', scalarType('json'))],
+          responses: [opResponse(200, 'Result', 'application/json')],
+        }),
+      ]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('export type JsonValue =');
+  });
+
+  it('emits JsonValue when json scalar used in path params', () => {
+    const root = opRoot([
+      opRoute('/things/:meta', [
+        opOperation('get', { responses: [opResponse(200, 'Thing', 'application/json')] }),
+      ], [opParam('meta', scalarType('json'))]),
+    ]);
+    const out = generateSdk(root);
+    expect(out).toContain('export type JsonValue =');
   });
 });

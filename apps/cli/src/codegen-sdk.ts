@@ -1,7 +1,9 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, DtoTypeNode, ParamSource, FieldNode } from './ast.js';
 import { resolveModifiers } from './ast.js';
-import { pascalToDotCase } from './codegen-dto.js';
+import { pascalToDotCase, typeNeedsScalar } from './codegen-dto.js';
 import { basename, dirname, relative } from 'path';
+
+export const JSON_VALUE_TYPE_DECL = 'export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -95,6 +97,10 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('        return res;');
         lines.push('    };');
         lines.push('}');
+    }
+
+    if (sdkNeedsJson(root)) {
+        lines.push(JSON_VALUE_TYPE_DECL);
     }
 
     lines.push('');
@@ -359,6 +365,8 @@ function renderTsScalar(name: string): string {
             return 'Record<string, unknown>';
         case 'binary':
             return 'Blob';
+        case 'json':
+            return 'JsonValue';
         default:
             return 'unknown';
     }
@@ -526,6 +534,24 @@ function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string
     } else {
         collectTypeNodeRefs(source, out);
     }
+}
+
+function sdkNeedsJson(root: OpRootNode): boolean {
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            const check = (src: ParamSource | undefined) => {
+                if (!src || typeof src === 'string') return false;
+                if (Array.isArray(src)) return src.some(p => typeNeedsScalar(p.type, 'json'));
+                return typeNeedsScalar(src, 'json');
+            };
+            if (
+                (op.request?.bodyType && typeNeedsScalar(op.request.bodyType, 'json')) ||
+                op.responses.some(r => r.bodyType && typeNeedsScalar(r.bodyType, 'json')) ||
+                check(op.query) || check(op.headers) || check(route.params)
+            ) return true;
+        }
+    }
+    return false;
 }
 
 function collectTypeNodeRefs(type: DtoTypeNode, out: Set<string>): void {

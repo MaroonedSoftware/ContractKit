@@ -16,6 +16,7 @@ const BUILTIN_TYPE_DOCS: Record<string, string> = {
     bigint: 'BigInt — Zod `z.bigint()`',
     boolean: 'Boolean true/false — Zod `z.boolean()`',
     date: 'Date — Luxon `DateTime` custom validator',
+    time: 'Time — Luxon `DateTime` custom validator',
     datetime: 'ISO 8601 datetime — Luxon `DateTime` custom validator',
     email: 'Email address — Zod `z.email()`',
     url: 'URL string — Zod `z.url()`',
@@ -25,6 +26,7 @@ const BUILTIN_TYPE_DOCS: Record<string, string> = {
     null: 'Null literal — Zod `z.null()`',
     object: 'Generic object — Zod `z.record(z.string(), z.unknown())`',
     binary: 'Binary data — `Buffer` custom validator',
+    json: 'Any JSON value — recursive `z.lazy()` union of primitives, arrays, and objects',
 };
 
 export function getHover(

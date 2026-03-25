@@ -8,8 +8,8 @@ import type { WorkspaceIndex } from './workspace-index.js';
 
 const BUILTIN_SCALAR_TYPES = [
     'string', 'number', 'int', 'bigint', 'boolean',
-    'date', 'datetime', 'email', 'url', 'uuid',
-    'any', 'unknown', 'null', 'object', 'binary',
+    'date', 'time', 'datetime', 'email', 'url', 'uuid',
+    'any', 'unknown', 'null', 'object', 'binary', 'json',
 ];
 
 const COMPOUND_TYPES = ['array', 'tuple', 'record', 'enum', 'literal', 'lazy'];

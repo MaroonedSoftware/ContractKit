@@ -270,7 +270,7 @@ describe('generateOp', () => {
             const output = generateOp(root);
             expect(output).toContain('ctx.headers');
             expect(output).toContain('authorization: z.string()');
-            expect(output).toContain('z.looseObject');
+            expect(output).toContain('z.object({');
         });
 
         it('generates parseAndValidate import when operation has headers', () => {
@@ -288,7 +288,7 @@ describe('generateOp', () => {
         it('generates type-reference headers validation', () => {
             const root = opRoot([opRoute('/users', [opOperation('get', { headers: 'CommonHeaders' })])]);
             const output = generateOp(root);
-            expect(output).toContain('parseAndValidate(ctx.headers, CommonHeaders.loose())');
+            expect(output).toContain('parseAndValidate(ctx.headers, CommonHeaders.strip())');
         });
 
         it('uses strict mode for headers when specified', () => {

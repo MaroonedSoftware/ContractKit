@@ -8,7 +8,7 @@ export interface SourceLocation {
 export const SCALAR_NAMES: ReadonlySet<string> = new Set<ScalarTypeNode['name']>([
   'string', 'number', 'int', 'bigint', 'boolean',
   'date', 'time', 'datetime', 'email', 'url', 'uuid',
-  'any', 'unknown', 'null', 'object', 'binary',
+  'any', 'unknown', 'null', 'object', 'binary', 'json',
 ]);
 
 // ─── Contracts AST (.dto) ──────────────────────────────────────────────────
@@ -31,7 +31,7 @@ export interface ScalarTypeNode {
   name:
     | 'string' | 'number' | 'int' | 'bigint' | 'boolean'
     | 'date' | 'time' | 'datetime' | 'email' | 'url' | 'uuid'
-    | 'any' | 'unknown' | 'null' | 'object' | 'binary';
+    | 'any' | 'unknown' | 'null' | 'object' | 'binary' | 'json';
   min?: number | bigint;
   max?: number | bigint;
   len?: number;

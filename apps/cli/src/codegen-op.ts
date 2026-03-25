@@ -1,6 +1,6 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource, ObjectMode } from './ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
-import { renderType, renderInputType, renderQueryType, pascalToDotCase, typeNeedsDateTime, modeToWrapper } from './codegen-dto.js';
+import { renderType, renderInputType, renderQueryType, pascalToDotCase, typeNeedsDateTime, typeNeedsScalar, modeToWrapper } from './codegen-dto.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -49,6 +49,18 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
         body.push(`import { parseAndValidate } from '#src/shared/validator.js';`);
     }
 
+    const helpers: string[] = [];
+    if (opNeedsScalar(root, 'binary')) {
+        helpers.push(`const _ZodBinary = z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' });`);
+    }
+    if (opNeedsScalar(root, 'datetime')) {
+        helpers.push(`const _ZodDatetime = z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }));`);
+    }
+    if (opNeedsScalar(root, 'json')) {
+        helpers.push(`type _JsonValue = string | number | boolean | null | _JsonValue[] | { [key: string]: _JsonValue };`);
+        helpers.push(`const _ZodJson: z.ZodType<_JsonValue> = z.lazy(() => z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(_ZodJson), z.record(z.string(), _ZodJson)]));`);
+    }
+
     const lines: string[] = [];
 
     lines.push('');
@@ -66,7 +78,7 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
         }
     }
 
-    const allContent = [...body, ...lines].join('\n');
+    const allContent = [...body, ...(helpers.length ? ['', ...helpers] : []), ...lines].join('\n');
     const needsZod = /\bz\./.test(allContent);
     return (needsZod ? `import { z } from 'zod';\n` : '') + allContent;
 }
@@ -447,6 +459,27 @@ function opNeedsDateTime(root: OpRootNode): boolean {
                     op.responses.some(r => r.bodyType && typeNeedsDateTime(r.bodyType)) ||
                     paramSourceNeedsDateTime(op.query) ||
                     paramSourceNeedsDateTime(op.headers),
+            ),
+    );
+}
+
+function paramSourceNeedsScalar(source: ParamSource | undefined, name: string): boolean {
+    if (!source) return false;
+    if (typeof source === 'string') return false;
+    if (Array.isArray(source)) return source.some(p => typeNeedsScalar(p.type, name));
+    return typeNeedsScalar(source, name);
+}
+
+function opNeedsScalar(root: OpRootNode, name: string): boolean {
+    return root.routes.some(
+        route =>
+            paramSourceNeedsScalar(route.params, name) ||
+            route.operations.some(
+                op =>
+                    (op.request?.bodyType && typeNeedsScalar(op.request.bodyType, name)) ||
+                    op.responses.some(r => r.bodyType && typeNeedsScalar(r.bodyType, name)) ||
+                    paramSourceNeedsScalar(op.query, name) ||
+                    paramSourceNeedsScalar(op.headers, name),
             ),
     );
 }

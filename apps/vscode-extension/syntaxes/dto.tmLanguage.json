@@ -93,7 +93,7 @@
             ]
         },
         "builtin-type": {
-            "match": "\\b(string|number|int|bigint|boolean|date|time|datetime|email|url|uuid|any|unknown|null|object|binary)\\b",
+            "match": "\\b(string|number|int|bigint|boolean|date|time|datetime|email|url|uuid|any|unknown|null|object|binary|json)\\b",
             "name": "support.type.builtin.dto"
         },
         "compound-type": {

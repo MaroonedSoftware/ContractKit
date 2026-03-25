@@ -99,6 +99,9 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
 
 export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): string {
     const needsDateTime = rootNeedsDateTime(root);
+    const needsBinary = rootNeedsScalar(root, 'binary');
+    const needsDatetime = rootNeedsScalar(root, 'datetime');
+    const needsJson = rootNeedsScalar(root, 'json');
     const externalRefs = collectExternalRefs(root);
     const lines: string[] = [];
 
@@ -120,6 +123,17 @@ export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): str
         lines.push(`import { ${ref} } from '${importPath}';`);
     }
     lines.push('');
+    if (needsBinary) {
+        lines.push(`const _ZodBinary = z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' });`);
+    }
+    if (needsDatetime) {
+        lines.push(`const _ZodDatetime = z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }));`);
+    }
+    if (needsJson) {
+        lines.push(`type _JsonValue = string | number | boolean | null | _JsonValue[] | { [key: string]: _JsonValue };`);
+        lines.push(`const _ZodJson: z.ZodType<_JsonValue> = z.lazy(() => z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(_ZodJson), z.record(z.string(), _ZodJson)]));`);
+    }
+    if (needsBinary || needsDatetime || needsJson) lines.push('');
 
     for (const model of topoSortModels(root.models)) {
         lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput));
@@ -365,7 +379,7 @@ function renderScalar(s: ScalarTypeNode): string {
             return `z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, '${escapeString(fmt)}') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a time in format ${escapeString(fmt)}' }))`;
         }
         case 'datetime':
-            return `z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }))`;
+            return '_ZodDatetime';
         case 'email':
             return 'z.email()';
         case 'url':
@@ -381,7 +395,9 @@ function renderScalar(s: ScalarTypeNode): string {
         case 'object':
             return 'z.record(z.string(), z.unknown())';
         case 'binary':
-            return "z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' })";
+            return '_ZodBinary';
+        case 'json':
+            return '_ZodJson';
         default:
             return 'z.unknown()';
     }
@@ -605,6 +621,27 @@ function escapeString(s: string): string {
 
 function rootNeedsDateTime(root: DtoRootNode): boolean {
     return root.models.some(m => (m.type && typeNeedsDateTime(m.type)) || m.fields.some(f => typeNeedsDateTime(f.type)));
+}
+
+export function typeNeedsScalar(type: DtoTypeNode, name: string): boolean {
+    switch (type.kind) {
+        case 'scalar': return type.name === name;
+        case 'array': return typeNeedsScalar(type.item, name);
+        case 'tuple': return type.items.some(i => typeNeedsScalar(i, name));
+        case 'record': return typeNeedsScalar(type.key, name) || typeNeedsScalar(type.value, name);
+        case 'union': return type.members.some(m => typeNeedsScalar(m, name));
+        case 'intersection': return type.members.some(m => typeNeedsScalar(m, name));
+        case 'lazy': return typeNeedsScalar(type.inner, name);
+        case 'inlineObject': return type.fields.some(f => typeNeedsScalar(f.type, name));
+        default: return false;
+    }
+}
+
+export function rootNeedsScalar(root: DtoRootNode, name: string): boolean {
+    return root.models.some(m =>
+        (m.type && typeNeedsScalar(m.type, name)) ||
+        m.fields.some(f => typeNeedsScalar(f.type, name))
+    );
 }
 
 export function typeNeedsDateTime(type: DtoTypeNode): boolean {

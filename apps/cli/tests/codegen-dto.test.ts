@@ -99,7 +99,7 @@ describe('renderType', () => {
 
     it('renders DateTime preprocess coercion for datetime', () => {
       const result = renderType(scalarType('datetime'));
-      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }))`);
+      expect(result).toBe('_ZodDatetime');
     });
 
     it('renders z.email()', () => {
@@ -132,8 +132,7 @@ describe('renderType', () => {
 
     it('renders Buffer custom validator for binary', () => {
       const result = renderType(scalarType('binary'));
-      expect(result).toContain('z.custom<Buffer>');
-      expect(result).toContain('Buffer.isBuffer');
+      expect(result).toBe('_ZodBinary');
     });
   });
 
@@ -244,6 +243,44 @@ describe('generateDto', () => {
       const root = dtoRoot([model('M', [field('d', arrayType(scalarType('datetime')))])]);
       const output = generateDto(root);
       expect(output).toContain("import { DateTime } from 'luxon';");
+    });
+
+    it('emits _ZodBinary helper when binary field present', () => {
+      const root = dtoRoot([model('M', [field('f', scalarType('binary'))])]);
+      const output = generateDto(root);
+      expect(output).toContain('const _ZodBinary = z.custom<Buffer>');
+      expect(output).toContain('_ZodBinary,');
+    });
+
+    it('omits _ZodBinary helper when no binary fields', () => {
+      const root = dtoRoot([model('M', [field('f', scalarType('string'))])]);
+      const output = generateDto(root);
+      expect(output).not.toContain('_ZodBinary');
+    });
+
+    it('emits _ZodDatetime helper when datetime field present', () => {
+      const root = dtoRoot([model('M', [field('f', scalarType('datetime'))])]);
+      const output = generateDto(root);
+      expect(output).toContain('const _ZodDatetime =');
+      expect(output).toContain('_ZodDatetime,');
+    });
+
+    it('emits _ZodJson helper when json field present', () => {
+      const root = dtoRoot([model('M', [field('f', scalarType('json'))])]);
+      const output = generateDto(root);
+      expect(output).toContain('type _JsonValue =');
+      expect(output).toContain('const _ZodJson:');
+      expect(output).toContain('_ZodJson,');
+    });
+
+    it('omits _ZodJson helper when no json fields', () => {
+      const root = dtoRoot([model('M', [field('f', scalarType('string'))])]);
+      const output = generateDto(root);
+      expect(output).not.toContain('_ZodJson');
+    });
+
+    it('renders _ZodJson for json scalar type', () => {
+      expect(renderType(scalarType('json'))).toBe('_ZodJson');
     });
   });
 

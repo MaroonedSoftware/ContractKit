@@ -115,8 +115,8 @@ singleType      = [ objectMode ] , inlineBraceObject
 
                   (* Known scalar types:                                 *)
                   (*   string, number, int, bigint, boolean,             *)
-                  (*   date, datetime, email, url, uuid,                 *)
-                  (*   any, unknown, null, object, binary                *)
+                  (*   date, time, datetime, email, url, uuid,           *)
+                  (*   any, unknown, null, object, binary, json          *)
                   (*                                                     *)
                   (* Known compound types (with args):                   *)
                   (*   array(type [, min=N, max=N])                      *)

@@ -340,6 +340,9 @@ function scalarToSchema(type: import('./ast.js').ScalarTypeNode): Record<string,
             s.type = 'string';
             s.format = 'binary';
             break;
+        case 'json':
+            // Any JSON value — no type constraint
+            break;
     }
 
     return s;

@@ -1,8 +1,8 @@
 import { relative, dirname } from 'node:path';
 import type { DtoRootNode, ModelNode, FieldNode } from './ast.js';
 import type { DtoCodegenContext } from './codegen-dto.js';
-import { collectExternalRefs, collectExternalInputRefs, computeModelsWithInput, topoSortModels, resolveImportPath } from './codegen-dto.js';
-import { renderTsType, renderInputTsType, quoteKey } from './codegen-sdk.js';
+import { collectExternalRefs, collectExternalInputRefs, computeModelsWithInput, topoSortModels, resolveImportPath, rootNeedsScalar } from './codegen-dto.js';
+import { renderTsType, renderInputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './codegen-sdk.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -33,6 +33,11 @@ export function generatePlainTypes(root: DtoRootNode, context?: DtoCodegenContex
         lines.push(`import type { ${ref} } from '${importPath}';`);
     }
     if (allExternalRefs.length > 0) lines.push('');
+
+    if (rootNeedsScalar(root, 'json')) {
+        lines.push(JSON_VALUE_TYPE_DECL);
+        lines.push('');
+    }
 
     for (const model of topoSortModels(root.models)) {
         lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput));
