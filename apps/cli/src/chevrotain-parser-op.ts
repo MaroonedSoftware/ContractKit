@@ -492,12 +492,26 @@ export class OpCstParser extends CstParser {
     this.CONSUME(RBrace);
   });
 
-  // opInlineField: IDENTIFIER QUESTION? COLON opTypeExpr
+  // opInlineField: IDENTIFIER QUESTION? COLON opTypeExpr (EQUALS defaultValue)?
   public opInlineField = this.RULE('opInlineField', () => {
     this.CONSUME(Identifier);
     this.OPTION(() => this.CONSUME(Question));
     this.CONSUME(Colon);
     this.SUBRULE(this.opTypeExpr);
+    this.OPTION2(() => {
+      this.CONSUME(Equals);
+      this.SUBRULE(this.opDefaultValue);
+    });
+  });
+
+  // opDefaultValue: STRING | NUMBER | BOOLEAN | IDENTIFIER
+  public opDefaultValue = this.RULE('opDefaultValue', () => {
+    this.OR([
+      { ALT: () => this.CONSUME(StringLit) },
+      { ALT: () => this.CONSUME(NumberLit) },
+      { ALT: () => this.CONSUME(BooleanLit) },
+      { ALT: () => this.CONSUME(Identifier) },
+    ]);
   });
 }
 

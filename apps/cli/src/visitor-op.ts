@@ -174,6 +174,8 @@ export class OpVisitor extends BaseOpVisitor {
 
     return {
       name,
+      optional: false,
+      nullable: false,
       type: resolveSimpleType(typeName),
       description,
       loc: { file: this.file, line },
@@ -508,6 +510,11 @@ export class OpVisitor extends BaseOpVisitor {
       ? this.visit(ctx.opTypeExpr[0])
       : { kind: 'scalar', name: 'unknown' };
 
+    let defaultVal: string | number | boolean | undefined;
+    if (ctx.opDefaultValue) {
+      defaultVal = this.visit(ctx.opDefaultValue[0]);
+    }
+
     const description = this.consumeComment(line);
 
     return {
@@ -516,9 +523,18 @@ export class OpVisitor extends BaseOpVisitor {
       nullable: false,
       visibility: 'normal',
       type,
+      default: defaultVal,
       description,
       loc: { file: this.file, line },
     };
+  }
+
+  opDefaultValue(ctx: any): string | number | boolean {
+    if (ctx.StringLit) return ctx.StringLit[0].image;
+    if (ctx.NumberLit) return Number(ctx.NumberLit[0].image);
+    if (ctx.BooleanLit) return ctx.BooleanLit[0].image === 'true';
+    if (ctx.Identifier) return ctx.Identifier[0].image;
+    return '';
   }
 }
 
@@ -537,7 +553,11 @@ function typeNodeToParamSource(node: DtoTypeNode): ParamSource {
   if (node.kind === 'inlineObject') {
     return node.fields.map(f => ({
       name: f.name,
+      optional: f.optional,
+      nullable: f.nullable,
       type: f.type,
+      default: f.default,
+      description: f.description,
       loc: f.loc,
     }));
   }

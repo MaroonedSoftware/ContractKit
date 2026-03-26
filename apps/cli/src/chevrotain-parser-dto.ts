@@ -268,11 +268,34 @@ export class DtoCstParser extends CstParser {
     this.CONSUME(Identifier);
     this.OPTION(() => this.CONSUME(Question));
     this.CONSUME(Colon);
-    this.SUBRULE(this.typeExpression);
-    this.OPTION2(() => {
-      this.CONSUME(Equals);
-      this.SUBRULE(this.defaultValue);
-    });
+    this.OR([
+      {
+        // Case 1: Visibility modifier + type expression
+        GATE: () => {
+          const la1 = this.LA(1);
+          return la1.tokenType === Identifier &&
+            (la1.image === 'readonly' || la1.image === 'writeonly');
+        },
+        ALT: () => {
+          this.CONSUME2(Identifier); // visibility modifier
+          this.SUBRULE2(this.typeExpression);
+          this.OPTION2(() => {
+            this.CONSUME(Equals);
+            this.SUBRULE(this.defaultValue);
+          });
+        },
+      },
+      {
+        // Case 2: Regular type expression (no visibility)
+        ALT: () => {
+          this.SUBRULE(this.typeExpression);
+          this.OPTION3(() => {
+            this.CONSUME2(Equals);
+            this.SUBRULE2(this.defaultValue);
+          });
+        },
+      },
+    ]);
   });
 
   // ─── Default value ────────────────────────────────────────────────────

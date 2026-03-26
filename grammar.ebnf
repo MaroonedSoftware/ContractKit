@@ -166,9 +166,9 @@ regexChar       = ? any token except "/" ? ;
 inlineBraceObject = "{" , { inlineField , [ "," ] } , "}" ;
                   (* commas between fields are optional                  *)
 
-inlineField     = IDENTIFIER , [ "?" ] , ":" , typeExpression ,
-                  [ "=" , defaultValue ] ;
-                  (* supports optional default values                    *)
+inlineField     = IDENTIFIER , [ "?" ] , ":" , fieldBody ;
+                  (* same structure as fieldDecl body — supports         *)
+                  (* visibility modifiers and default values             *)
 
 (* --------------------------------------------------------------------- *)
 (* Default Values                                                        *)
@@ -390,6 +390,13 @@ opInlineObject  = "{" , { opInlineField , [ "," ] } , "}" ;
                   (* commas between fields are optional                  *)
                   (* objectMode prefix is part of opAtomicType, not here *)
 
-opInlineField   = IDENTIFIER , [ "?" ] , ":" , opTypeExpr ;
-                  (* Note: OP inline fields do NOT support default values *)
-                  (* unlike DTO inline fields                            *)
+opInlineField   = IDENTIFIER , [ "?" ] , ":" , opTypeExpr ,
+                  [ "=" , opDefaultValue ] ;
+                  (* supports optional default values, same as DTO inline fields *)
+
+opDefaultValue  = STRING_LIT
+                | NUMBER_LIT
+                | BOOLEAN_LIT
+                | IDENTIFIER ;
+                  (* Note: OP defaultValue does NOT support regex literals  *)
+                  (* unlike DTO argValue                                    *)

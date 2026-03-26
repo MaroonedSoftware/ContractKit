@@ -267,8 +267,8 @@ describe('printOp — query and headers descriptions', () => {
     const ast = makeRoot([
       makeRoute('/users', [makeOp('get', {
         query: [
-          { name: 'page', type: { kind: 'scalar', name: 'int' }, description: 'Page number', loc },
-          { name: 'limit', type: { kind: 'scalar', name: 'int' }, loc },
+          { name: 'page', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, description: 'Page number', loc },
+          { name: 'limit', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, loc },
         ],
       })]),
     ]);
@@ -283,11 +283,135 @@ describe('printOp — query and headers descriptions', () => {
     const ast = makeRoot([
       makeRoute('/users', [makeOp('get', {
         headers: [
-          { name: 'X-Request-Id', type: { kind: 'scalar', name: 'uuid' }, description: 'Idempotency key', loc },
+          { name: 'X-Request-Id', optional: false, nullable: false, type: { kind: 'scalar', name: 'uuid' }, description: 'Idempotency key', loc },
         ],
       })]),
     ]);
     expect(printOp(ast)).toContain('            X-Request-Id: uuid # Idempotency key');
+  });
+});
+
+// ─── Query / headers — optional, nullable, defaults ──────────────────────────
+
+describe('printOp — query and headers optional, nullable, default', () => {
+  const loc = makeLoc();
+
+  it('emits ? for optional query params', () => {
+    const ast = makeRoot([
+      makeRoute('/search', [makeOp('get', {
+        query: [
+          { name: 'q', optional: true, nullable: false, type: { kind: 'scalar', name: 'string' }, loc },
+          { name: 'page', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, loc },
+        ],
+      })]),
+    ]);
+    const out = printOp(ast);
+    expect(out).toContain('            q?: string');
+    expect(out).toContain('            page: int');
+    expect(out).not.toContain('page?:');
+  });
+
+  it('emits | null for nullable query params', () => {
+    const ast = makeRoot([
+      makeRoute('/items', [makeOp('get', {
+        query: [
+          { name: 'filter', optional: false, nullable: true, type: { kind: 'scalar', name: 'string' }, loc },
+        ],
+      })]),
+    ]);
+    expect(printOp(ast)).toContain('            filter: string | null');
+  });
+
+  it('emits = value for query params with a default (bare identifier)', () => {
+    const ast = makeRoot([
+      makeRoute('/institutions/routing_details', [makeOp('get', {
+        query: [
+          {
+            name: 'routingNumberType',
+            optional: false,
+            nullable: false,
+            type: { kind: 'ref', name: 'FinancialInstitutionRoutingNumberTypes' },
+            default: 'aba',
+            loc,
+          },
+        ],
+      })]),
+    ]);
+    expect(printOp(ast)).toContain('            routingNumberType: FinancialInstitutionRoutingNumberTypes = aba');
+  });
+
+  it('emits = value bare for hyphenated string defaults (valid identifier chars)', () => {
+    const ast = makeRoot([
+      makeRoute('/items', [makeOp('get', {
+        query: [
+          { name: 'sort', optional: false, nullable: false, type: { kind: 'scalar', name: 'string' }, default: 'created-at', loc },
+        ],
+      })]),
+    ]);
+    expect(printOp(ast)).toContain('            sort: string = created-at');
+  });
+
+  it('emits = "value" for query params with a string default that needs quoting (spaces, special chars)', () => {
+    const ast = makeRoot([
+      makeRoute('/items', [makeOp('get', {
+        query: [
+          { name: 'label', optional: false, nullable: false, type: { kind: 'scalar', name: 'string' }, default: 'hello world', loc },
+        ],
+      })]),
+    ]);
+    expect(printOp(ast)).toContain('            label: string = "hello world"');
+  });
+
+  it('emits = value for numeric defaults', () => {
+    const ast = makeRoot([
+      makeRoute('/items', [makeOp('get', {
+        query: [
+          { name: 'limit', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, default: 20, loc },
+        ],
+      })]),
+    ]);
+    expect(printOp(ast)).toContain('            limit: int = 20');
+  });
+
+  it('emits = value for boolean defaults', () => {
+    const ast = makeRoot([
+      makeRoute('/items', [makeOp('get', {
+        query: [
+          { name: 'active', optional: false, nullable: false, type: { kind: 'scalar', name: 'boolean' }, default: true, loc },
+        ],
+      })]),
+    ]);
+    expect(printOp(ast)).toContain('            active: boolean = true');
+  });
+
+  it('combines optional, default, and description on the same param', () => {
+    const ast = makeRoot([
+      makeRoute('/items', [makeOp('get', {
+        query: [
+          {
+            name: 'page',
+            optional: true,
+            nullable: false,
+            type: { kind: 'scalar', name: 'int' },
+            default: 1,
+            description: 'Page number',
+            loc,
+          },
+        ],
+      })]),
+    ]);
+    expect(printOp(ast)).toContain('            page?: int = 1 # Page number');
+  });
+
+  it('applies the same rules to headers params', () => {
+    const ast = makeRoot([
+      makeRoute('/items', [makeOp('get', {
+        headers: [
+          { name: 'X-Version', optional: true, nullable: false, type: { kind: 'scalar', name: 'string' }, default: 'v1', loc },
+        ],
+      })]),
+    ]);
+    expect(printOp(ast)).toContain('            X-Version?: string = v1');
   });
 });
 

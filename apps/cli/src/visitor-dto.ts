@@ -283,10 +283,18 @@ export class DtoVisitor extends BaseDtoVisitor {
   }
 
   inlineField(ctx: any): FieldNode {
-    const nameToken: IToken = ctx.Identifier[0];
+    const identifiers: IToken[] = ctx.Identifier || [];
+    const nameToken = identifiers[0]!;
     const name = nameToken.image;
     const line = nameToken.startLine ?? 0;
     const optional = !!ctx.Question;
+
+    // identifiers[0] = field name; identifiers[1] = visibility modifier (if present)
+    let visibility: 'readonly' | 'writeonly' | 'normal' = 'normal';
+    if (identifiers.length > 1) {
+      const vis = identifiers[1]!.image;
+      if (vis === 'readonly' || vis === 'writeonly') visibility = vis;
+    }
 
     const raw: DtoTypeNode = ctx.typeExpression
       ? this.visit(ctx.typeExpression[0])
@@ -301,7 +309,7 @@ export class DtoVisitor extends BaseDtoVisitor {
     const description = this.consumeComment(line);
 
     return {
-      name, optional, nullable, visibility: 'normal', type,
+      name, optional, nullable, visibility, type,
       default: defaultVal, description,
       loc: { file: this.file, line },
     };

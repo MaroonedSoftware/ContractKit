@@ -683,7 +683,7 @@ interface FlatParam {
 
 function flattenParamSource(source: ParamSource, modelIndex: Map<string, ModelNode>): FlatParam[] {
     if (Array.isArray(source)) {
-        return (source as OpParamNode[]).map(p => ({ name: p.name, type: p.type, optional: false }));
+        return (source as OpParamNode[]).map(p => ({ name: p.name, type: p.type, optional: p.optional }));
     }
     if (typeof source === 'string') {
         // String reference — resolve from model index

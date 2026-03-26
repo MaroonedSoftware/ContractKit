@@ -154,8 +154,12 @@ function printParamsBlock(source: ParamSource, indent: string, mode?: ObjectMode
     const lines: string[] = [`${indent}${prefix}params: {`];
     const inner = indent + '    ';
     for (const p of source) {
+      const opt = p.optional ? '?' : '';
+      let t = printType(p.type);
+      if (p.nullable) t += ' | null';
+      const def = p.default !== undefined ? ` = ${formatDefault(p.default)}` : '';
       const comment = p.description ? ` # ${p.description}` : '';
-      lines.push(`${inner}${p.name}: ${printType(p.type)}${comment}`);
+      lines.push(`${inner}${p.name}${opt}: ${t}${def}${comment}`);
     }
     lines.push(`${indent}}`);
     return lines;
@@ -226,8 +230,12 @@ function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource, 
     if (source.length === 0) return [];
     const lines: string[] = [`${I2}${prefix}${keyword}: {`];
     for (const p of source) {
+      const opt = p.optional ? '?' : '';
+      let t = printType(p.type);
+      if (p.nullable) t += ' | null';
+      const def = p.default !== undefined ? ` = ${formatDefault(p.default)}` : '';
       const comment = p.description ? ` # ${p.description}` : '';
-      lines.push(`${I3}${p.name}: ${printType(p.type)}${comment}`);
+      lines.push(`${I3}${p.name}${opt}: ${t}${def}${comment}`);
     }
     lines.push(`${I2}}`);
     return lines;

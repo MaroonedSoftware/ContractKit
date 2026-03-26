@@ -155,7 +155,10 @@ export type RouteModifier = 'internal' | 'deprecated' | 'public';
 
 export interface OpParamNode {
   name: string;
+  optional: boolean;
+  nullable: boolean;
   type: DtoTypeNode;
+  default?: string | number | boolean;
   description?: string;
   loc: SourceLocation;
 }
