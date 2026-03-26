@@ -558,7 +558,14 @@ async function main() {
                         console.log(`  -  ${typeOutPath} (unchanged)`);
                         continue;
                     }
-                    const content = generatePlainTypes(ast, { modelOutPaths: sdkModelOutPaths, currentOutPath: typeOutPath, modelsWithInput });
+                    let jsonValueImportPath: string | undefined;
+                    {
+                        let rel = relative(dirname(typeOutPath), sdkOptionsPath);
+                        rel = rel.replace(/\.ts$/, '.js');
+                        if (!rel.startsWith('.')) rel = './' + rel;
+                        jsonValueImportPath = rel;
+                    }
+                    const content = generatePlainTypes(ast, { modelOutPaths: sdkModelOutPaths, currentOutPath: typeOutPath, modelsWithInput, jsonValueImportPath });
                     results.push({ outPath: typeOutPath, content });
                 }
             }

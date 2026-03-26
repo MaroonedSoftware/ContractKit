@@ -35,6 +35,8 @@ export interface DtoCodegenContext {
     currentOutPath: string;
     /** Set of model names that have Input variants (models with visibility modifiers) */
     modelsWithInput?: Set<string>;
+    /** If set, import JsonValue from this path instead of re-declaring it (avoids barrel re-export conflicts) */
+    jsonValueImportPath?: string;
 }
 
 // ─── Public entry point ────────────────────────────────────────────────────

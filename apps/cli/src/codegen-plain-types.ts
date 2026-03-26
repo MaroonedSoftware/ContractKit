@@ -35,7 +35,11 @@ export function generatePlainTypes(root: DtoRootNode, context?: DtoCodegenContex
     if (allExternalRefs.length > 0) lines.push('');
 
     if (rootNeedsScalar(root, 'json')) {
-        lines.push(JSON_VALUE_TYPE_DECL);
+        if (context?.jsonValueImportPath) {
+            lines.push(`import type { JsonValue } from '${context.jsonValueImportPath}';`);
+        } else {
+            lines.push(JSON_VALUE_TYPE_DECL);
+        }
         lines.push('');
     }
 

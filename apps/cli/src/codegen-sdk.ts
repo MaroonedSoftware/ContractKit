@@ -53,8 +53,9 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         let rel = relative(dirname(options.outPath), options.sdkOptionsPath);
         rel = rel.replace(/\.ts$/, '.js');
         if (!rel.startsWith('.')) rel = './' + rel;
-        lines.push(`import type { SdkFetch } from '${rel}';`);
-        lines.push(`import { SdkError, bigIntReplacer, bigIntReviver } from '${rel}';`);
+        const jsonImport = sdkNeedsJson(root) ? ', JsonValue' : '';
+        lines.push(`import type { SdkFetch${jsonImport} } from '${rel}';`);
+        lines.push(`import { bigIntReplacer, bigIntReviver } from '${rel}';`);
     } else {
         lines.push('');
         lines.push('export class SdkError extends Error {');
@@ -99,7 +100,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('}');
     }
 
-    if (sdkNeedsJson(root)) {
+    if (sdkNeedsJson(root) && !(options.sdkOptionsPath && options.outPath)) {
         lines.push(JSON_VALUE_TYPE_DECL);
     }
 
@@ -674,6 +675,8 @@ export function generateSdkOptions(): string {
         '    }',
         '    return value;',
         '};',
+        '',
+        JSON_VALUE_TYPE_DECL,
         '',
         'export function createSdkFetch(options: SdkOptions): SdkFetch {',
         '    const getRequestId = options.requestIdFactory ?? (() => crypto.randomUUID());',
