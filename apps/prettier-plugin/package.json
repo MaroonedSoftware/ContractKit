@@ -2,13 +2,19 @@
     "name": "prettier-plugin",
     "version": "0.1.0",
     "type": "module",
-    "main": "dist/index.js",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
     "exports": {
         ".": "./dist/index.js"
     },
     "scripts": {
-        "build": "tsc",
-        "test": "vitest run"
+        "build": "tsup src/index.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration",
+        "build:ci": "eslint --max-warnings=0 && pnpm run build",
+        "lint": "eslint --fix",
+        "format": "prettier --write .",
+        "test": "vitest run",
+        "test:ci": "vitest run --coverage"
     },
     "peerDependencies": {
         "prettier": "^3.0.0"
@@ -17,8 +23,8 @@
         "@maroonedsoftware/contractkit": "workspace:*"
     },
     "devDependencies": {
+        "@repo/config-eslint": "workspace:*",
         "@repo/config-typescript": "workspace:*",
-        "prettier": "^3.8.1",
-        "vitest": "^4.0.18"
+        "prettier": "^3.8.1"
     }
 }

@@ -86,11 +86,13 @@
         }
     },
     "scripts": {
-        "test": "vitest run",
         "build": "node esbuild.mjs",
+        "build:ci": "eslint --max-warnings=0 && pnpm run build",
         "dev": "node esbuild.mjs --watch",
         "lint": "eslint --fix",
         "format": "prettier --write .",
+        "test": "vitest run",
+        "test:ci": "vitest run --coverage",
         "package": "node esbuild.mjs && vsce package --no-dependencies",
         "vscode:install": "pnpm run package && cursor --install-extension contract-dsl-vscode-0.1.0.vsix",
         "vscode:uninstall": "cursor --uninstall-extension contract-dsl-vscode-0.1.0.vsix"

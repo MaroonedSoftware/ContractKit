@@ -3,16 +3,18 @@
     "version": "0.1.0",
     "description": "Compiler for .dto and .op DSL files into TypeScript/Zod/Koa code",
     "type": "module",
-    "main": "index.ts",
+    "main": "./dist/cli.js",
     "bin": {
         "dsl-compile": "dist/cli.js"
     },
     "scripts": {
-        "build": "tsc",
+        "build": "tsup src/cli.ts --format esm --sourcemap",
+        "build:ci": "eslint --max-warnings=0 && pnpm run build",
         "dev": "node --inspect --no-warnings --no-deprecation --import @swc-node/register/esm-register --enable-source-maps --watch --watch-preserve-output ./src/index.ts",
         "lint": "eslint --fix",
         "format": "prettier --write .",
         "test": "vitest run",
+        "test:ci": "vitest run --coverage",
         "start": "node dist/cli.js"
     },
     "dependencies": {
