@@ -9,7 +9,7 @@ import onlyWarn from 'eslint-plugin-only-warn';
  *
  * @type {import("eslint").Linter.Config[]}
  * */
-export const config = [
+export default [
     js.configs.recommended,
     eslintConfigPrettier,
     ...tseslint.configs.recommended,
@@ -28,14 +28,13 @@ export const config = [
     },
     {
         rules: {
-            '@typescript-eslint/no-unused-vars': 'warn',
+            '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
             '@typescript-eslint/no-explicit-any': 'warn',
             '@typescript-eslint/no-empty-object-type': 'warn',
             '@typescript-eslint/no-empty-interface': 'warn',
-            '@typescript-eslint/no-empty-object-type': 'warn',
         },
     },
     {
-        ignores: ['dist/**'],
+        ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'bin/**', 'tests/**'],
     },
 ];
