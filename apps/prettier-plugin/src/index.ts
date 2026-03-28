@@ -36,7 +36,7 @@ const plugin: Plugin<DtoRootNode | OpRootNode> = {
       },
       astFormat: 'contract-dto',
       locStart: () => 0,
-      locEnd: (_node) => 0,
+      locEnd: _node => 0,
     },
     'contract-op': {
       parse(text, _options) {
@@ -45,7 +45,7 @@ const plugin: Plugin<DtoRootNode | OpRootNode> = {
       },
       astFormat: 'contract-op',
       locStart: () => 0,
-      locEnd: (_node) => 0,
+      locEnd: _node => 0,
     },
   },
 

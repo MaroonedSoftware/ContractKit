@@ -6,9 +6,23 @@ export interface SourceLocation {
 }
 
 export const SCALAR_NAMES: ReadonlySet<string> = new Set<ScalarTypeNode['name']>([
-  'string', 'number', 'int', 'bigint', 'boolean',
-  'date', 'time', 'datetime', 'email', 'url', 'uuid',
-  'any', 'unknown', 'null', 'object', 'binary', 'json',
+  'string',
+  'number',
+  'int',
+  'bigint',
+  'boolean',
+  'date',
+  'time',
+  'datetime',
+  'email',
+  'url',
+  'uuid',
+  'any',
+  'unknown',
+  'null',
+  'object',
+  'binary',
+  'json',
 ]);
 
 // ─── Contracts AST (.dto) ──────────────────────────────────────────────────
@@ -29,9 +43,23 @@ export type DtoTypeNode =
 export interface ScalarTypeNode {
   kind: 'scalar';
   name:
-    | 'string' | 'number' | 'int' | 'bigint' | 'boolean'
-    | 'date' | 'time' | 'datetime' | 'email' | 'url' | 'uuid'
-    | 'any' | 'unknown' | 'null' | 'object' | 'binary' | 'json';
+    | 'string'
+    | 'number'
+    | 'int'
+    | 'bigint'
+    | 'boolean'
+    | 'date'
+    | 'time'
+    | 'datetime'
+    | 'email'
+    | 'url'
+    | 'uuid'
+    | 'any'
+    | 'unknown'
+    | 'null'
+    | 'object'
+    | 'binary'
+    | 'json';
   min?: number | bigint;
   max?: number | bigint;
   len?: number;
@@ -111,7 +139,7 @@ export interface ModelNode {
   base?: string;
   fields: FieldNode[];
   type?: DtoTypeNode; // type alias: Name: typeExpression (fields will be empty)
-  mode?: ObjectMode;  // object validation mode — defaults to 'strict'
+  mode?: ObjectMode; // object validation mode — defaults to 'strict'
   camelCase?: boolean; // keys are defined in camelCase but parsed from snake_case input
   description?: string;
   loc: SourceLocation;

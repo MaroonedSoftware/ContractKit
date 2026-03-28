@@ -1,10 +1,5 @@
 import type { DtoRootNode, ModelNode } from '@maroonedsoftware/contractkit';
-import {
-  printField,
-  printInlineObjectExpanded,
-  extractTrailingInlineObject,
-  printType,
-} from './print-type.js';
+import { printField, printInlineObjectExpanded, extractTrailingInlineObject, printType } from './print-type.js';
 
 const INDENT = '    ';
 
@@ -28,12 +23,7 @@ function groupComments(entries: CommentEntry[]): CommentBlock[] {
   return blocks;
 }
 
-function flushBlocks(
-  out: string[],
-  blocks: CommentBlock[],
-  idx: { value: number },
-  beforeLine: number,
-) {
+function flushBlocks(out: string[], blocks: CommentBlock[], idx: { value: number }, beforeLine: number) {
   while (idx.value < blocks.length && blocks[idx.value]!.startLine < beforeLine) {
     for (const l of blocks[idx.value]!.lines) out.push(l);
     idx.value++;
@@ -54,7 +44,9 @@ export function printDto(ast: DtoRootNode): string {
   for (const model of ast.models) {
     const pending: string[] = [];
     flushBlocks(pending, blocks, idx, model.loc.line);
-    for (const l of pending) { if (parts.length > 0 || l) parts.push(l); }
+    for (const l of pending) {
+      if (parts.length > 0 || l) parts.push(l);
+    }
 
     if (parts.length > 0) parts.push('');
     parts.push(printModelDecl(model));
@@ -63,7 +55,10 @@ export function printDto(ast: DtoRootNode): string {
   // Emit remaining blocks after the last model
   const trailing: string[] = [];
   flushBlocks(trailing, blocks, idx, Infinity);
-  for (const l of trailing) { parts.push(''); parts.push(l); }
+  for (const l of trailing) {
+    parts.push('');
+    parts.push(l);
+  }
 
   return parts.join('\n') + '\n';
 }
@@ -97,9 +92,7 @@ function printModelDecl(model: ModelNode): string {
   const commentSuffix = model.description ? ` # ${model.description}` : '';
   const modifiers = [model.camelCase ? 'camel' : '', model.mode ?? ''].filter(Boolean).join(' ');
   const modePrefix = modifiers ? `${modifiers} ` : '';
-  const header = model.base
-    ? `${modePrefix}${model.name}: ${model.base} {${commentSuffix}`
-    : `${modePrefix}${model.name}: {${commentSuffix}`;
+  const header = model.base ? `${modePrefix}${model.name}: ${model.base} {${commentSuffix}` : `${modePrefix}${model.name}: {${commentSuffix}`;
 
   const lines: string[] = [header];
   for (const field of model.fields) {

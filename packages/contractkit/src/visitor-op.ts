@@ -1,10 +1,22 @@
 import type { IToken } from 'chevrotain';
 import { opCstParser } from './chevrotain-parser-op.js';
 import type {
-  OpRootNode, OpRouteNode, OpOperationNode, OpParamNode,
-  OpRequestNode, OpResponseNode, HttpMethod, DtoTypeNode,
-  FieldNode, ParamSource, ScalarTypeNode, InlineObjectTypeNode,
-  SecurityNode, SecurityFields, ObjectMode, RouteModifier,
+  OpRootNode,
+  OpRouteNode,
+  OpOperationNode,
+  OpParamNode,
+  OpRequestNode,
+  OpResponseNode,
+  HttpMethod,
+  DtoTypeNode,
+  FieldNode,
+  ParamSource,
+  ScalarTypeNode,
+  InlineObjectTypeNode,
+  SecurityNode,
+  SecurityFields,
+  ObjectMode,
+  RouteModifier,
 } from './ast.js';
 import { SCALAR_NAMES, SECURITY_NONE } from './ast.js';
 
@@ -35,9 +47,7 @@ export class OpVisitor extends BaseOpVisitor {
         meta[key] = value;
       }
     }
-    const security: SecurityNode | undefined = ctx.securityBlock
-      ? this.visit(ctx.securityBlock[0]) as SecurityNode
-      : undefined;
+    const security: SecurityNode | undefined = ctx.securityBlock ? (this.visit(ctx.securityBlock[0]) as SecurityNode) : undefined;
     const routes: OpRouteNode[] = [];
     if (ctx.routeDecl) {
       for (const routeCst of ctx.routeDecl) {
@@ -101,9 +111,8 @@ export class OpVisitor extends BaseOpVisitor {
 
     // Modifier identifiers are consumed directly in routeDecl (not inside routePath sub-rule)
     const modifierTokens: IToken[] = ctx.Identifier ?? [];
-    const modifiers: RouteModifier[] | undefined = modifierTokens.length > 0
-      ? modifierTokens.map(t => t.image as RouteModifier).filter(m => ROUTE_MODIFIERS.has(m))
-      : undefined;
+    const modifiers: RouteModifier[] | undefined =
+      modifierTokens.length > 0 ? modifierTokens.map(t => t.image as RouteModifier).filter(m => ROUTE_MODIFIERS.has(m)) : undefined;
 
     let params: ParamSource | undefined;
     let paramsMode: ObjectMode | undefined;
@@ -111,7 +120,12 @@ export class OpVisitor extends BaseOpVisitor {
     let operations: OpOperationNode[] = [];
 
     if (ctx.routeBody) {
-      const body = this.visit(ctx.routeBody[0]) as { params?: ParamSource; paramsMode?: ObjectMode; security?: SecurityNode; operations: OpOperationNode[] };
+      const body = this.visit(ctx.routeBody[0]) as {
+        params?: ParamSource;
+        paramsMode?: ObjectMode;
+        security?: SecurityNode;
+        operations: OpOperationNode[];
+      };
       params = body.params;
       paramsMode = body.paramsMode;
       security = body.security;
@@ -193,9 +207,8 @@ export class OpVisitor extends BaseOpVisitor {
     // 'public' is stored in the array (for round-trip formatting); resolveModifiers
     // interprets it as an explicit override that clears inherited route modifiers.
     const modifierTokens = identifiers.slice(1);
-    const modifiers: RouteModifier[] | undefined = modifierTokens.length > 0
-      ? modifierTokens.map(t => t.image as RouteModifier).filter(m => ROUTE_MODIFIERS.has(m))
-      : undefined;
+    const modifiers: RouteModifier[] | undefined =
+      modifierTokens.length > 0 ? modifierTokens.map(t => t.image as RouteModifier).filter(m => ROUTE_MODIFIERS.has(m)) : undefined;
 
     let service: string | undefined;
     let sdk: string | undefined;
@@ -211,7 +224,19 @@ export class OpVisitor extends BaseOpVisitor {
     let signatureDescription: string | undefined;
 
     if (ctx.operationBody) {
-      const body = this.visit(ctx.operationBody[0]) as { service?: string; sdk?: string; signature?: string; signatureDescription?: string; query?: ParamSource; queryMode?: ObjectMode; headers?: ParamSource; headersMode?: ObjectMode; request?: OpRequestNode; responses: OpResponseNode[]; security?: SecurityNode };
+      const body = this.visit(ctx.operationBody[0]) as {
+        service?: string;
+        sdk?: string;
+        signature?: string;
+        signatureDescription?: string;
+        query?: ParamSource;
+        queryMode?: ObjectMode;
+        headers?: ParamSource;
+        headersMode?: ObjectMode;
+        request?: OpRequestNode;
+        responses: OpResponseNode[];
+        security?: SecurityNode;
+      };
       service = body.service;
       sdk = body.sdk;
       signature = body.signature;
@@ -225,10 +250,38 @@ export class OpVisitor extends BaseOpVisitor {
       security = body.security;
     }
 
-    return { method, service, sdk, signature, signatureDescription, query, queryMode, headers, headersMode, request, responses, security, modifiers, description, loc: { file: this.file, line } };
+    return {
+      method,
+      service,
+      sdk,
+      signature,
+      signatureDescription,
+      query,
+      queryMode,
+      headers,
+      headersMode,
+      request,
+      responses,
+      security,
+      modifiers,
+      description,
+      loc: { file: this.file, line },
+    };
   }
 
-  operationBody(ctx: any): { service?: string; sdk?: string; signature?: string; signatureDescription?: string; query?: ParamSource; queryMode?: ObjectMode; headers?: ParamSource; headersMode?: ObjectMode; request?: OpRequestNode; responses: OpResponseNode[]; security?: SecurityNode } {
+  operationBody(ctx: any): {
+    service?: string;
+    sdk?: string;
+    signature?: string;
+    signatureDescription?: string;
+    query?: ParamSource;
+    queryMode?: ObjectMode;
+    headers?: ParamSource;
+    headersMode?: ObjectMode;
+    request?: OpRequestNode;
+    responses: OpResponseNode[];
+    security?: SecurityNode;
+  } {
     let service: string | undefined;
     let sdk: string | undefined;
     let signature: string | undefined;
@@ -303,27 +356,21 @@ export class OpVisitor extends BaseOpVisitor {
 
   signatureDecl(ctx: any): { signature: string; description?: string } {
     // Accept either a quoted string ("key") or an unquoted identifier (KEY_NAME)
-    const signature: string = ctx.StringLit?.[0]
-      ? ctx.StringLit[0].image as string
-      : ctx.Identifier[1].image as string;
+    const signature: string = ctx.StringLit?.[0] ? (ctx.StringLit[0].image as string) : (ctx.Identifier[1].image as string);
     const line: number = ctx.Identifier[0]?.startLine ?? 0;
     return { signature, description: this.consumeComment(line) };
   }
 
   queryBlock(ctx: any): { source: ParamSource; mode?: ObjectMode } {
     const identifiers: IToken[] = ctx.Identifier || [];
-    const mode = identifiers.length > 0 && OBJECT_MODES.has(identifiers[0]!.image)
-      ? identifiers[0]!.image as ObjectMode
-      : undefined;
+    const mode = identifiers.length > 0 && OBJECT_MODES.has(identifiers[0]!.image) ? (identifiers[0]!.image as ObjectMode) : undefined;
     const typeNode: DtoTypeNode = this.visit(ctx.opTypeExpr[0]);
     return { source: typeNodeToParamSource(typeNode), mode };
   }
 
   headersBlock(ctx: any): { source: ParamSource; mode?: ObjectMode } {
     const identifiers: IToken[] = ctx.Identifier || [];
-    const mode = identifiers.length > 0 && OBJECT_MODES.has(identifiers[0]!.image)
-      ? identifiers[0]!.image as ObjectMode
-      : undefined;
+    const mode = identifiers.length > 0 && OBJECT_MODES.has(identifiers[0]!.image) ? (identifiers[0]!.image as ObjectMode) : undefined;
     const typeNode: DtoTypeNode = this.visit(ctx.opTypeExpr[0]);
     return { source: typeNodeToParamSource(typeNode), mode };
   }
@@ -331,7 +378,7 @@ export class OpVisitor extends BaseOpVisitor {
   private visitParamSource(ctx: any): { source: ParamSource; mode?: ObjectMode } {
     const identifiers: IToken[] = ctx.Identifier || [];
     const hasMode = identifiers.length > 0 && OBJECT_MODES.has(identifiers[0]!.image);
-    const mode = hasMode ? identifiers[0]!.image as ObjectMode : undefined;
+    const mode = hasMode ? (identifiers[0]!.image as ObjectMode) : undefined;
 
     // Block form: keyword { name: type ... }
     if (ctx.LBrace) {
@@ -363,9 +410,7 @@ export class OpVisitor extends BaseOpVisitor {
   requestBlock(ctx: any): OpRequestNode | undefined {
     if (!ctx.contentTypeLine) return undefined;
     const ctLine = this.visit(ctx.contentTypeLine[0]);
-    const ct = ctLine.contentType.toLowerCase().includes('multipart')
-      ? 'multipart/form-data' as const
-      : 'application/json' as const;
+    const ct = ctLine.contentType.toLowerCase().includes('multipart') ? ('multipart/form-data' as const) : ('application/json' as const);
     return { contentType: ct, bodyType: ctLine.bodyType };
   }
 
@@ -400,9 +445,7 @@ export class OpVisitor extends BaseOpVisitor {
     const ctPart2 = identifiers[1]?.image ?? '';
     const contentType = `${ctPart1}/${ctPart2}`;
 
-    const bodyType: DtoTypeNode = ctx.opTypeExpr
-      ? this.visit(ctx.opTypeExpr[0])
-      : { kind: 'scalar', name: 'unknown' };
+    const bodyType: DtoTypeNode = ctx.opTypeExpr ? this.visit(ctx.opTypeExpr[0]) : { kind: 'scalar', name: 'unknown' };
 
     return { contentType, bodyType };
   }
@@ -506,9 +549,7 @@ export class OpVisitor extends BaseOpVisitor {
     const line = nameToken.startLine ?? 0;
     const optional = !!ctx.Question;
 
-    const type: DtoTypeNode = ctx.opTypeExpr
-      ? this.visit(ctx.opTypeExpr[0])
-      : { kind: 'scalar', name: 'unknown' };
+    const type: DtoTypeNode = ctx.opTypeExpr ? this.visit(ctx.opTypeExpr[0]) : { kind: 'scalar', name: 'unknown' };
 
     let defaultVal: string | number | boolean | undefined;
     if (ctx.opDefaultValue) {
@@ -616,8 +657,10 @@ function buildCompoundType(name: string, args: any[]): DtoTypeNode {
         for (const a of args) {
           // Positional string (quoted) or ref (unquoted identifier): format for date/time
           if (!a?.key) {
-            if ((a?.type === 'string' || (a?.type === 'type' && a.value?.kind === 'ref')) &&
-                (name === 'date' || name === 'time' || name === 'datetime')) {
+            if (
+              (a?.type === 'string' || (a?.type === 'type' && a.value?.kind === 'ref')) &&
+              (name === 'date' || name === 'time' || name === 'datetime')
+            ) {
               scalar.format = a.type === 'string' ? String(a.value) : String(a.value.name);
             }
             continue;

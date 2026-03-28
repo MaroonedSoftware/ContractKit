@@ -43,13 +43,7 @@ function groupComments(entries: CommentEntry[]): CommentBlock[] {
  * Emit any comment blocks whose startLine is < beforeLine.
  * Lines are emitted verbatim — they already carry their original indentation.
  */
-function flushBlocks(
-  out: string[],
-  blocks: CommentBlock[],
-  idx: { value: number },
-  beforeLine: number,
-  _indent = '',
-) {
+function flushBlocks(out: string[], blocks: CommentBlock[], idx: { value: number }, beforeLine: number, _indent = '') {
   while (idx.value < blocks.length && blocks[idx.value]!.startLine < beforeLine) {
     for (const l of blocks[idx.value]!.lines) out.push(l);
     idx.value++;
@@ -79,7 +73,9 @@ export function printOp(ast: OpRootNode): string {
     // Emit orphan blocks that appear before this route
     const pending: string[] = [];
     flushBlocks(pending, blocks, idx, route.loc.line);
-    for (const l of pending) { if (parts.length > 0 || l) parts.push(l); }
+    for (const l of pending) {
+      if (parts.length > 0 || l) parts.push(l);
+    }
 
     if (parts.length > 0) parts.push('');
     parts.push(printRoute(route, blocks, idx, nextRouteStart));
@@ -88,7 +84,10 @@ export function printOp(ast: OpRootNode): string {
   // Emit any remaining blocks after the last route
   const trailing: string[] = [];
   flushBlocks(trailing, blocks, idx, Infinity);
-  for (const l of trailing) { parts.push(''); parts.push(l); }
+  for (const l of trailing) {
+    parts.push('');
+    parts.push(l);
+  }
 
   return parts.join('\n') + '\n';
 }
@@ -111,12 +110,7 @@ function printMetaValue(value: string): string {
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 
-function printRoute(
-  route: OpRouteNode,
-  blocks: CommentBlock[],
-  idx: { value: number },
-  nextRouteStart: number,
-): string {
+function printRoute(route: OpRouteNode, blocks: CommentBlock[], idx: { value: number }, nextRouteStart: number): string {
   const lines: string[] = [];
   const commentSuffix = route.description ? ` # ${route.description}` : '';
   const modifiersPart = route.modifiers?.length ? `: ${route.modifiers.join(' ')}` : '';

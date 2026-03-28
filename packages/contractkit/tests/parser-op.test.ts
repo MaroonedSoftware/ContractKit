@@ -633,7 +633,7 @@ LedgerService: #modules/ledger/ledger.service.js
       const { root } = parse('/admin: internal { get: {} post: deprecated {} }');
       const route = root.routes[0]!;
       expect(route.modifiers).toEqual(['internal']);
-      expect(route.operations[0]!.modifiers).toBeUndefined();  // inherits via resolveModifiers
+      expect(route.operations[0]!.modifiers).toBeUndefined(); // inherits via resolveModifiers
       expect(route.operations[1]!.modifiers).toEqual(['deprecated']); // overrides
     });
 

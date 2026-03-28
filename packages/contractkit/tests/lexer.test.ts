@@ -23,11 +23,7 @@ describe('tokenize', () => {
     it('tokenizes single-char tokens', () => {
       const tokens = tokenize(': ? = | ( ) { } , /', 'test');
       const content = contentTokens(tokens);
-      const expectedKinds: TokenKind[] = [
-        'COLON', 'QUESTION', 'EQUALS', 'PIPE',
-        'LPAREN', 'RPAREN', 'LBRACE', 'RBRACE',
-        'COMMA', 'SLASH',
-      ];
+      const expectedKinds: TokenKind[] = ['COLON', 'QUESTION', 'EQUALS', 'PIPE', 'LPAREN', 'RPAREN', 'LBRACE', 'RBRACE', 'COMMA', 'SLASH'];
       expect(content.map(t => t.kind)).toEqual(expectedKinds);
     });
 
@@ -96,11 +92,7 @@ describe('tokenize', () => {
   describe('complex sequences', () => {
     it('tokenizes a simple model declaration', () => {
       const tokens = tokenize('User { name: string }', 'test');
-      const expectedSequence: TokenKind[] = [
-        'IDENTIFIER', 'LBRACE',
-        'IDENTIFIER', 'COLON', 'IDENTIFIER',
-        'RBRACE', 'EOF',
-      ];
+      const expectedSequence: TokenKind[] = ['IDENTIFIER', 'LBRACE', 'IDENTIFIER', 'COLON', 'IDENTIFIER', 'RBRACE', 'EOF'];
       expect(tokens.map(t => t.kind)).toEqual(expectedSequence);
       expect(tokens[0]!.value).toBe('User');
       expect(tokens[2]!.value).toBe('name');

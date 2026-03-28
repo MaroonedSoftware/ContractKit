@@ -1,9 +1,25 @@
 import { CstParser } from 'chevrotain';
 import {
-  allTokens, Identifier, Colon, Question,
-  Equals, Pipe, LParen, RParen, LBrace, RBrace,
-  Comma, Slash, LBracket, RBracket, Ampersand,
-  NumberLit, StringLit, BooleanLit, Eof, TripleDash,
+  allTokens,
+  Identifier,
+  Colon,
+  Question,
+  Equals,
+  Pipe,
+  LParen,
+  RParen,
+  LBrace,
+  RBrace,
+  Comma,
+  Slash,
+  LBracket,
+  RBracket,
+  Ampersand,
+  NumberLit,
+  StringLit,
+  BooleanLit,
+  Eof,
+  TripleDash,
 } from './tokens.js';
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
@@ -37,7 +53,7 @@ export class OpCstParser extends CstParser {
 
   // --- key: value ... ---
   public frontMatter = this.RULE('frontMatter', () => {
-    this.CONSUME(TripleDash);  // opening ---
+    this.CONSUME(TripleDash); // opening ---
     this.MANY(() => {
       this.SUBRULE(this.metaEntry);
     });
@@ -46,11 +62,11 @@ export class OpCstParser extends CstParser {
 
   // key: value (inside front-matter)
   public metaEntry = this.RULE('metaEntry', () => {
-    this.CONSUME(Identifier);  // key
+    this.CONSUME(Identifier); // key
     this.CONSUME(Colon);
     this.OR([
       { ALT: () => this.CONSUME(StringLit) },
-      { ALT: () => this.CONSUME2(Identifier) },  // unquoted value
+      { ALT: () => this.CONSUME2(Identifier) }, // unquoted value
     ]);
   });
 
@@ -63,10 +79,10 @@ export class OpCstParser extends CstParser {
     this.OPTION({
       GATE: () => this.LA(1).tokenType === Colon && ROUTE_MODIFIERS.has(this.LA(2).image),
       DEF: () => {
-        this.CONSUME(Colon);  // route modifier separator
+        this.CONSUME(Colon); // route modifier separator
         this.MANY({
           GATE: () => ROUTE_MODIFIERS.has(this.LA(1).image),
-          DEF: () => this.CONSUME(Identifier),  // modifier keyword
+          DEF: () => this.CONSUME(Identifier), // modifier keyword
         });
       },
     });
@@ -115,8 +131,7 @@ export class OpCstParser extends CstParser {
             const la1 = this.LA(1);
             const la2 = this.LA(2);
             if (la1.tokenType === Identifier && la1.image === 'params') return true;
-            return la1.tokenType === Identifier && OBJECT_MODES.has(la1.image)
-              && la2.tokenType === Identifier && la2.image === 'params';
+            return la1.tokenType === Identifier && OBJECT_MODES.has(la1.image) && la2.tokenType === Identifier && la2.image === 'params';
           },
           ALT: () => this.SUBRULE(this.paramsBlock),
         },
@@ -144,8 +159,8 @@ export class OpCstParser extends CstParser {
 
   // paramsBlock: ("strict"|"strip"|"loose")? "params" ":" ( IDENTIFIER | "{" paramDecl* "}" )
   public paramsBlock = this.RULE('paramsBlock', () => {
-    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image), DEF: () => this.CONSUME(Identifier) });  // optional mode: strict|strip|loose
-    this.CONSUME2(Identifier);  // "params"
+    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image), DEF: () => this.CONSUME(Identifier) }); // optional mode: strict|strip|loose
+    this.CONSUME2(Identifier); // "params"
     this.CONSUME(Colon);
     this.OR([
       {
@@ -168,7 +183,7 @@ export class OpCstParser extends CstParser {
 
   // paramDecl: IDENTIFIER COLON IDENTIFIER
   public paramDecl = this.RULE('paramDecl', () => {
-    this.CONSUME(Identifier);  // param name
+    this.CONSUME(Identifier); // param name
     this.CONSUME(Colon);
     this.CONSUME2(Identifier); // param type
   });
@@ -177,9 +192,10 @@ export class OpCstParser extends CstParser {
 
   // httpOperation: IDENTIFIER ":" modifier* LBRACE operationBody RBRACE
   public httpOperation = this.RULE('httpOperation', () => {
-    this.CONSUME(Identifier);   // HTTP method name
+    this.CONSUME(Identifier); // HTTP method name
     this.CONSUME(Colon);
-    this.MANY({                 // zero or more modifiers (internal, deprecated)
+    this.MANY({
+      // zero or more modifiers (internal, deprecated)
       GATE: () => ROUTE_MODIFIERS.has(this.LA(1).image),
       DEF: () => this.CONSUME2(Identifier),
     });
@@ -211,8 +227,7 @@ export class OpCstParser extends CstParser {
             const la1 = this.LA(1);
             const la2 = this.LA(2);
             if (la1.tokenType === Identifier && la1.image === 'query') return true;
-            return la1.tokenType === Identifier && OBJECT_MODES.has(la1.image)
-              && la2.tokenType === Identifier && la2.image === 'query';
+            return la1.tokenType === Identifier && OBJECT_MODES.has(la1.image) && la2.tokenType === Identifier && la2.image === 'query';
           },
           ALT: () => this.SUBRULE(this.queryBlock),
         },
@@ -221,8 +236,7 @@ export class OpCstParser extends CstParser {
             const la1 = this.LA(1);
             const la2 = this.LA(2);
             if (la1.tokenType === Identifier && la1.image === 'headers') return true;
-            return la1.tokenType === Identifier && OBJECT_MODES.has(la1.image)
-              && la2.tokenType === Identifier && la2.image === 'headers';
+            return la1.tokenType === Identifier && OBJECT_MODES.has(la1.image) && la2.tokenType === Identifier && la2.image === 'headers';
           },
           ALT: () => this.SUBRULE(this.headersBlock),
         },
@@ -262,7 +276,7 @@ export class OpCstParser extends CstParser {
 
   // serviceDecl: "service" COLON IDENTIFIER
   public serviceDecl = this.RULE('serviceDecl', () => {
-    this.CONSUME(Identifier);  // "service"
+    this.CONSUME(Identifier); // "service"
     this.CONSUME(Colon);
     this.CONSUME2(Identifier); // service reference e.g. "LedgerService.updateCategoryMembership"
   });
@@ -271,18 +285,18 @@ export class OpCstParser extends CstParser {
 
   // sdkDecl: "sdk" COLON IDENTIFIER
   public sdkDecl = this.RULE('sdkDecl', () => {
-    this.CONSUME(Identifier);  // "sdk"
+    this.CONSUME(Identifier); // "sdk"
     this.CONSUME(Colon);
     this.CONSUME2(Identifier); // method name e.g. "getUser"
   });
 
   // signatureDecl: "signature" COLON (StringLit | Identifier)
   public signatureDecl = this.RULE('signatureDecl', () => {
-    this.CONSUME(Identifier);  // "signature"
+    this.CONSUME(Identifier); // "signature"
     this.CONSUME(Colon);
     this.OR([
-      { ALT: () => this.CONSUME(StringLit) },    // "quoted-key"
-      { ALT: () => this.CONSUME2(Identifier) },  // UNQUOTED_KEY
+      { ALT: () => this.CONSUME(StringLit) }, // "quoted-key"
+      { ALT: () => this.CONSUME2(Identifier) }, // UNQUOTED_KEY
     ]);
   });
 
@@ -291,14 +305,14 @@ export class OpCstParser extends CstParser {
   // securityBlock: "security" COLON "none"
   //              | "security" COLON LBRACE securityRolesLine? RBRACE
   public securityBlock = this.RULE('securityBlock', () => {
-    this.CONSUME(Identifier);  // "security"
+    this.CONSUME(Identifier); // "security"
     this.CONSUME(Colon);
     this.OR([
       {
         // security: none
         GATE: () => this.LA(1).tokenType !== LBrace,
         ALT: () => {
-          this.CONSUME2(Identifier);  // "none"
+          this.CONSUME2(Identifier); // "none"
         },
       },
       {
@@ -316,12 +330,12 @@ export class OpCstParser extends CstParser {
   // Stops consuming identifiers when the next identifier is followed by ':'
   // (which would be a new field).
   public securityRolesLine = this.RULE('securityRolesLine', () => {
-    this.CONSUME(Identifier);   // "roles"
+    this.CONSUME(Identifier); // "roles"
     this.CONSUME(Colon);
-    this.CONSUME2(Identifier);  // first (mandatory) role name
+    this.CONSUME2(Identifier); // first (mandatory) role name
     this.MANY({
       GATE: () => this.LA(1).tokenType === Identifier && this.LA(2).tokenType !== Colon,
-      DEF: () => this.CONSUME3(Identifier),  // additional role names
+      DEF: () => this.CONSUME3(Identifier), // additional role names
     });
   });
 
@@ -329,8 +343,8 @@ export class OpCstParser extends CstParser {
 
   // queryBlock: ("strict"|"strip"|"loose")? "query" ":" opTypeExpr
   public queryBlock = this.RULE('queryBlock', () => {
-    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image), DEF: () => this.CONSUME(Identifier) });  // optional mode: strict|strip|loose
-    this.CONSUME2(Identifier);  // "query"
+    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image), DEF: () => this.CONSUME(Identifier) }); // optional mode: strict|strip|loose
+    this.CONSUME2(Identifier); // "query"
     this.CONSUME(Colon);
     this.SUBRULE(this.opTypeExpr);
   });
@@ -339,8 +353,8 @@ export class OpCstParser extends CstParser {
 
   // headersBlock: ("strict"|"strip"|"loose")? "headers" ":" opTypeExpr
   public headersBlock = this.RULE('headersBlock', () => {
-    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image), DEF: () => this.CONSUME(Identifier) });  // optional mode: strict|strip|loose
-    this.CONSUME2(Identifier);  // "headers"
+    this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image), DEF: () => this.CONSUME(Identifier) }); // optional mode: strict|strip|loose
+    this.CONSUME2(Identifier); // "headers"
     this.CONSUME(Colon);
     this.SUBRULE(this.opTypeExpr);
   });
@@ -349,7 +363,7 @@ export class OpCstParser extends CstParser {
 
   // requestBlock: "request" ":" LBRACE contentTypeLine RBRACE
   public requestBlock = this.RULE('requestBlock', () => {
-    this.CONSUME(Identifier);  // "request"
+    this.CONSUME(Identifier); // "request"
     this.CONSUME(Colon);
     this.CONSUME(LBrace);
     this.SUBRULE(this.contentTypeLine);
@@ -360,7 +374,7 @@ export class OpCstParser extends CstParser {
 
   // responseBlock: "response" ":" LBRACE statusCodeBlock* RBRACE
   public responseBlock = this.RULE('responseBlock', () => {
-    this.CONSUME(Identifier);  // "response"
+    this.CONSUME(Identifier); // "response"
     this.CONSUME(Colon);
     this.CONSUME(LBrace);
     this.MANY(() => {
@@ -371,7 +385,7 @@ export class OpCstParser extends CstParser {
 
   // statusCodeBlock: NUMBER ":" (LBRACE contentTypeLine RBRACE)?
   public statusCodeBlock = this.RULE('statusCodeBlock', () => {
-    this.CONSUME(NumberLit);   // status code e.g. "200"
+    this.CONSUME(NumberLit); // status code e.g. "200"
     this.CONSUME(Colon);
     this.OPTION(() => {
       this.CONSUME(LBrace);
@@ -384,9 +398,9 @@ export class OpCstParser extends CstParser {
 
   // contentTypeLine: IDENTIFIER SLASH IDENTIFIER COLON opTypeExpr
   public contentTypeLine = this.RULE('contentTypeLine', () => {
-    this.CONSUME(Identifier);   // "application"
+    this.CONSUME(Identifier); // "application"
     this.CONSUME(Slash);
-    this.CONSUME2(Identifier);  // "json" or "form-data"
+    this.CONSUME2(Identifier); // "json" or "form-data"
     this.CONSUME(Colon);
     this.SUBRULE(this.opTypeExpr);
   });
@@ -422,7 +436,7 @@ export class OpCstParser extends CstParser {
       },
       {
         ALT: () => {
-          this.CONSUME(Identifier);  // type name
+          this.CONSUME(Identifier); // type name
           this.OPTION(() => {
             this.CONSUME(LParen);
             this.SUBRULE(this.opTypeArgs);

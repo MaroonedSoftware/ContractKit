@@ -17,13 +17,7 @@ describe('mergeConfig', () => {
       patterns: ['extra/**/*.dto'],
     };
     const result = mergeConfig(config, baseCli);
-    expect(result.patterns).toEqual([
-      'types/**/*.dto',
-      'ops/**/*.op',
-      'sdk-types/**/*.dto',
-      'sdk-ops/**/*.op',
-      'extra/**/*.dto',
-    ]);
+    expect(result.patterns).toEqual(['types/**/*.dto', 'ops/**/*.op', 'sdk-types/**/*.dto', 'sdk-ops/**/*.op', 'extra/**/*.dto']);
   });
 
   it('returns empty patterns when config has no includes', () => {

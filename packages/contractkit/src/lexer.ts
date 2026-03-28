@@ -1,29 +1,29 @@
 export type TokenKind =
   | 'IDENTIFIER'
   | 'COLON'
-  | 'QUESTION'    // ?
-  | 'EQUALS'      // =
-  | 'PIPE'        // |
-  | 'LPAREN'      // (
-  | 'RPAREN'      // )
-  | 'LBRACE'      // {
-  | 'RBRACE'      // }
+  | 'QUESTION' // ?
+  | 'EQUALS' // =
+  | 'PIPE' // |
+  | 'LPAREN' // (
+  | 'RPAREN' // )
+  | 'LBRACE' // {
+  | 'RBRACE' // }
   | 'COMMA'
-  | 'SLASH'       // /
-  | 'LBRACKET'    // [  (regex metacharacter)
-  | 'RBRACKET'    // ]  (regex metacharacter)
-  | 'PLUS'        // +  (regex metacharacter)
-  | 'STAR'        // *  (regex metacharacter)
-  | 'CARET'       // ^  (regex metacharacter)
-  | 'BACKSLASH'   // \  (regex metacharacter)
-  | 'DOT'         // .  (regex metacharacter, standalone)
-  | 'AMPERSAND'   // &  (intersection type)
-  | 'BANG'        // !  (directive prefix)
+  | 'SLASH' // /
+  | 'LBRACKET' // [  (regex metacharacter)
+  | 'RBRACKET' // ]  (regex metacharacter)
+  | 'PLUS' // +  (regex metacharacter)
+  | 'STAR' // *  (regex metacharacter)
+  | 'CARET' // ^  (regex metacharacter)
+  | 'BACKSLASH' // \  (regex metacharacter)
+  | 'DOT' // .  (regex metacharacter, standalone)
+  | 'AMPERSAND' // &  (intersection type)
+  | 'BANG' // !  (directive prefix)
   | 'TRIPLE_DASH' // --- (front-matter delimiter)
-  | 'STRING'      // quoted string value
-  | 'NUMBER'      // numeric literal
-  | 'BOOLEAN'     // true | false
-  | 'COMMENT'     // # ...
+  | 'STRING' // quoted string value
+  | 'NUMBER' // numeric literal
+  | 'BOOLEAN' // true | false
+  | 'COMMENT' // # ...
   | 'EOF';
 
 export interface Token {
@@ -137,25 +137,88 @@ export function tokenize(source: string, file: string): Token[] {
 
       // Single-char tokens
       switch (content[pos]) {
-        case ':': tokens.push({ kind: 'COLON', value: ':', line: lineNo }); pos++; continue;
-        case '?': tokens.push({ kind: 'QUESTION', value: '?', line: lineNo }); pos++; continue;
-        case '=': tokens.push({ kind: 'EQUALS', value: '=', line: lineNo }); pos++; continue;
-        case '|': tokens.push({ kind: 'PIPE', value: '|', line: lineNo }); pos++; continue;
-        case '(': parenBraceStack.push(braceDepth); parenDepth++; tokens.push({ kind: 'LPAREN', value: '(', line: lineNo }); pos++; continue;
-        case ')': parenBraceStack.pop(); parenDepth--; tokens.push({ kind: 'RPAREN', value: ')', line: lineNo }); pos++; continue;
-        case '{': braceDepth++; tokens.push({ kind: 'LBRACE', value: '{', line: lineNo }); pos++; continue;
-        case '}': braceDepth--; tokens.push({ kind: 'RBRACE', value: '}', line: lineNo }); pos++; continue;
-        case ',': tokens.push({ kind: 'COMMA', value: ',', line: lineNo }); pos++; continue;
-        case '/': tokens.push({ kind: 'SLASH', value: '/', line: lineNo }); pos++; continue;
-        case '[': tokens.push({ kind: 'LBRACKET', value: '[', line: lineNo }); pos++; continue;
-        case ']': tokens.push({ kind: 'RBRACKET', value: ']', line: lineNo }); pos++; continue;
-        case '+': tokens.push({ kind: 'PLUS', value: '+', line: lineNo }); pos++; continue;
-        case '*': tokens.push({ kind: 'STAR', value: '*', line: lineNo }); pos++; continue;
-        case '^': tokens.push({ kind: 'CARET', value: '^', line: lineNo }); pos++; continue;
-        case '\\': tokens.push({ kind: 'BACKSLASH', value: '\\', line: lineNo }); pos++; continue;
-        case '.': tokens.push({ kind: 'DOT', value: '.', line: lineNo }); pos++; continue;
-        case '&': tokens.push({ kind: 'AMPERSAND', value: '&', line: lineNo }); pos++; continue;
-        case '!': tokens.push({ kind: 'BANG', value: '!', line: lineNo }); pos++; continue;
+        case ':':
+          tokens.push({ kind: 'COLON', value: ':', line: lineNo });
+          pos++;
+          continue;
+        case '?':
+          tokens.push({ kind: 'QUESTION', value: '?', line: lineNo });
+          pos++;
+          continue;
+        case '=':
+          tokens.push({ kind: 'EQUALS', value: '=', line: lineNo });
+          pos++;
+          continue;
+        case '|':
+          tokens.push({ kind: 'PIPE', value: '|', line: lineNo });
+          pos++;
+          continue;
+        case '(':
+          parenBraceStack.push(braceDepth);
+          parenDepth++;
+          tokens.push({ kind: 'LPAREN', value: '(', line: lineNo });
+          pos++;
+          continue;
+        case ')':
+          parenBraceStack.pop();
+          parenDepth--;
+          tokens.push({ kind: 'RPAREN', value: ')', line: lineNo });
+          pos++;
+          continue;
+        case '{':
+          braceDepth++;
+          tokens.push({ kind: 'LBRACE', value: '{', line: lineNo });
+          pos++;
+          continue;
+        case '}':
+          braceDepth--;
+          tokens.push({ kind: 'RBRACE', value: '}', line: lineNo });
+          pos++;
+          continue;
+        case ',':
+          tokens.push({ kind: 'COMMA', value: ',', line: lineNo });
+          pos++;
+          continue;
+        case '/':
+          tokens.push({ kind: 'SLASH', value: '/', line: lineNo });
+          pos++;
+          continue;
+        case '[':
+          tokens.push({ kind: 'LBRACKET', value: '[', line: lineNo });
+          pos++;
+          continue;
+        case ']':
+          tokens.push({ kind: 'RBRACKET', value: ']', line: lineNo });
+          pos++;
+          continue;
+        case '+':
+          tokens.push({ kind: 'PLUS', value: '+', line: lineNo });
+          pos++;
+          continue;
+        case '*':
+          tokens.push({ kind: 'STAR', value: '*', line: lineNo });
+          pos++;
+          continue;
+        case '^':
+          tokens.push({ kind: 'CARET', value: '^', line: lineNo });
+          pos++;
+          continue;
+        case '\\':
+          tokens.push({ kind: 'BACKSLASH', value: '\\', line: lineNo });
+          pos++;
+          continue;
+        case '.':
+          tokens.push({ kind: 'DOT', value: '.', line: lineNo });
+          pos++;
+          continue;
+        case '&':
+          tokens.push({ kind: 'AMPERSAND', value: '&', line: lineNo });
+          pos++;
+          continue;
+        case '!':
+          tokens.push({ kind: 'BANG', value: '!', line: lineNo });
+          pos++;
+          continue;
       }
 
       // Identifiers and keywords
@@ -169,7 +232,8 @@ export function tokenize(source: string, file: string): Token[] {
             parenDepth > 0 &&
             parenBraceStack[parenBraceStack.length - 1] === braceDepth &&
             (ch === ':' || ch === '/') &&
-            end + 1 < content.length && /[a-zA-Z0-9]/.test(content[end + 1]!)
+            end + 1 < content.length &&
+            /[a-zA-Z0-9]/.test(content[end + 1]!)
           ) {
             // Inside type-arg parens at the same brace level: treat : and / as format-string separators
             end++;

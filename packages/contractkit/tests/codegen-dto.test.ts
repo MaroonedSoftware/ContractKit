@@ -1,9 +1,19 @@
 import { generateDto, renderType } from '../src/codegen-dto.js';
 import type { DtoCodegenContext } from '../src/codegen-dto.js';
 import {
-  scalarType, arrayType, tupleType, recordType, enumType,
-  literalType, unionType, refType, lazyType, inlineObjectType,
-  field, model, dtoRoot,
+  scalarType,
+  arrayType,
+  tupleType,
+  recordType,
+  enumType,
+  literalType,
+  unionType,
+  refType,
+  lazyType,
+  inlineObjectType,
+  field,
+  model,
+  dtoRoot,
 } from './helpers.js';
 import type { ScalarTypeNode } from '../src/ast.js';
 
@@ -36,8 +46,7 @@ describe('renderType', () => {
     });
 
     it('renders z.string() with regex containing forward slashes', () => {
-      expect(renderType(scalarType('string', { regex: 'https?://[^/]+/path' })))
-        .toBe('z.string().regex(/^https?:\\/\\/[^\\/]+\\/path$/)');
+      expect(renderType(scalarType('string', { regex: 'https?://[^/]+/path' }))).toBe('z.string().regex(/^https?:\\/\\/[^\\/]+\\/path$/)');
     });
 
     it('renders z.coerce.number()', () => {
@@ -62,15 +71,13 @@ describe('renderType', () => {
 
     it('renders z.bigint() with preprocess coercion from string or bigint', () => {
       expect(renderType(scalarType('bigint'))).toBe(
-        `z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint())`
+        `z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint())`,
       );
     });
 
     it('renders z.bigint() with constraints using n suffix', () => {
       const result = renderType(scalarType('bigint', { min: 0n, max: 100n }));
-      expect(result).toBe(
-        `z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint().min(0n).max(100n))`
-      );
+      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint().min(0n).max(100n))`);
     });
 
     it('renders z.boolean()', () => {
@@ -79,22 +86,30 @@ describe('renderType', () => {
 
     it('renders DateTime preprocess coercion for date (default format)', () => {
       const result = renderType(scalarType('date'));
-      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' }))`);
+      expect(result).toBe(
+        `z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' }))`,
+      );
     });
 
     it('renders DateTime preprocess coercion for date with custom format', () => {
       const result = renderType({ kind: 'scalar', name: 'date', format: 'MM/dd/yyyy' });
-      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'MM/dd/yyyy') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format MM/dd/yyyy' }))`);
+      expect(result).toBe(
+        `z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'MM/dd/yyyy') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format MM/dd/yyyy' }))`,
+      );
     });
 
     it('renders DateTime preprocess coercion for time (default format)', () => {
       const result = renderType(scalarType('time'));
-      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'HH:mm:ss') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a time in format HH:mm:ss' }))`);
+      expect(result).toBe(
+        `z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'HH:mm:ss') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a time in format HH:mm:ss' }))`,
+      );
     });
 
     it('renders DateTime preprocess coercion for time with format', () => {
       const result = renderType({ kind: 'scalar', name: 'time', format: 'HH:mm' });
-      expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'HH:mm') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a time in format HH:mm' }))`);
+      expect(result).toBe(
+        `z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'HH:mm') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a time in format HH:mm' }))`,
+      );
     });
 
     it('renders DateTime preprocess coercion for datetime', () => {
@@ -144,18 +159,15 @@ describe('renderType', () => {
     });
 
     it('renders array with constraints', () => {
-      expect(renderType(arrayType(scalarType('string'), { min: 1, max: 10 })))
-        .toBe('z.array(z.string()).min(1).max(10)');
+      expect(renderType(arrayType(scalarType('string'), { min: 1, max: 10 }))).toBe('z.array(z.string()).min(1).max(10)');
     });
 
     it('renders tuple type', () => {
-      expect(renderType(tupleType(scalarType('number'), scalarType('string'))))
-        .toBe('z.tuple([z.coerce.number(), z.string()])');
+      expect(renderType(tupleType(scalarType('number'), scalarType('string')))).toBe('z.tuple([z.coerce.number(), z.string()])');
     });
 
     it('renders record type', () => {
-      expect(renderType(recordType(scalarType('string'), scalarType('number'))))
-        .toBe('z.record(z.string(), z.coerce.number())');
+      expect(renderType(recordType(scalarType('string'), scalarType('number')))).toBe('z.record(z.string(), z.coerce.number())');
     });
 
     it('renders enum type', () => {
@@ -179,8 +191,7 @@ describe('renderType', () => {
     });
 
     it('renders union type', () => {
-      expect(renderType(unionType(scalarType('string'), scalarType('number'))))
-        .toBe('z.union([z.string(), z.coerce.number()])');
+      expect(renderType(unionType(scalarType('string'), scalarType('number')))).toBe('z.union([z.string(), z.coerce.number()])');
     });
 
     it('renders model reference as bare name', () => {
@@ -192,10 +203,7 @@ describe('renderType', () => {
     });
 
     it('renders inline object type', () => {
-      const result = renderType(inlineObjectType([
-        field('key', scalarType('string')),
-        field('value', scalarType('number')),
-      ]));
+      const result = renderType(inlineObjectType([field('key', scalarType('string')), field('value', scalarType('number'))]));
       expect(result).toContain('z.strictObject({');
       expect(result).toContain('key: z.string(),');
       expect(result).toContain('value: z.coerce.number(),');
@@ -208,12 +216,7 @@ describe('generateDto', () => {
 
   describe('simple model', () => {
     it('generates z.strictObject with fields', () => {
-      const root = dtoRoot([
-        model('User', [
-          field('name', scalarType('string')),
-          field('age', scalarType('number')),
-        ]),
-      ]);
+      const root = dtoRoot([model('User', [field('name', scalarType('string')), field('age', scalarType('number'))])]);
       const output = generateDto(root);
       expect(output).toContain('export const User = z.strictObject({');
       expect(output).toContain('name: z.string(),');
@@ -288,81 +291,61 @@ describe('generateDto', () => {
 
   describe('field rendering', () => {
     it('renders nullable field with .nullable()', () => {
-      const root = dtoRoot([
-        model('M', [field('f', scalarType('string'), { nullable: true })]),
-      ]);
+      const root = dtoRoot([model('M', [field('f', scalarType('string'), { nullable: true })])]);
       const output = generateDto(root);
       expect(output).toContain('.nullable()');
     });
 
     it('renders optional field with .optional()', () => {
-      const root = dtoRoot([
-        model('M', [field('f', scalarType('string'), { optional: true })]),
-      ]);
+      const root = dtoRoot([model('M', [field('f', scalarType('string'), { optional: true })])]);
       const output = generateDto(root);
       expect(output).toContain('.optional()');
     });
 
     it('renders default string value with .default()', () => {
-      const root = dtoRoot([
-        model('M', [field('f', scalarType('string'), { default: 'user' })]),
-      ]);
+      const root = dtoRoot([model('M', [field('f', scalarType('string'), { default: 'user' })])]);
       const output = generateDto(root);
       expect(output).toContain('.default("user")');
     });
 
     it('renders default number value with .default()', () => {
-      const root = dtoRoot([
-        model('M', [field('f', scalarType('number'), { default: 0 })]),
-      ]);
+      const root = dtoRoot([model('M', [field('f', scalarType('number'), { default: 0 })])]);
       const output = generateDto(root);
       expect(output).toContain('.default(0)');
     });
 
     it('renders description with .describe()', () => {
-      const root = dtoRoot([
-        model('M', [field('f', scalarType('string'), { description: 'A name' })]),
-      ]);
+      const root = dtoRoot([model('M', [field('f', scalarType('string'), { description: 'A name' })])]);
       const output = generateDto(root);
       expect(output).toContain('.describe("A name")');
     });
 
     it('escapes quotes in default string values', () => {
-      const root = dtoRoot([
-        model('M', [field('f', scalarType('string'), { default: 'he said "hello"' })]),
-      ]);
+      const root = dtoRoot([model('M', [field('f', scalarType('string'), { default: 'he said "hello"' })])]);
       const output = generateDto(root);
       expect(output).toContain('.default("he said \\"hello\\"")');
     });
 
     it('escapes backslashes in default string values', () => {
-      const root = dtoRoot([
-        model('M', [field('f', scalarType('string'), { default: 'path\\to\\file' })]),
-      ]);
+      const root = dtoRoot([model('M', [field('f', scalarType('string'), { default: 'path\\to\\file' })])]);
       const output = generateDto(root);
       expect(output).toContain('.default("path\\\\to\\\\file")');
     });
 
     it('escapes quotes in field descriptions', () => {
-      const root = dtoRoot([
-        model('M', [field('f', scalarType('string'), { description: 'A "quoted" desc' })]),
-      ]);
+      const root = dtoRoot([model('M', [field('f', scalarType('string'), { description: 'A "quoted" desc' })])]);
       const output = generateDto(root);
       expect(output).toContain('.describe("A \\"quoted\\" desc")');
     });
 
     it('escapes newlines in field descriptions', () => {
-      const root = dtoRoot([
-        model('M', [field('f', scalarType('string'), { description: 'line1\nline2' })]),
-      ]);
+      const root = dtoRoot([model('M', [field('f', scalarType('string'), { description: 'line1\nline2' })])]);
       const output = generateDto(root);
       expect(output).toContain('.describe("line1\\nline2")');
     });
 
     it('prefers .default() over .optional() when default is set', () => {
-      const root = dtoRoot([
-        model('M', [field('f', scalarType('boolean'), { optional: true, default: true })]),
-      ]);
+      const root = dtoRoot([model('M', [field('f', scalarType('boolean'), { optional: true, default: true })])]);
       const output = generateDto(root);
       expect(output).toContain('.default(true)');
       // .optional() should not appear for this field since default is set
@@ -392,10 +375,7 @@ describe('generateDto', () => {
 
     it('read schema omits writeonly fields', () => {
       const root = dtoRoot([
-        model('User', [
-          field('name', scalarType('string')),
-          field('password', scalarType('string'), { visibility: 'writeonly' }),
-        ]),
+        model('User', [field('name', scalarType('string')), field('password', scalarType('string'), { visibility: 'writeonly' })]),
       ]);
       const output = generateDto(root);
       // Find the exported User (read) schema section
@@ -405,12 +385,7 @@ describe('generateDto', () => {
     });
 
     it('write schema omits readonly fields', () => {
-      const root = dtoRoot([
-        model('User', [
-          field('id', scalarType('uuid'), { visibility: 'readonly' }),
-          field('name', scalarType('string')),
-        ]),
-      ]);
+      const root = dtoRoot([model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))])]);
       const output = generateDto(root);
       // Find the UserInput (write) schema section
       const inputSection = output.split('export const UserInput =')[1]!.split('});')[0]!;
@@ -424,13 +399,8 @@ describe('generateDto', () => {
   describe('transitive Input variants', () => {
     it('generates Input variant for model that references a visibility model (local)', () => {
       const root = dtoRoot([
-        model('Entry', [
-          field('id', scalarType('uuid'), { visibility: 'readonly' }),
-          field('amount', scalarType('bigint')),
-        ]),
-        model('Transaction', [
-          field('entries', arrayType(refType('Entry'))),
-        ]),
+        model('Entry', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('amount', scalarType('bigint'))]),
+        model('Transaction', [field('entries', arrayType(refType('Entry')))]),
       ]);
       const output = generateDto(root);
       // Transaction references Entry (which has readonly → EntryInput exists)
@@ -441,13 +411,8 @@ describe('generateDto', () => {
 
     it('write schema of parent uses Input variant of referenced child', () => {
       const root = dtoRoot([
-        model('Entry', [
-          field('id', scalarType('uuid'), { visibility: 'readonly' }),
-          field('amount', scalarType('bigint')),
-        ]),
-        model('Transaction', [
-          field('entries', arrayType(refType('Entry'))),
-        ]),
+        model('Entry', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('amount', scalarType('bigint'))]),
+        model('Transaction', [field('entries', arrayType(refType('Entry')))]),
       ]);
       const output = generateDto(root);
       const inputSection = output.split('export const TransactionInput =')[1]!.split('});')[0]!;
@@ -457,15 +422,9 @@ describe('generateDto', () => {
 
     it('handles multi-level transitive chain', () => {
       const root = dtoRoot([
-        model('Leaf', [
-          field('id', scalarType('uuid'), { visibility: 'readonly' }),
-        ]),
-        model('Middle', [
-          field('leaf', refType('Leaf')),
-        ]),
-        model('Top', [
-          field('middle', refType('Middle')),
-        ]),
+        model('Leaf', [field('id', scalarType('uuid'), { visibility: 'readonly' })]),
+        model('Middle', [field('leaf', refType('Leaf'))]),
+        model('Top', [field('middle', refType('Middle'))]),
       ]);
       const output = generateDto(root);
       expect(output).toContain('export const MiddleInput = z.strictObject({');
@@ -479,12 +438,8 @@ describe('generateDto', () => {
 
     it('handles transitive ref through union type', () => {
       const root = dtoRoot([
-        model('Child', [
-          field('id', scalarType('uuid'), { visibility: 'readonly' }),
-        ]),
-        model('Parent', [
-          field('data', unionType(refType('Child'), scalarType('null'))),
-        ]),
+        model('Child', [field('id', scalarType('uuid'), { visibility: 'readonly' })]),
+        model('Parent', [field('data', unionType(refType('Child'), scalarType('null')))]),
       ]);
       const output = generateDto(root);
       expect(output).toContain('export const ParentInput = z.strictObject({');
@@ -493,11 +448,7 @@ describe('generateDto', () => {
     });
 
     it('handles transitive ref from external context', () => {
-      const root = dtoRoot([
-        model('Transaction', [
-          field('entries', arrayType(refType('ExternalEntry'))),
-        ]),
-      ]);
+      const root = dtoRoot([model('Transaction', [field('entries', arrayType(refType('ExternalEntry')))])]);
       const context: DtoCodegenContext = {
         currentOutPath: '/out/transaction.ts',
         modelOutPaths: new Map([
@@ -516,14 +467,7 @@ describe('generateDto', () => {
     });
 
     it('model without visibility that only refs plain models stays simple', () => {
-      const root = dtoRoot([
-        model('PlainChild', [
-          field('name', scalarType('string')),
-        ]),
-        model('Parent', [
-          field('child', refType('PlainChild')),
-        ]),
-      ]);
+      const root = dtoRoot([model('PlainChild', [field('name', scalarType('string'))]), model('Parent', [field('child', refType('PlainChild'))])]);
       const output = generateDto(root);
       // Neither model has visibility or transitive Input deps
       expect(output).not.toContain('ParentInput');
@@ -535,22 +479,15 @@ describe('generateDto', () => {
 
   describe('inheritance', () => {
     it('generates .extend() for models with a base', () => {
-      const root = dtoRoot([
-        model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
-      ]);
+      const root = dtoRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
       const output = generateDto(root);
       expect(output).toContain('User.extend({');
     });
 
     it('child extends parent in same file: both get three-schema when parent has visibility', () => {
       const root = dtoRoot([
-        model('User', [
-          field('id', scalarType('uuid'), { visibility: 'readonly' }),
-          field('name', scalarType('string')),
-        ]),
-        model('Admin', [
-          field('role', scalarType('string')),
-        ], { base: 'User' }),
+        model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))]),
+        model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
       ]);
       const output = generateDto(root);
       // User three-schema
@@ -566,10 +503,7 @@ describe('generateDto', () => {
     it('child with visibility extending parent without visibility: uses .extend() for base, read, and write', () => {
       const root = dtoRoot([
         model('User', [field('name', scalarType('string'))]),
-        model('Admin', [
-          field('id', scalarType('uuid'), { visibility: 'readonly' }),
-          field('role', scalarType('string')),
-        ], { base: 'User' }),
+        model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { base: 'User' }),
       ]);
       const output = generateDto(root);
       // User has no visibility — simple schema
@@ -583,10 +517,7 @@ describe('generateDto', () => {
 
     it('child inheriting from external parent with Input variant uses ParentInput.extend()', () => {
       const root = dtoRoot([
-        model('Admin', [
-          field('id', scalarType('uuid'), { visibility: 'readonly' }),
-          field('role', scalarType('string')),
-        ], { base: 'User' }),
+        model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { base: 'User' }),
       ]);
       const output = generateDto(root, {
         modelsWithInput: new Set(['User']),
@@ -602,14 +533,16 @@ describe('generateDto', () => {
   describe('type alias Input variants', () => {
     it('type alias referencing a model with Input variant gets its own Input variant', () => {
       const root = dtoRoot([
-        model('Pagination', [
-          field('page', scalarType('int')),
-          field('total', scalarType('int'), { visibility: 'readonly' }),
-        ]),
-        model('ListQuery', [], { type: { kind: 'intersection', members: [
-          { kind: 'ref', name: 'Pagination' },
-          { kind: 'inlineObject', fields: [field('status', scalarType('string'), { optional: true })] },
-        ] } }),
+        model('Pagination', [field('page', scalarType('int')), field('total', scalarType('int'), { visibility: 'readonly' })]),
+        model('ListQuery', [], {
+          type: {
+            kind: 'intersection',
+            members: [
+              { kind: 'ref', name: 'Pagination' },
+              { kind: 'inlineObject', fields: [field('status', scalarType('string'), { optional: true })] },
+            ],
+          },
+        }),
       ]);
       const output = generateDto(root);
       // ListQuery itself is a type alias — read schema
@@ -620,10 +553,15 @@ describe('generateDto', () => {
 
     it('imports PaginationInput when type alias references external Pagination with Input variant', () => {
       const root = dtoRoot([
-        model('ListQuery', [], { type: { kind: 'intersection', members: [
-          { kind: 'ref', name: 'Pagination' },
-          { kind: 'inlineObject', fields: [field('status', scalarType('string'), { optional: true })] },
-        ] } }),
+        model('ListQuery', [], {
+          type: {
+            kind: 'intersection',
+            members: [
+              { kind: 'ref', name: 'Pagination' },
+              { kind: 'inlineObject', fields: [field('status', scalarType('string'), { optional: true })] },
+            ],
+          },
+        }),
       ]);
       const output = generateDto(root, {
         modelsWithInput: new Set(['Pagination']),
@@ -639,9 +577,7 @@ describe('generateDto', () => {
     });
 
     it('type alias NOT referencing any model with Input stays simple', () => {
-      const root = dtoRoot([
-        model('UserId', [], { type: { kind: 'scalar', name: 'uuid' } }),
-      ]);
+      const root = dtoRoot([model('UserId', [], { type: { kind: 'scalar', name: 'uuid' } })]);
       const output = generateDto(root);
       expect(output).toContain('export const UserId = z.uuid()');
       expect(output).not.toContain('UserIdInput');
@@ -652,9 +588,7 @@ describe('generateDto', () => {
 
   describe('model description', () => {
     it('generates JSDoc comment for model description', () => {
-      const root = dtoRoot([
-        model('User', [field('name', scalarType('string'))], { description: 'A user' }),
-      ]);
+      const root = dtoRoot([model('User', [field('name', scalarType('string'))], { description: 'A user' })]);
       const output = generateDto(root);
       expect(output).toContain('* A user');
     });
@@ -664,19 +598,16 @@ describe('generateDto', () => {
 
   describe('source line comments', () => {
     it('includes source location comment above schema', () => {
-      const root = dtoRoot([
-        model('User', [field('name', scalarType('string'))], { loc: { file: 'user.dto', line: 5 } }),
-      ]);
+      const root = dtoRoot([model('User', [field('name', scalarType('string'))], { loc: { file: 'user.dto', line: 5 } })]);
       const output = generateDto(root);
       expect(output).toContain('file://./user.dto#L5');
     });
 
     it('includes source location for three-schema models', () => {
       const root = dtoRoot([
-        model('User', [
-          field('id', scalarType('uuid'), { visibility: 'readonly' }),
-          field('name', scalarType('string')),
-        ], { loc: { file: 'user.dto', line: 1 } }),
+        model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))], {
+          loc: { file: 'user.dto', line: 1 },
+        }),
       ]);
       const output = generateDto(root);
       expect(output).toContain('file://./user.dto#L1');
@@ -687,11 +618,7 @@ describe('generateDto', () => {
 
   describe('model reference imports', () => {
     it('imports externally referenced model types', () => {
-      const root = dtoRoot([
-        model('Counterparty', [
-          field('accounts', arrayType(refType('CounterpartyAccount'))),
-        ]),
-      ]);
+      const root = dtoRoot([model('Counterparty', [field('accounts', arrayType(refType('CounterpartyAccount')))])]);
       const output = generateDto(root);
       expect(output).toContain("import { CounterpartyAccount } from './counterparty.account.js';");
     });
@@ -699,18 +626,14 @@ describe('generateDto', () => {
     it('does not import locally defined models', () => {
       const root = dtoRoot([
         model('CustomCurrency', [field('code', scalarType('string'))]),
-        model('LedgerAccount', [
-          field('currency', refType('CustomCurrency')),
-        ]),
+        model('LedgerAccount', [field('currency', refType('CustomCurrency'))]),
       ]);
       const output = generateDto(root);
-      expect(output).not.toContain("import { CustomCurrency }");
+      expect(output).not.toContain('import { CustomCurrency }');
     });
 
     it('imports base model when inherited from external', () => {
-      const root = dtoRoot([
-        model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
-      ]);
+      const root = dtoRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
       const output = generateDto(root);
       expect(output).toContain("import { User } from './user.js';");
     });
@@ -721,13 +644,11 @@ describe('generateDto', () => {
         model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
       ]);
       const output = generateDto(root);
-      expect(output).not.toContain("import { User }");
+      expect(output).not.toContain('import { User }');
     });
 
     it('emits no model imports when all refs are local', () => {
-      const root = dtoRoot([
-        model('User', [field('name', scalarType('string'))]),
-      ]);
+      const root = dtoRoot([model('User', [field('name', scalarType('string'))])]);
       const output = generateDto(root);
       const importLines = output.split('\n').filter(l => l.startsWith('import'));
       expect(importLines).toHaveLength(1); // only zod
@@ -738,75 +659,47 @@ describe('generateDto', () => {
 
   describe('cross-directory import resolution', () => {
     it('generates correct relative path for ref in a different directory', () => {
-      const root = dtoRoot([
-        model('Counterparty', [
-          field('accounts', arrayType(refType('CounterpartyAccount'))),
-        ]),
-      ]);
+      const root = dtoRoot([model('Counterparty', [field('accounts', arrayType(refType('CounterpartyAccount')))])]);
       const context: DtoCodegenContext = {
         currentOutPath: '/out/modules/transfers/counterparty.ts',
-        modelOutPaths: new Map([
-          ['CounterpartyAccount', '/out/modules/transfers/counterparty.account.ts'],
-        ]),
+        modelOutPaths: new Map([['CounterpartyAccount', '/out/modules/transfers/counterparty.account.ts']]),
       };
       const output = generateDto(root, context);
       expect(output).toContain("import { CounterpartyAccount } from './counterparty.account.js';");
     });
 
     it('generates ../ path when ref is in a parent directory', () => {
-      const root = dtoRoot([
-        model('Invoice', [
-          field('pagination', refType('Pagination')),
-        ]),
-      ]);
+      const root = dtoRoot([model('Invoice', [field('pagination', refType('Pagination'))])]);
       const context: DtoCodegenContext = {
         currentOutPath: '/out/modules/billing/invoice.ts',
-        modelOutPaths: new Map([
-          ['Pagination', '/out/shared/pagination.ts'],
-        ]),
+        modelOutPaths: new Map([['Pagination', '/out/shared/pagination.ts']]),
       };
       const output = generateDto(root, context);
       expect(output).toContain("import { Pagination } from '../../shared/pagination.js';");
     });
 
     it('generates nested ../ path for deeply separated files', () => {
-      const root = dtoRoot([
-        model('Transfer', [
-          field('account', refType('LedgerAccount')),
-        ]),
-      ]);
+      const root = dtoRoot([model('Transfer', [field('account', refType('LedgerAccount'))])]);
       const context: DtoCodegenContext = {
         currentOutPath: '/out/modules/transfers/types/transfer.ts',
-        modelOutPaths: new Map([
-          ['LedgerAccount', '/out/modules/ledger/types/ledger.account.ts'],
-        ]),
+        modelOutPaths: new Map([['LedgerAccount', '/out/modules/ledger/types/ledger.account.ts']]),
       };
       const output = generateDto(root, context);
       expect(output).toContain("import { LedgerAccount } from '../../ledger/types/ledger.account.js';");
     });
 
     it('generates subdirectory path when ref is in a child directory', () => {
-      const root = dtoRoot([
-        model('Dashboard', [
-          field('user', refType('User')),
-        ]),
-      ]);
+      const root = dtoRoot([model('Dashboard', [field('user', refType('User'))])]);
       const context: DtoCodegenContext = {
         currentOutPath: '/out/dashboard.ts',
-        modelOutPaths: new Map([
-          ['User', '/out/users/user.ts'],
-        ]),
+        modelOutPaths: new Map([['User', '/out/users/user.ts']]),
       };
       const output = generateDto(root, context);
       expect(output).toContain("import { User } from './users/user.js';");
     });
 
     it('falls back to pascalToDotCase when ref is not in modelOutPaths', () => {
-      const root = dtoRoot([
-        model('Order', [
-          field('item', refType('UnknownExternal')),
-        ]),
-      ]);
+      const root = dtoRoot([model('Order', [field('item', refType('UnknownExternal'))])]);
       const context: DtoCodegenContext = {
         currentOutPath: '/out/order.ts',
         modelOutPaths: new Map(), // empty — ref not found
@@ -816,22 +709,13 @@ describe('generateDto', () => {
     });
 
     it('falls back to pascalToDotCase when no context is provided', () => {
-      const root = dtoRoot([
-        model('Counterparty', [
-          field('accounts', arrayType(refType('CounterpartyAccount'))),
-        ]),
-      ]);
+      const root = dtoRoot([model('Counterparty', [field('accounts', arrayType(refType('CounterpartyAccount')))])]);
       const output = generateDto(root); // no context
       expect(output).toContain("import { CounterpartyAccount } from './counterparty.account.js';");
     });
 
     it('resolves multiple refs to different directories', () => {
-      const root = dtoRoot([
-        model('Transfer', [
-          field('from', refType('Counterparty')),
-          field('pagination', refType('Pagination')),
-        ]),
-      ]);
+      const root = dtoRoot([model('Transfer', [field('from', refType('Counterparty')), field('pagination', refType('Pagination'))])]);
       const context: DtoCodegenContext = {
         currentOutPath: '/out/modules/transfers/transfer.ts',
         modelOutPaths: new Map([

@@ -1,9 +1,30 @@
 import { CstParser } from 'chevrotain';
 import {
-  allTokens, Identifier, Colon, Question,
-  Equals, Pipe, LParen, RParen, LBrace, RBrace, Comma, Slash,
-  LBracket, RBracket, Plus, Star, Caret, Backslash, Dot, Ampersand,
-  StringLit, NumberLit, BooleanLit, Eof, TripleDash,
+  allTokens,
+  Identifier,
+  Colon,
+  Question,
+  Equals,
+  Pipe,
+  LParen,
+  RParen,
+  LBrace,
+  RBrace,
+  Comma,
+  Slash,
+  LBracket,
+  RBracket,
+  Plus,
+  Star,
+  Caret,
+  Backslash,
+  Dot,
+  Ampersand,
+  StringLit,
+  NumberLit,
+  BooleanLit,
+  Eof,
+  TripleDash,
 } from './tokens.js';
 
 const OBJECT_MODES = new Set(['strict', 'strip', 'loose']);
@@ -31,7 +52,7 @@ export class DtoCstParser extends CstParser {
 
   // --- key: value ... ---
   public frontMatter = this.RULE('frontMatter', () => {
-    this.CONSUME(TripleDash);  // opening ---
+    this.CONSUME(TripleDash); // opening ---
     this.MANY(() => {
       this.SUBRULE(this.metaEntry);
     });
@@ -40,11 +61,11 @@ export class DtoCstParser extends CstParser {
 
   // key: value (inside front-matter)
   public metaEntry = this.RULE('metaEntry', () => {
-    this.CONSUME(Identifier);  // key
+    this.CONSUME(Identifier); // key
     this.CONSUME(Colon);
     this.OR([
       { ALT: () => this.CONSUME(StringLit) },
-      { ALT: () => this.CONSUME2(Identifier) },  // unquoted value
+      { ALT: () => this.CONSUME2(Identifier) }, // unquoted value
     ]);
   });
 
@@ -58,7 +79,7 @@ export class DtoCstParser extends CstParser {
     // Optional modifier prefixes: camel and/or strict|strip|loose in any order (max one each)
     this.OPTION({ GATE: () => OBJECT_MODES.has(this.LA(1).image) || this.LA(1).image === 'camel', DEF: () => this.CONSUME(Identifier) });
     this.OPTION2({ GATE: () => OBJECT_MODES.has(this.LA(1).image) || this.LA(1).image === 'camel', DEF: () => this.CONSUME4(Identifier) });
-    this.CONSUME2(Identifier);  // model name
+    this.CONSUME2(Identifier); // model name
     this.CONSUME(Colon);
     this.OR([
       {
@@ -106,7 +127,7 @@ export class DtoCstParser extends CstParser {
   // 2. Regular type:      name: typeExpr (= default)?
   // Nested objects are handled via typeExpression → singleType → inlineBraceObject
   public fieldDecl = this.RULE('fieldDecl', () => {
-    this.CONSUME(Identifier);  // field name
+    this.CONSUME(Identifier); // field name
     this.OPTION(() => this.CONSUME(Question));
     this.CONSUME(Colon);
     this.OR([
@@ -114,8 +135,7 @@ export class DtoCstParser extends CstParser {
         // Case 1: Visibility modifier + type expression
         GATE: () => {
           const la1 = this.LA(1);
-          return la1.tokenType === Identifier &&
-            (la1.image === 'readonly' || la1.image === 'writeonly');
+          return la1.tokenType === Identifier && (la1.image === 'readonly' || la1.image === 'writeonly');
         },
         ALT: () => {
           this.CONSUME2(Identifier); // visibility modifier
@@ -165,14 +185,14 @@ export class DtoCstParser extends CstParser {
         // Mode-prefixed inline object: strict { ... } / strip { ... } / loose { ... }
         GATE: () => OBJECT_MODES.has(this.LA(1).image) && this.LA(2).tokenType === LBrace,
         ALT: () => {
-          this.CONSUME(Identifier);       // mode keyword
+          this.CONSUME(Identifier); // mode keyword
           this.SUBRULE(this.inlineBraceObject);
         },
       },
       { ALT: () => this.SUBRULE2(this.inlineBraceObject) },
       {
         ALT: () => {
-          this.CONSUME2(Identifier);  // type name — visitor inspects image
+          this.CONSUME2(Identifier); // type name — visitor inspects image
           this.OPTION(() => {
             this.CONSUME(LParen);
             this.SUBRULE(this.typeArgs);
@@ -273,8 +293,7 @@ export class DtoCstParser extends CstParser {
         // Case 1: Visibility modifier + type expression
         GATE: () => {
           const la1 = this.LA(1);
-          return la1.tokenType === Identifier &&
-            (la1.image === 'readonly' || la1.image === 'writeonly');
+          return la1.tokenType === Identifier && (la1.image === 'readonly' || la1.image === 'writeonly');
         },
         ALT: () => {
           this.CONSUME2(Identifier); // visibility modifier

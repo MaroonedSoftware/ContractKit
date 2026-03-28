@@ -1,10 +1,28 @@
 import type {
-  DtoRootNode, ModelNode, FieldNode, DtoTypeNode,
-  ScalarTypeNode, ArrayTypeNode, TupleTypeNode, RecordTypeNode,
-  EnumTypeNode, LiteralTypeNode, UnionTypeNode, ModelRefTypeNode,
-  InlineObjectTypeNode, LazyTypeNode, SourceLocation,
-  OpRootNode, OpRouteNode, OpOperationNode, OpParamNode,
-  OpRequestNode, OpResponseNode, HttpMethod, ParamSource, RouteModifier,
+  DtoRootNode,
+  ModelNode,
+  FieldNode,
+  DtoTypeNode,
+  ScalarTypeNode,
+  ArrayTypeNode,
+  TupleTypeNode,
+  RecordTypeNode,
+  EnumTypeNode,
+  LiteralTypeNode,
+  UnionTypeNode,
+  ModelRefTypeNode,
+  InlineObjectTypeNode,
+  LazyTypeNode,
+  SourceLocation,
+  OpRootNode,
+  OpRouteNode,
+  OpOperationNode,
+  OpParamNode,
+  OpRequestNode,
+  OpResponseNode,
+  HttpMethod,
+  ParamSource,
+  RouteModifier,
 } from '../src/ast.js';
 
 // ─── AST Builder Helpers ────────────────────────────────────────────────────
@@ -89,8 +107,7 @@ export function opRequest(bodyType: string | DtoTypeNode, contentType: OpRequest
 }
 
 export function opResponse(statusCode: number, bodyType?: string | DtoTypeNode, contentType?: 'application/json'): OpResponseNode {
-  const bt: DtoTypeNode | undefined = bodyType === undefined ? undefined
-    : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
+  const bt: DtoTypeNode | undefined = bodyType === undefined ? undefined : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
   return { statusCode, contentType, bodyType: bt };
 }
 

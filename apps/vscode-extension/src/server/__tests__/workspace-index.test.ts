@@ -10,10 +10,13 @@ describe('WorkspaceIndex', () => {
 
     it('indexes multiple models from one file', () => {
       const index = new WorkspaceIndex();
-      index.indexFromSource('file:///test.dto', `\
+      index.indexFromSource(
+        'file:///test.dto',
+        `\
 User { name: string }
 Admin: User { role: string }
-`);
+`,
+      );
       expect(index.getAllModelNames()).toContain('User');
       expect(index.getAllModelNames()).toContain('Admin');
     });
@@ -38,12 +41,15 @@ Admin: User { role: string }
 
     it('indexes service names from .op source', () => {
       const index = new WorkspaceIndex();
-      index.indexFromSource('file:///test.op', `\
+      index.indexFromSource(
+        'file:///test.op',
+        `\
 /users {
     put: {
         service: UserService.update
     }
-}`);
+}`,
+      );
       expect(index.getAllServiceNames()).toContain('UserService.update');
     });
   });

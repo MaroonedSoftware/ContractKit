@@ -5,16 +5,11 @@ import type { DiagnosticCollector } from './diagnostics.js';
  * After all files are parsed, validate that type references point to
  * defined models.
  */
-export function validateRefs(
-  dtoRoots: DtoRootNode[],
-  opRoots: OpRootNode[],
-  diag: DiagnosticCollector,
-  allDtoRoots?: DtoRootNode[],
-): void {
+export function validateRefs(dtoRoots: DtoRootNode[], opRoots: OpRootNode[], diag: DiagnosticCollector, allDtoRoots?: DtoRootNode[]): void {
   // Phase 1: Collect all defined model names from ALL dto files (not just changed ones)
   // so that cached/unchanged files don't cause false "not defined" warnings.
   const modelNames = new Set<string>();
-  for (const root of (allDtoRoots ?? dtoRoots)) {
+  for (const root of allDtoRoots ?? dtoRoots) {
     for (const model of root.models) {
       modelNames.add(model.name);
     }
@@ -24,8 +19,7 @@ export function validateRefs(
   for (const root of dtoRoots) {
     for (const model of root.models) {
       if (model.base && !modelNames.has(model.base)) {
-        diag.warn(model.loc.file, model.loc.line,
-          `Base model "${model.base}" is not defined in any .dto file`);
+        diag.warn(model.loc.file, model.loc.line, `Base model "${model.base}" is not defined in any .dto file`);
       }
       if (model.type) {
         checkTypeRefs(model.type, model.loc.file, model.loc.line, modelNames, diag);
@@ -56,13 +50,7 @@ export function validateRefs(
   }
 }
 
-function checkTypeRefs(
-  type: DtoTypeNode,
-  file: string,
-  line: number,
-  models: Set<string>,
-  diag: DiagnosticCollector,
-): void {
+function checkTypeRefs(type: DtoTypeNode, file: string, line: number, models: Set<string>, diag: DiagnosticCollector): void {
   switch (type.kind) {
     case 'ref':
       if (!models.has(type.name)) {
@@ -113,13 +101,7 @@ function checkParamSourceRefs(
   }
 }
 
-function checkNameRef(
-  name: string,
-  file: string,
-  line: number,
-  models: Set<string>,
-  diag: DiagnosticCollector,
-): void {
+function checkNameRef(name: string, file: string, line: number, models: Set<string>, diag: DiagnosticCollector): void {
   if (/^[A-Z]/.test(name) && !models.has(name)) {
     diag.warn(file, line, `Referenced type "${name}" is not defined in any .dto file`);
   }

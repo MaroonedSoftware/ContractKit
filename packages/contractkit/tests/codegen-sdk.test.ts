@@ -1,29 +1,48 @@
 import { describe, it, expect } from 'vitest';
-import { generateSdk, generateSdkOptions, generateSdkAggregator, deriveClientClassName, deriveClientPropertyName, hasPublicOperations, collectPublicTypeNames, renderTsType, renderInputTsType } from '../src/codegen-sdk.js';
 import {
-  opRoot, opRoute, opOperation, opParam, opRequest, opResponse,
-  scalarType, refType, arrayType, inlineObjectType, tupleType, recordType,
-  enumType, literalType, lazyType, unionType, field,
+  generateSdk,
+  generateSdkOptions,
+  generateSdkAggregator,
+  deriveClientClassName,
+  deriveClientPropertyName,
+  hasPublicOperations,
+  collectPublicTypeNames,
+  renderTsType,
+  renderInputTsType,
+} from '../src/codegen-sdk.js';
+import {
+  opRoot,
+  opRoute,
+  opOperation,
+  opParam,
+  opRequest,
+  opResponse,
+  scalarType,
+  refType,
+  arrayType,
+  inlineObjectType,
+  tupleType,
+  recordType,
+  enumType,
+  literalType,
+  lazyType,
+  unionType,
+  field,
 } from './helpers.js';
 
 describe('generateSdk', () => {
   describe('sdk class naming', () => {
     it('derives sdk class name from filename', () => {
-      const root = opRoot([
-        opRoute('/users', [
-          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-        ]),
-      ], 'users.op');
+      const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])], 'users.op');
       const out = generateSdk(root);
       expect(out).toContain('export class UsersClient');
     });
 
     it('handles dotted filenames', () => {
-      const root = opRoot([
-        opRoute('/ledger/categories', [
-          opOperation('get', { responses: [opResponse(200, 'Category', 'application/json')] }),
-        ]),
-      ], 'ledger.categories.op');
+      const root = opRoot(
+        [opRoute('/ledger/categories', [opOperation('get', { responses: [opResponse(200, 'Category', 'application/json')] })])],
+        'ledger.categories.op',
+      );
       const out = generateSdk(root);
       expect(out).toContain('export class LedgerCategoriesClient');
     });
@@ -57,11 +76,15 @@ describe('generateSdk', () => {
 
     it('includes path param segments in inferred name', () => {
       const root = opRoot([
-        opRoute('/users/:id', [
-          opOperation('get', {
-            responses: [opResponse(200, 'User', 'application/json')],
-          }),
-        ], [opParam('id', scalarType('uuid'))]),
+        opRoute(
+          '/users/:id',
+          [
+            opOperation('get', {
+              responses: [opResponse(200, 'User', 'application/json')],
+            }),
+          ],
+          [opParam('id', scalarType('uuid'))],
+        ),
       ]);
       const out = generateSdk(root);
       expect(out).toContain('async getUsersById(');
@@ -84,12 +107,16 @@ describe('generateSdk', () => {
   describe('GET with path params', () => {
     it('generates method with path params and correct return type', () => {
       const root = opRoot([
-        opRoute('/users/:id', [
-          opOperation('get', {
-            sdk: 'getUser',
-            responses: [opResponse(200, 'User', 'application/json')],
-          }),
-        ], [opParam('id', scalarType('uuid'))]),
+        opRoute(
+          '/users/:id',
+          [
+            opOperation('get', {
+              sdk: 'getUser',
+              responses: [opResponse(200, 'User', 'application/json')],
+            }),
+          ],
+          [opParam('id', scalarType('uuid'))],
+        ),
       ]);
       const out = generateSdk(root);
       expect(out).toContain('async getUser(id: string): Promise<User>');
@@ -120,12 +147,16 @@ describe('generateSdk', () => {
   describe('DELETE with 204', () => {
     it('returns void for empty responses', () => {
       const root = opRoot([
-        opRoute('/users/:id', [
-          opOperation('delete', {
-            sdk: 'deleteUser',
-            responses: [opResponse(204)],
-          }),
-        ], [opParam('id', scalarType('uuid'))]),
+        opRoute(
+          '/users/:id',
+          [
+            opOperation('delete', {
+              sdk: 'deleteUser',
+              responses: [opResponse(204)],
+            }),
+          ],
+          [opParam('id', scalarType('uuid'))],
+        ),
       ]);
       const out = generateSdk(root);
       expect(out).toContain('async deleteUser(id: string): Promise<void>');
@@ -139,10 +170,7 @@ describe('generateSdk', () => {
         opRoute('/users', [
           opOperation('get', {
             sdk: 'listUsers',
-            query: [
-              opParam('page', scalarType('int')),
-              opParam('limit', scalarType('int')),
-            ],
+            query: [opParam('page', scalarType('int')), opParam('limit', scalarType('int'))],
             responses: [opResponse(200, 'array(User)', 'application/json')],
           }),
         ]),
@@ -157,10 +185,7 @@ describe('generateSdk', () => {
         opRoute('/users', [
           opOperation('get', {
             sdk: 'listUsers',
-            query: [
-              opParam('status', arrayType(refType('Status'))),
-              opParam('limit', scalarType('int')),
-            ],
+            query: [opParam('status', arrayType(refType('Status'))), opParam('limit', scalarType('int'))],
             responses: [opResponse(200, 'array(User)', 'application/json')],
           }),
         ]),
@@ -222,10 +247,9 @@ describe('generateSdk', () => {
         opRoute('/users', [
           opOperation('get', {
             sdk: 'listUsers',
-            responses: [opResponse(200, inlineObjectType([
-              field('data', arrayType(refType('User'))),
-              field('total', scalarType('int')),
-            ]), 'application/json')],
+            responses: [
+              opResponse(200, inlineObjectType([field('data', arrayType(refType('User'))), field('total', scalarType('int'))]), 'application/json'),
+            ],
           }),
         ]),
       ]);
@@ -282,16 +306,20 @@ describe('generateSdk', () => {
             responses: [opResponse(201, 'User', 'application/json')],
           }),
         ]),
-        opRoute('/users/:id', [
-          opOperation('get', {
-            sdk: 'getUser',
-            responses: [opResponse(200, 'User', 'application/json')],
-          }),
-          opOperation('delete', {
-            sdk: 'deleteUser',
-            responses: [opResponse(204)],
-          }),
-        ], [opParam('id', scalarType('uuid'))]),
+        opRoute(
+          '/users/:id',
+          [
+            opOperation('get', {
+              sdk: 'getUser',
+              responses: [opResponse(200, 'User', 'application/json')],
+            }),
+            opOperation('delete', {
+              sdk: 'deleteUser',
+              responses: [opResponse(204)],
+            }),
+          ],
+          [opParam('id', scalarType('uuid'))],
+        ),
       ]);
       const out = generateSdk(root);
       expect(out).toContain('async listUsers(');
@@ -306,11 +334,7 @@ describe('generateSdk', () => {
 
   describe('SdkOptions interface', () => {
     it('emits SdkOptions interface with baseUrl, headers, fetch and SdkError', () => {
-      const root = opRoot([
-        opRoute('/users', [
-          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-        ]),
-      ]);
+      const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])]);
       const out = generateSdk(root);
       expect(out).toContain('export interface SdkOptions');
       expect(out).toContain('baseUrl: string');
@@ -322,11 +346,7 @@ describe('generateSdk', () => {
 
   describe('requestIdFactory', () => {
     it('emits requestIdFactory on SdkOptions', () => {
-      const root = opRoot([
-        opRoute('/users', [
-          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-        ]),
-      ]);
+      const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])]);
       const out = generateSdk(root);
       expect(out).toContain('requestIdFactory?: () => string');
     });
@@ -337,9 +357,7 @@ describe('generateSdk', () => {
           opOperation('get', { sdk: 'listUsers', responses: [opResponse(200, 'User', 'application/json')] }),
           opOperation('post', { sdk: 'createUser', request: opRequest('CreateUserInput'), responses: [opResponse(201, 'User', 'application/json')] }),
         ]),
-        opRoute('/users/:id', [
-          opOperation('delete', { sdk: 'deleteUser', responses: [opResponse(204)] }),
-        ], [opParam('id', scalarType('uuid'))]),
+        opRoute('/users/:id', [opOperation('delete', { sdk: 'deleteUser', responses: [opResponse(204)] })], [opParam('id', scalarType('uuid'))]),
       ]);
       const out = generateSdk(root);
       expect(out).toContain('async listUsers(): Promise');
@@ -349,11 +367,7 @@ describe('generateSdk', () => {
     });
 
     it('defaults to crypto.randomUUID and injects X-Request-ID per request', () => {
-      const root = opRoot([
-        opRoute('/users', [
-          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-        ]),
-      ]);
+      const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])]);
       const out = generateSdk(root);
       expect(out).toContain('requestIdFactory ?? (() => crypto.randomUUID())');
       expect(out).toContain("'X-Request-ID': getRequestId()");
@@ -362,11 +376,7 @@ describe('generateSdk', () => {
 
   describe('fetch usage', () => {
     it('calls this.fetch in methods', () => {
-      const root = opRoot([
-        opRoute('/users', [
-          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-        ]),
-      ]);
+      const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])]);
       const out = generateSdk(root);
       expect(out).toContain('this.fetch(');
       expect(out).toContain('constructor(private fetch: SdkFetch)');
@@ -375,11 +385,7 @@ describe('generateSdk', () => {
 
   describe('SdkOptions import from shared file', () => {
     it('imports SdkOptions when sdkOptionsPath is provided', () => {
-      const root = opRoot([
-        opRoute('/users', [
-          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-        ]),
-      ]);
+      const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])]);
       const out = generateSdk(root, {
         outPath: '/sdk/src/users.client.ts',
         sdkOptionsPath: '/sdk/sdk-options.ts',
@@ -390,11 +396,7 @@ describe('generateSdk', () => {
     });
 
     it('emits inline SdkOptions, SdkError, SdkFetch and createSdkFetch when sdkOptionsPath not provided', () => {
-      const root = opRoot([
-        opRoute('/users', [
-          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-        ]),
-      ]);
+      const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])]);
       const out = generateSdk(root);
       expect(out).toContain('export interface SdkOptions');
       expect(out).toContain('export class SdkError extends Error');
@@ -484,16 +486,18 @@ describe('generateSdk — route modifiers', () => {
       ]),
     ]);
     const out = generateSdk(root);
-    expect(out).toContain('getUsers(');      // public GET is present
+    expect(out).toContain('getUsers('); // public GET is present
     expect(out).not.toContain('postUsers('); // internal POST is absent
   });
 
   it('excludes all operations when route is internal', () => {
     const root = opRoot([
-      opRoute('/admin/users', [
-        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-        opOperation('delete', { responses: [opResponse(204)] }),
-      ], undefined, ['internal']),
+      opRoute(
+        '/admin/users',
+        [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }), opOperation('delete', { responses: [opResponse(204)] })],
+        undefined,
+        ['internal'],
+      ),
     ]);
     const out = generateSdk(root);
     expect(out).not.toContain('async getAdminUsers(');
@@ -502,10 +506,15 @@ describe('generateSdk — route modifiers', () => {
 
   it('operation modifier overrides route-level internal — operation becomes visible', () => {
     const root = opRoot([
-      opRoute('/admin/users', [
-        opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200, 'User', 'application/json')] }),
-        opOperation('post', { responses: [opResponse(201, 'User', 'application/json')] }),
-      ], undefined, ['internal']),
+      opRoute(
+        '/admin/users',
+        [
+          opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200, 'User', 'application/json')] }),
+          opOperation('post', { responses: [opResponse(201, 'User', 'application/json')] }),
+        ],
+        undefined,
+        ['internal'],
+      ),
     ]);
     const out = generateSdk(root);
     // GET has explicit modifiers=['deprecated'] (overrides internal) → included
@@ -517,9 +526,7 @@ describe('generateSdk — route modifiers', () => {
 
   it('adds @deprecated jsdoc for deprecated operation', () => {
     const root = opRoot([
-      opRoute('/users', [
-        opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200, 'User', 'application/json')] }),
-      ]),
+      opRoute('/users', [opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200, 'User', 'application/json')] })]),
     ]);
     const out = generateSdk(root);
     expect(out).toContain('/** @deprecated */');
@@ -539,40 +546,39 @@ describe('hasPublicOperations', () => {
 
   it('returns false when all operations are internal via route modifier', () => {
     const root = opRoot([
-      opRoute('/admin/users', [
-        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-        opOperation('post', { responses: [opResponse(201, 'User', 'application/json')] }),
-      ], undefined, ['internal']),
+      opRoute(
+        '/admin/users',
+        [
+          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+          opOperation('post', { responses: [opResponse(201, 'User', 'application/json')] }),
+        ],
+        undefined,
+        ['internal'],
+      ),
     ]);
     expect(hasPublicOperations(root)).toBe(false);
   });
 
   it('returns false when all operations have explicit internal modifier', () => {
     const root = opRoot([
-      opRoute('/users', [
-        opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'User', 'application/json')] }),
-      ]),
+      opRoute('/users', [opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'User', 'application/json')] })]),
     ]);
     expect(hasPublicOperations(root)).toBe(false);
   });
 
   it('returns true when an operation overrides route-level internal with empty modifiers', () => {
     const root = opRoot([
-      opRoute('/admin/users', [
-        opOperation('get', { modifiers: [], responses: [opResponse(200, 'User', 'application/json')] }),
-      ], undefined, ['internal']),
+      opRoute('/admin/users', [opOperation('get', { modifiers: [], responses: [opResponse(200, 'User', 'application/json')] })], undefined, [
+        'internal',
+      ]),
     ]);
     expect(hasPublicOperations(root)).toBe(true);
   });
 
   it('does not include types from internal-only operations in SDK output', () => {
     const root = opRoot([
-      opRoute('/admin/users', [
-        opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'AdminUser', 'application/json')] }),
-      ]),
-      opRoute('/users', [
-        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-      ]),
+      opRoute('/admin/users', [opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'AdminUser', 'application/json')] })]),
+      opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })]),
     ]);
     const out = generateSdk(root);
     expect(out).toContain('User');
@@ -580,13 +586,10 @@ describe('hasPublicOperations', () => {
   });
 });
 
-
 describe('collectPublicTypeNames', () => {
   it('returns types from public ops only', () => {
     const root = opRoot([
-      opRoute('/admin', [
-        opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'AdminReport', 'application/json')] }),
-      ]),
+      opRoute('/admin', [opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'AdminReport', 'application/json')] })]),
       opRoute('/users', [
         opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
         opOperation('post', { modifiers: ['internal'], responses: [opResponse(201, 'InternalAudit', 'application/json')] }),
@@ -600,9 +603,12 @@ describe('collectPublicTypeNames', () => {
 
   it('returns empty set when all ops are internal', () => {
     const root = opRoot([
-      opRoute('/admin', [
-        opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'AdminReport', 'application/json')] }),
-      ], undefined, ['internal']),
+      opRoute(
+        '/admin',
+        [opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'AdminReport', 'application/json')] })],
+        undefined,
+        ['internal'],
+      ),
     ]);
     const types = collectPublicTypeNames(root);
     expect(types.size).toBe(0);
@@ -612,10 +618,15 @@ describe('collectPublicTypeNames', () => {
 describe('generateSdk — route-level deprecated cascade', () => {
   it('adds @deprecated jsdoc when route is deprecated and operation has no modifiers', () => {
     const root = opRoot([
-      opRoute('/users', [
-        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-        opOperation('post', { responses: [opResponse(201, 'User', 'application/json')] }),
-      ], undefined, ['deprecated']),
+      opRoute(
+        '/users',
+        [
+          opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
+          opOperation('post', { responses: [opResponse(201, 'User', 'application/json')] }),
+        ],
+        undefined,
+        ['deprecated'],
+      ),
     ]);
     const out = generateSdk(root);
     // Both operations inherit deprecated from the route
@@ -625,9 +636,7 @@ describe('generateSdk — route-level deprecated cascade', () => {
 
   it('operation-level modifiers override route-level deprecated', () => {
     const root = opRoot([
-      opRoute('/users', [
-        opOperation('get', { modifiers: [], responses: [opResponse(200, 'User', 'application/json')] }),
-      ], undefined, ['deprecated']),
+      opRoute('/users', [opOperation('get', { modifiers: [], responses: [opResponse(200, 'User', 'application/json')] })], undefined, ['deprecated']),
     ]);
     const out = generateSdk(root);
     // GET has explicit empty modifiers — overrides route deprecated → no jsdoc
@@ -637,11 +646,7 @@ describe('generateSdk — route-level deprecated cascade', () => {
 
 describe('generateSdk — json type', () => {
   it('emits JsonValue type declaration when response uses json scalar', () => {
-    const root = opRoot([
-      opRoute('/data', [
-        opOperation('get', { responses: [opResponse(200, scalarType('json'), 'application/json')] }),
-      ]),
-    ]);
+    const root = opRoot([opRoute('/data', [opOperation('get', { responses: [opResponse(200, scalarType('json'), 'application/json')] })])]);
     const out = generateSdk(root);
     expect(out).toContain('export type JsonValue =');
     expect(out).toContain('async getData(');
@@ -663,11 +668,7 @@ describe('generateSdk — json type', () => {
   });
 
   it('omits JsonValue type declaration when no json scalar used', () => {
-    const root = opRoot([
-      opRoute('/users', [
-        opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] }),
-      ]),
-    ]);
+    const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])]);
     const out = generateSdk(root);
     expect(out).not.toContain('JsonValue');
   });
@@ -757,10 +758,7 @@ describe('renderTsType', () => {
   });
 
   it('renders inline object with optional field', () => {
-    const type = inlineObjectType([
-      field('id', scalarType('uuid')),
-      field('name', scalarType('string'), { optional: true }),
-    ]);
+    const type = inlineObjectType([field('id', scalarType('uuid')), field('name', scalarType('string'), { optional: true })]);
     expect(renderTsType(type)).toBe('{ id: string; name?: string }');
   });
 
@@ -821,9 +819,7 @@ describe('renderInputTsType', () => {
 describe('generateSdk — path param shapes', () => {
   it('handles string-typed route params (model ref)', () => {
     const root = opRoot([
-      opRoute('/things/:id', [
-        opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] }),
-      ], 'ThingParams'),
+      opRoute('/things/:id', [opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] })], 'ThingParams'),
     ]);
     const out = generateSdk(root);
     expect(out).toContain('async getThing(params: ThingParams)');
@@ -831,9 +827,7 @@ describe('generateSdk — path param shapes', () => {
 
   it('substitutes Input variant for string-typed route params when in modelsWithInput', () => {
     const root = opRoot([
-      opRoute('/things/:id', [
-        opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] }),
-      ], 'ThingParams'),
+      opRoute('/things/:id', [opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] })], 'ThingParams'),
     ]);
     const out = generateSdk(root, { modelsWithInput: new Set(['ThingParams']) });
     expect(out).toContain('params: ThingParamsInput');
@@ -841,9 +835,11 @@ describe('generateSdk — path param shapes', () => {
 
   it('handles DtoTypeNode-typed route params', () => {
     const root = opRoot([
-      opRoute('/things/:id', [
-        opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] }),
-      ], inlineObjectType([field('id', scalarType('uuid'))])),
+      opRoute(
+        '/things/:id',
+        [opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] })],
+        inlineObjectType([field('id', scalarType('uuid'))]),
+      ),
     ]);
     const out = generateSdk(root);
     expect(out).toContain('async getThing(params: { id: string })');
@@ -853,9 +849,7 @@ describe('generateSdk — path param shapes', () => {
 describe('generateSdk — headers shapes', () => {
   it('handles string-typed headers (model ref)', () => {
     const root = opRoot([
-      opRoute('/users', [
-        opOperation('get', { sdk: 'listUsers', headers: 'AuthHeaders', responses: [opResponse(200, 'User', 'application/json')] }),
-      ]),
+      opRoute('/users', [opOperation('get', { sdk: 'listUsers', headers: 'AuthHeaders', responses: [opResponse(200, 'User', 'application/json')] })]),
     ]);
     const out = generateSdk(root);
     expect(out).toContain('customHeaders?: AuthHeaders');
@@ -964,21 +958,19 @@ describe('generateSdk — fetch call assembly', () => {
 
 describe('generateSdk — type import paths', () => {
   it('uses default #modules/ path when no modelOutPaths or template', () => {
-    const root = opRoot([
-      opRoute('/users', [
-        opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User', 'application/json')] }),
-      ]),
-    ], 'users.op');
+    const root = opRoot(
+      [opRoute('/users', [opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User', 'application/json')] })])],
+      'users.op',
+    );
     const out = generateSdk(root);
     expect(out).toContain("from '#modules/users/types/index.js'");
   });
 
   it('substitutes {module} and {base} in typeImportPathTemplate', () => {
-    const root = opRoot([
-      opRoute('/users', [
-        opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User', 'application/json')] }),
-      ]),
-    ], 'users.op');
+    const root = opRoot(
+      [opRoute('/users', [opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User', 'application/json')] })])],
+      'users.op',
+    );
     const out = generateSdk(root, { typeImportPathTemplate: '@myapp/{module}/types' });
     expect(out).toContain("from '@myapp/users/types'");
   });
@@ -1075,11 +1067,7 @@ describe('collectPublicTypeNames — modelsWithInput', () => {
   });
 
   it('includes Input variant for string-typed route params', () => {
-    const root = opRoot([
-      opRoute('/things/:id', [
-        opOperation('get', { responses: [opResponse(200, 'Thing', 'application/json')] }),
-      ], 'ThingParams'),
-    ]);
+    const root = opRoot([opRoute('/things/:id', [opOperation('get', { responses: [opResponse(200, 'Thing', 'application/json')] })], 'ThingParams')]);
     const types = collectPublicTypeNames(root, new Set(['ThingParams']));
     expect(types.has('ThingParamsInput')).toBe(true);
   });
@@ -1116,9 +1104,11 @@ describe('generateSdk — json type in query / headers / params', () => {
 
   it('emits JsonValue when json scalar used in path params', () => {
     const root = opRoot([
-      opRoute('/things/:meta', [
-        opOperation('get', { responses: [opResponse(200, 'Thing', 'application/json')] }),
-      ], [opParam('meta', scalarType('json'))]),
+      opRoute(
+        '/things/:meta',
+        [opOperation('get', { responses: [opResponse(200, 'Thing', 'application/json')] })],
+        [opParam('meta', scalarType('json'))],
+      ),
     ]);
     const out = generateSdk(root);
     expect(out).toContain('export type JsonValue =');

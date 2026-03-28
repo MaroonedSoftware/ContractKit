@@ -15,9 +15,7 @@ export function printType(type: DtoTypeNode): string {
       if (type.max !== undefined) constraints.push(`max=${type.max}`);
       if (type.len !== undefined) constraints.push(`len=${type.len}`);
       if (type.regex !== undefined) constraints.push(`regex=/${type.regex}/`);
-      return constraints.length > 0
-        ? `${type.name}(${constraints.join(', ')})`
-        : type.name;
+      return constraints.length > 0 ? `${type.name}(${constraints.join(', ')})` : type.name;
     }
     case 'array': {
       const args: string[] = [printType(type.item)];
@@ -32,9 +30,7 @@ export function printType(type: DtoTypeNode): string {
     case 'enum':
       return `enum(${type.values.join(', ')})`;
     case 'literal':
-      return typeof type.value === 'string'
-        ? `literal("${type.value}")`
-        : `literal(${type.value})`;
+      return typeof type.value === 'string' ? `literal("${type.value}")` : `literal(${type.value})`;
     case 'union':
       return type.members.map(printType).join(' | ');
     case 'intersection':

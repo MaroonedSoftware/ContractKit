@@ -10,31 +10,31 @@ import onlyWarn from 'eslint-plugin-only-warn';
  * @type {import("eslint").Linter.Config[]}
  * */
 export default [
-    js.configs.recommended,
-    eslintConfigPrettier,
-    ...tseslint.configs.recommended,
-    {
-        plugins: {
-            turbo: turboPlugin,
-        },
-        rules: {
-            'turbo/no-undeclared-env-vars': 'warn',
-        },
+  js.configs.recommended,
+  eslintConfigPrettier,
+  ...tseslint.configs.recommended,
+  {
+    plugins: {
+      turbo: turboPlugin,
     },
-    {
-        plugins: {
-            onlyWarn,
-        },
+    rules: {
+      'turbo/no-undeclared-env-vars': 'warn',
     },
-    {
-        rules: {
-            '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-            '@typescript-eslint/no-explicit-any': 'warn',
-            '@typescript-eslint/no-empty-object-type': 'warn',
-            '@typescript-eslint/no-empty-interface': 'warn',
-        },
+  },
+  {
+    plugins: {
+      onlyWarn,
     },
-    {
-        ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'bin/**', 'tests/**'],
+  },
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-empty-object-type': 'warn',
+      '@typescript-eslint/no-empty-interface': 'warn',
     },
+  },
+  {
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'bin/**', 'tests/**'],
+  },
 ];

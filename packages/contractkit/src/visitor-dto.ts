@@ -1,8 +1,14 @@
 import type { IToken } from 'chevrotain';
 import { dtoCstParser } from './chevrotain-parser-dto.js';
 import type {
-  DtoRootNode, ModelNode, FieldNode, DtoTypeNode,
-  ScalarTypeNode, InlineObjectTypeNode, UnionTypeNode, IntersectionTypeNode,
+  DtoRootNode,
+  ModelNode,
+  FieldNode,
+  DtoTypeNode,
+  ScalarTypeNode,
+  InlineObjectTypeNode,
+  UnionTypeNode,
+  IntersectionTypeNode,
   ObjectMode,
 } from './ast.js';
 import { SCALAR_NAMES } from './ast.js';
@@ -87,9 +93,13 @@ export class DtoVisitor extends BaseDtoVisitor {
     let camelCase = false;
     while (offset < identifiers.length) {
       const img = identifiers[offset]!.image;
-      if (OBJECT_MODES.has(img)) { mode = img as ObjectMode; offset++; }
-      else if (img === 'camel') { camelCase = true; offset++; }
-      else break;
+      if (OBJECT_MODES.has(img)) {
+        mode = img as ObjectMode;
+        offset++;
+      } else if (img === 'camel') {
+        camelCase = true;
+        offset++;
+      } else break;
     }
 
     const nameToken = identifiers[offset]!;
@@ -167,8 +177,13 @@ export class DtoVisitor extends BaseDtoVisitor {
     const description = this.consumeComment(line);
 
     return {
-      name: fieldName, optional, nullable, visibility, type,
-      default: defaultVal, description,
+      name: fieldName,
+      optional,
+      nullable,
+      visibility,
+      type,
+      default: defaultVal,
+      description,
       loc: { file: this.file, line },
     };
   }
@@ -199,7 +214,7 @@ export class DtoVisitor extends BaseDtoVisitor {
     if (ctx.inlineBraceObject) {
       const identifiers: IToken[] = ctx.Identifier || [];
       const modeToken = identifiers[0];
-      const mode = modeToken && OBJECT_MODES.has(modeToken.image) ? modeToken.image as ObjectMode : undefined;
+      const mode = modeToken && OBJECT_MODES.has(modeToken.image) ? (modeToken.image as ObjectMode) : undefined;
       const node = this.visit(ctx.inlineBraceObject[0]) as InlineObjectTypeNode;
       return mode ? { ...node, mode } : node;
     }
@@ -296,9 +311,7 @@ export class DtoVisitor extends BaseDtoVisitor {
       if (vis === 'readonly' || vis === 'writeonly') visibility = vis;
     }
 
-    const raw: DtoTypeNode = ctx.typeExpression
-      ? this.visit(ctx.typeExpression[0])
-      : { kind: 'scalar', name: 'unknown' };
+    const raw: DtoTypeNode = ctx.typeExpression ? this.visit(ctx.typeExpression[0]) : { kind: 'scalar', name: 'unknown' };
     const { type, nullable } = extractNullability(raw);
 
     let defaultVal: string | number | boolean | undefined;
@@ -309,8 +322,13 @@ export class DtoVisitor extends BaseDtoVisitor {
     const description = this.consumeComment(line);
 
     return {
-      name, optional, nullable, visibility, type,
-      default: defaultVal, description,
+      name,
+      optional,
+      nullable,
+      visibility,
+      type,
+      default: defaultVal,
+      description,
       loc: { file: this.file, line },
     };
   }
@@ -327,12 +345,18 @@ export class DtoVisitor extends BaseDtoVisitor {
 
   private buildCompoundType(name: string, args: any[]): DtoTypeNode {
     switch (name) {
-      case 'array': return this.buildArrayType(args);
-      case 'tuple': return this.buildTupleType(args);
-      case 'record': return this.buildRecordType(args);
-      case 'enum': return this.buildEnumType(args);
-      case 'literal': return this.buildLiteralType(args);
-      case 'lazy': return this.buildLazyType(args);
+      case 'array':
+        return this.buildArrayType(args);
+      case 'tuple':
+        return this.buildTupleType(args);
+      case 'record':
+        return this.buildRecordType(args);
+      case 'enum':
+        return this.buildEnumType(args);
+      case 'literal':
+        return this.buildLiteralType(args);
+      case 'lazy':
+        return this.buildLazyType(args);
       default: {
         if (SCALAR_NAMES.has(name)) {
           return this.buildScalarWithModifiers(name as ScalarTypeNode['name'], args);
@@ -426,9 +450,7 @@ export class DtoVisitor extends BaseDtoVisitor {
 function extractNullability(type: DtoTypeNode): { type: DtoTypeNode; nullable: boolean } {
   if (type.kind === 'union') {
     const union = type as UnionTypeNode;
-    const nullIdx = union.members.findIndex(
-      m => m.kind === 'scalar' && (m as ScalarTypeNode).name === 'null'
-    );
+    const nullIdx = union.members.findIndex(m => m.kind === 'scalar' && (m as ScalarTypeNode).name === 'null');
     if (nullIdx !== -1) {
       union.members.splice(nullIdx, 1);
       return { type: union.members.length === 1 ? union.members[0]! : type, nullable: true };

@@ -24,42 +24,32 @@ function makeRoot(routes: OpRouteNode[]): OpRootNode {
 
 describe('printOp — route modifiers', () => {
   it('prints route with no modifiers (no colon before brace)', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [makeOp('get')]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('get')])]);
     const output = printOp(ast);
     expect(output).toContain('/users {');
     expect(output).not.toMatch(/\/users\s*:/);
   });
 
   it('prints route with internal modifier', () => {
-    const ast = makeRoot([
-      makeRoute('/admin/users', [makeOp('get')], { modifiers: ['internal'] }),
-    ]);
+    const ast = makeRoot([makeRoute('/admin/users', [makeOp('get')], { modifiers: ['internal'] })]);
     const output = printOp(ast);
     expect(output).toContain('/admin/users: internal {');
   });
 
   it('prints route with deprecated modifier', () => {
-    const ast = makeRoot([
-      makeRoute('/v1/users', [makeOp('get')], { modifiers: ['deprecated'] }),
-    ]);
+    const ast = makeRoot([makeRoute('/v1/users', [makeOp('get')], { modifiers: ['deprecated'] })]);
     const output = printOp(ast);
     expect(output).toContain('/v1/users: deprecated {');
   });
 
   it('prints route with both internal and deprecated modifiers', () => {
-    const ast = makeRoot([
-      makeRoute('/legacy/users', [makeOp('get')], { modifiers: ['internal', 'deprecated'] }),
-    ]);
+    const ast = makeRoot([makeRoute('/legacy/users', [makeOp('get')], { modifiers: ['internal', 'deprecated'] })]);
     const output = printOp(ast);
     expect(output).toContain('/legacy/users: internal deprecated {');
   });
 
   it('treats empty modifiers array same as undefined (no colon)', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [makeOp('get')], { modifiers: [] }),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('get')], { modifiers: [] })]);
     const output = printOp(ast);
     expect(output).toContain('/users {');
     expect(output).not.toMatch(/\/users\s*:/);
@@ -76,44 +66,32 @@ describe('printOp — operation modifiers', () => {
   });
 
   it('prints operation with internal modifier', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [makeOp('get', { modifiers: ['internal'] })]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('get', { modifiers: ['internal'] })])]);
     const output = printOp(ast);
     expect(output).toContain('    get: internal {');
   });
 
   it('prints operation with deprecated modifier', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [makeOp('get', { modifiers: ['deprecated'] })]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('get', { modifiers: ['deprecated'] })])]);
     const output = printOp(ast);
     expect(output).toContain('    get: deprecated {');
   });
 
   it('prints operation with both internal and deprecated modifiers', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [makeOp('post', { modifiers: ['internal', 'deprecated'] })]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('post', { modifiers: ['internal', 'deprecated'] })])]);
     const output = printOp(ast);
     expect(output).toContain('    post: internal deprecated {');
   });
 
   it('treats empty operation modifiers array as no modifiers', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [makeOp('delete', { modifiers: [] })]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('delete', { modifiers: [] })])]);
     const output = printOp(ast);
     expect(output).toContain('    delete: {');
   });
 
   it('prints multiple operations with mixed modifiers', () => {
     const ast = makeRoot([
-      makeRoute('/users', [
-        makeOp('get', { modifiers: ['deprecated'] }),
-        makeOp('post', { modifiers: ['internal'] }),
-        makeOp('delete'),
-      ]),
+      makeRoute('/users', [makeOp('get', { modifiers: ['deprecated'] }), makeOp('post', { modifiers: ['internal'] }), makeOp('delete')]),
     ]);
     const output = printOp(ast);
     expect(output).toContain('    get: deprecated {');
@@ -127,10 +105,9 @@ describe('printOp — operation modifiers', () => {
 describe('printOp — route and operation modifiers combined', () => {
   it('prints both route and operation modifiers independently', () => {
     const ast = makeRoot([
-      makeRoute('/admin/users', [
-        makeOp('get', { modifiers: ['deprecated'] }),
-        makeOp('post', { modifiers: ['internal'] }),
-      ], { modifiers: ['internal'] }),
+      makeRoute('/admin/users', [makeOp('get', { modifiers: ['deprecated'] }), makeOp('post', { modifiers: ['internal'] })], {
+        modifiers: ['internal'],
+      }),
     ]);
     const output = printOp(ast);
     expect(output).toContain('/admin/users: internal {');
@@ -150,11 +127,7 @@ describe('printOp — route and operation modifiers combined', () => {
   });
 
   it('preserves description alongside modifiers on operation', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [
-        makeOp('get', { modifiers: ['internal'], description: 'Admin only' }),
-      ]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('get', { modifiers: ['internal'], description: 'Admin only' })])]);
     const output = printOp(ast);
     expect(output).toContain('    get: internal { # Admin only');
   });
@@ -168,16 +141,12 @@ function makeSecFields(fields: Partial<Pick<SecurityFields, 'roles'>>): Security
 
 describe('printOp — security', () => {
   it('prints operation-level security: none', () => {
-    const ast = makeRoot([
-      makeRoute('/health', [makeOp('get', { security: 'none' })]),
-    ]);
+    const ast = makeRoot([makeRoute('/health', [makeOp('get', { security: 'none' })])]);
     expect(printOp(ast)).toContain('        security: none');
   });
 
   it('prints security block with roles only', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [makeOp('get', { security: makeSecFields({ roles: ['admin'] }) })]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('get', { security: makeSecFields({ roles: ['admin'] }) })])]);
     const out = printOp(ast);
     expect(out).toContain('        security: {');
     expect(out).toContain('            roles: admin');
@@ -185,36 +154,26 @@ describe('printOp — security', () => {
   });
 
   it('prints security block with multiple roles space-separated', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [makeOp('get', { security: makeSecFields({ roles: ['admin', 'moderator'] }) })]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('get', { security: makeSecFields({ roles: ['admin', 'moderator'] }) })])]);
     expect(printOp(ast)).toContain('            roles: admin moderator');
   });
 
   it('prints operation-level signature as its own keyword', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [makeOp('post', { signature: 'hmac-sha256' })]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('post', { signature: 'hmac-sha256' })])]);
     const out = printOp(ast);
     expect(out).toContain('        signature: "hmac-sha256"');
     expect(out).not.toContain('security: {');
   });
 
   it('prints signature and security: { roles } together', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [
-        makeOp('post', { signature: 'hmac-sha256', security: makeSecFields({ roles: ['admin'] }) }),
-      ]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('post', { signature: 'hmac-sha256', security: makeSecFields({ roles: ['admin'] }) })])]);
     const out = printOp(ast);
     expect(out).toContain('        signature: "hmac-sha256"');
     expect(out).toContain('            roles: admin');
   });
 
   it('prints unquoted identifier signature without quotes', () => {
-    const ast = makeRoot([
-      makeRoute('/webhooks', [makeOp('post', { signature: 'MODERN_TREASURY_WEBHOOK' })]),
-    ]);
+    const ast = makeRoot([makeRoute('/webhooks', [makeOp('post', { signature: 'MODERN_TREASURY_WEBHOOK' })])]);
     expect(printOp(ast)).toContain('        signature: MODERN_TREASURY_WEBHOOK');
   });
 
@@ -230,31 +189,26 @@ describe('printOp — security', () => {
   });
 
   it('prints route-level security: none', () => {
-    const ast = makeRoot([
-      makeRoute('/public', [makeOp('get')], { security: 'none' }),
-    ]);
+    const ast = makeRoot([makeRoute('/public', [makeOp('get')], { security: 'none' })]);
     expect(printOp(ast)).toContain('    security: none');
   });
 
   it('prints route-level and operation-level security independently', () => {
     const ast = makeRoot([
-      makeRoute('/users', [
-        makeOp('get', { security: 'none' }),
-        makeOp('post', { security: makeSecFields({ roles: ['admin'] }) }),
-      ], { security: makeSecFields({ roles: ['user'] }) }),
+      makeRoute('/users', [makeOp('get', { security: 'none' }), makeOp('post', { security: makeSecFields({ roles: ['admin'] }) })], {
+        security: makeSecFields({ roles: ['user'] }),
+      }),
     ]);
     const out = printOp(ast);
-    expect(out).toContain('    security: {');          // route-level
+    expect(out).toContain('    security: {'); // route-level
     expect(out).toContain('        roles: user');
-    expect(out).toContain('        security: none');   // op-level override
-    expect(out).toContain('        security: {');      // op-level block
+    expect(out).toContain('        security: none'); // op-level override
+    expect(out).toContain('        security: {'); // op-level block
     expect(out).toContain('            roles: admin');
   });
 
   it('emits no security line when security is undefined', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [makeOp('get')]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('get')])]);
     expect(printOp(ast)).not.toContain('security');
   });
 });
@@ -265,12 +219,14 @@ describe('printOp — query and headers descriptions', () => {
   it('emits inline comment on query params that have descriptions', () => {
     const loc = makeLoc();
     const ast = makeRoot([
-      makeRoute('/users', [makeOp('get', {
-        query: [
-          { name: 'page', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, description: 'Page number', loc },
-          { name: 'limit', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, loc },
-        ],
-      })]),
+      makeRoute('/users', [
+        makeOp('get', {
+          query: [
+            { name: 'page', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, description: 'Page number', loc },
+            { name: 'limit', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, loc },
+          ],
+        }),
+      ]),
     ]);
     const out = printOp(ast);
     expect(out).toContain('            page: int # Page number');
@@ -281,11 +237,13 @@ describe('printOp — query and headers descriptions', () => {
   it('emits inline comment on headers params that have descriptions', () => {
     const loc = makeLoc();
     const ast = makeRoot([
-      makeRoute('/users', [makeOp('get', {
-        headers: [
-          { name: 'X-Request-Id', optional: false, nullable: false, type: { kind: 'scalar', name: 'uuid' }, description: 'Idempotency key', loc },
-        ],
-      })]),
+      makeRoute('/users', [
+        makeOp('get', {
+          headers: [
+            { name: 'X-Request-Id', optional: false, nullable: false, type: { kind: 'scalar', name: 'uuid' }, description: 'Idempotency key', loc },
+          ],
+        }),
+      ]),
     ]);
     expect(printOp(ast)).toContain('            X-Request-Id: uuid # Idempotency key');
   });
@@ -298,12 +256,14 @@ describe('printOp — query and headers optional, nullable, default', () => {
 
   it('emits ? for optional query params', () => {
     const ast = makeRoot([
-      makeRoute('/search', [makeOp('get', {
-        query: [
-          { name: 'q', optional: true, nullable: false, type: { kind: 'scalar', name: 'string' }, loc },
-          { name: 'page', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, loc },
-        ],
-      })]),
+      makeRoute('/search', [
+        makeOp('get', {
+          query: [
+            { name: 'q', optional: true, nullable: false, type: { kind: 'scalar', name: 'string' }, loc },
+            { name: 'page', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, loc },
+          ],
+        }),
+      ]),
     ]);
     const out = printOp(ast);
     expect(out).toContain('            q?: string');
@@ -313,103 +273,107 @@ describe('printOp — query and headers optional, nullable, default', () => {
 
   it('emits | null for nullable query params', () => {
     const ast = makeRoot([
-      makeRoute('/items', [makeOp('get', {
-        query: [
-          { name: 'filter', optional: false, nullable: true, type: { kind: 'scalar', name: 'string' }, loc },
-        ],
-      })]),
+      makeRoute('/items', [
+        makeOp('get', {
+          query: [{ name: 'filter', optional: false, nullable: true, type: { kind: 'scalar', name: 'string' }, loc }],
+        }),
+      ]),
     ]);
     expect(printOp(ast)).toContain('            filter: string | null');
   });
 
   it('emits = value for query params with a default (bare identifier)', () => {
     const ast = makeRoot([
-      makeRoute('/institutions/routing_details', [makeOp('get', {
-        query: [
-          {
-            name: 'routingNumberType',
-            optional: false,
-            nullable: false,
-            type: { kind: 'ref', name: 'FinancialInstitutionRoutingNumberTypes' },
-            default: 'aba',
-            loc,
-          },
-        ],
-      })]),
+      makeRoute('/institutions/routing_details', [
+        makeOp('get', {
+          query: [
+            {
+              name: 'routingNumberType',
+              optional: false,
+              nullable: false,
+              type: { kind: 'ref', name: 'FinancialInstitutionRoutingNumberTypes' },
+              default: 'aba',
+              loc,
+            },
+          ],
+        }),
+      ]),
     ]);
     expect(printOp(ast)).toContain('            routingNumberType: FinancialInstitutionRoutingNumberTypes = aba');
   });
 
   it('emits = value bare for hyphenated string defaults (valid identifier chars)', () => {
     const ast = makeRoot([
-      makeRoute('/items', [makeOp('get', {
-        query: [
-          { name: 'sort', optional: false, nullable: false, type: { kind: 'scalar', name: 'string' }, default: 'created-at', loc },
-        ],
-      })]),
+      makeRoute('/items', [
+        makeOp('get', {
+          query: [{ name: 'sort', optional: false, nullable: false, type: { kind: 'scalar', name: 'string' }, default: 'created-at', loc }],
+        }),
+      ]),
     ]);
     expect(printOp(ast)).toContain('            sort: string = created-at');
   });
 
   it('emits = "value" for query params with a string default that needs quoting (spaces, special chars)', () => {
     const ast = makeRoot([
-      makeRoute('/items', [makeOp('get', {
-        query: [
-          { name: 'label', optional: false, nullable: false, type: { kind: 'scalar', name: 'string' }, default: 'hello world', loc },
-        ],
-      })]),
+      makeRoute('/items', [
+        makeOp('get', {
+          query: [{ name: 'label', optional: false, nullable: false, type: { kind: 'scalar', name: 'string' }, default: 'hello world', loc }],
+        }),
+      ]),
     ]);
     expect(printOp(ast)).toContain('            label: string = "hello world"');
   });
 
   it('emits = value for numeric defaults', () => {
     const ast = makeRoot([
-      makeRoute('/items', [makeOp('get', {
-        query: [
-          { name: 'limit', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, default: 20, loc },
-        ],
-      })]),
+      makeRoute('/items', [
+        makeOp('get', {
+          query: [{ name: 'limit', optional: false, nullable: false, type: { kind: 'scalar', name: 'int' }, default: 20, loc }],
+        }),
+      ]),
     ]);
     expect(printOp(ast)).toContain('            limit: int = 20');
   });
 
   it('emits = value for boolean defaults', () => {
     const ast = makeRoot([
-      makeRoute('/items', [makeOp('get', {
-        query: [
-          { name: 'active', optional: false, nullable: false, type: { kind: 'scalar', name: 'boolean' }, default: true, loc },
-        ],
-      })]),
+      makeRoute('/items', [
+        makeOp('get', {
+          query: [{ name: 'active', optional: false, nullable: false, type: { kind: 'scalar', name: 'boolean' }, default: true, loc }],
+        }),
+      ]),
     ]);
     expect(printOp(ast)).toContain('            active: boolean = true');
   });
 
   it('combines optional, default, and description on the same param', () => {
     const ast = makeRoot([
-      makeRoute('/items', [makeOp('get', {
-        query: [
-          {
-            name: 'page',
-            optional: true,
-            nullable: false,
-            type: { kind: 'scalar', name: 'int' },
-            default: 1,
-            description: 'Page number',
-            loc,
-          },
-        ],
-      })]),
+      makeRoute('/items', [
+        makeOp('get', {
+          query: [
+            {
+              name: 'page',
+              optional: true,
+              nullable: false,
+              type: { kind: 'scalar', name: 'int' },
+              default: 1,
+              description: 'Page number',
+              loc,
+            },
+          ],
+        }),
+      ]),
     ]);
     expect(printOp(ast)).toContain('            page?: int = 1 # Page number');
   });
 
   it('applies the same rules to headers params', () => {
     const ast = makeRoot([
-      makeRoute('/items', [makeOp('get', {
-        headers: [
-          { name: 'X-Version', optional: true, nullable: false, type: { kind: 'scalar', name: 'string' }, default: 'v1', loc },
-        ],
-      })]),
+      makeRoute('/items', [
+        makeOp('get', {
+          headers: [{ name: 'X-Version', optional: true, nullable: false, type: { kind: 'scalar', name: 'string' }, default: 'v1', loc }],
+        }),
+      ]),
     ]);
     expect(printOp(ast)).toContain('            X-Version?: string = v1');
   });
@@ -419,9 +383,7 @@ describe('printOp — query and headers optional, nullable, default', () => {
 
 describe('printOp — modifier output structure', () => {
   it('produces valid block structure with route modifiers', () => {
-    const ast = makeRoot([
-      makeRoute('/admin', [makeOp('get'), makeOp('post')], { modifiers: ['internal'] }),
-    ]);
+    const ast = makeRoot([makeRoute('/admin', [makeOp('get'), makeOp('post')], { modifiers: ['internal'] })]);
     const output = printOp(ast);
     const lines = output.split('\n');
     const routeLine = lines.find(l => l.includes('/admin'));
@@ -430,9 +392,7 @@ describe('printOp — modifier output structure', () => {
   });
 
   it('places modifier between method and opening brace on operations', () => {
-    const ast = makeRoot([
-      makeRoute('/users', [makeOp('get', { modifiers: ['deprecated'] })]),
-    ]);
+    const ast = makeRoot([makeRoute('/users', [makeOp('get', { modifiers: ['deprecated'] })])]);
     const output = printOp(ast);
     // Should be "    get: deprecated {" not "    get: { deprecated"
     expect(output).toMatch(/^\s+get: deprecated \{/m);

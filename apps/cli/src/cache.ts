@@ -27,12 +27,7 @@ export function saveCache(dir: string, cache: FileHashMap, filename: string = DE
   writeFileSync(cachePath, JSON.stringify(cache, null, 2), 'utf-8');
 }
 
-export function isFileChanged(
-  filePath: string,
-  content: string,
-  outPath: string,
-  cache: FileHashMap,
-): boolean {
+export function isFileChanged(filePath: string, content: string, outPath: string, cache: FileHashMap): boolean {
   if (!existsSync(outPath)) return true;
   const currentHash = computeHash(content);
   return cache[filePath] !== currentHash;

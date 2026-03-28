@@ -5,10 +5,7 @@ import { generateOp } from '../src/codegen-op.js';
 import { validateOp } from '../src/validate-op.js';
 import { validateRefs } from '../src/validate-refs.js';
 import { DiagnosticCollector } from '../src/diagnostics.js';
-import {
-  SIMPLE_USER_DTO, VISIBILITY_DTO, INHERITANCE_DTO,
-  SIMPLE_USERS_OP, PARAMETERIZED_OP,
-} from './helpers.js';
+import { SIMPLE_USER_DTO, VISIBILITY_DTO, INHERITANCE_DTO, SIMPLE_USERS_OP, PARAMETERIZED_OP } from './helpers.js';
 
 function compileDtoSource(source: string) {
   const diag = new DiagnosticCollector();
@@ -232,7 +229,8 @@ describe('cross-file type reference validation', () => {
   it('warns when an .op file references an undefined body type', () => {
     const diagOp = new DiagnosticCollector();
     const diagAll = new DiagnosticCollector();
-    const op = parseOp(`\
+    const op = parseOp(
+      `\
 /users {
     get: {
         response: {
@@ -241,7 +239,10 @@ describe('cross-file type reference validation', () => {
             }
         }
     }
-}`, 'users.op', diagOp);
+}`,
+      'users.op',
+      diagOp,
+    );
     validateRefs([], [op], diagAll);
     const warnings = diagAll.getAll().filter(d => d.severity === 'warning');
     expect(warnings.some(w => w.message.includes('MissingType'))).toBe(true);
@@ -250,14 +251,18 @@ describe('cross-file type reference validation', () => {
   it('does not warn for scalar type names in ops', () => {
     const diagOp = new DiagnosticCollector();
     const diagAll = new DiagnosticCollector();
-    const op = parseOp(`\
+    const op = parseOp(
+      `\
 /users {
     get: {
         query: {
             page: int
         }
     }
-}`, 'users.op', diagOp);
+}`,
+      'users.op',
+      diagOp,
+    );
     // query with inline params should not trigger model ref warnings
     validateRefs([], [op], diagAll);
     const warnings = diagAll.getAll().filter(d => d.severity === 'warning');

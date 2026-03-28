@@ -1,6 +1,18 @@
 import { parseDto } from '../src/parser-dto.js';
 import { DiagnosticCollector } from '../src/diagnostics.js';
-import type { ScalarTypeNode, ArrayTypeNode, TupleTypeNode, RecordTypeNode, EnumTypeNode, LiteralTypeNode, UnionTypeNode, IntersectionTypeNode, ModelRefTypeNode, InlineObjectTypeNode, LazyTypeNode } from '../src/ast.js';
+import type {
+  ScalarTypeNode,
+  ArrayTypeNode,
+  TupleTypeNode,
+  RecordTypeNode,
+  EnumTypeNode,
+  LiteralTypeNode,
+  UnionTypeNode,
+  IntersectionTypeNode,
+  ModelRefTypeNode,
+  InlineObjectTypeNode,
+  LazyTypeNode,
+} from '../src/ast.js';
 
 function parse(source: string) {
   const diag = new DiagnosticCollector();
@@ -187,9 +199,21 @@ M: {
 
     it('parses all scalar type names', () => {
       const scalars = [
-        'string', 'number', 'int', 'bigint', 'boolean',
-        'date', 'datetime', 'email', 'url', 'uuid',
-        'any', 'unknown', 'null', 'object', 'binary',
+        'string',
+        'number',
+        'int',
+        'bigint',
+        'boolean',
+        'date',
+        'datetime',
+        'email',
+        'url',
+        'uuid',
+        'any',
+        'unknown',
+        'null',
+        'object',
+        'binary',
       ];
       for (const name of scalars) {
         const { root } = parse(`M: { f: ${name} }`);
