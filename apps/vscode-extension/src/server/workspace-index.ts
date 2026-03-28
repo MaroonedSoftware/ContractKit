@@ -1,10 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { parseDto } from 'contract-dsl/src/parser-dto.js';
-import { parseOp } from 'contract-dsl/src/parser-op.js';
-import { DiagnosticCollector } from 'contract-dsl/src/diagnostics.js';
-import type { ModelNode, OpRouteNode } from 'contract-dsl/src/ast.js';
+import { parseDto, parseOp, DiagnosticCollector } from '@maroonedsoftware/contractkit';
+import type { ModelNode, OpRouteNode } from '@maroonedsoftware/contractkit';
 
 export interface ModelEntry {
     uri: string;

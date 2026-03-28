@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { printOp } from '../print-op.js';
-import type { OpRootNode, OpRouteNode, OpOperationNode, SecurityFields } from 'contract-dsl/src/ast.js';
+import type { OpRootNode, OpRouteNode, OpOperationNode, SecurityFields } from '@maroonedsoftware/contractkit';
 
 // ─── Minimal AST builders ────────────────────────────────────────────────────
 

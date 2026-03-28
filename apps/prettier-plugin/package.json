@@ -14,7 +14,7 @@
         "prettier": "^3.0.0"
     },
     "dependencies": {
-        "contract-dsl": "workspace:*"
+        "@maroonedsoftware/contractkit": "workspace:*"
     },
     "devDependencies": {
         "@repo/config-typescript": "workspace:*",

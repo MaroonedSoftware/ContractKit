@@ -1,0 +1,22 @@
+{
+    "name": "@maroonedsoftware/contractkit",
+    "version": "0.1.0",
+    "description": "Core DSL compiler library: lexer, parser, codegen, and validation",
+    "type": "module",
+    "exports": {
+        ".": "./dist/index.js"
+    },
+    "scripts": {
+        "build": "tsc",
+        "test": "vitest run",
+        "lint": "eslint --fix",
+        "format": "prettier --write ."
+    },
+    "dependencies": {
+        "chevrotain": "^11.1.1"
+    },
+    "devDependencies": {
+        "@repo/config-eslint": "workspace:*",
+        "@repo/config-typescript": "workspace:*"
+    }
+}

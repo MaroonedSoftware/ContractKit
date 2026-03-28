@@ -55,7 +55,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         if (!rel.startsWith('.')) rel = './' + rel;
         const jsonImport = sdkNeedsJson(root) ? ', JsonValue' : '';
         lines.push(`import type { SdkFetch${jsonImport} } from '${rel}';`);
-        lines.push(`import { bigIntReplacer, bigIntReviver } from '${rel}';`);
+        lines.push(`import { SdkError, bigIntReplacer, bigIntReviver } from '${rel}';`);
     } else {
         lines.push('');
         lines.push('export class SdkError extends Error {');

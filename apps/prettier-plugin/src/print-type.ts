@@ -1,4 +1,4 @@
-import type { DtoTypeNode, FieldNode, InlineObjectTypeNode } from 'contract-dsl/src/ast.js';
+import type { DtoTypeNode, FieldNode, InlineObjectTypeNode } from '@maroonedsoftware/contractkit';
 
 // ─── Type expression printer ────────────────────────────────────────────────
 

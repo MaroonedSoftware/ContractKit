@@ -96,7 +96,7 @@
         "vscode:uninstall": "cursor --uninstall-extension contract-dsl-vscode-0.1.0.vsix"
     },
     "dependencies": {
-        "contract-dsl": "workspace:*",
+        "@maroonedsoftware/contractkit": "workspace:*",
         "vscode-languageclient": "^9.0.1",
         "vscode-languageserver": "^9.0.1",
         "vscode-languageserver-textdocument": "^1.0.12"

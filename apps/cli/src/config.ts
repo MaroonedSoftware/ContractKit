@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { DEFAULT_CACHE_FILENAME } from './cache.js';
 import { homedir } from 'node:os';
+import type { OpenApiServerEntry, OpenApiSecurityScheme, OpenApiConfig } from '@maroonedsoftware/contractkit';
+export type { OpenApiServerEntry, OpenApiSecurityScheme, OpenApiConfig };
 
 export interface TypesConfig {
     output?: string;
@@ -40,31 +42,6 @@ export interface ServerConfig {
     routes?: RoutesConfig;
 }
 
-export interface OpenApiServerEntry {
-    url: string;
-    description?: string;
-}
-
-export interface OpenApiSecurityScheme {
-    type: string;
-    scheme?: string;
-    bearerFormat?: string;
-    name?: string;
-    in?: string;
-}
-
-export interface OpenApiConfig {
-    baseDir?: string;
-    output?: string;
-    info?: {
-        title?: string;
-        version?: string;
-        description?: string;
-    };
-    servers?: OpenApiServerEntry[];
-    /** Global OpenAPI security requirements (e.g. [{ bearerAuth: [] }]). Distinct from scheme definitions. */
-    security?: Record<string, string[]>[];
-}
 
 export interface HmacSecurityScheme {
     type: 'hmac';

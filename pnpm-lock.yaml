@@ -35,12 +35,15 @@ importers:
 
   apps/cli:
     dependencies:
-      chevrotain:
-        specifier: ^11.1.1
-        version: 11.1.1
+      '@maroonedsoftware/contractkit':
+        specifier: workspace:*
+        version: link:../../packages/contractkit
       glob:
         specifier: ^13.0.6
         version: 13.0.6
+      prettier:
+        specifier: '>=3.0.0'
+        version: 3.8.1
     devDependencies:
       '@repo/config-eslint':
         specifier: workspace:*
@@ -51,9 +54,9 @@ importers:
 
   apps/prettier-plugin:
     dependencies:
-      contract-dsl:
+      '@maroonedsoftware/contractkit':
         specifier: workspace:*
-        version: link:../cli
+        version: link:../../packages/contractkit
     devDependencies:
       '@repo/config-typescript':
         specifier: workspace:*
@@ -67,9 +70,9 @@ importers:
 
   apps/vscode-extension:
     dependencies:
-      contract-dsl:
+      '@maroonedsoftware/contractkit':
         specifier: workspace:*
-        version: link:../cli
+        version: link:../../packages/contractkit
       vscode-languageclient:
         specifier: ^9.0.1
         version: 9.0.1
@@ -127,6 +130,19 @@ importers:
         version: 8.56.1(eslint@10.0.1)(typescript@5.9.3)
 
   packages/config-typescript: {}
+
+  packages/contractkit:
+    dependencies:
+      chevrotain:
+        specifier: ^11.1.1
+        version: 11.1.1
+    devDependencies:
+      '@repo/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/config-typescript':
+        specifier: workspace:*
+        version: link:../config-typescript
 
 packages:
 

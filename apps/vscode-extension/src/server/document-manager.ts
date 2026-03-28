@@ -1,11 +1,8 @@
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath } from 'node:url';
 import { Connection, Diagnostic as LspDiagnostic } from 'vscode-languageserver';
-import { parseDto } from 'contract-dsl/src/parser-dto.js';
-import { parseOp } from 'contract-dsl/src/parser-op.js';
-import { validateOp } from 'contract-dsl/src/validate-op.js';
-import { DiagnosticCollector } from 'contract-dsl/src/diagnostics.js';
-import type { DtoRootNode, OpRootNode } from 'contract-dsl/src/ast.js';
+import { parseDto, parseOp, validateOp, DiagnosticCollector } from '@maroonedsoftware/contractkit';
+import type { DtoRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
 import { toLspDiagnostics } from './diagnostics-adapter.js';
 
 export type ParsedDocument =

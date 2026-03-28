@@ -1,4 +1,4 @@
-import type { DtoRootNode, ModelNode } from 'contract-dsl/src/ast.js';
+import type { DtoRootNode, ModelNode } from '@maroonedsoftware/contractkit';
 import {
   printField,
   printInlineObjectExpanded,

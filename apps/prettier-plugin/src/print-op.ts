@@ -9,8 +9,8 @@ import type {
   SecurityFields,
   DtoTypeNode,
   ObjectMode,
-} from 'contract-dsl/src/ast.js';
-import { SECURITY_NONE } from 'contract-dsl/src/ast.js';
+} from '@maroonedsoftware/contractkit';
+import { SECURITY_NONE } from '@maroonedsoftware/contractkit';
 import { printType, formatDefault } from './print-type.js';
 
 const I1 = '    ';

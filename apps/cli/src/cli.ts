@@ -2,22 +2,21 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join, dirname, relative, basename } from 'node:path';
 import { glob } from 'glob';
-import { DiagnosticCollector } from './diagnostics.js';
-import { parseDto } from './parser-dto.js';
-import { parseOp } from './parser-op.js';
-import { generateDto, collectTypeRefs } from './codegen-dto.js';
-import type { DtoCodegenContext } from './codegen-dto.js';
-import { generateOp } from './codegen-op.js';
-import { generateSdk, generateSdkOptions, generateSdkAggregator, deriveClientClassName, deriveClientPropertyName, hasPublicOperations, collectPublicTypeNames } from './codegen-sdk.js';
-import { generatePlainTypes } from './codegen-plain-types.js';
-import { generateOpenApi } from './codegen-openapi.js';
-import { generateMarkdown } from './codegen-markdown.js';
-import { validateOp } from './validate-op.js';
-import { validateRefs } from './validate-refs.js';
+import {
+    DiagnosticCollector,
+    parseDto, parseOp,
+    generateDto, collectTypeRefs,
+    generateOp,
+    generateSdk, generateSdkOptions, generateSdkAggregator,
+    deriveClientClassName, deriveClientPropertyName,
+    hasPublicOperations, collectPublicTypeNames,
+    generatePlainTypes, generateOpenApi, generateMarkdown,
+    validateOp, validateRefs,
+} from '@maroonedsoftware/contractkit';
+import type { DtoCodegenContext, DtoRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
 import { loadConfig, mergeConfig, isHmacScheme } from './config.js';
 import { loadCache, saveCache, computeHash, isFileChanged } from './cache.js';
 import type { ResolvedConfig } from './config.js';
-import type { DtoRootNode, OpRootNode } from './ast.js';
 import type { FileHashMap } from './cache.js';
 
 // ─── Arg parsing ───────────────────────────────────────────────────────────
