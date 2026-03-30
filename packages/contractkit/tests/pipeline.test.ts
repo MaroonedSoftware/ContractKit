@@ -30,7 +30,7 @@ describe('DTO pipeline (source -> parse -> codegen)', () => {
     expect(output).toContain('name: z.string()');
     expect(output).toContain('email: z.email()');
     expect(output).toContain('age: z.coerce.number().optional()');
-    expect(output).toContain('active: z.boolean().default(true)');
+    expect(output).toContain(`active: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).default(true)`);
   });
 
   it('compiles a DTO with visibility to three-schema pattern', () => {

@@ -1,14 +1,14 @@
 ---
 name: contracts-and-operations
 description: >
-    Two complementary DSL skills for a TypeScript/Koa API codebase:
-    1. **Contracts** — Convert `.dto` DSL files into TypeScript Zod schema files.
-       Use when the user defines models in the compact DSL syntax and wants generated
-       Zod validation code with inferred TypeScript types.
-    2. **Operations** — Convert `.op` DSL files into Koa route handler TypeScript files.
-       Use when the user defines API operations in the compact DSL syntax and wants
-       generated route handler code with validation, service calls, and proper conventions.
-    Both skills share the same Zod v4 type vocabulary and project conventions.
+  Two complementary DSL skills for a TypeScript/Koa API codebase:
+  1. **Contracts** — Convert `.dto` DSL files into TypeScript Zod schema files.
+     Use when the user defines models in the compact DSL syntax and wants generated
+     Zod validation code with inferred TypeScript types.
+  2. **Operations** — Convert `.op` DSL files into Koa route handler TypeScript files.
+     Use when the user defines API operations in the compact DSL syntax and wants
+     generated route handler code with validation, service calls, and proper conventions.
+  Both skills share the same Zod v4 type vocabulary and project conventions.
 ---
 
 # Contracts & Operations DSL Skills
@@ -251,17 +251,17 @@ Place the import with the other router imports and the `server.use` call with th
 
 ```typescript
 RouterName.patch('/path/:id', bodyParserMiddleware(['json']), async (ctx, next) => {
-    const { id } = await parseAndValidate(ctx.params, z.strictObject({ id: z.uuid() }));
-    const body = await parseAndValidate(ctx.body, UpdateSchema);
+  const { id } = await parseAndValidate(ctx.params, z.strictObject({ id: z.uuid() }));
+  const body = await parseAndValidate(ctx.body, UpdateSchema);
 
-    const service = ctx.container.get(ServiceClass);
-    const result: ResponseType = await service.update(id, body);
+  const service = ctx.container.get(ServiceClass);
+  const result: ResponseType = await service.update(id, body);
 
-    ctx.status = 200;
-    ctx.type = 'application/json';
-    ctx.body = result;
+  ctx.status = 200;
+  ctx.type = 'application/json';
+  ctx.body = result;
 
-    await next();
+  await next();
 });
 ```
 

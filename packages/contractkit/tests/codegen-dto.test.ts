@@ -80,8 +80,8 @@ describe('renderType', () => {
       expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint().min(0n).max(100n))`);
     });
 
-    it('renders z.boolean()', () => {
-      expect(renderType(scalarType('boolean'))).toBe('z.boolean()');
+    it('renders z.boolean() with string coercion preprocess', () => {
+      expect(renderType(scalarType('boolean'))).toBe(`z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean())`);
     });
 
     it('renders DateTime preprocess coercion for date (default format)', () => {

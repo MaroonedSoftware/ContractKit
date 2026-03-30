@@ -254,6 +254,20 @@ describe('generateOp', () => {
       expect(output).toContain('z.preprocess');
       expect(output).toContain('.optional()');
     });
+    it('coerces inline boolean query params with z.preprocess', () => {
+      const root = opRoot([
+        opRoute('/users', [
+          opOperation('get', {
+            query: [opParam('active', scalarType('boolean')), opParam('page', scalarType('int'))],
+          }),
+        ]),
+      ]);
+      const output = generateOp(root);
+      // Boolean should use preprocess for string coercion
+      expect(output).toContain("active: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean())");
+      // Int should still use z.coerce
+      expect(output).toContain('page: z.coerce.number().int()');
+    });
   });
 
   // ─── Headers validation ─────────────────────────────────────

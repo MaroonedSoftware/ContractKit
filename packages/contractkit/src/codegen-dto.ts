@@ -372,7 +372,7 @@ function renderScalar(s: ScalarTypeNode): string {
       return `z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, ${inner})`;
     }
     case 'boolean':
-      return 'z.boolean()';
+      return `z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean())`;
     case 'date': {
       const fmt = s.format ?? 'yyyy-MM-dd';
       return `z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, '${escapeString(fmt)}') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format ${escapeString(fmt)}' }))`;
