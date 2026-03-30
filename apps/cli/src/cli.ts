@@ -4,8 +4,8 @@ import { resolve, join, dirname, relative, basename } from 'node:path';
 import { glob } from 'glob';
 import {
   DiagnosticCollector,
-  parseDto,
-  parseOp,
+  parseCk,
+  decomposeCk,
   generateDto,
   collectTypeRefs,
   generateOp,
@@ -22,7 +22,7 @@ import {
   validateOp,
   validateRefs,
 } from '@maroonedsoftware/contractkit';
-import type { DtoCodegenContext, DtoRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
+import type { DtoCodegenContext, DtoRootNode, OpRootNode, CkRootNode } from '@maroonedsoftware/contractkit';
 import { loadConfig, mergeConfig, isHmacScheme } from './config.js';
 import { loadCache, saveCache, computeHash, isFileChanged } from './cache.js';
 import type { ResolvedConfig } from './config.js';
@@ -90,39 +90,40 @@ function includesFilename(p: string): boolean {
   return last.includes('.');
 }
 
-function computeOutPath(filePath: string, opts: OutPathOptions, rootDir: string, meta: Record<string, string> = {}): string | null {
-  const ext = filePath.endsWith('.dto') ? 'dto' : filePath.endsWith('.op') ? 'op' : null;
-  if (!ext) return null;
-
+/** Compute output paths for a .ck file — produces both types and routes outputs. */
+function computeCkOutPaths(
+  filePath: string,
+  opts: OutPathOptions,
+  rootDir: string,
+  meta: Record<string, string> = {},
+): { typesOutPath: string; routesOutPath: string } {
   const baseName = filePath.split('/').pop()!;
-  const defaultOutName = ext === 'dto' ? baseName.replace(/\.dto$/, '.ts') : baseName.replace(/\.op$/, '.router.ts');
-
   const baseOutDir = resolve(opts.rootDir);
-  const output = ext === 'dto' ? opts.server.types.output : opts.server.routes.output;
   const relDir = relative(rootDir, dirname(filePath));
-  const filename = baseName.replace(/\.\w+$/, '');
+  const filename = baseName.replace(/\.ck$/, '');
 
-  if (output && TEMPLATE_VAR_RE.test(output)) {
-    const resolved = resolveTemplate(output, {
-      filename,
-      dir: relDir,
-      ext,
-      ...meta,
-    });
-    if (includesFilename(resolved)) {
-      return join(baseOutDir, resolved);
+  const typesOutput = opts.server.types.output;
+  const routesOutput = opts.server.routes.output;
+  const defaultTypesName = `${filename}.ts`;
+  const defaultRoutesName = `${filename}.router.ts`;
+
+  function resolveOne(output: string | undefined, defaultName: string): string {
+    if (output && TEMPLATE_VAR_RE.test(output)) {
+      const resolved = resolveTemplate(output, { filename, dir: relDir, ext: 'ck', ...meta });
+      if (includesFilename(resolved)) return join(baseOutDir, resolved);
+      return join(baseOutDir, resolved, defaultName);
     }
-    return join(baseOutDir, resolved, defaultOutName);
+    if (output) {
+      if (includesFilename(output)) return join(baseOutDir, output);
+      return join(baseOutDir, output, relDir, defaultName);
+    }
+    return join(baseOutDir, relDir, defaultName);
   }
 
-  if (output) {
-    if (includesFilename(output)) {
-      return join(baseOutDir, output);
-    }
-    return join(baseOutDir, output, relDir, defaultOutName);
-  }
-
-  return join(baseOutDir, relDir, defaultOutName);
+  return {
+    typesOutPath: resolveOne(typesOutput, defaultTypesName),
+    routesOutPath: resolveOne(routesOutput, defaultRoutesName),
+  };
 }
 
 function computeSdkOutPath(
@@ -132,19 +133,19 @@ function computeSdkOutPath(
   commonRoot: string,
   meta: Record<string, string> = {},
 ): string | null {
-  if (!filePath.endsWith('.op')) return null;
+  if (!filePath.endsWith('.ck')) return null;
 
   const baseName = filePath.split('/').pop()!;
-  const defaultOutName = baseName.replace(/\.op$/, '.client.ts');
+  const defaultOutName = baseName.replace(/\.ck$/, '.client.ts');
   const baseOutDir = resolve(rootDir);
   const relDir = relative(commonRoot, dirname(filePath));
-  const filename = baseName.replace(/\.\w+$/, '');
+  const filename = baseName.replace(/\.ck$/, '');
 
   if (clientOutput && TEMPLATE_VAR_RE.test(clientOutput)) {
     const resolved = resolveTemplate(clientOutput, {
       filename,
       dir: relDir,
-      ext: 'op',
+      ext: 'ck',
       ...meta,
     });
     if (includesFilename(resolved)) {
@@ -170,19 +171,19 @@ function computeSdkTypeOutPath(
   commonRoot: string,
   meta: Record<string, string> = {},
 ): string | null {
-  if (!filePath.endsWith('.dto')) return null;
+  if (!filePath.endsWith('.ck')) return null;
 
   const baseName = filePath.split('/').pop()!;
-  const defaultOutName = baseName.replace(/\.dto$/, '.ts');
+  const defaultOutName = baseName.replace(/\.ck$/, '.ts');
   const baseOutDir = resolve(rootDir);
   const relDir = relative(commonRoot, dirname(filePath));
-  const filename = baseName.replace(/\.\w+$/, '');
+  const filename = baseName.replace(/\.ck$/, '');
 
   if (TEMPLATE_VAR_RE.test(typeOutput)) {
     const resolved = resolveTemplate(typeOutput, {
       filename,
       dir: relDir,
-      ext: 'dto',
+      ext: 'ck',
       ...meta,
     });
     if (includesFilename(resolved)) {
@@ -285,7 +286,7 @@ function generateBarrelFiles(dtoPaths: string[]): { outPath: string; content: st
  * Returns the set of all type names needed by public (non-internal) operations,
  * expanded transitively through the DTO model graph.
  *
- * Returns null when there are no .op files (no filtering should be applied).
+ * Returns null when there are no operation files (no filtering should be applied).
  */
 function computePubliclyReachableTypes(opAsts: OpRootNode[], dtoAsts: DtoRootNode[], modelsWithInput: Set<string>): Set<string> | null {
   if (opAsts.length === 0) return null;
@@ -374,7 +375,7 @@ async function main() {
     const cache: FileHashMap = cacheEnabled ? loadCache(resolvedBase, config.cache.filename) : {};
     const newCache: FileHashMap = {};
 
-    // ── Pass 1: Parse all files ─────────────────────────────────
+    // ── Pass 1: Parse all .ck files ────────────────────────────────
     // allDtoInfo/allOpInfo track every file (even unchanged) for cross-file import resolution and SDK generation
     const allDtoInfo: { ast: DtoRootNode; filePath: string; outPath: string }[] = [];
     const allOpInfo: { ast: OpRootNode; filePath: string; outPath: string }[] = [];
@@ -382,9 +383,8 @@ async function main() {
     const opRoots: { ast: OpRootNode; filePath: string; outPath: string }[] = [];
 
     for (const filePath of files) {
-      const ext = filePath.endsWith('.dto') ? 'dto' : filePath.endsWith('.op') ? 'op' : null;
-      if (!ext) {
-        diag.warn(filePath, 0, `Skipping unknown file extension`);
+      if (!filePath.endsWith('.ck')) {
+        diag.warn(filePath, 0, `Skipping unknown file extension (expected .ck)`);
         continue;
       }
 
@@ -392,28 +392,30 @@ async function main() {
       const hash = computeHash(source);
       newCache[filePath] = hash;
 
-      // Parse first so meta directives are available for output path resolution
       const serverOpts: OutPathOptions = { rootDir: serverBase, server: config.server };
-      if (ext === 'dto') {
-        const ast = parseDto(source, filePath, diag);
-        const outPath = computeOutPath(filePath, serverOpts, commonRoot, ast.meta);
-        if (!outPath) continue;
-        allDtoInfo.push({ ast, filePath, outPath });
-        if (!config.force && !isFileChanged(filePath, source, outPath, cache)) {
-          console.log(`  -  ${outPath} (unchanged)`);
-          continue;
+      const ckAst = parseCk(source, filePath, diag);
+      const { dto, op } = decomposeCk(ckAst);
+      const paths = computeCkOutPaths(filePath, serverOpts, commonRoot, ckAst.meta);
+      const { typesOutPath, routesOutPath } = paths;
+
+      // Register models as DTO info
+      if (dto.models.length > 0) {
+        allDtoInfo.push({ ast: dto, filePath, outPath: typesOutPath });
+        if (!config.force && !isFileChanged(filePath, source, typesOutPath, cache)) {
+          console.log(`  -  ${typesOutPath} (unchanged)`);
+        } else {
+          dtoRoots.push({ ast: dto, filePath, outPath: typesOutPath });
         }
-        dtoRoots.push({ ast, filePath, outPath });
-      } else {
-        const ast = parseOp(source, filePath, diag);
-        const outPath = computeOutPath(filePath, serverOpts, commonRoot, ast.meta);
-        if (!outPath) continue;
-        allOpInfo.push({ ast, filePath, outPath });
-        if (!config.force && !isFileChanged(filePath, source, outPath, cache)) {
-          console.log(`  -  ${outPath} (unchanged)`);
-          continue;
+      }
+
+      // Register routes as OP info
+      if (op.routes.length > 0) {
+        allOpInfo.push({ ast: op, filePath, outPath: routesOutPath });
+        if (!config.force && !isFileChanged(filePath, source, routesOutPath, cache)) {
+          console.log(`  -  ${routesOutPath} (unchanged)`);
+        } else {
+          opRoots.push({ ast: op, filePath, outPath: routesOutPath });
         }
-        opRoots.push({ ast, filePath, outPath });
       }
     }
 
@@ -531,7 +533,7 @@ async function main() {
       if (config.sdk.types?.output) {
         sdkModelOutPaths = new Map<string, string>();
         // Only generate type files for DTOs that are reachable from public ops.
-        // Returns null when there are no .op files (generate everything).
+        // Returns null when there are no operation files (generate everything).
         const publicTypes = computePubliclyReachableTypes(
           allOpInfo.map(o => o.ast),
           allDtoInfo.map(d => d.ast),
@@ -801,7 +803,7 @@ async function main() {
       watch(dir, { recursive: false }, async (event, filename) => {
         if (!filename) return;
         const full = join(dir, filename);
-        if (!full.endsWith('.dto') && !full.endsWith('.op')) return;
+        if (!full.endsWith('.ck')) return;
         console.log(`\nChange detected: ${filename}`);
         await run();
       });

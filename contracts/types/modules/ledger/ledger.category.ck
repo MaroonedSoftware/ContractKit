@@ -1,8 +1,10 @@
----
-area: ledger
----
+options {
+    keys: {
+        area: ledger
+    }
+}
 
-LedgerCategory: { # Represents a ledger category
+contract LedgerCategory: { # Represents a ledger category
     id: readonly uuid # The ledger category identifier
     name: string(min=3, max=100) # The ledger category name
     description?: string(max=1024) # The ledger category description
@@ -10,7 +12,7 @@ LedgerCategory: { # Represents a ledger category
     createdAt: readonly datetime # The ledger category creation date
 }
 
-LedgerCategoryTransaction: { # Represents a ledger category transaction
+contract LedgerCategoryTransaction: { # Represents a ledger category transaction
     transactionId: readonly uuid # The ledger transaction identifier
     status: readonly enum(pending, posted, archived) # The ledger category transaction status
     version: readonly int # The ledger category transaction version
@@ -20,7 +22,7 @@ LedgerCategoryTransaction: { # Represents a ledger category transaction
     entries: readonly array(LedgerCategoryTransactionEntry, min=1) # The ledger category transaction entries
 }
 
-LedgerCategoryTransactionEntry: { # Represents a ledger category transaction entry
+contract LedgerCategoryTransactionEntry: { # Represents a ledger category transaction entry
     id: readonly uuid # The ledger category transaction entry identifier
     accountId: readonly uuid # The ledger category transaction entry account identifier
     direction: readonly enum(credit, debit) # The ledger category transaction entry direction
@@ -31,7 +33,7 @@ LedgerCategoryTransactionEntry: { # Represents a ledger category transaction ent
     createdAt: readonly datetime # The ledger category transaction entry creation date
 }
 
-CategoryTree: { # Represents a category tree
+contract CategoryTree: { # Represents a category tree
     categoryId: uuid # The category identifier
     categoryName: string # The category name
     treeLevel: int(min=0) # The depth level in the tree
@@ -40,11 +42,11 @@ CategoryTree: { # Represents a category tree
     directAccountCount: int(min=0) # The number of accounts directly in this category
 }
 
-GetCategoryBalancesQuery: { # Represents a query to get category balances
+contract GetCategoryBalancesQuery: { # Represents a query to get category balances
     date?: datetime # Optional ISO 8601 date to query balances at
 }
 
-CategoryBalance: { # Represents the balances of a category
+contract CategoryBalance: { # Represents the balances of a category
     accountId?: uuid | null # The account identifier
     accountName: string # The account name
     currency: string(length=3) # ISO currency code
@@ -53,6 +55,6 @@ CategoryBalance: { # Represents the balances of a category
     availableBalance: bigint(min=0) # The available balance
 }
 
-ListCategoryTransactionsQuery: Pagination & { # Represents a query to list category transactions
+contract ListCategoryTransactionsQuery: Pagination & { # Represents a query to list category transactions
     status?: enum(pending, posted, archived) # Optional ledger category transaction status filter
 }

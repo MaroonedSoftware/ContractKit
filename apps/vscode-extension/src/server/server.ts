@@ -57,7 +57,7 @@ documents.onDidClose(event => {
   documentManager.removeDocument(event.document.uri);
 });
 
-// Watch for file system changes (saves, creates, deletes of .dto/.op files)
+// Watch for file system changes (saves, creates, deletes of .ck files)
 connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
   for (const change of params.changes) {
     const filePath = fileURLToPath(change.uri);

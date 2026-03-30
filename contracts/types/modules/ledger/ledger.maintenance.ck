@@ -1,12 +1,14 @@
----
-area: ledger
----
+options {
+    keys: {
+        area: ledger
+    }
+}
 
-ProcessCacheQueue: { # Represents a request to process the cache queue
+contract ProcessCacheQueue: { # Represents a request to process the cache queue
     batchSize?: int(min=1) # Optional batch size
 }
 
-BalanceCacheDrift: { # Represents the balance cache drift
+contract BalanceCacheDrift: { # Represents the balance cache drift
     accountId: uuid # The account identifier
     accountName: string # The account name
     cachedPostedCredits: bigint # The cached posted credits

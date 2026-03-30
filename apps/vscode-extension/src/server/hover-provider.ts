@@ -22,7 +22,6 @@ const BUILTIN_TYPE_DOCS: Record<string, string> = {
   email: 'Email address — Zod `z.email()`',
   url: 'URL string — Zod `z.url()`',
   uuid: 'UUID string — Zod `z.uuid()`',
-  any: 'Any value — Zod `z.any()`',
   unknown: 'Unknown value — Zod `z.unknown()`',
   null: 'Null literal — Zod `z.null()`',
   object: 'Generic object — Zod `z.record(z.string(), z.unknown())`',
@@ -75,8 +74,8 @@ function formatModelHover(model: ModelNode): string {
   if (model.base) lines.push(`extends \`${model.base}\``);
   if (model.description) lines.push(`\n${model.description}`);
   lines.push('');
-  lines.push('```dto');
-  lines.push(`${model.name}${model.base ? ` : ${model.base}` : ''} {`);
+  lines.push('```ck');
+  lines.push(`contract ${model.name}${model.base ? `: ${model.base} & ` : ': '}{`);
   for (const field of model.fields) {
     lines.push(`    ${formatField(field)}`);
   }

@@ -358,8 +358,6 @@ function renderTsScalar(name: string): string {
       return 'string';
     case 'null':
       return 'null';
-    case 'any':
-      return 'any';
     case 'unknown':
       return 'unknown';
     case 'object':
@@ -444,7 +442,7 @@ function inferMethodName(method: string, path: string): string {
 // ─── Naming conventions ────────────────────────────────────────────────────
 
 function deriveBaseName(file: string): string {
-  const base = file.split('/').pop()?.replace(/\.op$/, '') ?? 'Resource';
+  const base = file.split('/').pop()?.replace(/\.(op|ck)$/, '') ?? 'Resource';
   return base
     .split('.')
     .map(s => s.charAt(0).toUpperCase() + s.slice(1))
@@ -630,7 +628,7 @@ function generateTypeImports(types: string[], opFile: string, options: SdkCodege
 }
 
 function deriveTypeImportPath(file: string, template?: string): string {
-  const base = file.split('/').pop()?.replace(/\.op$/, '') ?? 'resource';
+  const base = file.split('/').pop()?.replace(/\.(op|ck)$/, '') ?? 'resource';
   const module = base.split('.')[0] ?? base;
   if (template) {
     return template.replace(/\{module\}/g, module).replace(/\{base\}/g, base);

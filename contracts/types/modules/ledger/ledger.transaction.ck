@@ -1,8 +1,10 @@
----
-area: ledger
----
+options {
+    keys: {
+        area: ledger
+    }
+}
 
-LedgerTransaction: { # Represents a ledger transaction
+contract LedgerTransaction: { # Represents a ledger transaction
     id: readonly uuid # The ledger transaction identifier
     createdAt: readonly datetime # When the transaction was created
     updatedAt: readonly datetime # When the transaction was last updated
@@ -15,7 +17,7 @@ LedgerTransaction: { # Represents a ledger transaction
     metadata?: object # The metadata of the ledger transaction
 }
 
-LedgerTransactionEntry: { # Represents a ledger transaction entry
+contract LedgerTransactionEntry: { # Represents a ledger transaction entry
     id: readonly uuid # The ledger transaction entry identifier
     transactionId: readonly uuid # The ledger transaction identifier
     createdAt: readonly datetime # When the entry was created    
@@ -31,16 +33,16 @@ LedgerTransactionEntry: { # Represents a ledger transaction entry
     availableBalance?: string # Optional available balance assertion (e.g. ">=100")
 }
 
-FinalizeTransactionInput: { # Represents a request to finalize a ledger transaction
+contract FinalizeTransactionInput: { # Represents a request to finalize a ledger transaction
     status: enum(posted, archived) # Target finalization status
 }
 
-ListTransactionsQuery: Pagination & { # Represents a query to list ledger transactions
+contract ListTransactionsQuery: Pagination & { # Represents a query to list ledger transactions
     status?: array(enum(pending, posted, archived)) # Optional status filter
     orderBy?: enum(effective_at, created_at, id) = effective_at # The sort field
 }
 
-LedgerEntry: { # Represents a ledger entry
+contract LedgerEntry: { # Represents a ledger entry
     id: readonly uuid # The ledger entry identifier
     transactionId: readonly uuid # The parent transaction identifier
     accountId: readonly uuid # The ledger account identifier
@@ -53,7 +55,7 @@ LedgerEntry: { # Represents a ledger entry
     archivedAt?: readonly datetime # When the entry was archived
 }
 
-LedgerTransfer: { # Represents a ledger transfer
+contract LedgerTransfer: { # Represents a ledger transfer
     idempotencyKey: uuid # The idempotency key of the ledger transfer
     fromAccountId: uuid # The from account identifier
     toAccountId: uuid # The to account identifier
@@ -64,13 +66,13 @@ LedgerTransfer: { # Represents a ledger transfer
     description?: string(max=1024) # The description of the ledger transfer
 }
 
-LedgerTransferMultiLeg: { # Represents a ledger transfer multi leg
+contract LedgerTransferMultiLeg: { # Represents a ledger transfer multi leg
     accountId: uuid # The account identifier
     amount: bigint(min=0) # The amount of the ledger transfer multi leg
     direction: enum(credit, debit) # The direction of the ledger transfer multi leg
 }
 
-LedgerTransferMultiple: { # Represents a ledger transfer multiple
+contract LedgerTransferMultiple: { # Represents a ledger transfer multiple
     idempotencyKey: uuid # The idempotency key of the ledger transfer multiple
     entries: array(LedgerTransferMultiLeg, min=2) # The entries of the ledger transfer multiple
     status?: enum(pending, posted) # The status of the ledger transfer multiple

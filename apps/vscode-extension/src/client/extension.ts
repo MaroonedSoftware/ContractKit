@@ -18,8 +18,7 @@ export function activate(context: ExtensionContext): void {
 
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
-      { scheme: 'file', language: 'dto' },
-      { scheme: 'file', language: 'op' },
+      { scheme: 'file', language: 'contract-ck' },
     ],
   };
 

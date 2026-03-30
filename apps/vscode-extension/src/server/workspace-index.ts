@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { parseDto, parseOp, DiagnosticCollector } from '@maroonedsoftware/contractkit';
+import { parseCk, DiagnosticCollector } from '@maroonedsoftware/contractkit';
 import type { ModelNode, OpRouteNode } from '@maroonedsoftware/contractkit';
 
 export interface ModelEntry {
@@ -52,9 +52,7 @@ export class WorkspaceIndex {
   async indexFolder(folder: string): Promise<void> {
     const entries = await this.walkDir(folder);
     for (const filePath of entries) {
-      if (filePath.endsWith('.dto') || filePath.endsWith('.op')) {
-        this.indexFile(filePath);
-      }
+      this.indexFile(filePath);
     }
   }
 
@@ -69,70 +67,36 @@ export class WorkspaceIndex {
       return;
     }
 
-    const diag = new DiagnosticCollector();
-
-    if (filePath.endsWith('.dto')) {
-      try {
-        const ast = parseDto(text, filePath, diag);
-        for (const model of ast.models) {
-          this.models.set(model.name, { uri, line: model.loc.line, model });
-        }
-      } catch {
-        // Skip files that fail to parse
-      }
-    } else if (filePath.endsWith('.op')) {
-      try {
-        const ast = parseOp(text, filePath, diag);
-        for (const route of ast.routes) {
-          this.routes.set(route.path, { uri, line: route.loc.line, route });
-          for (const op of route.operations) {
-            if (op.service) {
-              this.services.push({
-                uri,
-                line: op.loc.line,
-                serviceName: op.service,
-              });
-            }
-          }
-        }
-      } catch {
-        // Skip files that fail to parse
-      }
-    }
+    this.indexSource(uri, filePath, text);
   }
 
   indexFromSource(uri: string, text: string): void {
     this.removeFile(uri);
     const filePath = uriToFilePath(uri);
-    const diag = new DiagnosticCollector();
+    this.indexSource(uri, filePath, text);
+  }
 
-    if (uri.endsWith('.dto')) {
-      try {
-        const ast = parseDto(text, filePath, diag);
-        for (const model of ast.models) {
-          this.models.set(model.name, { uri, line: model.loc.line, model });
-        }
-      } catch {
-        // Skip
+  private indexSource(uri: string, filePath: string, text: string): void {
+    const diag = new DiagnosticCollector();
+    try {
+      const ast = parseCk(text, filePath, diag);
+      for (const model of ast.models) {
+        this.models.set(model.name, { uri, line: model.loc.line, model });
       }
-    } else if (uri.endsWith('.op')) {
-      try {
-        const ast = parseOp(text, filePath, diag);
-        for (const route of ast.routes) {
-          this.routes.set(route.path, { uri, line: route.loc.line, route });
-          for (const op of route.operations) {
-            if (op.service) {
-              this.services.push({
-                uri,
-                line: op.loc.line,
-                serviceName: op.service,
-              });
-            }
+      for (const route of ast.routes) {
+        this.routes.set(route.path, { uri, line: route.loc.line, route });
+        for (const op of route.operations) {
+          if (op.service) {
+            this.services.push({
+              uri,
+              line: op.loc.line,
+              serviceName: op.service,
+            });
           }
         }
-      } catch {
-        // Skip
       }
+    } catch {
+      // Skip files that fail to parse
     }
   }
 
@@ -155,7 +119,7 @@ export class WorkspaceIndex {
         if (entry.name === 'node_modules' || entry.name === '.git') continue;
         if (entry.isDirectory()) {
           results.push(...(await this.walkDir(fullPath)));
-        } else if (entry.name.endsWith('.dto') || entry.name.endsWith('.op')) {
+        } else if (entry.name.endsWith('.ck')) {
           results.push(fullPath);
         }
       }

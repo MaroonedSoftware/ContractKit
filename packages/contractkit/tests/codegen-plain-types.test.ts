@@ -83,7 +83,6 @@ describe('generatePlainTypes', () => {
     it('maps special types correctly', () => {
       const root = dtoRoot([
         model('M', [
-          field('a', scalarType('any')),
           field('u', scalarType('unknown')),
           field('n', scalarType('null')),
           field('o', scalarType('object')),
@@ -91,7 +90,6 @@ describe('generatePlainTypes', () => {
         ]),
       ]);
       const output = generatePlainTypes(root);
-      expect(output).toContain('a: any;');
       expect(output).toContain('u: unknown;');
       expect(output).toContain('n: null;');
       expect(output).toContain('o: Record<string, unknown>;');

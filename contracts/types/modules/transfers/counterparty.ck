@@ -1,8 +1,10 @@
----
-area: transfers
----
+options {
+    keys: {
+        area: transfers
+    }
+}
 
-Counterparty: { # Represents a counterparty
+contract Counterparty: { # Represents a counterparty
     createdAt: readonly datetime # The counterparty creation timestamp
     updatedAt: readonly datetime # The counterparty last update timestamp
     id: readonly uuid # The counterparty identifier
@@ -12,13 +14,13 @@ Counterparty: { # Represents a counterparty
     accounts: readonly array(CounterpartyAccount) # The counterparty accounts
 }
 
-CreateCounterparty: { # Represents a request to create a counterparty
+contract CreateCounterparty: { # Represents a request to create a counterparty
     name: string(min=1, max=100) # The counterparty name
     email?: email # The counterparty email
     accounts: array(CreateCounterpartyFinancialAccount | CreateCounterpartyProcessorAccount, min=0, max=10) # The counterparty accounts
 }
 
-CounterpartyAccount: { # Represents a counterparty account
+contract CounterpartyAccount: { # Represents a counterparty account
     createdAt: readonly datetime # The counterparty account creation timestamp
     updatedAt: readonly datetime # The counterparty account last update timestamp
     id: readonly uuid # The counterparty account identifier
@@ -33,7 +35,7 @@ CounterpartyAccount: { # Represents a counterparty account
     verificationMethod?: readonly string(min=3, max=100) # The verification method
 }
 
-CreateCounterpartyFinancialAccount: { # Represents a request to create a counterparty financial account
+contract CreateCounterpartyFinancialAccount: { # Represents a request to create a counterparty financial account
     active: boolean = true # Whether the counterparty account is active
     routingNumber: string(min=3, max=60) # The routing number
     accountNumber: string(min=3, max=60) # The account number
@@ -42,7 +44,7 @@ CreateCounterpartyFinancialAccount: { # Represents a request to create a counter
     accountType: enum(consumer, commercial) = commercial # The account type
 }
 
-CreateCounterpartyProcessorAccount: { # Represents a request to create a counterparty processor account
+contract CreateCounterpartyProcessorAccount: { # Represents a request to create a counterparty processor account
     active: boolean = true # Whether the counterparty account is active
     processorToken: readonly string(min=3, max=100) # The processor token
     processor: enum(plaid) # The processor

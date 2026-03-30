@@ -17,7 +17,6 @@ export const SCALAR_NAMES: ReadonlySet<string> = new Set<ScalarTypeNode['name']>
   'email',
   'url',
   'uuid',
-  'any',
   'unknown',
   'null',
   'object',
@@ -54,7 +53,6 @@ export interface ScalarTypeNode {
     | 'email'
     | 'url'
     | 'uuid'
-    | 'any'
     | 'unknown'
     | 'null'
     | 'object'
@@ -140,7 +138,7 @@ export interface ModelNode {
   fields: FieldNode[];
   type?: DtoTypeNode; // type alias: Name: typeExpression (fields will be empty)
   mode?: ObjectMode; // object validation mode — defaults to 'strict'
-  camelCase?: boolean; // keys are defined in camelCase but parsed from snake_case input
+  parseCase?: 'camel' | 'snake' | 'pascal'; // input key casing transform mode
   description?: string;
   loc: SourceLocation;
 }
@@ -148,6 +146,8 @@ export interface ModelNode {
 export interface DtoRootNode {
   kind: 'dtoRoot';
   meta: Record<string, string>;
+  /** Service name → module path mappings from `options { services { ... } }`. */
+  services?: Record<string, string>;
   models: ModelNode[];
   file: string;
   /** Comment lines not attached to any node, sorted by line number. */
@@ -263,10 +263,25 @@ export function resolveSecurity(route: OpRouteNode, op: OpOperationNode, root?: 
 export interface OpRootNode {
   kind: 'opRoot';
   meta: Record<string, string>;
+  /** Service name → module path mappings from `options { services { ... } }`. */
+  services?: Record<string, string>;
   /** File-level security default — cascades to all routes/operations unless overridden. */
   security?: SecurityNode;
   routes: OpRouteNode[];
   file: string;
   /** Comment lines not attached to any node, sorted by line number. */
   orphanComments?: Array<{ line: number; text: string }>;
+}
+
+// ─── Unified AST (.ck) ───────────────────────────────────────────────────
+
+export interface CkRootNode {
+  kind: 'ckRoot';
+  meta: Record<string, string>;
+  services: Record<string, string>;
+  /** File-level security default — cascades to all routes/operations unless overridden. */
+  security?: SecurityNode;
+  models: ModelNode[];
+  routes: OpRouteNode[];
+  file: string;
 }

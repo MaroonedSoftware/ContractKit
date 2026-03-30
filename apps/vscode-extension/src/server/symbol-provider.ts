@@ -2,32 +2,33 @@ import { DocumentSymbol, SymbolKind, Range } from 'vscode-languageserver';
 import type { ParsedDocument } from './document-manager.js';
 
 export function getDocumentSymbols(parsed: ParsedDocument): DocumentSymbol[] {
-  if (parsed.kind === 'dto') {
-    return parsed.ast.models.map(model => {
-      const modelLine = Math.max(0, model.loc.line - 1);
-      const children: DocumentSymbol[] = model.fields.map(field => {
-        const fieldLine = Math.max(0, field.loc.line - 1);
-        return {
-          name: field.name,
-          kind: SymbolKind.Field,
-          range: Range.create(fieldLine, 0, fieldLine, 200),
-          selectionRange: Range.create(fieldLine, 0, fieldLine, field.name.length),
-          detail: formatFieldType(field),
-        };
-      });
+  const symbols: DocumentSymbol[] = [];
+
+  // Contract (model) symbols
+  for (const model of parsed.ast.models) {
+    const modelLine = Math.max(0, model.loc.line - 1);
+    const children: DocumentSymbol[] = model.fields.map(field => {
+      const fieldLine = Math.max(0, field.loc.line - 1);
       return {
-        name: model.name,
-        kind: SymbolKind.Class,
-        range: Range.create(modelLine, 0, modelLine + model.fields.length + 1, 0),
-        selectionRange: Range.create(modelLine, 0, modelLine, model.name.length),
-        detail: model.base ? `extends ${model.base}` : undefined,
-        children,
+        name: field.name,
+        kind: SymbolKind.Field,
+        range: Range.create(fieldLine, 0, fieldLine, 200),
+        selectionRange: Range.create(fieldLine, 0, fieldLine, field.name.length),
+        detail: formatFieldType(field),
       };
+    });
+    symbols.push({
+      name: model.name,
+      kind: SymbolKind.Class,
+      range: Range.create(modelLine, 0, modelLine + model.fields.length + 1, 0),
+      selectionRange: Range.create(modelLine, 0, modelLine, model.name.length),
+      detail: model.base ? `extends ${model.base}` : undefined,
+      children,
     });
   }
 
-  // .op files
-  return parsed.ast.routes.map(route => {
+  // Operation (route) symbols
+  for (const route of parsed.ast.routes) {
     const routeLine = Math.max(0, route.loc.line - 1);
     const children: DocumentSymbol[] = route.operations.map(op => {
       const opLine = Math.max(0, op.loc.line - 1);
@@ -39,14 +40,16 @@ export function getDocumentSymbols(parsed: ParsedDocument): DocumentSymbol[] {
         detail: op.service,
       };
     });
-    return {
+    symbols.push({
       name: route.path,
       kind: SymbolKind.Module,
       range: Range.create(routeLine, 0, routeLine + route.operations.length + 1, 0),
       selectionRange: Range.create(routeLine, 0, routeLine, route.path.length),
       children,
-    };
-  });
+    });
+  }
+
+  return symbols;
 }
 
 function formatFieldType(field: { optional: boolean; type: { kind: string } }): string {

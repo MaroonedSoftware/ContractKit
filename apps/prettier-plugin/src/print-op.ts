@@ -21,10 +21,10 @@ const I4 = '                ';
 // ─── Orphan comment helpers ──────────────────────────────────────────────────
 
 type CommentEntry = { line: number; text: string };
-type CommentBlock = { startLine: number; lines: string[] };
+export type CommentBlock = { startLine: number; lines: string[] };
 
 /** Group sorted orphan comment entries into consecutive-line blocks. */
-function groupComments(entries: CommentEntry[]): CommentBlock[] {
+export function groupComments(entries: CommentEntry[]): CommentBlock[] {
   const blocks: CommentBlock[] = [];
   let current: CommentBlock | null = null;
   for (const { line, text } of entries) {
@@ -110,7 +110,7 @@ function printMetaValue(value: string): string {
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 
-function printRoute(route: OpRouteNode, blocks: CommentBlock[], idx: { value: number }, nextRouteStart: number): string {
+export function printRoute(route: OpRouteNode, blocks: CommentBlock[], idx: { value: number }, nextRouteStart: number): string {
   const lines: string[] = [];
   const commentSuffix = route.description ? ` # ${route.description}` : '';
   const modifiersPart = route.modifiers?.length ? `: ${route.modifiers.join(' ')}` : '';
@@ -140,7 +140,7 @@ function printRoute(route: OpRouteNode, blocks: CommentBlock[], idx: { value: nu
 // ─── Params block ────────────────────────────────────────────────────────────
 
 function printParamsBlock(source: ParamSource, indent: string, mode?: ObjectMode): string[] {
-  const prefix = mode ? `${mode} ` : '';
+  const prefix = mode ? `mode(${mode}) ` : '';
   if (typeof source === 'string') {
     return [`${indent}${prefix}params: ${source}`];
   }
@@ -201,7 +201,7 @@ function formatSignatureValue(value: string): string {
 
 // indent: indentation for the `security` keyword line
 // innerIndent: indentation for field lines inside the block
-function printSecurity(security: SecurityNode, indent = I2, innerIndent = I3): string[] {
+export function printSecurity(security: SecurityNode, indent = I2, innerIndent = I3): string[] {
   if (security === SECURITY_NONE) return [`${indent}security: none`];
   const fields = security as SecurityFields;
   const hasRoles = fields.roles && fields.roles.length > 0;
@@ -216,7 +216,7 @@ function printSecurity(security: SecurityNode, indent = I2, innerIndent = I3): s
 // ─── Query / headers ─────────────────────────────────────────────────────────
 
 function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource, mode?: ObjectMode): string[] {
-  const prefix = mode ? `${mode} ` : '';
+  const prefix = mode ? `mode(${mode}) ` : '';
   if (typeof source === 'string') {
     return [`${I2}${prefix}${keyword}: ${source}`];
   }

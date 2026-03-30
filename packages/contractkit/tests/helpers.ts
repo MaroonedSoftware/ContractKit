@@ -139,7 +139,7 @@ export function opRoot(routes: OpRouteNode[], file = 'users.op', meta: Record<st
 // ─── DSL Fixture Strings ────────────────────────────────────────────────────
 
 export const SIMPLE_USER_DTO = `\
-User: {
+contract User: {
     id: readonly uuid
     name: string
     email: email
@@ -149,7 +149,7 @@ User: {
 `;
 
 export const VISIBILITY_DTO = `\
-User: {
+contract User: {
     id: readonly uuid
     name: string
     password: writeonly string
@@ -157,13 +157,13 @@ User: {
 `;
 
 export const INHERITANCE_DTO = `\
-Admin: User {
+contract Admin: User & {
     role: enum(admin, superadmin)
 }
 `;
 
 export const SIMPLE_USERS_OP = `\
-/users {
+operation /users: {
     get: {
         response: {
             200: {
@@ -185,7 +185,7 @@ export const SIMPLE_USERS_OP = `\
 `;
 
 export const PARAMETERIZED_OP = `\
-/users/:id {
+operation /users/:id: {
     params: {
         id: uuid
     }

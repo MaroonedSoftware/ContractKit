@@ -14,7 +14,6 @@ const BUILTIN_SCALAR_TYPES = [
   'email',
   'url',
   'uuid',
-  'any',
   'unknown',
   'null',
   'object',
@@ -30,10 +29,10 @@ const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 
 const OP_BLOCK_KEYWORDS = ['service', 'sdk', 'query', 'headers', 'request', 'response', 'security'];
 
-const OBJECT_MODES: Array<{ label: string; detail: string }> = [
-  { label: 'strict', detail: 'Reject unknown keys (z.strictObject)' },
-  { label: 'strip', detail: 'Strip unknown keys silently (z.object)' },
-  { label: 'loose', detail: 'Pass unknown keys through (z.looseObject)' },
+const OBJECT_MODES: Array<{ label: string; insertText: string; detail: string }> = [
+  { label: 'mode(strict)', insertText: 'mode(strict)', detail: 'Reject unknown keys (z.strictObject)' },
+  { label: 'mode(strip)', insertText: 'mode(strip)', detail: 'Strip unknown keys silently (z.object)' },
+  { label: 'mode(loose)', insertText: 'mode(loose)', detail: 'Pass unknown keys through (z.looseObject)' },
 ];
 
 const SECURITY_SCHEMES: Array<{ label: string; detail: string }> = [
@@ -66,12 +65,27 @@ export function getCompletions(params: TextDocumentPositionParams, document: Tex
   const lineText = lines[line]!;
   const textBefore = lineText.slice(0, char);
 
-  const isDtoFile = uri.endsWith('.dto');
+  // Detect context: are we inside a `contract` or `operation` block?
+  const context = getTopLevelContext(lines, line);
 
-  if (isDtoFile) {
+  if (context === 'contract') {
     return getDtoCompletions(textBefore, lines, line, index);
   }
-  return getOpCompletions(textBefore, lines, line, index);
+  if (context === 'operation') {
+    return getOpCompletions(textBefore, lines, line, index);
+  }
+
+  // Top-level — check if we're in a partial operation declaration (before the opening brace)
+  if (/\boperation\s+\/[a-zA-Z0-9_/:.-]+\s*:\s*\w*$/.test(textBefore)) {
+    return ROUTE_MODIFIERS.map(({ label, detail }) => ({
+      label,
+      kind: CompletionItemKind.Keyword,
+      detail,
+    }));
+  }
+
+  // Top-level — offer keywords
+  return getTopLevelCompletions(textBefore);
 }
 
 function getDtoCompletions(textBefore: string, lines: string[], line: number, index: WorkspaceIndex): CompletionItem[] {
@@ -193,7 +207,7 @@ function getOpCompletions(textBefore: string, lines: string[], line: number, ind
   }
 
   // After a mode modifier in route-body — complete 'params'
-  if (context === 'route-body' && /^\s*(strict|strip|loose)\s+\w*$/.test(textBefore)) {
+  if (context === 'route-body' && /^\s*mode\((?:strict|strip|loose)\)\s+\w*$/.test(textBefore)) {
     return [{ label: 'params', kind: CompletionItemKind.Keyword }];
   }
 
@@ -213,7 +227,7 @@ function getOpCompletions(textBefore: string, lines: string[], line: number, ind
   }
 
   // After a mode modifier in operation-body — complete 'query' or 'headers'
-  if (context === 'operation-body' && /^\s*(strict|strip|loose)\s+\w*$/.test(textBefore)) {
+  if (context === 'operation-body' && /^\s*mode\((?:strict|strip|loose)\)\s+\w*$/.test(textBefore)) {
     return [
       { label: 'query', kind: CompletionItemKind.Keyword },
       { label: 'headers', kind: CompletionItemKind.Keyword },
@@ -244,7 +258,7 @@ function getOpCompletions(textBefore: string, lines: string[], line: number, ind
   }
 
   // After query: or headers: or params: (optionally preceded by a mode modifier) — offer types and model names
-  if (/(?:(?:strict|strip|loose)\s+)?(?:query|headers|params)\s*:\s*\w*$/.test(textBefore)) {
+  if (/(?:mode\((?:strict|strip|loose)\)\s+)?(?:query|headers|params)\s*:\s*\w*$/.test(textBefore)) {
     return [
       ...BUILTIN_SCALAR_TYPES.map(t => ({
         label: t,
@@ -348,7 +362,7 @@ function getOpContext(lines: string[], currentLine: number): OpContext {
             contextStack.push('request-body');
           } else if (/\b(get|post|put|patch|delete)\s*:?\s*$/.test(textBefore)) {
             contextStack.push('operation-body');
-          } else if (/\/[a-zA-Z0-9_/:.-]+\s*$/.test(textBefore)) {
+          } else if (/(?:\boperation\s+)?\/[a-zA-Z0-9_/:.-]+\s*$/.test(textBefore)) {
             contextStack.push('route-body');
           } else {
             contextStack.push('unknown');
@@ -410,4 +424,43 @@ function isInsideBraces(lines: string[], currentLine: number): boolean {
     }
   }
   return depth > 0;
+}
+
+type TopLevelContext = 'contract' | 'operation' | 'options' | 'top-level';
+
+/** Determine whether the cursor is inside a `contract`, `operation`, or `options` block. */
+function getTopLevelContext(lines: string[], currentLine: number): TopLevelContext {
+  let braceDepth = 0;
+  for (let i = currentLine; i >= 0; i--) {
+    const ln = lines[i]!;
+    for (let j = (i === currentLine ? ln.length - 1 : ln.length - 1); j >= 0; j--) {
+      const ch = ln[j];
+      if (ch === '}') {
+        braceDepth++;
+      } else if (ch === '{') {
+        if (braceDepth > 0) {
+          braceDepth--;
+        } else {
+          // Found the enclosing brace — check what keyword precedes it
+          const textBefore = ln.slice(0, j).trim();
+          if (/\bcontract\b/.test(textBefore)) return 'contract';
+          if (/\boperation\b/.test(textBefore)) return 'operation';
+          if (/\boptions\b/.test(textBefore)) return 'options';
+          // Nested brace inside a top-level block — keep looking outward
+        }
+      }
+    }
+  }
+  return 'top-level';
+}
+
+function getTopLevelCompletions(textBefore: string): CompletionItem[] {
+  if (/^\s*\w*$/.test(textBefore)) {
+    return [
+      { label: 'contract', kind: CompletionItemKind.Keyword, detail: 'Define a data contract (model)' },
+      { label: 'operation', kind: CompletionItemKind.Keyword, detail: 'Define an API operation (route)' },
+      { label: 'options', kind: CompletionItemKind.Keyword, detail: 'Configure keys, services, and security' },
+    ];
+  }
+  return [];
 }

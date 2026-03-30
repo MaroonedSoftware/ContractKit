@@ -1,9 +1,13 @@
----
-area: ledger
-LedgerService: "#src/modules/ledger/ledger.service.js"
----
+options {
+    keys: {
+        area: ledger
+    }
+    services {
+        LedgerService: "#src/modules/ledger/ledger.service.js"
+    }
+}
 
-/ledger/maintenance/cache/process-queue {
+operation /ledger/maintenance/cache/process-queue: {
     post: {
         service: LedgerService.processEffectiveDateCacheQueue
         request: {
@@ -15,7 +19,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/maintenance/accounts/:accountId/cache/rebuild {
+operation /ledger/maintenance/accounts/:accountId/cache/rebuild: {
     params: {
         accountId: uuid
     }
@@ -27,7 +31,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/maintenance/cache/drift {
+operation /ledger/maintenance/cache/drift: {
     get: {
         service: LedgerService.detectBalanceCacheDrift
         response: {
@@ -38,7 +42,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/maintenance/accounts/:accountId/cache/drift {
+operation /ledger/maintenance/accounts/:accountId/cache/drift: {
     params: {
         accountId: uuid
     }

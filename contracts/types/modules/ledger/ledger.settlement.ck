@@ -1,8 +1,10 @@
----
-area: ledger
----
+options {
+    keys: {
+        area: ledger
+    }
+}
 
-LedgerSettlement: { # Represents a ledger settlement
+contract LedgerSettlement: { # Represents a ledger settlement
     settledAccountId: uuid # Account to settle
     contraAccountId: uuid # The contra account identifier
     initialStatus?: enum(processing, drafting) # The initial status of the ledger settlement
@@ -13,7 +15,7 @@ LedgerSettlement: { # Represents a ledger settlement
     metadata?: record(string, unknown) # The metadata of the ledger settlement
 }
 
-LedgerSettlementEntry: { # Represents a ledger settlement entry
+contract LedgerSettlementEntry: { # Represents a ledger settlement entry
     entryId: uuid # The ledger settlement entry identifier
     transactionId: uuid # The ledger transaction identifier
     accountId: uuid # The ledger account identifier
@@ -24,7 +26,7 @@ LedgerSettlementEntry: { # Represents a ledger settlement entry
     linkedAt: datetime # The linked date of the ledger settlement entry
 }
 
-LedgerSettlementTransaction: { # Represents a ledger settlement transaction
+contract LedgerSettlementTransaction: { # Represents a ledger settlement transaction
     transactionId: uuid # The ledger transaction identifier
     status: enum(pending, posted, archived) # The status of the ledger settlement transaction
     effectiveAt: datetime # The effective date of the ledger settlement transaction
@@ -34,15 +36,15 @@ LedgerSettlementTransaction: { # Represents a ledger settlement transaction
     totalAmount: bigint(min=0) # The total amount of the ledger settlement transaction
 }
 
-FinalizeSettlementInput: { # Represents a request to finalize a ledger settlement
+contract FinalizeSettlementInput: { # Represents a request to finalize a ledger settlement
     targetStatus?: enum(pending, posted) # The target status of the ledger settlement
 }
 
-UpdateSettlementStatusInput: { # Represents a request to update the status of a ledger settlement
+contract UpdateSettlementStatusInput: { # Represents a request to update the status of a ledger settlement
     status: enum(posted, archived) # The new settlement status
 }
 
-ListSettlementsQuery: { # Represents a query to list ledger settlements
+contract ListSettlementsQuery: { # Represents a query to list ledger settlements
     settledAccountId?: uuid # Optional filter by settled account
     status?: string # Optional status filter
     limit?: int(min=1, max=100) = 25 # The maximum number of results

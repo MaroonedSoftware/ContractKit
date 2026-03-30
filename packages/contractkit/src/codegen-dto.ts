@@ -186,7 +186,7 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
 
   const wrapper = modeToWrapper(model.mode ?? 'strict');
 
-  if (model.camelCase) {
+  if (model.parseCase) {
     const snakeBody = renderFieldsAsSnakeCase(model.fields);
     lines.push(`export const ${model.name} = ${wrapper}({`);
     lines.push(...snakeBody.map(l => `    ${l}`));
@@ -389,8 +389,6 @@ function renderScalar(s: ScalarTypeNode): string {
       return 'z.url()';
     case 'uuid':
       return 'z.uuid()';
-    case 'any':
-      return 'z.any()';
     case 'unknown':
       return 'z.unknown()';
     case 'null':

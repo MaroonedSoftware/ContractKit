@@ -1,8 +1,10 @@
----
-area: capital
----
+options {
+    keys: {
+        area: capital
+    }
+}
 
-ExpansionCapital: { # Represents a capital expansion 
+contract ExpansionCapital: { # Represents a capital expansion 
     createdAt: readonly datetime # The capital expansion creation timestamp
     updatedAt: readonly datetime # The capital expansion last update timestamp
     id: readonly uuid # The capital expansion identifier

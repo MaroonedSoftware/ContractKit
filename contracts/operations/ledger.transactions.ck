@@ -1,9 +1,13 @@
----
-area: ledger
-LedgerService: "#src/modules/ledger/ledger.service.js"
----
+options {
+    keys: {
+        area: ledger
+    }
+    services {
+        LedgerService: "#src/modules/ledger/ledger.service.js"
+    }
+}
 
-/ledger/transactions {
+operation /ledger/transactions: {
     post: {
         service: LedgerService.createTransaction
         request: {
@@ -29,7 +33,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/transactions/transfer {
+operation /ledger/transactions/transfer: {
     post: {
         service: LedgerService.transfer
         request: {
@@ -43,7 +47,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/transactions/:transactionId {
+operation /ledger/transactions/:transactionId: {
     params: {
         transactionId: uuid
     }
@@ -57,7 +61,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/transactions/:transactionId/entries {
+operation /ledger/transactions/:transactionId/entries: {
     params: {
         transactionId: uuid
     }
@@ -71,7 +75,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/transactions/:transactionId/finalize {
+operation /ledger/transactions/:transactionId/finalize: {
     params: {
         transactionId: uuid
     }

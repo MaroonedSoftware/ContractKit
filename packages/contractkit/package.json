@@ -1,7 +1,7 @@
 {
   "name": "@maroonedsoftware/contractkit",
   "version": "0.1.0",
-  "description": "Core DSL compiler library: lexer, parser, codegen, and validation",
+  "description": "Core DSL compiler library: grammar-driven parser, codegen, and validation",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -10,7 +10,7 @@
     ".": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration",
+    "build": "tsup src/index.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration && cp src/contract-dsl.ohm dist/",
     "build:ci": "eslint --max-warnings=0 && pnpm run build",
     "lint": "eslint --fix",
     "format": "prettier --write .",
@@ -18,7 +18,7 @@
     "test:ci": "vitest run --coverage"
   },
   "dependencies": {
-    "chevrotain": "^11.1.1"
+    "ohm-js": "^17.5.0"
   },
   "devDependencies": {
     "@repo/config-eslint": "workspace:*",

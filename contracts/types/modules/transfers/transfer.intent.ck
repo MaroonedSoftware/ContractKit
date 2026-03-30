@@ -1,8 +1,10 @@
----
-area: transfers
----
+options {
+    keys: {
+        area: transfers
+    }
+}
 
-CreateTransferIntent: { # Represents a request to create a transfer intent
+contract CreateTransferIntent: { # Represents a request to create a transfer intent
     idempotencyKey: string # The idempotency key for the transfer
     amount: bigint(min=0) # The transfer amount in smallest currency units
     currency?: string(length=3) # ISO currency code
@@ -12,7 +14,7 @@ CreateTransferIntent: { # Represents a request to create a transfer intent
     counterpartyId: uuid # The counterparty identifier
 }
 
-TransferIntent: { # Represents a transfer intent
+contract TransferIntent: { # Represents a transfer intent
     id: readonly uuid # The transfer intent identifier
     amount: bigint(min=0) # The transfer amount in smallest currency units
     currency: string(length=3) # ISO currency code

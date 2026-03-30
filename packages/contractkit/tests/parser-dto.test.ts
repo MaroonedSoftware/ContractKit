@@ -1,4 +1,4 @@
-import { parseDto } from '../src/parser-dto.js';
+import { parseCk } from '../src/parser.js';
 import { DiagnosticCollector } from '../src/diagnostics.js';
 import type {
   ScalarTypeNode,
@@ -16,8 +16,8 @@ import type {
 
 function parse(source: string) {
   const diag = new DiagnosticCollector();
-  const root = parseDto(source, 'test.dto', diag);
-  return { root, diag };
+  const ast = parseCk(source, 'test.ck', diag);
+  return { root: ast, diag };
 }
 
 describe('parseDto', () => {
@@ -25,7 +25,7 @@ describe('parseDto', () => {
 
   describe('simple models', () => {
     it('parses a model with no fields', () => {
-      const { root } = parse('Empty: {}');
+      const { root } = parse('contract Empty: {}');
       expect(root.models).toHaveLength(1);
       expect(root.models[0]!.name).toBe('Empty');
       expect(root.models[0]!.fields).toHaveLength(0);
@@ -33,7 +33,7 @@ describe('parseDto', () => {
 
     it('parses a model with scalar fields', () => {
       const { root } = parse(`\
-User: {
+contract User: {
     name: string
     age: number
     active: boolean
@@ -51,11 +51,11 @@ User: {
 
     it('parses multiple models', () => {
       const { root } = parse(`\
-User: {
+contract User: {
     name: string
 }
 
-Post: {
+contract Post: {
     title: string
 }`);
       expect(root.models).toHaveLength(2);
@@ -69,7 +69,7 @@ Post: {
   describe('field modifiers', () => {
     it('parses optional fields', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     name?: string
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -78,7 +78,7 @@ M: {
 
     it('parses nullable fields via union with null', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     name: string | null
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -89,7 +89,7 @@ M: {
 
     it('parses fields with default string value', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     role: string = "user"
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -98,7 +98,7 @@ M: {
 
     it('parses fields with default number value', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     count: number = 0
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -107,7 +107,7 @@ M: {
 
     it('parses fields with default boolean value', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     active: boolean = true
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -116,7 +116,7 @@ M: {
 
     it('parses readonly visibility', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     id: readonly uuid
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -126,7 +126,7 @@ M: {
 
     it('parses writeonly visibility', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     password: writeonly string
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -135,7 +135,7 @@ M: {
 
     it('parses field descriptions from inline comments', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     name: string # The user name
 }`);
       const field = root.models[0]!.fields[0]!;
@@ -144,7 +144,7 @@ M: {
 
     it('parses field descriptions from preceding comments', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     first: string
     # The user name
     name: string
@@ -159,7 +159,7 @@ M: {
   describe('scalar types with modifiers', () => {
     it('parses string with min/max', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     name: string(min=1, max=100)
 }`);
       const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
@@ -171,7 +171,7 @@ M: {
 
     it('parses string with length', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     code: string(len=6)
 }`);
       const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
@@ -180,7 +180,7 @@ M: {
 
     it('parses string with regex', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     code: string(regex=/[A-Z]+/)
 }`);
       const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
@@ -189,7 +189,7 @@ M: {
 
     it('parses number with min/max', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     score: number(min=0, max=100)
 }`);
       const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
@@ -209,14 +209,13 @@ M: {
         'email',
         'url',
         'uuid',
-        'any',
         'unknown',
         'null',
         'object',
         'binary',
       ];
       for (const name of scalars) {
-        const { root } = parse(`M: { f: ${name} }`);
+        const { root } = parse(`contract M: { f: ${name} }`);
         const type = root.models[0]!.fields[0]!.type;
         expect(type.kind).toBe('scalar');
         expect((type as ScalarTypeNode).name).toBe(name);
@@ -229,7 +228,7 @@ M: {
   describe('compound types', () => {
     it('parses array type', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     tags: array(string)
 }`);
       const type = root.models[0]!.fields[0]!.type as ArrayTypeNode;
@@ -239,7 +238,7 @@ M: {
 
     it('parses array with min/max', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     tags: array(string, min=1, max=10)
 }`);
       const type = root.models[0]!.fields[0]!.type as ArrayTypeNode;
@@ -249,7 +248,7 @@ M: {
 
     it('parses tuple type', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     coords: tuple(number, number)
 }`);
       const type = root.models[0]!.fields[0]!.type as TupleTypeNode;
@@ -259,7 +258,7 @@ M: {
 
     it('parses record type', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     meta: record(string, number)
 }`);
       const type = root.models[0]!.fields[0]!.type as RecordTypeNode;
@@ -270,7 +269,7 @@ M: {
 
     it('parses enum type', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     status: enum(active, inactive, pending)
 }`);
       const type = root.models[0]!.fields[0]!.type as EnumTypeNode;
@@ -280,7 +279,7 @@ M: {
 
     it('parses literal string type', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     kind: literal("user")
 }`);
       const type = root.models[0]!.fields[0]!.type as LiteralTypeNode;
@@ -290,7 +289,7 @@ M: {
 
     it('parses literal number type', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     code: literal(42)
 }`);
       const type = root.models[0]!.fields[0]!.type as LiteralTypeNode;
@@ -299,7 +298,7 @@ M: {
 
     it('parses literal boolean type', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     flag: literal(true)
 }`);
       const type = root.models[0]!.fields[0]!.type as LiteralTypeNode;
@@ -308,7 +307,7 @@ M: {
 
     it('parses union type', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     val: string | number
 }`);
       const type = root.models[0]!.fields[0]!.type as UnionTypeNode;
@@ -318,7 +317,7 @@ M: {
 
     it('parses intersection type', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     val: Pagination & Sortable
 }`);
       const type = root.models[0]!.fields[0]!.type as IntersectionTypeNode;
@@ -328,21 +327,21 @@ M: {
       expect((type.members[1] as ModelRefTypeNode).name).toBe('Sortable');
     });
 
-    it('parses intersection with inline object', () => {
+    it('parses intersection with inline object as inheritance', () => {
       const { root } = parse(`\
-Query: Pagination & {
+contract Query: Pagination & {
     status?: enum(pending, posted)
 }`);
-      const type = root.models[0]!.type as IntersectionTypeNode;
-      expect(type.kind).toBe('intersection');
-      expect(type.members).toHaveLength(2);
-      expect((type.members[0] as ModelRefTypeNode).name).toBe('Pagination');
-      expect(type.members[1]!.kind).toBe('inlineObject');
+      const m = root.models[0]!;
+      expect(m.base).toBe('Pagination');
+      expect(m.fields).toHaveLength(1);
+      expect(m.fields[0]!.name).toBe('status');
+      expect(m.fields[0]!.optional).toBe(true);
     });
 
     it('intersection binds tighter than union', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     val: string | Pagination & Sortable
 }`);
       const type = root.models[0]!.fields[0]!.type as UnionTypeNode;
@@ -356,7 +355,7 @@ M: {
 
     it('parses model reference type', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     address: Address
 }`);
       const type = root.models[0]!.fields[0]!.type as ModelRefTypeNode;
@@ -366,7 +365,7 @@ M: {
 
     it('parses lazy type', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     children: lazy(TreeNode)
 }`);
       const type = root.models[0]!.fields[0]!.type as LazyTypeNode;
@@ -380,7 +379,7 @@ M: {
   describe('inline objects', () => {
     it('parses inline brace objects', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     meta: { key: string, value: number }
 }`);
       const type = root.models[0]!.fields[0]!.type as InlineObjectTypeNode;
@@ -392,7 +391,7 @@ M: {
 
     it('parses nested brace objects', () => {
       const { root } = parse(`\
-M: {
+contract M: {
     address: {
         street: string
         city: string
@@ -410,7 +409,7 @@ M: {
   describe('model inheritance', () => {
     it('parses model with base model', () => {
       const { root } = parse(`\
-Admin: User {
+contract Admin: User & {
     role: string
 }`);
       expect(root.models[0]!.base).toBe('User');
@@ -424,7 +423,7 @@ Admin: User {
     it('parses model description from preceding comment', () => {
       const { root } = parse(`\
 # Represents a user
-User: {
+contract User: {
     name: string
 }`);
       expect(root.models[0]!.description).toBe('Represents a user');
@@ -432,7 +431,7 @@ User: {
 
     it('parses model description from inline comment', () => {
       const { root } = parse(`\
-User: { # A user model
+contract User: { # A user model
     name: string
 }`);
       expect(root.models[0]!.description).toBe('A user model');
@@ -444,24 +443,24 @@ User: { # A user model
   describe('error recovery', () => {
     it('collects parse errors in diagnostics', () => {
       const { diag } = parse(`\
-M: {
+contract M: {
     : string
 }`);
       expect(diag.hasErrors()).toBe(true);
     });
 
-    it('continues parsing after error recovery', () => {
-      const { root } = parse(`\
-Bad: {
+    it('reports error on malformed input', () => {
+      const { root, diag } = parse(`\
+contract Bad: {
     : string
 }
 
-Good: {
+contract Good: {
     name: string
 }`);
-      // Should have at least the Good model
-      const goodModel = root.models.find(m => m.name === 'Good');
-      expect(goodModel).toBeDefined();
+      // PEG parser fails on first error and reports it in diagnostics.
+      // Unlike recovery-based parsers, subsequent models may not be returned.
+      expect(diag.hasErrors()).toBe(true);
     });
   });
 
@@ -470,7 +469,7 @@ Good: {
   describe('source locations', () => {
     it('records correct line numbers on models and fields', () => {
       const { root } = parse(`\
-User: {
+contract User: {
     name: string
     age: number
 }`);
@@ -480,21 +479,20 @@ User: {
     });
 
     it('records the correct file name', () => {
-      const { root } = parse('M: { f: string }');
-      expect(root.file).toBe('test.dto');
-      expect(root.models[0]!.loc.file).toBe('test.dto');
+      const { root } = parse('contract M: { f: string }');
+      expect(root.file).toBe('test.ck');
+      expect(root.models[0]!.loc.file).toBe('test.ck');
     });
   });
 
-  // ─── Front-matter ──────────────────────────────────────────────
+  // ─── Options block ─────────────────────────────────────────────
 
-  describe('front-matter', () => {
-    it('parses an empty front-matter block', () => {
+  describe('options block', () => {
+    it('parses an empty options block', () => {
       const { root, diag } = parse(`\
----
----
+options {}
 
-User: {
+contract User: {
     name: string
 }`);
       expect(diag.hasErrors()).toBe(false);
@@ -502,13 +500,15 @@ User: {
       expect(root.models).toHaveLength(1);
     });
 
-    it('parses front-matter with a single unquoted entry', () => {
+    it('parses options block with a single unquoted entry', () => {
       const { root, diag } = parse(`\
----
-area: users
----
+options {
+    keys: {
+        area: users
+    }
+}
 
-Account: {
+contract Account: {
     id: uuid
 }`);
       expect(diag.hasErrors()).toBe(false);
@@ -517,15 +517,17 @@ Account: {
       expect(root.models[0]!.name).toBe('Account');
     });
 
-    it('parses front-matter with multiple entries', () => {
+    it('parses options block with multiple entries', () => {
       const { root, diag } = parse(`\
----
-area: billing
-module: payments
-version: v2
----
+options {
+    keys: {
+        area: billing
+        module: payments
+        version: v2
+    }
+}
 
-Invoice: {
+contract Invoice: {
     total: number
 }`);
       expect(diag.hasErrors()).toBe(false);
@@ -537,14 +539,16 @@ Invoice: {
       expect(root.models).toHaveLength(1);
     });
 
-    it('parses front-matter with quoted string values', () => {
+    it('parses options block with quoted string values', () => {
       const { root, diag } = parse(`\
----
-area: "user-management"
-label: 'User Management'
----
+options {
+    keys: {
+        area: "user-management"
+        label: 'User Management'
+    }
+}
 
-User: {
+contract User: {
     name: string
 }`);
       expect(diag.hasErrors()).toBe(false);
@@ -554,25 +558,27 @@ User: {
       });
     });
 
-    it('returns empty meta when no front-matter is present', () => {
+    it('returns empty meta when no options block is present', () => {
       const { root } = parse(`\
-User: {
+contract User: {
     name: string
 }`);
       expect(root.meta).toEqual({});
     });
 
-    it('parses front-matter followed by multiple models', () => {
+    it('parses options block followed by multiple models', () => {
       const { root, diag } = parse(`\
----
-area: users
----
+options {
+    keys: {
+        area: users
+    }
+}
 
-User: {
+contract User: {
     name: string
 }
 
-Admin: User {
+contract Admin: User & {
     role: string
 }`);
       expect(diag.hasErrors()).toBe(false);

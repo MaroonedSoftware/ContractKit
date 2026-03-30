@@ -1,5 +1,5 @@
-import { parseDto } from '../src/parser-dto.js';
-import { parseOp } from '../src/parser-op.js';
+import { parseCk } from '../src/parser.js';
+import { decomposeCk } from '../src/decompose.js';
 import { generateDto } from '../src/codegen-dto.js';
 import { generateOp } from '../src/codegen-op.js';
 import { validateOp } from '../src/validate-op.js';
@@ -9,16 +9,18 @@ import { SIMPLE_USER_DTO, VISIBILITY_DTO, INHERITANCE_DTO, SIMPLE_USERS_OP, PARA
 
 function compileDtoSource(source: string) {
   const diag = new DiagnosticCollector();
-  const root = parseDto(source, 'test.dto', diag);
-  const output = generateDto(root);
-  return { root, output, diag };
+  const ck = parseCk(source, 'test.ck', diag);
+  const { dto } = decomposeCk(ck);
+  const output = generateDto(dto);
+  return { root: dto, output, diag };
 }
 
-function compileOpSource(source: string, file = 'users.op') {
+function compileOpSource(source: string, file = 'users.ck') {
   const diag = new DiagnosticCollector();
-  const root = parseOp(source, file, diag);
-  const output = generateOp(root);
-  return { root, output, diag };
+  const ck = parseCk(source, file, diag);
+  const { op } = decomposeCk(ck);
+  const output = generateOp(op);
+  return { root: op, output, diag };
 }
 
 describe('DTO pipeline (source -> parse -> codegen)', () => {
@@ -58,7 +60,7 @@ describe('DTO pipeline (source -> parse -> codegen)', () => {
 
   it('compiles a DTO with all type kinds', () => {
     const source = `\
-Kitchen: {
+contract Kitchen: {
     tags: array(string)
     coords: tuple(number, number)
     meta: record(string, unknown)
@@ -82,7 +84,7 @@ Kitchen: {
 
   it('includes DateTime import when date fields are used', () => {
     const source = `\
-Event: {
+contract Event: {
     startDate: date
     createdAt: datetime
 }`;
@@ -113,28 +115,30 @@ describe('OP pipeline (source -> parse -> codegen)', () => {
   });
 
   it('uses correct router name for dotted file names', () => {
-    const source = `/items { get: {} }`;
-    const { output } = compileOpSource(source, 'ledger.items.op');
+    const source = `operation /items: { get: {} }`;
+    const { output } = compileOpSource(source, 'ledger.items.ck');
     expect(output).toContain('LedgerItemsRouter');
   });
 });
 
 describe('undeclared path param warnings', () => {
   it('warns when a route has path params but no params block', () => {
-    const source = `/users/:id { get: {} }`;
+    const source = `operation /users/:id: { get: {} }`;
     const diag = new DiagnosticCollector();
-    const root = parseOp(source, 'test.op', diag);
-    validateOp(root, diag);
+    const ck = parseCk(source, 'test.ck', diag);
+    const { op } = decomposeCk(ck);
+    validateOp(op, diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings).toHaveLength(1);
     expect(warnings[0]!.message).toContain(':id');
   });
 
   it('warns for each undeclared param', () => {
-    const source = `/users/:userId/posts/:postId { get: {} }`;
+    const source = `operation /users/:userId/posts/:postId: { get: {} }`;
     const diag = new DiagnosticCollector();
-    const root = parseOp(source, 'test.op', diag);
-    validateOp(root, diag);
+    const ck = parseCk(source, 'test.ck', diag);
+    const { op } = decomposeCk(ck);
+    validateOp(op, diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings).toHaveLength(2);
     expect(warnings[0]!.message).toContain(':userId');
@@ -142,38 +146,42 @@ describe('undeclared path param warnings', () => {
   });
 
   it('does not warn when all path params are declared', () => {
-    const source = `/users/:id {\n    params: {\n        id: uuid\n    }\n    get: {}\n}`;
+    const source = `operation /users/:id: {\n    params: {\n        id: uuid\n    }\n    get: {}\n}`;
     const diag = new DiagnosticCollector();
-    const root = parseOp(source, 'test.op', diag);
-    validateOp(root, diag);
+    const ck = parseCk(source, 'test.ck', diag);
+    const { op } = decomposeCk(ck);
+    validateOp(op, diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings).toHaveLength(0);
   });
 
   it('warns only for the subset of undeclared params', () => {
-    const source = `/accounts/:accountId/entries/:entryId {\n    params: {\n        accountId: uuid\n    }\n    get: {}\n}`;
+    const source = `operation /accounts/:accountId/entries/:entryId: {\n    params: {\n        accountId: uuid\n    }\n    get: {}\n}`;
     const diag = new DiagnosticCollector();
-    const root = parseOp(source, 'test.op', diag);
-    validateOp(root, diag);
+    const ck = parseCk(source, 'test.ck', diag);
+    const { op } = decomposeCk(ck);
+    validateOp(op, diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings).toHaveLength(1);
     expect(warnings[0]!.message).toContain(':entryId');
   });
 
   it('does not warn when params uses a type reference', () => {
-    const source = `/users/:id {\n    params: UserParams\n    get: {}\n}`;
+    const source = `operation /users/:id: {\n    params: UserParams\n    get: {}\n}`;
     const diag = new DiagnosticCollector();
-    const root = parseOp(source, 'test.op', diag);
-    validateOp(root, diag);
+    const ck = parseCk(source, 'test.ck', diag);
+    const { op } = decomposeCk(ck);
+    validateOp(op, diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings).toHaveLength(0);
   });
 
   it('does not warn for routes without path params', () => {
-    const source = `/users { get: {} }`;
+    const source = `operation /users: { get: {} }`;
     const diag = new DiagnosticCollector();
-    const root = parseOp(source, 'test.op', diag);
-    validateOp(root, diag);
+    const ck = parseCk(source, 'test.ck', diag);
+    const { op } = decomposeCk(ck);
+    validateOp(op, diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings).toHaveLength(0);
   });
@@ -182,7 +190,9 @@ describe('undeclared path param warnings', () => {
 describe('param type warnings', () => {
   it('does not warn when param types are specified', () => {
     const diag = new DiagnosticCollector();
-    parseOp(PARAMETERIZED_OP, 'test.op', diag);
+    const ck = parseCk(PARAMETERIZED_OP, 'test.ck', diag);
+    const { op } = decomposeCk(ck);
+    validateOp(op, diag);
     const warnings = diag.getAll().filter(d => d.message.includes('no explicit type'));
     expect(warnings).toHaveLength(0);
   });
@@ -203,7 +213,8 @@ describe('error handling pipeline', () => {
 describe('cross-file type reference validation', () => {
   it('warns when a DTO references an undefined model', () => {
     const diag = new DiagnosticCollector();
-    const dto = parseDto('Order: { customer: NonExistentModel }', 'order.dto', diag);
+    const ck = parseCk('contract Order: { customer: NonExistentModel }', 'order.ck', diag);
+    const { dto } = decomposeCk(ck);
     validateRefs([dto], [], diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings.some(w => w.message.includes('NonExistentModel'))).toBe(true);
@@ -211,8 +222,10 @@ describe('cross-file type reference validation', () => {
 
   it('does not warn when referenced model exists in another file', () => {
     const diag = new DiagnosticCollector();
-    const dto1 = parseDto('User: { name: string }', 'user.dto', diag);
-    const dto2 = parseDto('Order: { customer: User }', 'order.dto', diag);
+    const ck1 = parseCk('contract User: { name: string }', 'user.ck', diag);
+    const ck2 = parseCk('contract Order: { customer: User }', 'order.ck', diag);
+    const { dto: dto1 } = decomposeCk(ck1);
+    const { dto: dto2 } = decomposeCk(ck2);
     validateRefs([dto1, dto2], [], diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning' && d.message.includes('User'));
     expect(warnings).toHaveLength(0);
@@ -220,18 +233,18 @@ describe('cross-file type reference validation', () => {
 
   it('warns when base model is undefined', () => {
     const diag = new DiagnosticCollector();
-    const dto = parseDto('Admin: MissingBase { role: string }', 'admin.dto', diag);
+    const ck = parseCk('contract Admin: MissingBase & { role: string }', 'admin.ck', diag);
+    const { dto } = decomposeCk(ck);
     validateRefs([dto], [], diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings.some(w => w.message.includes('MissingBase'))).toBe(true);
   });
 
-  it('warns when an .op file references an undefined body type', () => {
-    const diagOp = new DiagnosticCollector();
-    const diagAll = new DiagnosticCollector();
-    const op = parseOp(
+  it('warns when an operation references an undefined body type', () => {
+    const diag = new DiagnosticCollector();
+    const ck = parseCk(
       `\
-/users {
+operation /users: {
     get: {
         response: {
             200: {
@@ -240,30 +253,32 @@ describe('cross-file type reference validation', () => {
         }
     }
 }`,
-      'users.op',
-      diagOp,
+      'users.ck',
+      diag,
     );
+    const { op } = decomposeCk(ck);
+    const diagAll = new DiagnosticCollector();
     validateRefs([], [op], diagAll);
     const warnings = diagAll.getAll().filter(d => d.severity === 'warning');
     expect(warnings.some(w => w.message.includes('MissingType'))).toBe(true);
   });
 
   it('does not warn for scalar type names in ops', () => {
-    const diagOp = new DiagnosticCollector();
-    const diagAll = new DiagnosticCollector();
-    const op = parseOp(
+    const diag = new DiagnosticCollector();
+    const ck = parseCk(
       `\
-/users {
+operation /users: {
     get: {
         query: {
             page: int
         }
     }
 }`,
-      'users.op',
-      diagOp,
+      'users.ck',
+      diag,
     );
-    // query with inline params should not trigger model ref warnings
+    const { op } = decomposeCk(ck);
+    const diagAll = new DiagnosticCollector();
     validateRefs([], [op], diagAll);
     const warnings = diagAll.getAll().filter(d => d.severity === 'warning');
     expect(warnings).toHaveLength(0);

@@ -19,7 +19,7 @@ export function validateRefs(dtoRoots: DtoRootNode[], opRoots: OpRootNode[], dia
   for (const root of dtoRoots) {
     for (const model of root.models) {
       if (model.base && !modelNames.has(model.base)) {
-        diag.warn(model.loc.file, model.loc.line, `Base model "${model.base}" is not defined in any .dto file`);
+        diag.warn(model.loc.file, model.loc.line, `Base model "${model.base}" is not defined in any contract file`);
       }
       if (model.type) {
         checkTypeRefs(model.type, model.loc.file, model.loc.line, modelNames, diag);
@@ -54,7 +54,7 @@ function checkTypeRefs(type: DtoTypeNode, file: string, line: number, models: Se
   switch (type.kind) {
     case 'ref':
       if (!models.has(type.name)) {
-        diag.warn(file, line, `Referenced model "${type.name}" is not defined in any .dto file`);
+        diag.warn(file, line, `Referenced model "${type.name}" is not defined in any contract file`);
       }
       break;
     case 'array':
@@ -103,6 +103,6 @@ function checkParamSourceRefs(
 
 function checkNameRef(name: string, file: string, line: number, models: Set<string>, diag: DiagnosticCollector): void {
   if (/^[A-Z]/.test(name) && !models.has(name)) {
-    diag.warn(file, line, `Referenced type "${name}" is not defined in any .dto file`);
+    diag.warn(file, line, `Referenced type "${name}" is not defined in any contract file`);
   }
 }

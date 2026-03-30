@@ -1,9 +1,13 @@
----
-area: ledger
-LedgerService: "#src/modules/ledger/ledger.service.js"
----
+options {
+    keys: {
+        area: ledger
+    }
+    services {
+        LedgerService: "#src/modules/ledger/ledger.service.js"
+    }
+}
 
-/ledger/categories {
+operation /ledger/categories: {
     post: {
         service: LedgerService.createCategory
         request: {
@@ -25,7 +29,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/categories/:categoryId {
+operation /ledger/categories/:categoryId: {
     params: {
         categoryId: uuid
     }
@@ -56,7 +60,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/categories/:categoryId/accounts {
+operation /ledger/categories/:categoryId/accounts: {
     params: {
         categoryId: uuid
     }
@@ -70,7 +74,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/categories/:categoryId/children {
+operation /ledger/categories/:categoryId/children: {
     params: {
         categoryId: uuid
     }
@@ -84,7 +88,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/categories/:categoryId/parents {
+operation /ledger/categories/:categoryId/parents: {
     params: {
         categoryId: uuid
     }
@@ -98,7 +102,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/categories/:categoryId/tree {
+operation /ledger/categories/:categoryId/tree: {
     params: {
         categoryId: uuid
     }
@@ -112,7 +116,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/categories/:categoryId/balances {
+operation /ledger/categories/:categoryId/balances: {
     params: {
         categoryId: uuid
     }
@@ -127,7 +131,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/categories/:categoryId/transactions {
+operation /ledger/categories/:categoryId/transactions: {
     params: {
         categoryId: uuid
     }
@@ -142,7 +146,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/categories/:categoryId/children/:childId {
+operation /ledger/categories/:categoryId/children/:childId: {
     params: {
         categoryId: uuid
         childId: uuid

@@ -1,8 +1,10 @@
----
-area: ledger
----
+options {
+    keys: {
+        area: ledger
+    }
+}
 
-LedgerAccount: { # Represents a ledger account
+contract LedgerAccount: { # Represents a ledger account
     id: readonly uuid # The ledger account identifier
     name: string(min=3, max=100) # The ledger account name
     normality: enum(credit, debit) # The ledger account normality
@@ -14,18 +16,18 @@ LedgerAccount: { # Represents a ledger account
     version: readonly int # The ledger account version
 }
 
-GetAccountBalancesQuery: { # Represents a query to get ledger account balances
+contract GetAccountBalancesQuery: { # Represents a query to get ledger account balances
     date?: datetime # Optional ISO 8601 date to query balances at
     version?: int(min=0) # Optional ledger account version to query balances at
 }
 
-AccountBalances: { # Represents the balances of a ledger account
+contract AccountBalances: { # Represents the balances of a ledger account
     postedBalance: bigint(min=0) # The posted balance in smallest currency units
     pendingBalance: bigint(min=0) # The pending balance in smallest currency units
     availableBalance: bigint(min=0) # The available balance in smallest currency units
 }
 
-ListAccountTransactionsQuery: Pagination & { # Represents a query to list ledger account transactions
+contract ListAccountTransactionsQuery: Pagination & { # Represents a query to list ledger account transactions
     status?: enum(pending, posted, archived) # Optional ledger account transaction status filter
     sortBy?: enum(effective_at, created_at, id) = effective_at # Optional ledger account transaction sort field
 }

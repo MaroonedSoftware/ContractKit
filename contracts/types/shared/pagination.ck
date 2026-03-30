@@ -1,8 +1,10 @@
----
-area: shared
----
+options {
+    keys: {
+        area: shared
+    }
+}
 
-Pagination: { # Represents a pagination object
+contract Pagination: { # Represents a pagination object
     page: int(min=0) = 0 # The page number
     pageSize: int(min=1, max=100) = 25 # The page size
     sort: enum(asc, desc) = desc # The sort order

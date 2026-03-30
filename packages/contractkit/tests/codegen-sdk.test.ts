@@ -704,10 +704,6 @@ describe('renderTsType', () => {
       expect(renderTsType(scalarType('null'))).toBe('null');
     });
 
-    it('maps any to any', () => {
-      expect(renderTsType(scalarType('any'))).toBe('any');
-    });
-
     it('maps unknown to unknown', () => {
       expect(renderTsType(scalarType('unknown'))).toBe('unknown');
     });

@@ -1,9 +1,13 @@
----
-area: capital
-ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
----
+options {
+    keys: {
+        area: capital
+    }
+    services {
+        ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
+    }
+}
 
-/capital/offers/expansion {
+operation /capital/offers/expansion: {
     post: { # create an offer for expansion capital
         service: ExpansionCapitalService.createOffer
     request: {
@@ -17,11 +21,11 @@ ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
     }
     get: { # list offers for expansion capital
         service: ExpansionCapitalService.listOffers
-        query: Pagination & { status?: OfferStatus[] }
+        query: Pagination & { status?: array(OfferStatus) }
         response: {
             200: {
                 application/json: {
-                    meta: Pagination & { status?: OfferStatus[] }
+                    meta: Pagination & { status?: array(OfferStatus) }
                     data: array(ExpansionCapitalOffer)
                 }
             }
@@ -29,7 +33,7 @@ ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
     }
 }
 
-/capital/offers/expansion/:id {
+operation /capital/offers/expansion/:id: {
     params: {
         id: uuid
     }
@@ -49,7 +53,7 @@ ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
     }
 }
 
-/capital/offers/expansion/:id/accept {
+operation /capital/offers/expansion/:id/accept: {
     params: {
         id: uuid # the id of the offer to accept
     }
@@ -68,7 +72,7 @@ ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
     }
 }
 
-/capital/offers/expansion/:id/decline {
+operation /capital/offers/expansion/:id/decline: {
     params: {
         id: uuid
     }
@@ -82,7 +86,7 @@ ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
     }
 }
 
-/capital/expansion {
+operation /capital/expansion: {
     get: {
         service: ExpansionCapitalService.list
         query: Pagination
@@ -97,7 +101,7 @@ ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
     }
 }
 
-/capital/expansion/:id {
+operation /capital/expansion/:id: {
     params: {
         id: uuid
     }
@@ -111,7 +115,7 @@ ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
     }
 }
 
-/capital/expansion/:id/disburse {
+operation /capital/expansion/:id/disburse: {
     params: {
         id: uuid
     }
@@ -132,7 +136,7 @@ ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
     }
 }
 
-/capital/expansion/:id/repayment {
+operation /capital/expansion/:id/repayment: {
     params: {
         id: uuid
     }
@@ -153,7 +157,7 @@ ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
     }
 }
 
-/capital/expansion/:id/liquidity-disbursement {
+operation /capital/expansion/:id/liquidity-disbursement: {
     params: {
         id: uuid
     }

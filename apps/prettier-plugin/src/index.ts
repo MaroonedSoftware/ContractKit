@@ -1,9 +1,10 @@
 import type { Plugin } from 'prettier';
 import { builders } from 'prettier/doc';
-import { parseDto, parseOp, DiagnosticCollector } from '@maroonedsoftware/contractkit';
-import type { DtoRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
+import { parseCk, decomposeCk, DiagnosticCollector } from '@maroonedsoftware/contractkit';
+import type { CkRootNode, DtoRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
 import { printDto } from './print-dto.js';
 import { printOp } from './print-op.js';
+import { printCk } from './print-ck.js';
 
 const { hardline, join } = builders;
 
@@ -12,54 +13,46 @@ function toDoc(text: string) {
   return join(hardline, lines);
 }
 
-const plugin: Plugin<DtoRootNode | OpRootNode> = {
+const plugin: Plugin<CkRootNode | DtoRootNode | OpRootNode> = {
   languages: [
     {
+      name: 'ContractDSL',
+      parsers: ['contract-ck'],
+      extensions: ['.ck'],
+      vscodeLanguageIds: ['contract-ck'],
+    },
+    // Legacy support for .dto and .op extensions
+    {
       name: 'ContractDTO',
-      parsers: ['contract-dto'],
+      parsers: ['contract-ck'],
       extensions: ['.dto'],
       vscodeLanguageIds: ['contract-dto'],
     },
     {
       name: 'ContractOP',
-      parsers: ['contract-op'],
+      parsers: ['contract-ck'],
       extensions: ['.op'],
       vscodeLanguageIds: ['contract-op'],
     },
   ],
 
   parsers: {
-    'contract-dto': {
+    'contract-ck': {
       parse(text, _options) {
         const diag = new DiagnosticCollector();
-        return parseDto(text, '<stdin>', diag);
+        return parseCk(text, '<stdin>', diag);
       },
-      astFormat: 'contract-dto',
-      locStart: () => 0,
-      locEnd: _node => 0,
-    },
-    'contract-op': {
-      parse(text, _options) {
-        const diag = new DiagnosticCollector();
-        return parseOp(text, '<stdin>', diag);
-      },
-      astFormat: 'contract-op',
+      astFormat: 'contract-ck',
       locStart: () => 0,
       locEnd: _node => 0,
     },
   },
 
   printers: {
-    'contract-dto': {
+    'contract-ck': {
       print(path) {
-        const node = path.node as DtoRootNode;
-        return toDoc(printDto(node));
-      },
-    },
-    'contract-op': {
-      print(path) {
-        const node = path.node as OpRootNode;
-        return toDoc(printOp(node));
+        const node = path.node as CkRootNode;
+        return toDoc(printCk(node));
       },
     },
   },

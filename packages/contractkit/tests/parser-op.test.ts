@@ -1,11 +1,11 @@
-import { parseOp } from '../src/parser-op.js';
+import { parseCk } from '../src/parser.js';
 import { DiagnosticCollector } from '../src/diagnostics.js';
 import type { ScalarTypeNode } from '../src/ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '../src/ast.js';
 
 function parse(source: string) {
   const diag = new DiagnosticCollector();
-  const root = parseOp(source, 'test.op', diag);
+  const root = parseCk(source, 'test.ck', diag);
   return { root, diag };
 }
 
@@ -14,28 +14,28 @@ describe('parseOp', () => {
 
   describe('route paths', () => {
     it('parses simple route path', () => {
-      const { root } = parse('/users { get: {} }');
+      const { root } = parse('operation /users: { get: {} }');
       expect(root.routes).toHaveLength(1);
       expect(root.routes[0]!.path).toBe('/users');
     });
 
     it('parses route with path parameters', () => {
-      const { root } = parse('/users/:id { get: {} }');
+      const { root } = parse('operation /users/:id: { get: {} }');
       expect(root.routes[0]!.path).toBe('/users/:id');
     });
 
     it('parses nested route path', () => {
-      const { root } = parse('/api/v1/users { get: {} }');
+      const { root } = parse('operation /api/v1/users: { get: {} }');
       expect(root.routes[0]!.path).toBe('/api/v1/users');
     });
 
     it('parses route with multiple path parameters', () => {
-      const { root } = parse('/users/:userId/posts/:postId { get: {} }');
+      const { root } = parse('operation /users/:userId/posts/:postId: { get: {} }');
       expect(root.routes[0]!.path).toBe('/users/:userId/posts/:postId');
     });
 
     it('errors on route not starting with slash', () => {
-      const { diag } = parse('users { get: {} }');
+      const { diag } = parse('operation users: { get: {} }');
       expect(diag.hasErrors()).toBe(true);
     });
   });
@@ -45,7 +45,7 @@ describe('parseOp', () => {
   describe('params block', () => {
     it('parses params with scalar types', () => {
       const { root } = parse(`\
-/users/:id {
+operation /users/:id: {
     params: {
         id: uuid
     }
@@ -59,7 +59,7 @@ describe('parseOp', () => {
 
     it('parses multiple params', () => {
       const { root } = parse(`\
-/users/:id/posts/:postId {
+operation /users/:id/posts/:postId: {
     params: {
         id: uuid
         postId: uuid
@@ -74,7 +74,7 @@ describe('parseOp', () => {
 
     it('parses params as type reference declaration', () => {
       const { root } = parse(`\
-/users/:id {
+operation /users/:id: {
     params: RouteParams
     get: {}
 }`);
@@ -86,32 +86,32 @@ describe('parseOp', () => {
 
   describe('HTTP methods', () => {
     it('parses GET operation', () => {
-      const { root } = parse('/users { get: {} }');
+      const { root } = parse('operation /users: { get: {} }');
       expect(root.routes[0]!.operations[0]!.method).toBe('get');
     });
 
     it('parses POST operation', () => {
-      const { root } = parse('/users { post: {} }');
+      const { root } = parse('operation /users: { post: {} }');
       expect(root.routes[0]!.operations[0]!.method).toBe('post');
     });
 
     it('parses PUT operation', () => {
-      const { root } = parse('/users { put: {} }');
+      const { root } = parse('operation /users: { put: {} }');
       expect(root.routes[0]!.operations[0]!.method).toBe('put');
     });
 
     it('parses PATCH operation', () => {
-      const { root } = parse('/users { patch: {} }');
+      const { root } = parse('operation /users: { patch: {} }');
       expect(root.routes[0]!.operations[0]!.method).toBe('patch');
     });
 
     it('parses DELETE operation', () => {
-      const { root } = parse('/users { delete: {} }');
+      const { root } = parse('operation /users: { delete: {} }');
       expect(root.routes[0]!.operations[0]!.method).toBe('delete');
     });
 
     it('parses operation with empty body', () => {
-      const { root } = parse('/users { delete: {} }');
+      const { root } = parse('operation /users: { delete: {} }');
       const op = root.routes[0]!.operations[0]!;
       expect(op.method).toBe('delete');
       expect(op.request).toBeUndefined();
@@ -124,7 +124,7 @@ describe('parseOp', () => {
   describe('request block', () => {
     it('parses JSON request with body type', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     post: {
         request: {
             application/json: CreateUserInput
@@ -139,7 +139,7 @@ describe('parseOp', () => {
 
     it('parses multipart request', () => {
       const { root } = parse(`\
-/uploads {
+operation /uploads: {
     post: {
         request: {
             multipart/form-data: UploadInput
@@ -156,7 +156,7 @@ describe('parseOp', () => {
   describe('response block', () => {
     it('parses response with status code and body type', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {
         response: {
             200: {
@@ -174,7 +174,7 @@ describe('parseOp', () => {
 
     it('parses response with no body', () => {
       const { root } = parse(`\
-/users/:id {
+operation /users/:id: {
     delete: {
         response: {
             204:
@@ -193,7 +193,7 @@ describe('parseOp', () => {
   describe('query block', () => {
     it('parses query with typed parameters', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {
         query: {
             page: int
@@ -215,7 +215,7 @@ describe('parseOp', () => {
 
     it('parses query as type reference declaration', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {
         query: Pagination
         response: {
@@ -230,7 +230,7 @@ describe('parseOp', () => {
     });
 
     it('leaves query undefined when not declared', () => {
-      const { root } = parse('/users { get: {} }');
+      const { root } = parse('operation /users: { get: {} }');
       expect(root.routes[0]!.operations[0]!.query).toBeUndefined();
     });
   });
@@ -240,7 +240,7 @@ describe('parseOp', () => {
   describe('headers block', () => {
     it('parses headers with typed parameters', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {
         headers: {
             authorization: string
@@ -263,7 +263,7 @@ describe('parseOp', () => {
 
     it('parses headers as type reference declaration', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {
         headers: CommonHeaders
         response: {
@@ -278,15 +278,15 @@ describe('parseOp', () => {
     });
 
     it('leaves headers undefined when not declared', () => {
-      const { root } = parse('/users { get: {} }');
+      const { root } = parse('operation /users: { get: {} }');
       expect(root.routes[0]!.operations[0]!.headers).toBeUndefined();
     });
 
     it('parses strict mode prefix on headers block', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {
-        strict headers: {
+        mode(strict) headers: {
             authorization: string
         }
     }
@@ -298,9 +298,9 @@ describe('parseOp', () => {
 
     it('parses strip mode prefix on headers block', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {
-        strip headers: {
+        mode(strip) headers: {
             authorization: string
         }
     }
@@ -310,7 +310,7 @@ describe('parseOp', () => {
 
     it('defaults headersMode to undefined when no prefix', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {
         headers: {
             authorization: string
@@ -326,7 +326,7 @@ describe('parseOp', () => {
   describe('service declaration', () => {
     it('parses service with class and method', () => {
       const { root } = parse(`\
-/users/:id {
+operation /users/:id: {
     put: {
         service: LedgerService.updateUser
         response: {
@@ -342,7 +342,7 @@ describe('parseOp', () => {
 
     it('parses service with class only', () => {
       const { root } = parse(`\
-/transfers {
+operation /transfers: {
     post: {
         service: TransfersService
         request: {
@@ -360,7 +360,7 @@ describe('parseOp', () => {
     });
 
     it('leaves service undefined when not declared', () => {
-      const { root } = parse('/users { get: {} }');
+      const { root } = parse('operation /users: { get: {} }');
       expect(root.routes[0]!.operations[0]!.service).toBeUndefined();
     });
   });
@@ -370,7 +370,7 @@ describe('parseOp', () => {
   describe('sdk declaration', () => {
     it('parses sdk method name', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {
         sdk: listUsers
         response: {
@@ -386,7 +386,7 @@ describe('parseOp', () => {
 
     it('parses sdk alongside service', () => {
       const { root } = parse(`\
-/users/:id {
+operation /users/:id: {
     get: {
         service: UserService.getById
         sdk: getUser
@@ -403,7 +403,7 @@ describe('parseOp', () => {
     });
 
     it('leaves sdk undefined when not declared', () => {
-      const { root } = parse('/users { get: {} }');
+      const { root } = parse('operation /users: { get: {} }');
       expect(root.routes[0]!.operations[0]!.sdk).toBeUndefined();
     });
   });
@@ -413,7 +413,7 @@ describe('parseOp', () => {
   describe('multiple operations and routes', () => {
     it('parses multiple HTTP methods under one route', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {}
     post: {}
 }`);
@@ -424,11 +424,11 @@ describe('parseOp', () => {
 
     it('parses multiple routes', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {}
 }
 
-/posts {
+operation /posts: {
     get: {}
 }`);
       expect(root.routes).toHaveLength(2);
@@ -442,11 +442,11 @@ describe('parseOp', () => {
   describe('error recovery', () => {
     it('collects errors and continues parsing', () => {
       const { root, diag } = parse(`\
-bad-route-no-slash {
+operation bad-route-no-slash: {
     get: {}
 }
 
-/valid {
+operation /valid: {
     get: {}
 }`);
       expect(diag.hasErrors()).toBe(true);
@@ -458,7 +458,7 @@ bad-route-no-slash {
   describe('full example', () => {
     it('parses a complete route with params, request, and response', () => {
       const { root, diag } = parse(`\
-/users/:id {
+operation /users/:id: {
     params: {
         id: uuid
     }
@@ -504,7 +504,7 @@ bad-route-no-slash {
     it('parses route description from preceding comment', () => {
       const { root } = parse(`\
 # User management routes
-/users {
+operation /users: {
     get: {}
 }`);
       expect(root.routes[0]!.description).toBe('User management routes');
@@ -512,7 +512,7 @@ bad-route-no-slash {
 
     it('parses operation description from preceding comment', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     # List all users
     get: {}
 }`);
@@ -521,7 +521,7 @@ bad-route-no-slash {
 
     it('returns undefined description when no comment present', () => {
       const { root } = parse(`\
-/users {
+operation /users: {
     get: {}
 }`);
       expect(root.routes[0]!.description).toBeUndefined();
@@ -529,52 +529,60 @@ bad-route-no-slash {
     });
   });
 
-  // ─── Front-matter ────────────────────────────────────────────────
+  // ─── Options block ───────────────────────────────────────────────
 
-  describe('front-matter', () => {
-    it('parses front-matter with unquoted value', () => {
+  describe('options block', () => {
+    it('parses options block with unquoted key value', () => {
       const { root } = parse(`\
----
-module: capital
----
-/capital { get: {} }`);
+options {
+    keys: {
+        module: capital
+    }
+}
+operation /capital: { get: {} }`);
       expect(root.meta).toEqual({ module: 'capital' });
       expect(root.routes).toHaveLength(1);
     });
 
-    it('parses front-matter with quoted string value', () => {
+    it('parses options block with quoted service value', () => {
       const { root } = parse(`\
----
-CapitalService: "#modules/capital/capital.service.js"
----
-/capital { get: {} }`);
-      expect(root.meta).toEqual({ CapitalService: '#modules/capital/capital.service.js' });
+options {
+    services {
+        CapitalService: "#modules/capital/capital.service.js"
+    }
+}
+operation /capital: { get: {} }`);
+      expect(root.services).toEqual({ CapitalService: '#modules/capital/capital.service.js' });
     });
 
-    it('parses front-matter with unquoted hash-prefixed path', () => {
+    it('parses options block with unquoted hash-prefixed service path', () => {
       const { root } = parse(`\
----
-CapitalService: #modules/capital/capital.service.js
----
-/capital { get: {} }`);
-      expect(root.meta).toEqual({ CapitalService: '#modules/capital/capital.service.js' });
+options {
+    services {
+        CapitalService: #modules/capital/capital.service.js
+    }
+}
+operation /capital: { get: {} }`);
+      expect(root.services).toEqual({ CapitalService: '#modules/capital/capital.service.js' });
     });
 
-    it('parses front-matter with multiple entries', () => {
+    it('parses options block with multiple service entries', () => {
       const { root } = parse(`\
----
-CapitalService: #modules/capital/capital.service.js
-LedgerService: #modules/ledger/ledger.service.js
----
-/capital { get: {} }`);
-      expect(root.meta).toEqual({
+options {
+    services {
+        CapitalService: #modules/capital/capital.service.js
+        LedgerService: #modules/ledger/ledger.service.js
+    }
+}
+operation /capital: { get: {} }`);
+      expect(root.services).toEqual({
         CapitalService: '#modules/capital/capital.service.js',
         LedgerService: '#modules/ledger/ledger.service.js',
       });
     });
 
-    it('defaults to empty meta when no front-matter', () => {
-      const { root } = parse('/users { get: {} }');
+    it('defaults to empty meta when no options block', () => {
+      const { root } = parse('operation /users: { get: {} }');
       expect(root.meta).toEqual({});
     });
   });
@@ -583,54 +591,54 @@ LedgerService: #modules/ledger/ledger.service.js
 
   describe('route modifiers', () => {
     it('parses single internal modifier on route', () => {
-      const { root } = parse('/admin/users: internal { get: {} }');
+      const { root } = parse('operation internal /admin/users: { get: {} }');
       expect(root.routes[0]!.modifiers).toEqual(['internal']);
     });
 
     it('parses deprecated modifier on route', () => {
-      const { root } = parse('/old/users: deprecated { get: {} }');
+      const { root } = parse('operation deprecated /old/users: { get: {} }');
       expect(root.routes[0]!.modifiers).toEqual(['deprecated']);
     });
 
     it('parses multiple modifiers on route', () => {
-      const { root } = parse('/admin/users: internal deprecated { get: {} }');
+      const { root } = parse('operation internal deprecated /admin/users: { get: {} }');
       expect(root.routes[0]!.modifiers).toEqual(['internal', 'deprecated']);
     });
 
     it('route without modifier has undefined modifiers', () => {
-      const { root } = parse('/users { get: {} }');
+      const { root } = parse('operation /users: { get: {} }');
       expect(root.routes[0]!.modifiers).toBeUndefined();
     });
 
     it('parses internal modifier on operation', () => {
-      const { root } = parse('/users { post: internal { } }');
+      const { root } = parse('operation /users: { post: internal { } }');
       expect(root.routes[0]!.operations[0]!.modifiers).toEqual(['internal']);
     });
 
     it('parses deprecated modifier on operation', () => {
-      const { root } = parse('/users { get: deprecated { } }');
+      const { root } = parse('operation /users: { get: deprecated { } }');
       expect(root.routes[0]!.operations[0]!.modifiers).toEqual(['deprecated']);
     });
 
     it('parses multiple modifiers on operation', () => {
-      const { root } = parse('/users { get: internal deprecated { } }');
+      const { root } = parse('operation /users: { get: internal deprecated { } }');
       expect(root.routes[0]!.operations[0]!.modifiers).toEqual(['internal', 'deprecated']);
     });
 
     it('operation without modifier has undefined modifiers', () => {
-      const { root } = parse('/users { get: {} }');
+      const { root } = parse('operation /users: { get: {} }');
       expect(root.routes[0]!.operations[0]!.modifiers).toBeUndefined();
     });
 
     it('operation modifier overrides route modifier', () => {
-      const { root } = parse('/admin: internal { get: deprecated {} }');
+      const { root } = parse('operation internal /admin: { get: deprecated {} }');
       const route = root.routes[0]!;
       expect(route.modifiers).toEqual(['internal']);
       expect(route.operations[0]!.modifiers).toEqual(['deprecated']);
     });
 
     it('operation without modifier inherits route modifier', () => {
-      const { root } = parse('/admin: internal { get: {} post: deprecated {} }');
+      const { root } = parse('operation internal /admin: { get: {} post: deprecated {} }');
       const route = root.routes[0]!;
       expect(route.modifiers).toEqual(['internal']);
       expect(route.operations[0]!.modifiers).toBeUndefined(); // inherits via resolveModifiers
@@ -638,21 +646,21 @@ LedgerService: #modules/ledger/ledger.service.js
     });
 
     it('public modifier on operation is stored in AST for round-trip fidelity', () => {
-      const { root } = parse('/admin: internal { get: public {} }');
+      const { root } = parse('operation internal /admin: { get: public {} }');
       const route = root.routes[0]!;
       expect(route.modifiers).toEqual(['internal']);
       expect(route.operations[0]!.modifiers).toEqual(['public']);
     });
 
     it('public modifier strips inherited internal via resolveModifiers', () => {
-      const { root } = parse('/admin: internal { get: public {} }');
+      const { root } = parse('operation internal /admin: { get: public {} }');
       const route = root.routes[0]!;
       const op = route.operations[0]!;
       expect(resolveModifiers(route, op)).toEqual([]);
     });
 
     it('public combined with deprecated: AST keeps both, resolveModifiers strips public', () => {
-      const { root } = parse('/admin: internal { get: public deprecated {} }');
+      const { root } = parse('operation internal /admin: { get: public deprecated {} }');
       const route = root.routes[0]!;
       const op = route.operations[0]!;
       expect(op.modifiers).toEqual(['public', 'deprecated']);
@@ -664,64 +672,64 @@ LedgerService: #modules/ledger/ledger.service.js
 
   describe('security', () => {
     it('parses security: none as SECURITY_NONE on operation', () => {
-      const { root } = parse('/users { get: { security: none } }');
+      const { root } = parse('operation /users: { get: { security: none } }');
       expect(root.routes[0]!.operations[0]!.security).toBe(SECURITY_NONE);
     });
 
     it('parses security: { roles: admin } with single role', () => {
-      const { root } = parse('/users { get: { security: { roles: admin } } }');
+      const { root } = parse('operation /users: { get: { security: { roles: admin } } }');
       const sec = root.routes[0]!.operations[0]!.security as any;
       expect(sec.roles).toEqual(['admin']);
     });
 
     it('parses security: { roles: admin moderator } with multiple roles', () => {
-      const { root } = parse('/users { get: { security: { roles: admin moderator editor } } }');
+      const { root } = parse('operation /users: { get: { security: { roles: admin moderator editor } } }');
       const sec = root.routes[0]!.operations[0]!.security as any;
       expect(sec.roles).toEqual(['admin', 'moderator', 'editor']);
     });
 
     it('parses signature: "key" as a top-level operation field', () => {
-      const { root } = parse('/users { post: { signature: "hmac-sha256" } }');
+      const { root } = parse('operation /users: { post: { signature: "hmac-sha256" } }');
       const op = root.routes[0]!.operations[0]!;
       expect(op.signature).toBe('hmac-sha256');
       expect(op.security).toBeUndefined();
     });
 
     it('parses signature: UNQUOTED_KEY with unquoted identifier', () => {
-      const { root } = parse('/users { post: { signature: MODERN_TREASURY_WEBHOOK } }');
+      const { root } = parse('operation /users: { post: { signature: MODERN_TREASURY_WEBHOOK } }');
       const op = root.routes[0]!.operations[0]!;
       expect(op.signature).toBe('MODERN_TREASURY_WEBHOOK');
     });
 
     it('parses signature: alongside security: { roles }', () => {
-      const { root } = parse('/users { post: { signature: "hmac-sha256" security: { roles: admin } } }');
+      const { root } = parse('operation /users: { post: { signature: "hmac-sha256" security: { roles: admin } } }');
       const op = root.routes[0]!.operations[0]!;
       expect(op.signature).toBe('hmac-sha256');
       expect((op.security as any).roles).toEqual(['admin']);
     });
 
     it('parses signature: before or after security:', () => {
-      const { root } = parse('/users { post: { security: { roles: admin } signature: MODERN_TREASURY_WEBHOOK } }');
+      const { root } = parse('operation /users: { post: { security: { roles: admin } signature: MODERN_TREASURY_WEBHOOK } }');
       const op = root.routes[0]!.operations[0]!;
       expect(op.signature).toBe('MODERN_TREASURY_WEBHOOK');
       expect((op.security as any).roles).toEqual(['admin']);
     });
 
     it('parses route-level security: { roles: admin }', () => {
-      const { root } = parse('/users { security: { roles: admin } get: {} }');
+      const { root } = parse('operation /users: { security: { roles: admin } get: {} }');
       const sec = root.routes[0]!.security as any;
       expect(sec.roles).toEqual(['admin']);
     });
 
     it('resolveSecurity: op-level wins over route-level', () => {
-      const { root } = parse('/users { security: { roles: admin } get: { security: none } }');
+      const { root } = parse('operation /users: { security: { roles: admin } get: { security: none } }');
       const route = root.routes[0]!;
       const op = route.operations[0]!;
       expect(resolveSecurity(route, op)).toBe(SECURITY_NONE);
     });
 
     it('resolveSecurity: falls back to route-level when op has no security', () => {
-      const { root } = parse('/users { security: { roles: admin } get: {} }');
+      const { root } = parse('operation /users: { security: { roles: admin } get: {} }');
       const route = root.routes[0]!;
       const op = route.operations[0]!;
       const sec = resolveSecurity(route, op) as any;
@@ -729,7 +737,7 @@ LedgerService: #modules/ledger/ledger.service.js
     });
 
     it('security: { ... } does not break subsequent fields', () => {
-      const { root } = parse('/users { get: { security: { roles: admin } response: { 200: } } }');
+      const { root } = parse('operation /users: { get: { security: { roles: admin } response: { 200: } } }');
       const op = root.routes[0]!.operations[0]!;
       expect((op.security as any).roles).toEqual(['admin']);
       expect(op.responses).toHaveLength(1);

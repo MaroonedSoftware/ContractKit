@@ -46,7 +46,7 @@ export function printType(type: DtoTypeNode): string {
 
 /** Compact single-line form — used when inline object appears nested inside another type. */
 function printInlineObjectCompact(obj: InlineObjectTypeNode): string {
-  const prefix = obj.mode ? `${obj.mode} ` : '';
+  const prefix = obj.mode ? `mode(${obj.mode}) ` : '';
   if (obj.fields.length === 0) return `${prefix}{}`;
   const parts = obj.fields.map(f => {
     const opt = f.optional ? '?' : '';
@@ -73,7 +73,7 @@ export function printField(field: FieldNode, indent: string): string {
     const trailing = extractTrailingInlineObject(field.type);
     if (trailing) {
       const { prefix, inlineObj } = trailing;
-      const modePart = inlineObj.mode ? `${inlineObj.mode} ` : '';
+      const modePart = inlineObj.mode ? `mode(${inlineObj.mode}) ` : '';
       const header = prefix
         ? `${indent}${field.name}${opt}: ${vis}${prefix} & ${modePart}{${comment}`
         : `${indent}${field.name}${opt}: ${vis}${modePart}{${comment}`;

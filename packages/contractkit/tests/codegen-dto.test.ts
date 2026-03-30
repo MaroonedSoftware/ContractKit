@@ -129,10 +129,6 @@ describe('renderType', () => {
       expect(renderType(scalarType('uuid'))).toBe('z.uuid()');
     });
 
-    it('renders z.any()', () => {
-      expect(renderType(scalarType('any'))).toBe('z.any()');
-    });
-
     it('renders z.unknown()', () => {
       expect(renderType(scalarType('unknown'))).toBe('z.unknown()');
     });

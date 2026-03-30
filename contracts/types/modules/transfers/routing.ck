@@ -1,8 +1,10 @@
----
-area: transfers
----
+options {
+    keys: {
+        area: transfers
+    }
+}
 
-Routing: { # Represents a routing object
+contract Routing: { # Represents a routing object
     routingNumber: string(min=1, max=100) # The routing number
     routingNumberType: string # The routing number type
 }

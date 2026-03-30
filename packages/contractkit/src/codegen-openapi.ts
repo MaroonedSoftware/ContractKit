@@ -350,7 +350,6 @@ function scalarToSchema(type: import('./ast.js').ScalarTypeNode): Record<string,
       s.type = 'string';
       s.format = 'uuid';
       break;
-    case 'any':
     case 'unknown':
       // No type constraint
       break;

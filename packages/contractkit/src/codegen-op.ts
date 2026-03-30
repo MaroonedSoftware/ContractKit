@@ -33,7 +33,7 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
   body.push(`import { ${koaImports.join(', ')} } from '@maroonedsoftware/koa';`);
 
   for (const svc of services) {
-    const modulePath = root.meta[svc] ?? deriveModulePath(svc, options.servicePathTemplate);
+    const modulePath = root.services?.[svc] ?? root.meta[svc] ?? deriveModulePath(svc, options.servicePathTemplate);
     body.push(`import { ${svc} } from '${modulePath}';`);
   }
 
@@ -532,7 +532,7 @@ function isValidIdentifier(name: string): boolean {
 // ─── Naming conventions ────────────────────────────────────────────────────
 
 function deriveBaseName(file: string): string {
-  const base = file.split('/').pop()?.replace(/\.op$/, '') ?? 'Resource';
+  const base = file.split('/').pop()?.replace(/\.(op|ck)$/, '') ?? 'Resource';
   // ledger.categories -> LedgerCategories
   return base
     .split('.')
@@ -545,7 +545,7 @@ function deriveRouterName(file: string): string {
 }
 
 function deriveRouterFilename(file: string): string {
-  const base = file.split('/').pop()?.replace(/\.op$/, '') ?? 'resource';
+  const base = file.split('/').pop()?.replace(/\.(op|ck)$/, '') ?? 'resource';
   return `${base}.router`;
 }
 
@@ -560,7 +560,7 @@ function deriveModulePath(serviceName: string, template?: string): string {
 }
 
 function deriveTypeImportPath(file: string, template?: string): string {
-  const base = file.split('/').pop()?.replace(/\.op$/, '') ?? 'resource';
+  const base = file.split('/').pop()?.replace(/\.(op|ck)$/, '') ?? 'resource';
   const module = base.split('.')[0] ?? base;
   if (template) {
     return template.replace(/\{module\}/g, module).replace(/\{base\}/g, base);

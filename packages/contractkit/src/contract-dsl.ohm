@@ -1,0 +1,262 @@
+// =====================================================================
+// Contract DSL Grammar — Source of Truth
+// Ohm PEG Grammar (https://ohmjs.org/)
+//
+// Single unified grammar for .ck files containing contracts (type
+// declarations) and operations (route/endpoint declarations).
+//
+// Convention: PascalCase = syntactic rules (auto-skip whitespace)
+//             camelCase  = lexical rules (no whitespace skipping)
+//
+// IMPORTANT: Keywords used in syntactic rules MUST be defined as
+// lexical (camelCase) rules with ~identPart guards. Ohm auto-skips
+// whitespace between items in syntactic rules, which means an inline
+// "keyword" ~identPart would check ~identPart against the NEXT TOKEN
+// (after skipping space), not the character immediately after the keyword.
+// =====================================================================
+
+Contract {
+
+  // ─── Top-level ──────────────────────────────────────────────────
+
+  Root = OptionsBlock? Decl* end
+
+  Decl = RouteDecl
+       | ModelDecl
+
+  // ─── Options block ──────────────────────────────────────────────
+  // Structured metadata with named sections.
+
+  OptionsBlock = optionsKw "{" OptionsBodyItem* "}"
+
+  OptionsBodyItem = OptionsKeysBlock
+                  | OptionsServicesBlock
+                  | SecurityBlock
+
+  OptionsKeysBlock = keysKw ":"? "{" (comment | OptionsEntry)* "}"
+
+  OptionsServicesBlock = servicesKw ":"? "{" (comment | OptionsEntry)* "}"
+
+  OptionsEntry = identifier ":" optionsValue
+
+  optionsValue = stringLit             -- quoted
+               | optionsRawValue       -- unquoted
+
+  optionsRawValue = optionsRawChar+
+
+  optionsRawChar = ~("\n" | "\r" | "}") any
+
+  // ─── Models ─────────────────────────────────────────────────────
+
+  ModelDecl = comment* contractKw ModelPrefix ":" ModelBody
+
+  ModelPrefix = modelModifier* identifier
+
+  modelModifier = objectMode | parseMode
+
+  ModelBody = identifier "&" "{" FieldList "}"  -- inheritance
+            | "{" FieldList "}"                  -- fields
+            | TypeExpression                     -- alias
+
+  // ─── Fields ─────────────────────────────────────────────────────
+
+  FieldList = (comment | FieldEntry)*
+
+  FieldEntry = FieldDecl ","?
+
+  FieldDecl = identifier "?"? ":" FieldBody
+
+  FieldBody = visibility TypeExpression ("=" DefaultValue)?   -- withVisibility
+            | TypeExpression ("=" DefaultValue)?               -- plain
+
+  visibility = "readonly" ~identPart | "writeonly" ~identPart
+
+  // ─── Type Expressions ───────────────────────────────────────────
+
+  TypeExpression = IntersectionExpr ("|" IntersectionExpr)*
+
+  IntersectionExpr = SingleType ("&" SingleType)*
+
+  SingleType = objectMode InlineBraceObject                   -- modedObject
+             | InlineBraceObject                               -- bareObject
+             | identifier "(" TypeArgs ")"                     -- withArgs
+             | identifier                                      -- simple
+
+  // ─── Type Arguments & Constraints ───────────────────────────────
+
+  TypeArgs = ListOf<TypeArg, ",">
+
+  TypeArg = identifier "=" ArgValue   -- keyValue
+          | stringLit                 -- string
+          | numberLit                 -- number
+          | booleanLit                -- boolean
+          | TypeExpression            -- type
+
+  ArgValue = regexLiteral   -- regex
+           | numberLit      -- number
+           | stringLit      -- string
+           | booleanLit     -- boolean
+           | identifier     -- ident
+
+  regexLiteral = "/" regexChar* "/"
+
+  regexChar = ~("/" | "\n") any
+
+  // ─── Inline Brace Objects ───────────────────────────────────────
+
+  InlineBraceObject = "{" InlineFieldList "}"
+
+  InlineFieldList = (comment | InlineFieldEntry)*
+
+  InlineFieldEntry = InlineField ","?
+
+  InlineField = identifier "?"? ":" FieldBody
+
+  // ─── Default Values ─────────────────────────────────────────────
+
+  DefaultValue = stringLit
+               | numberLit
+               | booleanLit
+               | identifier
+
+  // ─── Object/Parse Modes ─────────────────────────────────────────
+
+  objectMode = modeKw "(" modeOption ")"
+
+  modeOption = "strict" | "strip" | "loose"
+
+  parseMode = parseKw "(" caseOption ")"
+
+  caseOption = "camel" | "snake" | "pascal"
+
+  // ─── Routes ─────────────────────────────────────────────────────
+
+  RouteDecl = comment* operationKw routeModifier* RoutePath ":" "{" RouteBody "}"
+
+  RoutePath = PathSegment+
+
+  PathSegment = "/" ":" identifier   -- param
+              | "/" identifier       -- literal
+
+  RouteBody = RouteBodyItem*
+
+  RouteBodyItem = comment
+                | ParamsBlock
+                | SecurityBlock
+                | HttpOperation
+
+  // ─── Path Parameters ────────────────────────────────────────────
+
+  ParamsBlock = objectMode? paramsKw ":" ParamsBody
+
+  ParamsBody = "{" (comment | ParamDecl)* "}"   -- inline
+             | identifier                        -- ref
+
+  ParamDecl = identifier ":" identifier comment?
+
+  // ─── HTTP Operations ────────────────────────────────────────────
+
+  httpMethod = ("get" | "post" | "put" | "patch" | "delete") ~identPart
+
+  routeModifier = ("internal" | "deprecated" | "public") ~identPart
+
+  HttpOperation = comment* httpMethod ":" routeModifier* "{" OperationBody "}"
+
+  OperationBody = OperationBodyItem*
+
+  OperationBodyItem = comment
+                    | ServiceDecl
+                    | SdkDecl
+                    | SignatureDecl
+                    | QueryBlock
+                    | HeadersBlock
+                    | RequestBlock
+                    | ResponseBlock
+                    | SecurityBlock
+
+  // ─── Service & SDK ──────────────────────────────────────────────
+
+  ServiceDecl = serviceKw ":" identifier
+
+  SdkDecl = sdkKw ":" identifier
+
+  SignatureDecl = signatureKw ":" (stringLit | identifier)
+
+  // ─── Query & Headers ────────────────────────────────────────────
+
+  QueryBlock = objectMode? queryKw ":" TypeExpression
+
+  HeadersBlock = objectMode? headersKw ":" TypeExpression
+
+  // ─── Request & Response ─────────────────────────────────────────
+
+  RequestBlock = requestKw ":" "{" ContentTypeLine "}"
+
+  ResponseBlock = responseKw ":" "{" (comment | StatusCodeBlock)* "}"
+
+  StatusCodeBlock = numberLit ":" ("{" ContentTypeLine "}")?
+
+  ContentTypeLine = identifier "/" identifier ":" TypeExpression
+
+  // ─── Security ───────────────────────────────────────────────────
+
+  SecurityBlock = securityKw ":" SecurityBody
+
+  SecurityBody = noneKw                                             -- none
+               | "{" (comment | SecurityField)* "}"                 -- fields
+
+  SecurityField = SecurityRolesLine
+                | SecuritySignatureLine
+
+  SecurityRolesLine = rolesKw ":" RoleName+ comment?
+
+  RoleName = ~("}" | signatureKw ":") identifier
+
+  SecuritySignatureLine = signatureKw ":" (stringLit | identifier) comment?
+
+  // ─── Keywords (lexical to avoid whitespace-skipping issues) ─────
+
+  modeKw = "mode" ~identPart
+  parseKw = "parse" ~identPart
+  contractKw = "contract" ~identPart
+  optionsKw = "options" ~identPart
+  keysKw = "keys" ~identPart
+  servicesKw = "services" ~identPart
+  operationKw = "operation" ~identPart
+  paramsKw = "params" ~identPart
+  serviceKw = "service" ~identPart
+  sdkKw = "sdk" ~identPart
+  signatureKw = "signature" ~identPart
+  queryKw = "query" ~identPart
+  headersKw = "headers" ~identPart
+  requestKw = "request" ~identPart
+  responseKw = "response" ~identPart
+  securityKw = "security" ~identPart
+  noneKw = "none" ~identPart
+  rolesKw = "roles" ~identPart
+
+  // ─── Lexical Rules ──────────────────────────────────────────────
+
+  comment = "#" (~"\n" any)* ("\n" | end)
+
+  identifier = identStart identPart*
+
+  identStart = letter | "_" | "$"
+
+  identPart = alnum | "_" | "$" | "-" | "."
+
+  stringLit = "\"" doubleStringChar* "\""
+            | "'" singleStringChar* "'"
+
+  doubleStringChar = ~("\"" | "\n") any
+
+  singleStringChar = ~("'" | "\n") any
+
+  numberLit = "-"? digit+ ("." digit+)?
+
+  booleanLit = "true" ~identPart
+             | "false" ~identPart
+
+  // Override space to skip whitespace and newlines but NOT comments
+  space += "\n" | "\r"
+}

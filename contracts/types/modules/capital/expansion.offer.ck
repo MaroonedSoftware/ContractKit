@@ -1,10 +1,12 @@
----
-area: capital
----
+options {
+    keys: {
+        area: capital
+    }
+}
 
-OfferStatus: enum(active, accepted, declined, expired, withdrawn) # The status of the expansion offer
+contract OfferStatus: enum(active, accepted, declined, expired, withdrawn) # The status of the expansion offer
 
-ExpansionCapitalOffer: { # Represents an expansion offer
+contract ExpansionCapitalOffer: { # Represents an expansion offer
     createdAt: readonly datetime # The expansion offer creation timestamp
     updatedAt: readonly datetime # The expansion offer last update timestamp
     id: readonly uuid # The expansion offer identifier
@@ -15,7 +17,7 @@ ExpansionCapitalOffer: { # Represents an expansion offer
     terms: array(ExpansionCapitalOfferTerm, min=1, max=5) # The terms of the expansion offer
 }
 
-ExpansionCapitalOfferTerm: { # Represents an expansion offer term   
+contract ExpansionCapitalOfferTerm: { # Represents an expansion offer term   
     createdAt: readonly datetime # The expansion offer term creation timestamp
     updatedAt: readonly datetime # The expansion offer term last update timestamp
     id: readonly uuid # The expansion offer term identifier

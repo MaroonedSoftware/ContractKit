@@ -82,7 +82,7 @@ function printMetaValue(value: string): string {
 
 // ─── Model declaration ───────────────────────────────────────────────────────
 
-function printModelDecl(model: ModelNode): string {
+export function printModelDecl(model: ModelNode): string {
   // Type alias form: Name : typeExpression
   if (model.type !== undefined) {
     return printTypeAlias(model);
@@ -90,9 +90,9 @@ function printModelDecl(model: ModelNode): string {
 
   // Regular model with fields (possibly inherited)
   const commentSuffix = model.description ? ` # ${model.description}` : '';
-  const modifiers = [model.camelCase ? 'camel' : '', model.mode ?? ''].filter(Boolean).join(' ');
+  const modifiers = [model.parseCase ? `parse(${model.parseCase})` : '', model.mode ? `mode(${model.mode})` : ''].filter(Boolean).join(' ');
   const modePrefix = modifiers ? `${modifiers} ` : '';
-  const header = model.base ? `${modePrefix}${model.name}: ${model.base} {${commentSuffix}` : `${modePrefix}${model.name}: {${commentSuffix}`;
+  const header = model.base ? `${modePrefix}${model.name}: ${model.base} & {${commentSuffix}` : `${modePrefix}${model.name}: {${commentSuffix}`;
 
   const lines: string[] = [header];
   for (const field of model.fields) {
@@ -105,14 +105,14 @@ function printModelDecl(model: ModelNode): string {
 function printTypeAlias(model: ModelNode): string {
   const type = model.type!;
   const commentSuffix = model.description ? ` # ${model.description}` : '';
-  const modifiers = [model.camelCase ? 'camel' : '', model.mode ?? ''].filter(Boolean).join(' ');
+  const modifiers = [model.parseCase ? `parse(${model.parseCase})` : '', model.mode ? `mode(${model.mode})` : ''].filter(Boolean).join(' ');
   const modePrefix = modifiers ? `${modifiers} ` : '';
 
   // If the type ends with an inline brace object, expand it as a pseudo-model block.
   const trailing = extractTrailingInlineObject(type);
   if (trailing) {
     const { prefix, inlineObj } = trailing;
-    const modePart = inlineObj.mode ? `${inlineObj.mode} ` : '';
+    const modePart = inlineObj.mode ? `mode(${inlineObj.mode}) ` : '';
     const header = prefix
       ? `${modePrefix}${model.name}: ${prefix} & ${modePart}{${commentSuffix}`
       : `${modePrefix}${model.name}: ${modePart}{${commentSuffix}`;

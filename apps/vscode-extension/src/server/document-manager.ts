@@ -1,11 +1,11 @@
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath } from 'node:url';
 import { Connection, Diagnostic as LspDiagnostic } from 'vscode-languageserver';
-import { parseDto, parseOp, validateOp, DiagnosticCollector } from '@maroonedsoftware/contractkit';
-import type { DtoRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
+import { parseCk, DiagnosticCollector } from '@maroonedsoftware/contractkit';
+import type { CkRootNode } from '@maroonedsoftware/contractkit';
 import { toLspDiagnostics } from './diagnostics-adapter.js';
 
-export type ParsedDocument = { kind: 'dto'; ast: DtoRootNode; version: number } | { kind: 'op'; ast: OpRootNode; version: number };
+export type ParsedDocument = { ast: CkRootNode; version: number };
 
 export class DocumentManager {
   private cache = new Map<string, ParsedDocument>();
@@ -40,17 +40,10 @@ export class DocumentManager {
     const text = document.getText();
     const diag = new DiagnosticCollector();
     const filePath = uriToFilePath(uri);
-    const isDtoFile = uri.endsWith('.dto');
 
     try {
-      if (isDtoFile) {
-        const ast = parseDto(text, filePath, diag);
-        this.cache.set(uri, { kind: 'dto', ast, version: document.version });
-      } else {
-        const ast = parseOp(text, filePath, diag);
-        validateOp(ast, diag);
-        this.cache.set(uri, { kind: 'op', ast, version: document.version });
-      }
+      const ast = parseCk(text, filePath, diag);
+      this.cache.set(uri, { ast, version: document.version });
     } catch {
       // If parsing crashes entirely, still report collected diagnostics
     }

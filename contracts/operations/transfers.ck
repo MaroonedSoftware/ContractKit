@@ -1,7 +1,11 @@
----
-area: transfers
-TransfersService: "#src/modules/transfers/transfers.service.js"
----
+options {
+    keys: {
+        area: transfers
+    }
+    services {
+        TransfersService: "#src/modules/transfers/transfers.service.js"
+    }
+}
 
 # /transfers/fi {
 #     post: {
@@ -16,7 +20,7 @@ TransfersService: "#src/modules/transfers/transfers.service.js"
 #     }
 # }
 
-/transfers/counterparties {
+operation /transfers/counterparties: {
     get: { # list counterparties
         service: TransfersService.listCounterparties
         query: Pagination

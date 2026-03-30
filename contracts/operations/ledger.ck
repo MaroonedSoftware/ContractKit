@@ -1,9 +1,13 @@
----
-area: ledger
-LedgerService: "#src/modules/ledger/ledger.service.js"
----
+options {
+    keys: {
+        area: ledger
+    }
+    services {
+        LedgerService: "#src/modules/ledger/ledger.service.js"
+    }
+}
 
-/ledger/accounts {
+operation /ledger/accounts: {
     post: {
         service: LedgerService.createAccount
         request: {
@@ -29,7 +33,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/accounts/:accountId {
+operation /ledger/accounts/:accountId: {
     params: {
         accountId: uuid
     }
@@ -43,7 +47,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/accounts/:accountId/balances {
+operation /ledger/accounts/:accountId/balances: {
     params: {
         accountId: uuid
     }
@@ -58,7 +62,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/accounts/:accountId/transactions {
+operation /ledger/accounts/:accountId/transactions: {
     params: {
         accountId: uuid
     }
@@ -73,7 +77,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/accounts/:accountId/categories {
+operation /ledger/accounts/:accountId/categories: {
     params: {
         accountId: uuid
     }
@@ -87,7 +91,7 @@ LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
 
-/ledger/accounts/:accountId/categories/:categoryId {
+operation /ledger/accounts/:accountId/categories/:categoryId: {
     params: {
         accountId: uuid
         categoryId: uuid
