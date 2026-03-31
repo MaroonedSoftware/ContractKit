@@ -24,7 +24,7 @@ describe('generateOp', () => {
 
   describe('imports', () => {
     it('generates zod import when inline params are used', () => {
-      const root = opRoot([opRoute('/users/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
+      const root = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
       const output = generateOp(root);
       expect(output).toContain("import { z } from 'zod';");
     });
@@ -48,7 +48,7 @@ describe('generateOp', () => {
     });
 
     it('generates parseAndValidate import when route has params', () => {
-      const root = opRoot([opRoute('/users/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
+      const root = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
       const output = generateOp(root);
       expect(output).toContain('parseAndValidate');
     });
@@ -78,13 +78,13 @@ describe('generateOp', () => {
     });
 
     it('includes luxon DateTime import when inline param uses date type', () => {
-      const root = opRoot([opRoute('/events/:date', [opOperation('get')], [opParam('date', scalarType('date'))])]);
+      const root = opRoot([opRoute('/events/{date}', [opOperation('get')], [opParam('date', scalarType('date'))])]);
       const output = generateOp(root);
       expect(output).toContain("import { DateTime } from 'luxon';");
     });
 
     it('omits luxon DateTime import when no date/datetime types used', () => {
-      const root = opRoot([opRoute('/users/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
+      const root = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
       const output = generateOp(root);
       expect(output).not.toContain('luxon');
     });
@@ -101,7 +101,7 @@ describe('generateOp', () => {
     });
 
     it('generates getById service method for GET with path params', () => {
-      const root = opRoot([opRoute('/users/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
+      const root = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
       const output = generateOp(root);
       expect(output).toContain('service.getById(');
     });
@@ -155,7 +155,7 @@ describe('generateOp', () => {
 
   describe('params validation', () => {
     it('generates params validation block', () => {
-      const root = opRoot([opRoute('/users/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
+      const root = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
       const output = generateOp(root);
       expect(output).toContain('parseAndValidate(');
       expect(output).toContain('ctx.params');
@@ -164,13 +164,13 @@ describe('generateOp', () => {
     });
 
     it('renders param types correctly', () => {
-      const root = opRoot([opRoute('/items/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
+      const root = opRoot([opRoute('/items/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
       const output = generateOp(root);
       expect(output).toContain('id: z.uuid()');
     });
 
     it('generates type-reference params validation', () => {
-      const root = opRoot([opRoute('/users/:id', [opOperation('get')], 'RouteParams')]);
+      const root = opRoot([opRoute('/users/{id}', [opOperation('get')], 'RouteParams')]);
       const output = generateOp(root);
       expect(output).toContain('parseAndValidate(ctx.params, RouteParams.strict())');
     });

@@ -185,7 +185,7 @@ operation /users: {
 `;
 
 export const PARAMETERIZED_OP = `\
-operation /users/:id: {
+operation /users/{id}: {
     params: {
         id: uuid
     }

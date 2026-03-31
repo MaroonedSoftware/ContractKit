@@ -2,7 +2,7 @@ options {
     keys: {
         area: ledger
     }
-    services {
+    services: {
         LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
@@ -33,7 +33,7 @@ operation /ledger/accounts: {
     }
 }
 
-operation /ledger/accounts/:accountId: {
+operation /ledger/accounts/{accountId}: {
     params: {
         accountId: uuid
     }
@@ -47,7 +47,7 @@ operation /ledger/accounts/:accountId: {
     }
 }
 
-operation /ledger/accounts/:accountId/balances: {
+operation /ledger/accounts/{accountId}/balances: {
     params: {
         accountId: uuid
     }
@@ -62,7 +62,7 @@ operation /ledger/accounts/:accountId/balances: {
     }
 }
 
-operation /ledger/accounts/:accountId/transactions: {
+operation /ledger/accounts/{accountId}/transactions: {
     params: {
         accountId: uuid
     }
@@ -77,7 +77,7 @@ operation /ledger/accounts/:accountId/transactions: {
     }
 }
 
-operation /ledger/accounts/:accountId/categories: {
+operation /ledger/accounts/{accountId}/categories: {
     params: {
         accountId: uuid
     }
@@ -91,7 +91,7 @@ operation /ledger/accounts/:accountId/categories: {
     }
 }
 
-operation /ledger/accounts/:accountId/categories/:categoryId: {
+operation /ledger/accounts/{accountId}/categories/{categoryId}: {
     params: {
         accountId: uuid
         categoryId: uuid

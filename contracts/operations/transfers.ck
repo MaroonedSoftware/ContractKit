@@ -2,7 +2,7 @@ options {
     keys: {
         area: transfers
     }
-    services {
+    services: {
         TransfersService: "#src/modules/transfers/transfers.service.js"
     }
 }
@@ -66,7 +66,7 @@ operation /transfers/counterparties: {
 #     }
 # }
 
-# /transfers/:id {
+# /transfers/{id} {
 #     params: {
 #         id: uuid
 #     }

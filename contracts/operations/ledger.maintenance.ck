@@ -2,7 +2,7 @@ options {
     keys: {
         area: ledger
     }
-    services {
+    services: {
         LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
@@ -19,7 +19,7 @@ operation /ledger/maintenance/cache/process-queue: {
     }
 }
 
-operation /ledger/maintenance/accounts/:accountId/cache/rebuild: {
+operation /ledger/maintenance/accounts/{accountId}/cache/rebuild: {
     params: {
         accountId: uuid
     }
@@ -42,7 +42,7 @@ operation /ledger/maintenance/cache/drift: {
     }
 }
 
-operation /ledger/maintenance/accounts/:accountId/cache/drift: {
+operation /ledger/maintenance/accounts/{accountId}/cache/drift: {
     params: {
         accountId: uuid
     }

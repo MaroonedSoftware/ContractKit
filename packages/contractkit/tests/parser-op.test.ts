@@ -20,8 +20,8 @@ describe('parseOp', () => {
     });
 
     it('parses route with path parameters', () => {
-      const { root } = parse('operation /users/:id: { get: {} }');
-      expect(root.routes[0]!.path).toBe('/users/:id');
+      const { root } = parse('operation /users/{id}: { get: {} }');
+      expect(root.routes[0]!.path).toBe('/users/{id}');
     });
 
     it('parses nested route path', () => {
@@ -30,8 +30,8 @@ describe('parseOp', () => {
     });
 
     it('parses route with multiple path parameters', () => {
-      const { root } = parse('operation /users/:userId/posts/:postId: { get: {} }');
-      expect(root.routes[0]!.path).toBe('/users/:userId/posts/:postId');
+      const { root } = parse('operation /users/{userId}/posts/{postId}: { get: {} }');
+      expect(root.routes[0]!.path).toBe('/users/{userId}/posts/{postId}');
     });
 
     it('errors on route not starting with slash', () => {
@@ -45,7 +45,7 @@ describe('parseOp', () => {
   describe('params block', () => {
     it('parses params with scalar types', () => {
       const { root } = parse(`\
-operation /users/:id: {
+operation /users/{id}: {
     params: {
         id: uuid
     }
@@ -59,7 +59,7 @@ operation /users/:id: {
 
     it('parses multiple params', () => {
       const { root } = parse(`\
-operation /users/:id/posts/:postId: {
+operation /users/{id}/posts/{postId}: {
     params: {
         id: uuid
         postId: uuid
@@ -74,7 +74,7 @@ operation /users/:id/posts/:postId: {
 
     it('parses params as type reference declaration', () => {
       const { root } = parse(`\
-operation /users/:id: {
+operation /users/{id}: {
     params: RouteParams
     get: {}
 }`);
@@ -174,7 +174,7 @@ operation /users: {
 
     it('parses response with no body', () => {
       const { root } = parse(`\
-operation /users/:id: {
+operation /users/{id}: {
     delete: {
         response: {
             204:
@@ -326,7 +326,7 @@ operation /users: {
   describe('service declaration', () => {
     it('parses service with class and method', () => {
       const { root } = parse(`\
-operation /users/:id: {
+operation /users/{id}: {
     put: {
         service: LedgerService.updateUser
         response: {
@@ -386,7 +386,7 @@ operation /users: {
 
     it('parses sdk alongside service', () => {
       const { root } = parse(`\
-operation /users/:id: {
+operation /users/{id}: {
     get: {
         service: UserService.getById
         sdk: getUser
@@ -458,7 +458,7 @@ operation /valid: {
   describe('full example', () => {
     it('parses a complete route with params, request, and response', () => {
       const { root, diag } = parse(`\
-operation /users/:id: {
+operation /users/{id}: {
     params: {
         id: uuid
     }
@@ -482,7 +482,7 @@ operation /users/:id: {
 }`);
       expect(diag.hasErrors()).toBe(false);
       const route = root.routes[0]!;
-      expect(route.path).toBe('/users/:id');
+      expect(route.path).toBe('/users/{id}');
       expect(route.params).toHaveLength(1);
       expect(route.operations).toHaveLength(2);
 
@@ -547,7 +547,7 @@ operation /capital: { get: {} }`);
     it('parses options block with quoted service value', () => {
       const { root } = parse(`\
 options {
-    services {
+    services: {
         CapitalService: "#modules/capital/capital.service.js"
     }
 }
@@ -558,7 +558,7 @@ operation /capital: { get: {} }`);
     it('parses options block with unquoted hash-prefixed service path', () => {
       const { root } = parse(`\
 options {
-    services {
+    services: {
         CapitalService: #modules/capital/capital.service.js
     }
 }
@@ -569,7 +569,7 @@ operation /capital: { get: {} }`);
     it('parses options block with multiple service entries', () => {
       const { root } = parse(`\
 options {
-    services {
+    services: {
         CapitalService: #modules/capital/capital.service.js
         LedgerService: #modules/ledger/ledger.service.js
     }

@@ -203,9 +203,9 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
 
 // ─── Path conversion ──────────────────────────────────────────────────────
 
-/** Convert Express-style `:param` to OpenAPI `{param}`. */
+/** Path is already in OpenAPI `{param}` style — return as-is. */
 function convertPath(path: string): string {
-  return path.replace(/:(\w+)/g, '{$1}');
+  return path;
 }
 
 // ─── Schema conversion ───────────────────────────────────────────────────

@@ -2,7 +2,7 @@ options {
     keys: {
         area: ledger
     }
-    services {
+    services: {
         LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
@@ -29,7 +29,7 @@ operation /ledger/categories: {
     }
 }
 
-operation /ledger/categories/:categoryId: {
+operation /ledger/categories/{categoryId}: {
     params: {
         categoryId: uuid
     }
@@ -60,7 +60,7 @@ operation /ledger/categories/:categoryId: {
     }
 }
 
-operation /ledger/categories/:categoryId/accounts: {
+operation /ledger/categories/{categoryId}/accounts: {
     params: {
         categoryId: uuid
     }
@@ -74,7 +74,7 @@ operation /ledger/categories/:categoryId/accounts: {
     }
 }
 
-operation /ledger/categories/:categoryId/children: {
+operation /ledger/categories/{categoryId}/children: {
     params: {
         categoryId: uuid
     }
@@ -88,7 +88,7 @@ operation /ledger/categories/:categoryId/children: {
     }
 }
 
-operation /ledger/categories/:categoryId/parents: {
+operation /ledger/categories/{categoryId}/parents: {
     params: {
         categoryId: uuid
     }
@@ -102,7 +102,7 @@ operation /ledger/categories/:categoryId/parents: {
     }
 }
 
-operation /ledger/categories/:categoryId/tree: {
+operation /ledger/categories/{categoryId}/tree: {
     params: {
         categoryId: uuid
     }
@@ -116,7 +116,7 @@ operation /ledger/categories/:categoryId/tree: {
     }
 }
 
-operation /ledger/categories/:categoryId/balances: {
+operation /ledger/categories/{categoryId}/balances: {
     params: {
         categoryId: uuid
     }
@@ -131,7 +131,7 @@ operation /ledger/categories/:categoryId/balances: {
     }
 }
 
-operation /ledger/categories/:categoryId/transactions: {
+operation /ledger/categories/{categoryId}/transactions: {
     params: {
         categoryId: uuid
     }
@@ -146,7 +146,7 @@ operation /ledger/categories/:categoryId/transactions: {
     }
 }
 
-operation /ledger/categories/:categoryId/children/:childId: {
+operation /ledger/categories/{categoryId}/children/{childId}: {
     params: {
         categoryId: uuid
         childId: uuid

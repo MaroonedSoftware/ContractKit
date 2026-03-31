@@ -232,8 +232,8 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
 // ─── URL building ─────────────────────────────────────────────────────────
 
 function buildUrlExpression(path: string, params?: ParamSource): string {
-  // Replace :paramName with ${encodeURIComponent(paramName)}
-  return path.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, (_match, name) => {
+  // Replace {paramName} with ${encodeURIComponent(paramName)}
+  return path.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (_match, name) => {
     return `\${encodeURIComponent(String(${name}))}`;
   });
 }
@@ -423,9 +423,9 @@ function inferMethodName(method: string, path: string): string {
   const parts: string[] = [method.toLowerCase()];
 
   for (const seg of segments) {
-    if (seg.startsWith(':')) {
-      // :id → ById, :accountId → ByAccountId
-      const paramName = seg.slice(1);
+    if (seg.startsWith('{')) {
+      // {id} → ById, {accountId} → ByAccountId
+      const paramName = seg.slice(1, -1);
       parts.push('By' + paramName.charAt(0).toUpperCase() + paramName.slice(1));
     } else {
       // Regular segment — camelCase it

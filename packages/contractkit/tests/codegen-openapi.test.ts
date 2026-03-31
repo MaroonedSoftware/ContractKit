@@ -285,7 +285,7 @@ describe('generateOpenApi', () => {
 
   describe('paths', () => {
     it('converts :param to {param} in paths', () => {
-      const op = opRoot([opRoute('/users/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
+      const op = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
       const output = generateOpenApi({
         dtoRoots: [],
         opRoots: [op],
@@ -334,7 +334,7 @@ describe('generateOpenApi', () => {
     });
 
     it('generates path parameters', () => {
-      const op = opRoot([opRoute('/users/:userId', [opOperation('get')], [opParam('userId', scalarType('uuid'))])]);
+      const op = opRoot([opRoute('/users/{userId}', [opOperation('get')], [opParam('userId', scalarType('uuid'))])]);
       const output = generateOpenApi({
         dtoRoots: [],
         opRoots: [op],
@@ -404,7 +404,7 @@ describe('generateOpenApi', () => {
     it('generates 204 No content response', () => {
       const op = opRoot([
         opRoute(
-          '/users/:id',
+          '/users/{id}',
           [
             opOperation('delete', {
               responses: [opResponse(204)],

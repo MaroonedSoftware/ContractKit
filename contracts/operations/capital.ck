@@ -2,7 +2,7 @@ options {
     keys: {
         area: capital
     }
-    services {
+    services: {
         ExpansionCapitalService: "#src/modules/capital/expansion.capital.service.js"
     }
 }
@@ -33,7 +33,7 @@ operation /capital/offers/expansion: {
     }
 }
 
-operation /capital/offers/expansion/:id: {
+operation /capital/offers/expansion/{id}: {
     params: {
         id: uuid
     }
@@ -53,7 +53,7 @@ operation /capital/offers/expansion/:id: {
     }
 }
 
-operation /capital/offers/expansion/:id/accept: {
+operation /capital/offers/expansion/{id}/accept: {
     params: {
         id: uuid # the id of the offer to accept
     }
@@ -72,7 +72,7 @@ operation /capital/offers/expansion/:id/accept: {
     }
 }
 
-operation /capital/offers/expansion/:id/decline: {
+operation /capital/offers/expansion/{id}/decline: {
     params: {
         id: uuid
     }
@@ -101,7 +101,7 @@ operation /capital/expansion: {
     }
 }
 
-operation /capital/expansion/:id: {
+operation /capital/expansion/{id}: {
     params: {
         id: uuid
     }
@@ -115,7 +115,7 @@ operation /capital/expansion/:id: {
     }
 }
 
-operation /capital/expansion/:id/disburse: {
+operation /capital/expansion/{id}/disburse: {
     params: {
         id: uuid
     }
@@ -136,7 +136,7 @@ operation /capital/expansion/:id/disburse: {
     }
 }
 
-operation /capital/expansion/:id/repayment: {
+operation /capital/expansion/{id}/repayment: {
     params: {
         id: uuid
     }
@@ -157,7 +157,7 @@ operation /capital/expansion/:id/repayment: {
     }
 }
 
-operation /capital/expansion/:id/liquidity-disbursement: {
+operation /capital/expansion/{id}/liquidity-disbursement: {
     params: {
         id: uuid
     }

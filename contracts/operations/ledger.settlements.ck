@@ -2,7 +2,7 @@ options {
     keys: {
         area: ledger
     }
-    services {
+    services: {
         LedgerService: "#src/modules/ledger/ledger.service.js"
     }
 }
@@ -30,7 +30,7 @@ operation /ledger/settlements: {
     }
 }
 
-operation /ledger/settlements/:settlementId: {
+operation /ledger/settlements/{settlementId}: {
     params: {
         settlementId: uuid
     }
@@ -44,7 +44,7 @@ operation /ledger/settlements/:settlementId: {
     }
 }
 
-operation /ledger/settlements/:settlementId/finalize: {
+operation /ledger/settlements/{settlementId}/finalize: {
     params: {
         settlementId: uuid
     }
@@ -61,7 +61,7 @@ operation /ledger/settlements/:settlementId/finalize: {
     }
 }
 
-operation /ledger/settlements/:settlementId/status: {
+operation /ledger/settlements/{settlementId}/status: {
     params: {
         settlementId: uuid
     }
@@ -78,7 +78,7 @@ operation /ledger/settlements/:settlementId/status: {
     }
 }
 
-operation /ledger/settlements/:settlementId/entries: {
+operation /ledger/settlements/{settlementId}/entries: {
     params: {
         settlementId: uuid
     }
@@ -93,7 +93,7 @@ operation /ledger/settlements/:settlementId/entries: {
     }
 }
 
-operation /ledger/settlements/:settlementId/entries/:entryId: {
+operation /ledger/settlements/{settlementId}/entries/{entryId}: {
     params: {
         settlementId: uuid
         entryId: uuid
@@ -112,7 +112,7 @@ operation /ledger/settlements/:settlementId/entries/:entryId: {
     }
 }
 
-operation /ledger/settlements/:settlementId/transactions: {
+operation /ledger/settlements/{settlementId}/transactions: {
     params: {
         settlementId: uuid
     }

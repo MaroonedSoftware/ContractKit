@@ -1,8 +1,8 @@
 options {
-    keys {
+    keys: {
         area: counterparty
     }
-    services {
+    services: {
         CounterpartyService: "#src/modules/counterparty/counterparty.service.js"    
     }
 }

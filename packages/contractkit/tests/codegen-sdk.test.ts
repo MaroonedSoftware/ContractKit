@@ -77,7 +77,7 @@ describe('generateSdk', () => {
     it('includes path param segments in inferred name', () => {
       const root = opRoot([
         opRoute(
-          '/users/:id',
+          '/users/{id}',
           [
             opOperation('get', {
               responses: [opResponse(200, 'User', 'application/json')],
@@ -108,7 +108,7 @@ describe('generateSdk', () => {
     it('generates method with path params and correct return type', () => {
       const root = opRoot([
         opRoute(
-          '/users/:id',
+          '/users/{id}',
           [
             opOperation('get', {
               sdk: 'getUser',
@@ -148,7 +148,7 @@ describe('generateSdk', () => {
     it('returns void for empty responses', () => {
       const root = opRoot([
         opRoute(
-          '/users/:id',
+          '/users/{id}',
           [
             opOperation('delete', {
               sdk: 'deleteUser',
@@ -307,7 +307,7 @@ describe('generateSdk', () => {
           }),
         ]),
         opRoute(
-          '/users/:id',
+          '/users/{id}',
           [
             opOperation('get', {
               sdk: 'getUser',
@@ -357,7 +357,7 @@ describe('generateSdk', () => {
           opOperation('get', { sdk: 'listUsers', responses: [opResponse(200, 'User', 'application/json')] }),
           opOperation('post', { sdk: 'createUser', request: opRequest('CreateUserInput'), responses: [opResponse(201, 'User', 'application/json')] }),
         ]),
-        opRoute('/users/:id', [opOperation('delete', { sdk: 'deleteUser', responses: [opResponse(204)] })], [opParam('id', scalarType('uuid'))]),
+        opRoute('/users/{id}', [opOperation('delete', { sdk: 'deleteUser', responses: [opResponse(204)] })], [opParam('id', scalarType('uuid'))]),
       ]);
       const out = generateSdk(root);
       expect(out).toContain('async listUsers(): Promise');
@@ -815,7 +815,7 @@ describe('renderInputTsType', () => {
 describe('generateSdk — path param shapes', () => {
   it('handles string-typed route params (model ref)', () => {
     const root = opRoot([
-      opRoute('/things/:id', [opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] })], 'ThingParams'),
+      opRoute('/things/{id}', [opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] })], 'ThingParams'),
     ]);
     const out = generateSdk(root);
     expect(out).toContain('async getThing(params: ThingParams)');
@@ -823,7 +823,7 @@ describe('generateSdk — path param shapes', () => {
 
   it('substitutes Input variant for string-typed route params when in modelsWithInput', () => {
     const root = opRoot([
-      opRoute('/things/:id', [opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] })], 'ThingParams'),
+      opRoute('/things/{id}', [opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] })], 'ThingParams'),
     ]);
     const out = generateSdk(root, { modelsWithInput: new Set(['ThingParams']) });
     expect(out).toContain('params: ThingParamsInput');
@@ -832,7 +832,7 @@ describe('generateSdk — path param shapes', () => {
   it('handles DtoTypeNode-typed route params', () => {
     const root = opRoot([
       opRoute(
-        '/things/:id',
+        '/things/{id}',
         [opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] })],
         inlineObjectType([field('id', scalarType('uuid'))]),
       ),
@@ -1063,7 +1063,7 @@ describe('collectPublicTypeNames — modelsWithInput', () => {
   });
 
   it('includes Input variant for string-typed route params', () => {
-    const root = opRoot([opRoute('/things/:id', [opOperation('get', { responses: [opResponse(200, 'Thing', 'application/json')] })], 'ThingParams')]);
+    const root = opRoot([opRoute('/things/{id}', [opOperation('get', { responses: [opResponse(200, 'Thing', 'application/json')] })], 'ThingParams')]);
     const types = collectPublicTypeNames(root, new Set(['ThingParams']));
     expect(types.has('ThingParamsInput')).toBe(true);
   });
@@ -1101,7 +1101,7 @@ describe('generateSdk — json type in query / headers / params', () => {
   it('emits JsonValue when json scalar used in path params', () => {
     const root = opRoot([
       opRoute(
-        '/things/:meta',
+        '/things/{meta}',
         [opOperation('get', { responses: [opResponse(200, 'Thing', 'application/json')] })],
         [opParam('meta', scalarType('json'))],
       ),

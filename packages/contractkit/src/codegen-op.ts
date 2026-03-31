@@ -120,7 +120,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
   lines.push('*/');
 
   const method = op.method;
-  const path = route.path;
+  const path = route.path.replace(/\{(\w+)\}/g, ':$1');
   const hasBody = !!op.request;
   const isMultipart = op.request?.contentType === 'multipart/form-data';
 
@@ -204,7 +204,7 @@ function inferService(op: OpOperationNode, route: OpRouteNode, file: string): { 
 }
 
 function inferMethodName(method: string, path: string): string {
-  const hasParam = path.includes(':');
+  const hasParam = path.includes('{');
   switch (method) {
     case 'get':
       return hasParam ? 'getById' : 'list';

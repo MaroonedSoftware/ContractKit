@@ -29,7 +29,7 @@ contract User: { name: string }
     it('parses services section', () => {
       const { ast } = parse(`
 options {
-    services {
+    services: {
         UserService: "#src/services/user.js"
     }
 }
@@ -44,7 +44,7 @@ options {
     keys: {
         area: shared
     }
-    services {
+    services: {
         FooService: "#src/foo.js"
     }
 }

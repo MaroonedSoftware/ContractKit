@@ -338,7 +338,7 @@ function deriveTitle(op: OpOperationNode, route: OpRouteNode): string {
   }
 
   // 3. Fallback: method + path segments
-  const segments = route.path.split('/').filter(s => s.length > 0 && !s.startsWith(':'));
+  const segments = route.path.split('/').filter(s => s.length > 0 && !s.startsWith('{'));
   const pathWords = segments.join(' ').replace(/[.-]/g, ' ');
   const verb = METHOD_VERBS[op.method] ?? op.method.toUpperCase();
   return `${verb} ${pathWords}`;
@@ -747,8 +747,8 @@ function deriveMethodName(op: OpOperationNode, route: OpRouteNode): string {
   const parts: string[] = [op.method.toLowerCase()];
 
   for (const seg of segments) {
-    if (seg.startsWith(':')) {
-      const paramName = seg.slice(1);
+    if (seg.startsWith('{')) {
+      const paramName = seg.slice(1, -1);
       parts.push('By' + paramName.charAt(0).toUpperCase() + paramName.slice(1));
     } else {
       const segParts = seg.split(/[.-]/).filter(Boolean);

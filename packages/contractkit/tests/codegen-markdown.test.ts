@@ -224,13 +224,13 @@ describe('generateMarkdown', () => {
     });
 
     it('falls back for delete to Delete verb', () => {
-      const op = opRoot([opRoute('/users/:id', [opOperation('delete')], [opParam('id', scalarType('uuid'))])]);
+      const op = opRoot([opRoute('/users/{id}', [opOperation('delete')], [opParam('id', scalarType('uuid'))])]);
       const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
       expect(output).toContain('### Delete users');
     });
 
     it('strips path params from fallback title', () => {
-      const op = opRoot([opRoute('/users/:id/posts', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
+      const op = opRoot([opRoute('/users/{id}/posts', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
       const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
       expect(output).toContain('### List users posts');
     });
@@ -269,7 +269,7 @@ describe('generateMarkdown', () => {
     });
 
     it('derives method name with path params', () => {
-      const op = opRoot([opRoute('/users/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
+      const op = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
       const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
       expect(output).toContain('> SDK method: `getUsersById`');
     });
@@ -279,7 +279,7 @@ describe('generateMarkdown', () => {
 
   describe('unified attributes table', () => {
     it('renders path params in attributes table', () => {
-      const op = opRoot([opRoute('/users/:userId', [opOperation('get')], [opParam('userId', scalarType('uuid'))])]);
+      const op = opRoot([opRoute('/users/{userId}', [opOperation('get')], [opParam('userId', scalarType('uuid'))])]);
       const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
       expect(output).toContain('#### Attributes');
       expect(output).toContain('| `userId` | `string` | Yes | Path parameter. |');
@@ -301,7 +301,7 @@ describe('generateMarkdown', () => {
     it('merges path and query params in one table', () => {
       const op = opRoot([
         opRoute(
-          '/users/:id/posts',
+          '/users/{id}/posts',
           [
             opOperation('get', {
               query: [opParam('page', scalarType('int'))],
@@ -321,7 +321,7 @@ describe('generateMarkdown', () => {
     it('sorts path params before query params', () => {
       const op = opRoot([
         opRoute(
-          '/users/:id',
+          '/users/{id}',
           [
             opOperation('get', {
               query: [opParam('page', scalarType('int'))],
@@ -463,7 +463,7 @@ describe('generateMarkdown', () => {
     });
 
     it('renders 204 no content without body', () => {
-      const op = opRoot([opRoute('/users/:id', [opOperation('delete', { responses: [opResponse(204)] })], [opParam('id', scalarType('uuid'))])]);
+      const op = opRoot([opRoute('/users/{id}', [opOperation('delete', { responses: [opResponse(204)] })], [opParam('id', scalarType('uuid'))])]);
       const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
       expect(output).toContain('`204 No Content`');
     });
@@ -699,7 +699,7 @@ describe('generateMarkdown', () => {
     });
 
     it('wraps endpoint attributes table in collapsed details', () => {
-      const op = opRoot([opRoute('/users/:id', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
+      const op = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
       const output = generateMarkdown({ dtoRoots: [], opRoots: [op] });
       expect(output).toContain('<details>');
       expect(output).toContain('<summary>Attributes (1)</summary>');

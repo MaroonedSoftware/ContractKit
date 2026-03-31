@@ -481,8 +481,8 @@ export function createSemantics(grammar: Grammar) {
       return parts.join('');
     },
 
-    PathSegment_param(_slash, _colon, nameNode) {
-      return '/:' + nameNode.sourceString;
+    PathSegment_param(_slash, _lb, nameNode, _rb) {
+      return '/{' + nameNode.sourceString + '}';
     },
 
     PathSegment_literal(_slash, nameNode) {

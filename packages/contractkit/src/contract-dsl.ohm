@@ -33,9 +33,9 @@ Contract {
                   | OptionsServicesBlock
                   | SecurityBlock
 
-  OptionsKeysBlock = keysKw ":"? "{" (comment | OptionsEntry)* "}"
+  OptionsKeysBlock = keysKw ":" "{" (comment | OptionsEntry)* "}"
 
-  OptionsServicesBlock = servicesKw ":"? "{" (comment | OptionsEntry)* "}"
+  OptionsServicesBlock = servicesKw ":" "{" (comment | OptionsEntry)* "}"
 
   OptionsEntry = identifier ":" optionsValue
 
@@ -138,8 +138,8 @@ Contract {
 
   RoutePath = PathSegment+
 
-  PathSegment = "/" ":" identifier   -- param
-              | "/" identifier       -- literal
+  PathSegment = "/" "{" identifier "}"   -- param
+              | "/" identifier            -- literal
 
   RouteBody = RouteBodyItem*
 

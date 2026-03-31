@@ -123,30 +123,30 @@ describe('OP pipeline (source -> parse -> codegen)', () => {
 
 describe('undeclared path param warnings', () => {
   it('warns when a route has path params but no params block', () => {
-    const source = `operation /users/:id: { get: {} }`;
+    const source = `operation /users/{id}: { get: {} }`;
     const diag = new DiagnosticCollector();
     const ck = parseCk(source, 'test.ck', diag);
     const { op } = decomposeCk(ck);
     validateOp(op, diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]!.message).toContain(':id');
+    expect(warnings[0]!.message).toContain('{id}');
   });
 
   it('warns for each undeclared param', () => {
-    const source = `operation /users/:userId/posts/:postId: { get: {} }`;
+    const source = `operation /users/{userId}/posts/{postId}: { get: {} }`;
     const diag = new DiagnosticCollector();
     const ck = parseCk(source, 'test.ck', diag);
     const { op } = decomposeCk(ck);
     validateOp(op, diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings).toHaveLength(2);
-    expect(warnings[0]!.message).toContain(':userId');
-    expect(warnings[1]!.message).toContain(':postId');
+    expect(warnings[0]!.message).toContain('{userId}');
+    expect(warnings[1]!.message).toContain('{postId}');
   });
 
   it('does not warn when all path params are declared', () => {
-    const source = `operation /users/:id: {\n    params: {\n        id: uuid\n    }\n    get: {}\n}`;
+    const source = `operation /users/{id}: {\n    params: {\n        id: uuid\n    }\n    get: {}\n}`;
     const diag = new DiagnosticCollector();
     const ck = parseCk(source, 'test.ck', diag);
     const { op } = decomposeCk(ck);
@@ -156,18 +156,18 @@ describe('undeclared path param warnings', () => {
   });
 
   it('warns only for the subset of undeclared params', () => {
-    const source = `operation /accounts/:accountId/entries/:entryId: {\n    params: {\n        accountId: uuid\n    }\n    get: {}\n}`;
+    const source = `operation /accounts/{accountId}/entries/{entryId}: {\n    params: {\n        accountId: uuid\n    }\n    get: {}\n}`;
     const diag = new DiagnosticCollector();
     const ck = parseCk(source, 'test.ck', diag);
     const { op } = decomposeCk(ck);
     validateOp(op, diag);
     const warnings = diag.getAll().filter(d => d.severity === 'warning');
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]!.message).toContain(':entryId');
+    expect(warnings[0]!.message).toContain('{entryId}');
   });
 
   it('does not warn when params uses a type reference', () => {
-    const source = `operation /users/:id: {\n    params: UserParams\n    get: {}\n}`;
+    const source = `operation /users/{id}: {\n    params: UserParams\n    get: {}\n}`;
     const diag = new DiagnosticCollector();
     const ck = parseCk(source, 'test.ck', diag);
     const { op } = decomposeCk(ck);
