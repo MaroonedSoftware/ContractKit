@@ -101,6 +101,18 @@ export function opParam(name: string, type: DtoTypeNode): OpParamNode {
   return { name, type, loc: loc(1, 'test.op') };
 }
 
+export function paramNodes(nodes: OpParamNode[]): ParamSource {
+  return { kind: 'params', nodes };
+}
+
+export function paramRef(name: string): ParamSource {
+  return { kind: 'ref', name };
+}
+
+export function paramType(node: DtoTypeNode): ParamSource {
+  return { kind: 'type', node };
+}
+
 export function opRequest(bodyType: string | DtoTypeNode, contentType: OpRequestNode['contentType'] = 'application/json'): OpRequestNode {
   const bt: DtoTypeNode = typeof bodyType === 'string' ? refType(bodyType) : bodyType;
   return { contentType, bodyType: bt };
@@ -119,17 +131,31 @@ function parseBodyTypeString(s: string): DtoTypeNode {
   return refType(s);
 }
 
-export function opOperation(method: HttpMethod, overrides?: Partial<OpOperationNode>): OpOperationNode {
+/** Normalize a raw param value (old bare format or new discriminated union) to ParamSource. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeParamSource(value: any): ParamSource {
+  if (!value) return value;
+  if (typeof value === 'string') return { kind: 'ref', name: value };
+  if (Array.isArray(value)) return { kind: 'params', nodes: value };
+  if (value.kind === 'params' || value.kind === 'ref' || value.kind === 'type') return value as ParamSource;
+  return { kind: 'type', node: value as DtoTypeNode };
+}
+
+export function opOperation(method: HttpMethod, overrides?: Partial<OpOperationNode> & { query?: unknown; headers?: unknown }): OpOperationNode {
+  const normalized = { ...overrides } as Partial<OpOperationNode>;
+  if (overrides?.query !== undefined) normalized.query = normalizeParamSource(overrides.query);
+  if (overrides?.headers !== undefined) normalized.headers = normalizeParamSource(overrides.headers);
   return {
     method,
     responses: [],
     loc: loc(1, 'test.op'),
-    ...overrides,
+    ...normalized,
   };
 }
 
-export function opRoute(path: string, operations: OpOperationNode[], params?: ParamSource, modifiers?: RouteModifier[]): OpRouteNode {
-  return { path, params, operations, modifiers, loc: loc(1, 'test.op') };
+export function opRoute(path: string, operations: OpOperationNode[], params?: ParamSource | OpParamNode[] | string, modifiers?: RouteModifier[]): OpRouteNode {
+  const normalizedParams = params !== undefined ? normalizeParamSource(params) : undefined;
+  return { path, params: normalizedParams, operations, modifiers, loc: loc(1, 'test.op') };
 }
 
 export function opRoot(routes: OpRouteNode[], file = 'users.op', meta: Record<string, string> = {}): OpRootNode {

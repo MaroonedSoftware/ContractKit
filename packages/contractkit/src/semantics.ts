@@ -612,11 +612,11 @@ export function createSemantics(grammar: Grammar) {
         if (child.ctorName === 'comment') continue;
         params.push(child.toAst(file, diag));
       }
-      return { source: params };
+      return { source: { kind: 'params' as const, nodes: params } };
     },
 
     ParamsBody_ref(identNode) {
-      return { source: identNode.sourceString };
+      return { source: { kind: 'ref' as const, name: identNode.sourceString } };
     },
 
     ParamDecl(nameNode, _colon, typeNode, commentOpt) {

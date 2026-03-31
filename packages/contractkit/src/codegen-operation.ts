@@ -225,8 +225,8 @@ function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
   const args: string[] = [];
   // Path params: spread individually (inline) or pass 'params' object (type-ref/DtoTypeNode)
   if (route.params) {
-    if (Array.isArray(route.params)) {
-      args.push(...route.params.map(p => p.name));
+    if (route.params.kind === 'params') {
+      args.push(...route.params.nodes.map(p => p.name));
     } else {
       args.push('params');
     }
@@ -268,21 +268,21 @@ function generateParamValidation(
   if (!source) return [];
   const lines: string[] = [];
   const isQuery = ctxExpr === 'ctx.query';
-  if (typeof source === 'string') {
+  if (source.kind === 'ref') {
     // Type reference — apply mode as a method call on the schema
-    const typeName = modelsWithInput?.has(source) ? `${source}Input` : source;
+    const typeName = modelsWithInput?.has(source.name) ? `${source.name}Input` : source.name;
     lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${typeName}.${mode}());`);
     lines.push('');
-  } else if (Array.isArray(source)) {
+  } else if (source.kind === 'params') {
     // Inline param declarations — wrap with the appropriate z.*Object constructor
-    if (source.length > 0) {
+    if (source.nodes.length > 0) {
       // Destructure only for params (spread individually in service call);
       // query/headers are passed as whole objects.
-      const lhs = varName === 'params' ? `{ ${source.map(p => p.name).join(', ')} }` : varName;
+      const lhs = varName === 'params' ? `{ ${source.nodes.map(p => p.name).join(', ')} }` : varName;
       lines.push(`    const ${lhs} = await parseAndValidate(`);
       lines.push(`        ${ctxExpr},`);
       lines.push(`        ${modeToWrapper(mode)}({`);
-      for (const param of source) {
+      for (const param of source.nodes) {
         const key = isValidIdentifier(param.name) ? param.name : `'${param.name}'`;
         if (isQuery && param.type.kind === 'array') {
           const inner = renderType(param.type);
@@ -298,7 +298,7 @@ function generateParamValidation(
   } else {
     // DtoTypeNode — use query-aware rendering for query params (coerces single string → array),
     // otherwise use Input variant rendering; apply mode as a method call
-    const schema = isQuery ? renderQueryType(source, modelsWithInput) : renderInputType(source, modelsWithInput);
+    const schema = isQuery ? renderQueryType(source.node, modelsWithInput) : renderInputType(source.node, modelsWithInput);
     lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, (${schema}).${mode}());`);
     lines.push('');
   }
@@ -382,24 +382,24 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[]
 
 function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string>): void {
   if (!source) return;
-  if (typeof source === 'string') {
-    if (/^[A-Z]/.test(source)) out.add(source);
-  } else if (Array.isArray(source)) {
-    for (const param of source) {
+  if (source.kind === 'ref') {
+    if (/^[A-Z]/.test(source.name)) out.add(source.name);
+  } else if (source.kind === 'params') {
+    for (const param of source.nodes) {
       collectTypeNodeRefs(param.type, out);
     }
   } else {
-    collectTypeNodeRefs(source, out);
+    collectTypeNodeRefs(source.node, out);
   }
 }
 
 /** Collect Input variant refs for request-side ParamSource types. */
 function collectParamSourceInputRefs(source: ParamSource | undefined, out: Set<string>, modelsWithInput?: Set<string>): void {
   if (!source || !modelsWithInput) return;
-  if (typeof source === 'string') {
-    if (modelsWithInput.has(source)) out.add(`${source}Input`);
-  } else if (!Array.isArray(source)) {
-    collectInputTypeNodeRefs(source, out, modelsWithInput);
+  if (source.kind === 'ref') {
+    if (modelsWithInput.has(source.name)) out.add(`${source.name}Input`);
+  } else if (source.kind === 'type') {
+    collectInputTypeNodeRefs(source.node, out, modelsWithInput);
   }
 }
 
@@ -448,9 +448,9 @@ function collectTypeNodeRefs(type: DtoTypeNode, out: Set<string>): void {
 
 function paramSourceNeedsDateTime(source: ParamSource | undefined): boolean {
   if (!source) return false;
-  if (typeof source === 'string') return false;
-  if (Array.isArray(source)) return source.some(p => typeNeedsDateTime(p.type));
-  return typeNeedsDateTime(source);
+  if (source.kind === 'ref') return false;
+  if (source.kind === 'params') return source.nodes.some(p => typeNeedsDateTime(p.type));
+  return typeNeedsDateTime(source.node);
 }
 
 function opNeedsDateTime(root: OpRootNode): boolean {
@@ -469,9 +469,9 @@ function opNeedsDateTime(root: OpRootNode): boolean {
 
 function paramSourceNeedsScalar(source: ParamSource | undefined, name: string): boolean {
   if (!source) return false;
-  if (typeof source === 'string') return false;
-  if (Array.isArray(source)) return source.some(p => typeNeedsScalar(p.type, name));
-  return typeNeedsScalar(source, name);
+  if (source.kind === 'ref') return false;
+  if (source.kind === 'params') return source.nodes.some(p => typeNeedsScalar(p.type, name));
+  return typeNeedsScalar(source.node, name);
 }
 
 function opNeedsScalar(root: OpRootNode, name: string): boolean {
@@ -506,9 +506,9 @@ function collectServices(root: OpRootNode): string[] {
 
 function hasParamSource(source?: ParamSource): boolean {
   if (!source) return false;
-  if (typeof source === 'string') return true;
-  if (Array.isArray(source)) return source.length > 0;
-  return true; // DtoTypeNode
+  if (source.kind === 'ref') return true;
+  if (source.kind === 'params') return source.nodes.length > 0;
+  return true; // type
 }
 
 function routeNeedsValidation(root: OpRootNode): boolean {

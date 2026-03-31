@@ -546,9 +546,10 @@ operation /users/{id}: {
     }
     get: {}
 }`);
-      expect(root.routes[0]!.params).toHaveLength(1);
-      expect(root.routes[0]!.params![0]!.name).toBe('id');
-      expect(root.routes[0]!.params![0]!.type).toMatchObject({ kind: 'scalar', name: 'uuid' });
+      expect(root.routes[0]!.params).toMatchObject({ kind: 'params' });
+      expect((root.routes[0]!.params as any).nodes).toHaveLength(1);
+      expect((root.routes[0]!.params as any).nodes[0].name).toBe('id');
+      expect((root.routes[0]!.params as any).nodes[0].type).toMatchObject({ kind: 'scalar', name: 'uuid' });
     });
 
     it('parses multiple params', () => {
@@ -560,14 +561,15 @@ operation /users/{id}/posts/{postId}: {
     }
     get: {}
 }`);
-      expect(root.routes[0]!.params).toHaveLength(2);
-      expect(root.routes[0]!.params![0]!.name).toBe('id');
-      expect(root.routes[0]!.params![1]!.name).toBe('postId');
+      expect(root.routes[0]!.params).toMatchObject({ kind: 'params' });
+      expect((root.routes[0]!.params as any).nodes).toHaveLength(2);
+      expect((root.routes[0]!.params as any).nodes[0].name).toBe('id');
+      expect((root.routes[0]!.params as any).nodes[1].name).toBe('postId');
     });
 
     it('parses params as type reference', () => {
       const { root } = parse('operation /users/{id}: { params: RouteParams\n  get: {} }');
-      expect(root.routes[0]!.params).toBe('RouteParams');
+      expect(root.routes[0]!.params).toMatchObject({ kind: 'ref', name: 'RouteParams' });
     });
 
     it('parses mode prefix on params block', () => {
@@ -580,7 +582,7 @@ operation /users/{id}: {
 }`);
       expect(diag.hasErrors()).toBe(false);
       expect(root.routes[0]!.paramsMode).toBe('strip');
-      expect(root.routes[0]!.params).toHaveLength(1);
+      expect((root.routes[0]!.params as any).nodes).toHaveLength(1);
     });
   });
 
@@ -727,14 +729,15 @@ operation /users: {
     }
 }`);
       const op = root.routes[0]!.operations[0]!;
-      expect(op.query).toHaveLength(2);
-      expect(op.query![0]!.name).toBe('page');
-      expect(op.query![0]!.type).toMatchObject({ kind: 'scalar', name: 'int' });
+      expect(op.query).toMatchObject({ kind: 'params' });
+      expect((op.query as any).nodes).toHaveLength(2);
+      expect((op.query as any).nodes[0].name).toBe('page');
+      expect((op.query as any).nodes[0].type).toMatchObject({ kind: 'scalar', name: 'int' });
     });
 
     it('parses query as type reference', () => {
       const { root } = parse('operation /users: { get: { query: Pagination } }');
-      expect(root.routes[0]!.operations[0]!.query).toBe('Pagination');
+      expect(root.routes[0]!.operations[0]!.query).toMatchObject({ kind: 'ref', name: 'Pagination' });
     });
 
     it('leaves query undefined when not declared', () => {
@@ -752,7 +755,7 @@ operation /users: {
 }`);
       expect(diag.hasErrors()).toBe(false);
       expect(root.routes[0]!.operations[0]!.queryMode).toBe('strip');
-      expect(root.routes[0]!.operations[0]!.query).toHaveLength(1);
+      expect((root.routes[0]!.operations[0]!.query as any).nodes).toHaveLength(1);
     });
   });
 
@@ -770,14 +773,15 @@ operation /users: {
     }
 }`);
       const op = root.routes[0]!.operations[0]!;
-      expect(op.headers).toHaveLength(2);
-      expect(op.headers![0]!.name).toBe('authorization');
-      expect(op.headers![1]!.name).toBe('x-request-id');
+      expect(op.headers).toMatchObject({ kind: 'params' });
+      expect((op.headers as any).nodes).toHaveLength(2);
+      expect((op.headers as any).nodes[0].name).toBe('authorization');
+      expect((op.headers as any).nodes[1].name).toBe('x-request-id');
     });
 
     it('parses headers as type reference', () => {
       const { root } = parse('operation /users: { get: { headers: CommonHeaders } }');
-      expect(root.routes[0]!.operations[0]!.headers).toBe('CommonHeaders');
+      expect(root.routes[0]!.operations[0]!.headers).toMatchObject({ kind: 'ref', name: 'CommonHeaders' });
     });
 
     it('leaves headers undefined when not declared', () => {

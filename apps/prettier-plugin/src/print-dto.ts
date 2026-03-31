@@ -1,7 +1,6 @@
 import type { ModelNode } from '@maroonedsoftware/contractkit';
 import { printField, printInlineObjectExpanded, extractTrailingInlineObject, printType } from './print-type.js';
-
-const INDENT = '    ';
+import { INDENT } from './indent.js';
 
 // ─── Model declaration ───────────────────────────────────────────────────────
 

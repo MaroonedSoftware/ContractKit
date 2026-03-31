@@ -1,4 +1,5 @@
 import type { DtoTypeNode, FieldNode, InlineObjectTypeNode } from '@maroonedsoftware/contractkit';
+import { INDENT } from './indent.js';
 
 // ─── Type expression printer ────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ export function printField(field: FieldNode, indent: string): string {
   const vis = field.visibility !== 'normal' ? `${field.visibility} ` : '';
   const def = field.default !== undefined ? ` = ${formatDefault(field.default)}` : '';
   const comment = field.description ? ` # ${field.description}` : '';
-  const innerIndent = indent + '    ';
+  const innerIndent = indent + INDENT;
 
   // Expand inline object types to multi-line — same rule as type aliases.
   // Only when there's no default and no nullable union (those can't split cleanly).

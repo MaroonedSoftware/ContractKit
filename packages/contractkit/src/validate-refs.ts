@@ -90,14 +90,14 @@ function checkParamSourceRefs(
   diag: DiagnosticCollector,
 ): void {
   if (!source) return;
-  if (typeof source === 'string') {
-    checkNameRef(source, file, line, models, diag);
-  } else if (Array.isArray(source)) {
-    for (const param of source) {
+  if (source.kind === 'ref') {
+    checkNameRef(source.name, file, line, models, diag);
+  } else if (source.kind === 'params') {
+    for (const param of source.nodes) {
       checkTypeRefs(param.type, file, param.loc.line, models, diag);
     }
   } else {
-    checkTypeRefs(source, file, line, models, diag);
+    checkTypeRefs(source.node, file, line, models, diag);
   }
 }
 

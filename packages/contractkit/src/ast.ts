@@ -195,7 +195,10 @@ export interface OpParamNode {
 }
 
 /** Either inline param declarations, a single type reference name, or a DtoTypeNode. */
-export type ParamSource = OpParamNode[] | string | DtoTypeNode;
+export type ParamSource =
+  | { kind: 'params'; nodes: OpParamNode[] }
+  | { kind: 'ref'; name: string }
+  | { kind: 'type'; node: DtoTypeNode };
 
 export interface OpRequestNode {
   contentType: 'application/json' | 'multipart/form-data';

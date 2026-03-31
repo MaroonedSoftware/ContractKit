@@ -1,4 +1,4 @@
-import type { DtoRootNode, OpRootNode, DtoTypeNode, FieldNode, ModelNode, OpRouteNode, OpOperationNode, ParamSource, OpParamNode } from './ast.js';
+import type { DtoRootNode, OpRootNode, DtoTypeNode, FieldNode, ModelNode, OpRouteNode, OpOperationNode, ParamSource } from './ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
 export interface OpenApiServerEntry {
   url: string;
@@ -57,15 +57,15 @@ function collectRefsFromType(type: DtoTypeNode, out: Set<string>): void {
 
 function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string>): void {
   if (!source) return;
-  if (typeof source === 'string') {
-    out.add(source);
+  if (source.kind === 'ref') {
+    out.add(source.name);
     return;
   }
-  if (Array.isArray(source)) {
-    for (const p of source) collectRefsFromType(p.type, out);
+  if (source.kind === 'params') {
+    for (const p of source.nodes) collectRefsFromType(p.type, out);
     return;
   }
-  collectRefsFromType(source, out);
+  collectRefsFromType(source.node, out);
 }
 
 /** Collect all type names directly referenced by public operations (seed set). */
@@ -493,22 +493,21 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode): Record<string,
 }
 
 function paramSourceToParams(source: ParamSource, location: 'path' | 'query' | 'header'): Record<string, unknown>[] {
-  if (typeof source === 'string') {
+  if (source.kind === 'ref') {
     // Type reference name used as param source — emit a single $ref
-    // This is a model reference used for query/params; expand as a ref in content
     return [
       {
-        name: source,
+        name: source.name,
         in: location,
         required: location === 'path',
-        schema: { $ref: `#/components/schemas/${source}` },
+        schema: { $ref: `#/components/schemas/${source.name}` },
       },
     ];
   }
 
-  if (Array.isArray(source)) {
+  if (source.kind === 'params') {
     // Inline param declarations
-    return (source as OpParamNode[]).map(p => ({
+    return source.nodes.map(p => ({
       name: p.name,
       in: location,
       required: location === 'path',
@@ -517,8 +516,8 @@ function paramSourceToParams(source: ParamSource, location: 'path' | 'query' | '
   }
 
   // DtoTypeNode (inline object or other type) — if it's an inlineObject, expand fields
-  if (source.kind === 'inlineObject') {
-    return source.fields.map(f => ({
+  if (source.node.kind === 'inlineObject') {
+    return source.node.fields.map(f => ({
       name: f.name,
       in: location,
       required: location === 'path' ? true : !f.optional,
@@ -527,13 +526,13 @@ function paramSourceToParams(source: ParamSource, location: 'path' | 'query' | '
   }
 
   // For a ref type used as param source
-  if (source.kind === 'ref') {
+  if (source.node.kind === 'ref') {
     return [
       {
-        name: source.name,
+        name: source.node.name,
         in: location,
         required: location === 'path',
-        schema: { $ref: `#/components/schemas/${source.name}` },
+        schema: { $ref: `#/components/schemas/${source.node.name}` },
       },
     ];
   }

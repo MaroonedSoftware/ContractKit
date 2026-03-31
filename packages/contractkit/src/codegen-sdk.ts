@@ -251,15 +251,15 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
 
   // Path params — always first, always required (request-side — use Input variants)
   if (route.params) {
-    if (Array.isArray(route.params)) {
-      for (const p of route.params) {
+    if (route.params.kind === 'params') {
+      for (const p of route.params.nodes) {
         params.push({ name: p.name, type: renderInputTsType(p.type, modelsWithInput), optional: false });
       }
-    } else if (typeof route.params === 'string') {
-      const typeName = modelsWithInput?.has(route.params) ? `${route.params}Input` : route.params;
+    } else if (route.params.kind === 'ref') {
+      const typeName = modelsWithInput?.has(route.params.name) ? `${route.params.name}Input` : route.params.name;
       params.push({ name: 'params', type: typeName, optional: false });
     } else {
-      params.push({ name: 'params', type: renderInputTsType(route.params, modelsWithInput), optional: false });
+      params.push({ name: 'params', type: renderInputTsType(route.params.node, modelsWithInput), optional: false });
     }
   }
 
@@ -274,27 +274,27 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
 
   // Query (request-side — use Input variants)
   if (op.query) {
-    if (Array.isArray(op.query)) {
-      const fields = op.query.map(p => `${quoteKey(p.name)}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
+    if (op.query.kind === 'params') {
+      const fields = op.query.nodes.map(p => `${quoteKey(p.name)}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
       params.push({ name: 'query', type: `{ ${fields} }`, optional: true });
-    } else if (typeof op.query === 'string') {
-      const typeName = modelsWithInput?.has(op.query) ? `${op.query}Input` : op.query;
+    } else if (op.query.kind === 'ref') {
+      const typeName = modelsWithInput?.has(op.query.name) ? `${op.query.name}Input` : op.query.name;
       params.push({ name: 'query', type: typeName, optional: true });
     } else {
-      params.push({ name: 'query', type: renderInputTsType(op.query, modelsWithInput), optional: true });
+      params.push({ name: 'query', type: renderInputTsType(op.query.node, modelsWithInput), optional: true });
     }
   }
 
   // Headers (request-side — use Input variants)
   if (op.headers) {
-    if (Array.isArray(op.headers)) {
-      const fields = op.headers.map(p => `${quoteKey(p.name)}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
+    if (op.headers.kind === 'params') {
+      const fields = op.headers.nodes.map(p => `${quoteKey(p.name)}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
       params.push({ name: 'customHeaders', type: `{ ${fields} }`, optional: true });
-    } else if (typeof op.headers === 'string') {
-      const typeName = modelsWithInput?.has(op.headers) ? `${op.headers}Input` : op.headers;
+    } else if (op.headers.kind === 'ref') {
+      const typeName = modelsWithInput?.has(op.headers.name) ? `${op.headers.name}Input` : op.headers.name;
       params.push({ name: 'customHeaders', type: typeName, optional: true });
     } else {
-      params.push({ name: 'customHeaders', type: renderInputTsType(op.headers, modelsWithInput), optional: true });
+      params.push({ name: 'customHeaders', type: renderInputTsType(op.headers.node, modelsWithInput), optional: true });
     }
   }
 
@@ -488,14 +488,14 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[]
 /** Collect Input variant refs for request-side ParamSource types. */
 function collectParamSourceInputRefs(source: ParamSource | undefined, out: Set<string>, modelsWithInput?: Set<string>): void {
   if (!source || !modelsWithInput) return;
-  if (typeof source === 'string') {
-    if (modelsWithInput.has(source)) out.add(`${source}Input`);
-  } else if (Array.isArray(source)) {
-    for (const param of source) {
+  if (source.kind === 'ref') {
+    if (modelsWithInput.has(source.name)) out.add(`${source.name}Input`);
+  } else if (source.kind === 'params') {
+    for (const param of source.nodes) {
       collectInputTypeNodeRefs(param.type, out, modelsWithInput);
     }
   } else {
-    collectInputTypeNodeRefs(source, out, modelsWithInput);
+    collectInputTypeNodeRefs(source.node, out, modelsWithInput);
   }
 }
 
@@ -524,14 +524,14 @@ function collectInputTypeNodeRefs(type: DtoTypeNode, out: Set<string>, modelsWit
 
 function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string>): void {
   if (!source) return;
-  if (typeof source === 'string') {
-    if (/^[A-Z]/.test(source)) out.add(source);
-  } else if (Array.isArray(source)) {
-    for (const param of source) {
+  if (source.kind === 'ref') {
+    if (/^[A-Z]/.test(source.name)) out.add(source.name);
+  } else if (source.kind === 'params') {
+    for (const param of source.nodes) {
       collectTypeNodeRefs(param.type, out);
     }
   } else {
-    collectTypeNodeRefs(source, out);
+    collectTypeNodeRefs(source.node, out);
   }
 }
 
@@ -539,9 +539,9 @@ function sdkNeedsJson(root: OpRootNode): boolean {
   for (const route of root.routes) {
     for (const op of route.operations) {
       const check = (src: ParamSource | undefined) => {
-        if (!src || typeof src === 'string') return false;
-        if (Array.isArray(src)) return src.some(p => typeNeedsScalar(p.type, 'json'));
-        return typeNeedsScalar(src, 'json');
+        if (!src || src.kind === 'ref') return false;
+        if (src.kind === 'params') return src.nodes.some(p => typeNeedsScalar(p.type, 'json'));
+        return typeNeedsScalar(src.node, 'json');
       };
       if (
         (op.request?.bodyType && typeNeedsScalar(op.request.bodyType, 'json')) ||

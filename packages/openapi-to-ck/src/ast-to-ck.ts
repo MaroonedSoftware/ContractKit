@@ -333,21 +333,21 @@ function serializeParamSource(
   const indent = INDENT.repeat(depth);
 
   // String reference: `query: TypeName`
-  if (typeof source === 'string') {
-    lines.push(`${indent}${keyword}: ${source}`);
+  if (source.kind === 'ref') {
+    lines.push(`${indent}${keyword}: ${source.name}`);
     return;
   }
 
   // DtoTypeNode reference
-  if (!Array.isArray(source)) {
-    lines.push(`${indent}${keyword}: ${serializeType(source)}`);
+  if (source.kind === 'type') {
+    lines.push(`${indent}${keyword}: ${serializeType(source.node)}`);
     return;
   }
 
   // Inline param declarations: `params: { name: type }`
   const modeStr = mode ? `mode(${mode}) ` : '';
   lines.push(`${indent}${keyword}: ${modeStr}{`);
-  for (const param of source) {
+  for (const param of source.nodes) {
     const optional = param.optional ? '?' : '';
     let typeStr = serializeType(param.type);
     if (param.nullable && !typeContainsNull(param.type)) {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { printCk } from '../src/print-ck.js';
-import type { OpRouteNode, OpOperationNode, CkRootNode, SecurityFields } from '@maroonedsoftware/contractkit';
+import type { OpRouteNode, OpOperationNode, CkRootNode, SecurityFields, ParamSource, DtoTypeNode, OpParamNode } from '@maroonedsoftware/contractkit';
 
 // ─── Minimal AST builders ────────────────────────────────────────────────────
 
@@ -8,12 +8,26 @@ function makeLoc(line = 1) {
   return { file: 'test.ck', line };
 }
 
-function makeOp(method: OpOperationNode['method'], overrides?: Partial<OpOperationNode>): OpOperationNode {
-  return { method, responses: [], loc: makeLoc(), ...overrides };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeParamSource(value: any): ParamSource {
+  if (!value) return value;
+  if (typeof value === 'string') return { kind: 'ref', name: value };
+  if (Array.isArray(value)) return { kind: 'params', nodes: value as OpParamNode[] };
+  if (value.kind === 'params' || value.kind === 'ref' || value.kind === 'type') return value as ParamSource;
+  return { kind: 'type', node: value as DtoTypeNode };
 }
 
-function makeRoute(path: string, operations: OpOperationNode[], overrides?: Partial<OpRouteNode>): OpRouteNode {
-  return { path, operations, loc: makeLoc(), ...overrides };
+function makeOp(method: OpOperationNode['method'], overrides?: Partial<OpOperationNode> & { query?: unknown; headers?: unknown }): OpOperationNode {
+  const normalized = { ...overrides } as Partial<OpOperationNode>;
+  if (overrides?.query !== undefined) normalized.query = normalizeParamSource(overrides.query);
+  if (overrides?.headers !== undefined) normalized.headers = normalizeParamSource(overrides.headers);
+  return { method, responses: [], loc: makeLoc(), ...normalized };
+}
+
+function makeRoute(path: string, operations: OpOperationNode[], overrides?: Partial<OpRouteNode> & { params?: unknown }): OpRouteNode {
+  const normalized = { ...overrides } as Partial<OpRouteNode>;
+  if (overrides?.params !== undefined) normalized.params = normalizeParamSource(overrides.params);
+  return { path, operations, loc: makeLoc(), ...normalized };
 }
 
 function makeRoot(routes: OpRouteNode[]): CkRootNode {

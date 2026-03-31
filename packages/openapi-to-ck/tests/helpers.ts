@@ -124,15 +124,30 @@ export function opResponse(statusCode: number, bodyType?: DtoTypeNode, contentTy
   return { statusCode, contentType, bodyType };
 }
 
-export function opOperation(method: HttpMethod, overrides?: Partial<OpOperationNode>): OpOperationNode {
+/** Normalize a raw param value (old bare format or new discriminated union) to ParamSource. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeParamSource(value: any): ParamSource {
+  if (!value) return value;
+  if (typeof value === 'string') return { kind: 'ref', name: value };
+  if (Array.isArray(value)) return { kind: 'params', nodes: value };
+  if (value.kind === 'params' || value.kind === 'ref' || value.kind === 'type') return value as ParamSource;
+  return { kind: 'type', node: value as DtoTypeNode };
+}
+
+export function opOperation(method: HttpMethod, overrides?: Partial<OpOperationNode> & { query?: unknown; headers?: unknown }): OpOperationNode {
+  const normalized = { ...overrides } as Partial<OpOperationNode>;
+  if (overrides?.query !== undefined) normalized.query = normalizeParamSource(overrides.query);
+  if (overrides?.headers !== undefined) normalized.headers = normalizeParamSource(overrides.headers);
   return {
     method,
     responses: [],
     loc: loc(),
-    ...overrides,
+    ...normalized,
   };
 }
 
-export function opRoute(path: string, operations: OpOperationNode[], overrides?: Partial<OpRouteNode>): OpRouteNode {
-  return { path, operations, loc: loc(), ...overrides };
+export function opRoute(path: string, operations: OpOperationNode[], overrides?: Partial<OpRouteNode> & { params?: unknown }): OpRouteNode {
+  const normalized = { ...overrides } as Partial<OpRouteNode>;
+  if (overrides?.params !== undefined) normalized.params = normalizeParamSource(overrides.params);
+  return { path, operations, loc: loc(), ...normalized };
 }

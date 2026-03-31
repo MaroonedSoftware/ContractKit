@@ -100,7 +100,7 @@ function pathItemToRoute(
   };
 
   if (params.length > 0) {
-    route.params = params;
+    route.params = { kind: 'params', nodes: params };
   }
 
   if (pathItem.description && ctx.includeComments) {
@@ -155,10 +155,10 @@ function operationToNode(
   }
 
   if (queryParams.length > 0) {
-    node.query = queryParams;
+    node.query = { kind: 'params', nodes: queryParams };
   }
   if (headerParams.length > 0) {
-    node.headers = headerParams;
+    node.headers = { kind: 'params', nodes: headerParams };
   }
 
   // Request body

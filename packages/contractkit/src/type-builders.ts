@@ -160,17 +160,20 @@ export function extractNullability(type: DtoTypeNode): { type: DtoTypeNode; null
  * Convert a DtoTypeNode to ParamSource for query/headers blocks.
  */
 export function typeNodeToParamSource(node: DtoTypeNode): import('./ast.js').ParamSource {
-  if (node.kind === 'ref') return node.name;
+  if (node.kind === 'ref') return { kind: 'ref', name: node.name };
   if (node.kind === 'inlineObject') {
-    return node.fields.map(f => ({
-      name: f.name,
-      optional: f.optional,
-      nullable: f.nullable,
-      type: f.type,
-      default: f.default,
-      description: f.description,
-      loc: f.loc,
-    }));
+    return {
+      kind: 'params',
+      nodes: node.fields.map(f => ({
+        name: f.name,
+        optional: f.optional,
+        nullable: f.nullable,
+        type: f.type,
+        default: f.default,
+        description: f.description,
+        loc: f.loc,
+      })),
+    };
   }
-  return node;
+  return { kind: 'type', node: node };
 }

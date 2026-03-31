@@ -7,9 +7,7 @@ import type {
   FieldNode,
   ModelNode,
   ParamSource,
-  OpParamNode,
   HttpMethod,
-  IntersectionTypeNode,
 } from './ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
 import { renderTsType, collectPublicTypeNames } from './codegen-sdk.js';
@@ -670,31 +668,11 @@ interface FlatParam {
 }
 
 function flattenParamSource(source: ParamSource, modelIndex: Map<string, ModelNode>): FlatParam[] {
-  if (Array.isArray(source)) {
-    return (source as OpParamNode[]).map(p => ({ name: p.name, type: p.type, optional: p.optional }));
-  }
-  if (typeof source === 'string') {
-    // String reference — resolve from model index
-    const fields = resolveModelFields(source, modelIndex);
-    if (fields) {
-      return fields.map(f => ({
-        name: f.name,
-        type: f.type,
-        optional: f.optional,
-        description: f.description,
-      }));
-    }
-    return [];
-  }
-  if (source.kind === 'inlineObject') {
-    return source.fields.map(f => ({
-      name: f.name,
-      type: f.type,
-      optional: f.optional,
-      description: f.description,
-    }));
+  if (source.kind === 'params') {
+    return source.nodes.map(p => ({ name: p.name, type: p.type, optional: p.optional }));
   }
   if (source.kind === 'ref') {
+    // String reference — resolve from model index
     const fields = resolveModelFields(source.name, modelIndex);
     if (fields) {
       return fields.map(f => ({
@@ -706,11 +684,33 @@ function flattenParamSource(source: ParamSource, modelIndex: Map<string, ModelNo
     }
     return [];
   }
-  if (source.kind === 'intersection') {
+  // DtoTypeNode
+  const node = source.node;
+  if (node.kind === 'inlineObject') {
+    return node.fields.map(f => ({
+      name: f.name,
+      type: f.type,
+      optional: f.optional,
+      description: f.description,
+    }));
+  }
+  if (node.kind === 'ref') {
+    const fields = resolveModelFields(node.name, modelIndex);
+    if (fields) {
+      return fields.map(f => ({
+        name: f.name,
+        type: f.type,
+        optional: f.optional,
+        description: f.description,
+      }));
+    }
+    return [];
+  }
+  if (node.kind === 'intersection') {
     // Flatten all members of the intersection
     const result: FlatParam[] = [];
-    for (const member of source.members) {
-      const memberParams = flattenParamSource(member, modelIndex);
+    for (const member of node.members) {
+      const memberParams = flattenParamSource({ kind: 'type', node: member }, modelIndex);
       result.push(...memberParams);
     }
     return result;

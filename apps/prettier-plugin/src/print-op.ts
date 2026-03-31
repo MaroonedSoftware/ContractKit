@@ -2,7 +2,6 @@ import type {
   OpRouteNode,
   OpOperationNode,
   OpResponseNode,
-  OpParamNode,
   ParamSource,
   SecurityNode,
   SecurityFields,
@@ -11,11 +10,12 @@ import type {
 } from '@maroonedsoftware/contractkit';
 import { SECURITY_NONE } from '@maroonedsoftware/contractkit';
 import { printType, formatDefault } from './print-type.js';
+import { INDENT } from './indent.js';
 
-const I1 = '    ';
-const I2 = '        ';
-const I3 = '            ';
-const I4 = '                ';
+const I1 = INDENT;
+const I2 = INDENT.repeat(2);
+const I3 = INDENT.repeat(3);
+const I4 = INDENT.repeat(4);
 
 // ─── Orphan comment helpers ──────────────────────────────────────────────────
 
@@ -81,13 +81,13 @@ export function printRoute(route: OpRouteNode, blocks: CommentBlock[], idx: { va
 
 function printParamsBlock(source: ParamSource, indent: string, mode?: ObjectMode): string[] {
   const prefix = mode ? `mode(${mode}) ` : '';
-  if (typeof source === 'string') {
-    return [`${indent}${prefix}params: ${source}`];
+  if (source.kind === 'ref') {
+    return [`${indent}${prefix}params: ${source.name}`];
   }
-  if (Array.isArray(source)) {
+  if (source.kind === 'params') {
     const lines: string[] = [`${indent}${prefix}params: {`];
-    const inner = indent + '    ';
-    for (const p of source) {
+    const inner = indent + INDENT;
+    for (const p of source.nodes) {
       const opt = p.optional ? '?' : '';
       let t = printType(p.type);
       if (p.nullable) t += ' | null';
@@ -99,7 +99,7 @@ function printParamsBlock(source: ParamSource, indent: string, mode?: ObjectMode
     return lines;
   }
   // DtoTypeNode
-  return [`${indent}${prefix}params: ${printType(source)}`];
+  return [`${indent}${prefix}params: ${printType(source.node)}`];
 }
 
 // ─── HTTP operation ──────────────────────────────────────────────────────────
@@ -157,13 +157,13 @@ export function printSecurity(security: SecurityNode, indent = I2, innerIndent =
 
 function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource, mode?: ObjectMode): string[] {
   const prefix = mode ? `mode(${mode}) ` : '';
-  if (typeof source === 'string') {
-    return [`${I2}${prefix}${keyword}: ${source}`];
+  if (source.kind === 'ref') {
+    return [`${I2}${prefix}${keyword}: ${source.name}`];
   }
-  if (Array.isArray(source)) {
-    if (source.length === 0) return [];
+  if (source.kind === 'params') {
+    if (source.nodes.length === 0) return [];
     const lines: string[] = [`${I2}${prefix}${keyword}: {`];
-    for (const p of source) {
+    for (const p of source.nodes) {
       const opt = p.optional ? '?' : '';
       let t = printType(p.type);
       if (p.nullable) t += ' | null';
@@ -175,7 +175,7 @@ function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource, 
     return lines;
   }
   // DtoTypeNode (e.g. intersection)
-  return [`${I2}${prefix}${keyword}: ${printType(source as DtoTypeNode)}`];
+  return [`${I2}${prefix}${keyword}: ${printType(source.node)}`];
 }
 
 // ─── Content-type line ───────────────────────────────────────────────────────
@@ -183,7 +183,7 @@ function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource, 
 /** Print a `contentType: bodyType` line, expanding inline brace objects onto separate lines. */
 function printContentTypeLine(contentType: string, bodyType: DtoTypeNode, lineIndent: string): string[] {
   if (bodyType.kind === 'inlineObject') {
-    const fieldIndent = lineIndent + '    ';
+    const fieldIndent = lineIndent + INDENT;
     const lines: string[] = [`${lineIndent}${contentType}: {`];
     for (const f of bodyType.fields) {
       const opt = f.optional ? '?' : '';
