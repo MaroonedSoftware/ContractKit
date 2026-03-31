@@ -161,7 +161,7 @@ export function createSemantics(grammar: Grammar) {
         ? comments.map(c => c.sourceString.replace(/^#\s?/, '').trimEnd()).join('\n')
         : undefined;
 
-      const prefix = prefixNode.toAst(file, this.args.diag) as { name: string; mode?: ObjectMode; parseCase?: 'camel' | 'snake' | 'pascal'; line: number };
+      const prefix = prefixNode.toAst(file, this.args.diag) as { name: string; mode?: ObjectMode; parseCase?: 'camel' | 'snake' | 'pascal'; deprecated?: boolean; line: number };
       const body = bodyNode.toAst(file, this.args.diag);
 
       const result: ModelNode = {
@@ -175,6 +175,7 @@ export function createSemantics(grammar: Grammar) {
       if (body.type) result.type = body.type;
       if (prefix.mode) result.mode = prefix.mode;
       if (prefix.parseCase) result.parseCase = prefix.parseCase;
+      if (prefix.deprecated) result.deprecated = true;
       if (description) {
         result.description = description;
       } else if (body.inlineDescription) {
@@ -189,20 +190,26 @@ export function createSemantics(grammar: Grammar) {
     ModelPrefix(modifiers, nameNode) {
       let mode: ObjectMode | undefined;
       let parseCase: 'camel' | 'snake' | 'pascal' | undefined;
+      let deprecated: boolean | undefined;
       for (let i = 0; i < modifiers.numChildren; i++) {
         const text = modifiers.child(i).sourceString.trim();
-        const modeMatch = text.match(/^mode\((\w+)\)$/);
-        if (modeMatch && OBJECT_MODES.has(modeMatch[1]!)) {
-          mode = modeMatch[1] as ObjectMode;
+        if (text === 'deprecated') {
+          deprecated = true;
         } else {
-          const m = text.match(/^parse\((\w+)\)$/);
-          if (m) parseCase = m[1] as 'camel' | 'snake' | 'pascal';
+          const modeMatch = text.match(/^mode\((\w+)\)$/);
+          if (modeMatch && OBJECT_MODES.has(modeMatch[1]!)) {
+            mode = modeMatch[1] as ObjectMode;
+          } else {
+            const m = text.match(/^parse\((\w+)\)$/);
+            if (m) parseCase = m[1] as 'camel' | 'snake' | 'pascal';
+          }
         }
       }
       return {
         name: nameNode.sourceString,
         mode,
         parseCase,
+        deprecated,
         line: getLine(nameNode),
       };
     },
@@ -292,10 +299,42 @@ export function createSemantics(grammar: Grammar) {
       const body = bodyNode.toAst(file, this.args.diag) as {
         type: DtoTypeNode;
         visibility: 'readonly' | 'writeonly' | 'normal';
+        deprecated?: boolean;
         default?: string | number | boolean;
       };
       const { type, nullable } = extractNullability(body.type);
-      return { name, optional, nullable, visibility: body.visibility, type, default: body.default, loc: { file, line } } as FieldNode;
+      const field: FieldNode = { name, optional, nullable, visibility: body.visibility, type, default: body.default, loc: { file, line } };
+      if (body.deprecated) field.deprecated = true;
+      return field;
+    },
+
+    FieldBody_depWithVisibility(_depKw, visNode, typeExprNode, _eqOpt, defaultValOpt) {
+      const vis = visNode.sourceString.trim() as 'readonly' | 'writeonly';
+      const type = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+      let defaultVal: string | number | boolean | undefined;
+      if ((defaultValOpt as IterationNode).numChildren > 0) {
+        defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
+      }
+      return { type, visibility: vis, deprecated: true, default: defaultVal };
+    },
+
+    FieldBody_visibilityDep(visNode, _depKw, typeExprNode, _eqOpt, defaultValOpt) {
+      const vis = visNode.sourceString.trim() as 'readonly' | 'writeonly';
+      const type = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+      let defaultVal: string | number | boolean | undefined;
+      if ((defaultValOpt as IterationNode).numChildren > 0) {
+        defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
+      }
+      return { type, visibility: vis, deprecated: true, default: defaultVal };
+    },
+
+    FieldBody_depPlain(_depKw, typeExprNode, _eqOpt, defaultValOpt) {
+      const type = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+      let defaultVal: string | number | boolean | undefined;
+      if ((defaultValOpt as IterationNode).numChildren > 0) {
+        defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
+      }
+      return { type, visibility: 'normal', deprecated: true, default: defaultVal };
     },
 
     FieldBody_withVisibility(visNode, typeExprNode, _eqOpt, defaultValOpt) {
@@ -427,10 +466,13 @@ export function createSemantics(grammar: Grammar) {
       const body = bodyNode.toAst(file, this.args.diag) as {
         type: DtoTypeNode;
         visibility: 'readonly' | 'writeonly' | 'normal';
+        deprecated?: boolean;
         default?: string | number | boolean;
       };
       const { type, nullable } = extractNullability(body.type);
-      return { name, optional, nullable, visibility: body.visibility, type, default: body.default, loc: { file, line } } as FieldNode;
+      const field: FieldNode = { name, optional, nullable, visibility: body.visibility, type, default: body.default, loc: { file, line } };
+      if (body.deprecated) field.deprecated = true;
+      return field;
     },
 
     DefaultValue(node) {

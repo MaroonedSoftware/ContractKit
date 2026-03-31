@@ -247,6 +247,9 @@ function modelToSchema(model: ModelNode): Record<string, unknown> {
   if (model.description) {
     schema.description = model.description;
   }
+  if (model.deprecated) {
+    schema.deprecated = true;
+  }
 
   return schema;
 }
@@ -267,6 +270,9 @@ function fieldToSchema(field: FieldNode): Record<string, unknown> {
   }
   if (field.description) {
     schema.description = field.description;
+  }
+  if (field.deprecated) {
+    schema.deprecated = true;
   }
 
   return schema;

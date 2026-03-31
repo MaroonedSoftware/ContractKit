@@ -612,6 +612,11 @@ function renderModel(model: ModelNode, nested: boolean): string[] {
   lines.push(`${heading} ${model.name}`);
   lines.push('');
 
+  if (model.deprecated) {
+    lines.push('> **Deprecated** — this type is deprecated and may be removed in a future version.');
+    lines.push('');
+  }
+
   if (model.description) {
     lines.push(`> ${model.description}`);
     lines.push('');
@@ -639,6 +644,7 @@ function renderModel(model: ModelNode, nested: boolean): string[] {
       const type = escapeCell(renderTsType(field.type));
       const required = field.optional ? 'No' : 'Yes';
       const modifiers: string[] = [];
+      if (field.deprecated) modifiers.push('deprecated');
       if (field.visibility === 'readonly') modifiers.push('read-only');
       if (field.visibility === 'writeonly') modifiers.push('write-only');
       if (field.nullable) modifiers.push('nullable');

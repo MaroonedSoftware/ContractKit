@@ -129,30 +129,33 @@
       }
     },
     "contract-declaration": {
-      "begin": "\\b(contract)\\s+(?:(parse\\([a-z]+\\))\\s+)?(?:(mode\\((?:strict|strip|loose)\\))\\s+)?([A-Z][a-zA-Z0-9_$]*)\\s*(:)\\s*(?:([A-Z][a-zA-Z0-9_$]*)\\s*(&)\\s*)?(\\{)",
+      "begin": "\\b(contract)\\s+(?:(deprecated)\\s+)?(?:(parse\\([a-z]+\\))\\s+)?(?:(mode\\((?:strict|strip|loose)\\))\\s+)?([A-Z][a-zA-Z0-9_$]*)\\s*(:)\\s*(?:([A-Z][a-zA-Z0-9_$]*)\\s*(&)\\s*)?(\\{)",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.contract.ck"
         },
         "2": {
-          "name": "keyword.control.parse-mode.ck"
+          "name": "keyword.control.modifier.ck"
         },
         "3": {
-          "name": "keyword.control.object-mode.ck"
+          "name": "keyword.control.parse-mode.ck"
         },
         "4": {
-          "name": "entity.name.type.model.ck"
+          "name": "keyword.control.object-mode.ck"
         },
         "5": {
-          "name": "keyword.operator.inheritance.ck"
+          "name": "entity.name.type.model.ck"
         },
         "6": {
-          "name": "entity.other.inherited-class.ck"
+          "name": "keyword.operator.inheritance.ck"
         },
         "7": {
-          "name": "keyword.operator.intersection.ck"
+          "name": "entity.other.inherited-class.ck"
         },
         "8": {
+          "name": "keyword.operator.intersection.ck"
+        },
+        "9": {
           "name": "punctuation.definition.block.begin.ck"
         }
       },
@@ -172,21 +175,24 @@
       ]
     },
     "contract-type-alias": {
-      "begin": "\\b(contract)\\s+(?:(parse\\([a-z]+\\))\\s+)?(?:(mode\\((?:strict|strip|loose)\\))\\s+)?([A-Z][a-zA-Z0-9_$]*)\\s*(:)\\s*(?!.*\\{)",
+      "begin": "\\b(contract)\\s+(?:(deprecated)\\s+)?(?:(parse\\([a-z]+\\))\\s+)?(?:(mode\\((?:strict|strip|loose)\\))\\s+)?([A-Z][a-zA-Z0-9_$]*)\\s*(:)\\s*(?!.*\\{)",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.contract.ck"
         },
         "2": {
-          "name": "keyword.control.parse-mode.ck"
+          "name": "keyword.control.modifier.ck"
         },
         "3": {
-          "name": "keyword.control.object-mode.ck"
+          "name": "keyword.control.parse-mode.ck"
         },
         "4": {
-          "name": "entity.name.type.model.ck"
+          "name": "keyword.control.object-mode.ck"
         },
         "5": {
+          "name": "entity.name.type.model.ck"
+        },
+        "6": {
           "name": "keyword.operator.inheritance.ck"
         }
       },
@@ -300,7 +306,7 @@
       ]
     },
     "visibility-modifier": {
-      "match": "\\b(readonly|writeonly)\\b",
+      "match": "\\b(deprecated|readonly|writeonly)\\b",
       "name": "storage.modifier.ck"
     },
     "params-block": {

@@ -52,7 +52,7 @@ Contract {
 
   ModelPrefix = modelModifier* identifier
 
-  modelModifier = objectMode | parseMode
+  modelModifier = objectMode | parseMode | deprecatedKw
 
   ModelBody = identifier "&" "{" FieldList "}"  -- inheritance
             | "{" FieldList "}"                  -- fields
@@ -66,8 +66,11 @@ Contract {
 
   FieldDecl = identifier "?"? ":" FieldBody
 
-  FieldBody = visibility TypeExpression ("=" DefaultValue)?   -- withVisibility
-            | TypeExpression ("=" DefaultValue)?               -- plain
+  FieldBody = deprecatedKw visibility TypeExpression ("=" DefaultValue)?   -- depWithVisibility
+            | visibility deprecatedKw TypeExpression ("=" DefaultValue)?   -- visibilityDep
+            | deprecatedKw TypeExpression ("=" DefaultValue)?              -- depPlain
+            | visibility TypeExpression ("=" DefaultValue)?                -- withVisibility
+            | TypeExpression ("=" DefaultValue)?                           -- plain
 
   visibility = "readonly" ~identPart | "writeonly" ~identPart
 
@@ -240,6 +243,7 @@ Contract {
   securityKw = "security" ~identPart
   noneKw = "none" ~identPart
   rolesKw = "roles" ~identPart
+  deprecatedKw = "deprecated" ~identPart
 
   // ─── Lexical Rules ──────────────────────────────────────────────
 

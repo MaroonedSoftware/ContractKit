@@ -486,12 +486,12 @@ describe('generateDto', () => {
         model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
       ]);
       const output = generateDto(root);
-      // User three-schema
-      expect(output).toContain('const UserBase =');
+      // User has only readonly (no writeonly) — Base === Read, so no UserBase emitted
+      expect(output).not.toContain('UserBase');
       expect(output).toContain('export const User =');
       expect(output).toContain('export const UserInput =');
-      // Admin inherits from User — also gets three-schema
-      expect(output).toContain('const AdminBase = UserBase.extend({');
+      // Admin inherits from User — also gets three-schema; no writeonly so no AdminBase
+      expect(output).not.toContain('AdminBase');
       expect(output).toContain('export const Admin = User.extend({');
       expect(output).toContain('export const AdminInput = UserInput.extend({');
     });
@@ -505,10 +505,26 @@ describe('generateDto', () => {
       // User has no visibility — simple schema
       expect(output).not.toContain('UserBase');
       expect(output).not.toContain('UserInput');
-      // Admin has visibility — three-schema, base is not in modelsWithInput
-      expect(output).toContain('const AdminBase = User.extend({');
+      // Admin has only readonly (no writeonly) — Base === Read, so no AdminBase emitted
+      expect(output).not.toContain('AdminBase');
       expect(output).toContain('export const Admin = User.extend({');
       expect(output).toContain('export const AdminInput = User.extend({');
+    });
+
+    it('parent with writeonly fields generates Base; child Base extends ParentBase', () => {
+      const root = dtoRoot([
+        model('User', [field('password', scalarType('string'), { visibility: 'writeonly' }), field('name', scalarType('string'))]),
+        model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
+      ]);
+      const output = generateDto(root);
+      // User has writeonly — Base !== Read, so UserBase is emitted
+      expect(output).toContain('const UserBase =');
+      expect(output).toContain('export const User =');
+      expect(output).toContain('export const UserInput =');
+      // Admin has no writeonly — no AdminBase; but its Input still extends UserInput
+      expect(output).not.toContain('AdminBase');
+      expect(output).toContain('export const Admin = User.extend({');
+      expect(output).toContain('export const AdminInput = UserInput.extend({');
     });
 
     it('child inheriting from external parent with Input variant uses ParentInput.extend()', () => {
@@ -722,6 +738,75 @@ describe('generateDto', () => {
       const output = generateDto(root, context);
       expect(output).toContain("import { Counterparty } from './counterparty.js';");
       expect(output).toContain("import { Pagination } from '../../shared/pagination.js';");
+    });
+  });
+
+  // ─── parseCase ─────────────────────────────────────────────────
+  describe('parseCase', () => {
+    it('snake: parses snake_case input keys and transforms to camelCase', () => {
+      const root = dtoRoot([
+        model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { parseCase: 'snake' }),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('first_name: z.string()');
+      expect(output).toContain('last_name: z.string()');
+      expect(output).toContain('.transform(data => ({');
+      expect(output).toContain('firstName: data.first_name');
+      expect(output).toContain('lastName: data.last_name');
+      expect(output).toContain('export type User = z.output<typeof User>');
+    });
+
+    it('camel: parses camelCase input keys with no transform', () => {
+      const root = dtoRoot([
+        model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { parseCase: 'camel' }),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('firstName: z.string()');
+      expect(output).toContain('lastName: z.string()');
+      expect(output).not.toContain('.transform(');
+      expect(output).toContain('export type User = z.infer<typeof User>');
+    });
+
+    it('mode cascades to inline object fields', () => {
+      const dataType = inlineObjectType([field('id', scalarType('uuid')), field('amount', scalarType('number'))]);
+      const root = dtoRoot([
+        model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { mode: 'loose' }),
+      ]);
+      const output = generateDto(root);
+      // Top-level uses loose
+      expect(output).toContain('export const Webhook = z.looseObject({');
+      // Inline data field also uses loose (cascaded)
+      expect(output).toContain('z.looseObject({');
+      expect(output).not.toContain('z.strictObject(');
+    });
+
+    it('pascal: parses PascalCase input keys and transforms to camelCase', () => {
+      const root = dtoRoot([
+        model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { parseCase: 'pascal' }),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('FirstName: z.string()');
+      expect(output).toContain('LastName: z.string()');
+      expect(output).toContain('.transform(data => ({');
+      expect(output).toContain('firstName: data.FirstName');
+      expect(output).toContain('lastName: data.LastName');
+      expect(output).toContain('export type User = z.output<typeof User>');
+    });
+
+    it('pascal: nested inline objects also use PascalCase keys with transforms', () => {
+      const dataType = inlineObjectType([field('id', scalarType('uuid')), field('amount', scalarType('number'))]);
+      const root = dtoRoot([
+        model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { parseCase: 'pascal' }),
+      ]);
+      const output = generateDto(root);
+      // Top-level PascalCase keys
+      expect(output).toContain('Event: z.string()');
+      expect(output).toContain('Data:');
+      // Nested inline object also has PascalCase keys and transform
+      expect(output).toContain('Id: z.uuid()');
+      expect(output).toContain('Amount:');
+      expect(output).toContain('id: data.Id');
+      expect(output).toContain('amount: data.Amount');
     });
   });
 });

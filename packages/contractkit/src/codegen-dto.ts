@@ -92,6 +92,9 @@ export function computeModelsWithInput(models: ModelNode[], externalModelsWithIn
 function generateComments(model: ModelNode, outPath?: string): string[] {
   const lines: string[] = [];
   lines.push('/**');
+  if (model.deprecated) {
+    lines.push(` * @deprecated`);
+  }
   if (model.description) {
     lines.push(` * ${model.description}`);
   }
@@ -142,8 +145,10 @@ export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): str
   }
   if (needsBinary || needsDatetime || needsJson) lines.push('');
 
+  const modelsWithWriteonly = new Set(root.models.filter(m => m.fields.some(f => f.visibility === 'writeonly')).map(m => m.name));
+
   for (const model of topoSortModels(root.models)) {
-    lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput));
+    lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelsWithWriteonly));
     lines.push('');
   }
 
@@ -152,7 +157,7 @@ export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): str
 
 // ─── Model ─────────────────────────────────────────────────────────────────
 
-function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
+function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>, modelsWithWriteonly?: Set<string>): string[] {
   // Type alias: Name : typeExpression
   if (model.type) {
     return generateTypeAlias(model, outPath, modelsWithInput);
@@ -163,7 +168,7 @@ function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set
   const needsInputSplit = model.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(model.name) ?? false);
 
   if (needsInputSplit) {
-    return generateThreeSchemaModel(model, outPath, modelsWithInput);
+    return generateThreeSchemaModel(model, outPath, modelsWithInput, modelsWithWriteonly);
   }
   return generateSimpleModel(model, outPath);
 }
@@ -186,8 +191,8 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
 
   const wrapper = modeToWrapper(model.mode ?? 'strict');
 
-  if (model.parseCase) {
-    const snakeBody = renderFieldsAsSnakeCase(model.fields);
+  if (model.parseCase === 'snake') {
+    const snakeBody = renderFieldsAsSnakeCase(model.fields, model.mode);
     lines.push(`export const ${model.name} = ${wrapper}({`);
     lines.push(...snakeBody.map(l => `    ${l}`));
     lines.push(`}).transform(data => ({`);
@@ -200,7 +205,23 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
     return lines;
   }
 
-  const body = renderFields(model.fields);
+  if (model.parseCase === 'pascal') {
+    const pascalBody = renderFieldsAsPascalCase(model.fields, model.mode);
+    lines.push(`export const ${model.name} = ${wrapper}({`);
+    lines.push(...pascalBody.map(l => `    ${l}`));
+    lines.push(`}).transform(data => ({`);
+    for (const field of model.fields) {
+      const pascalKey = camelToPascal(field.name);
+      lines.push(`    ${quoteKey(field.name)}: data.${pascalKey},`);
+    }
+    lines.push(`}));`);
+    lines.push(`export type ${model.name} = z.output<typeof ${model.name}>;`);
+    return lines;
+  }
+
+  // parseCase === 'camel': input keys already match field names — no transform needed
+
+  const body = renderFields(model.fields, model.mode);
   if (model.base) {
     lines.push(`export const ${model.name} = ${model.base}.extend({`);
     lines.push(...body.map(l => `    ${l}`));
@@ -215,7 +236,7 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
   return lines;
 }
 
-function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
+function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>, modelsWithWriteonly?: Set<string>): string[] {
   const lines: string[] = [];
   const name = model.name;
 
@@ -223,23 +244,28 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
 
   const wrapper = modeToWrapper(model.mode ?? 'strict');
 
-  // Base schema — all fields (used internally when a submodel extends this one)
   const allFields = model.fields;
-  const baseBody = renderFields(allFields);
-  // Use ParentBase.extend() when parent also has the three-schema pattern, else Parent.extend()
-  const baseParent = model.base ? (modelsWithInput?.has(model.base) ? `${model.base}Base` : model.base) : null;
-  if (baseParent) {
-    lines.push(`const ${name}Base = ${baseParent}.extend({`);
-  } else {
-    lines.push(`const ${name}Base = ${wrapper}({`);
+  const hasWriteonly = allFields.some(f => f.visibility === 'writeonly');
+
+  // Base schema — all fields (used internally when a submodel extends this one).
+  // Only needed when this model has writeonly fields; otherwise Base === Read.
+  if (hasWriteonly) {
+    const baseBody = renderFields(allFields, model.mode);
+    // Use ParentBase.extend() only when parent actually has writeonly fields (and thus a Base schema).
+    const baseParent = model.base ? (modelsWithWriteonly?.has(model.base) ? `${model.base}Base` : model.base) : null;
+    if (baseParent) {
+      lines.push(`const ${name}Base = ${baseParent}.extend({`);
+    } else {
+      lines.push(`const ${name}Base = ${wrapper}({`);
+    }
+    lines.push(...baseBody.map(l => `    ${l}`));
+    lines.push(`});`);
+    lines.push('');
   }
-  lines.push(...baseBody.map(l => `    ${l}`));
-  lines.push(`});`);
-  lines.push('');
 
   // Read schema — omit writeonly fields; extends parent read schema
   const readFields = allFields.filter(f => f.visibility !== 'writeonly');
-  const readBody = renderFields(readFields);
+  const readBody = renderFields(readFields, model.mode);
   if (model.base) {
     lines.push(`export const ${name} = ${model.base}.extend({`);
   } else {
@@ -253,7 +279,7 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
   // Write schema — omit readonly fields (use Input variants for sub-type refs);
   // extends ParentInput if parent has an Input variant, else extends parent read schema
   const writeFields = allFields.filter(f => f.visibility !== 'readonly');
-  const writeBody = modelsWithInput ? renderInputFields(writeFields, modelsWithInput) : renderFields(writeFields);
+  const writeBody = modelsWithInput ? renderInputFields(writeFields, modelsWithInput, model.mode) : renderFields(writeFields, model.mode);
   const writeBase = model.base ? (modelsWithInput?.has(model.base) ? `${model.base}Input` : model.base) : null;
   if (writeBase) {
     lines.push(`export const ${name}Input = ${writeBase}.extend({`);
@@ -273,14 +299,36 @@ function camelToSnake(s: string): string {
   return s.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`);
 }
 
-function renderFields(fields: FieldNode[]): string[] {
-  return fields.map(f => renderField(f));
+function camelToPascal(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function renderFieldsAsSnakeCase(fields: FieldNode[]): string[] {
+function renderFields(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
+  return fields.flatMap(f => renderField(f, defaultMode));
+}
+
+function renderFieldsAsPascalCase(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
+  return fields.map(f => {
+    const pascalKey = camelToPascal(f.name);
+    let expr = renderType(f.type, 'pascal', defaultMode);
+    if (f.default !== undefined) {
+      if (f.nullable) expr += '.nullable()';
+      const dv = typeof f.default === 'string' ? `"${escapeString(f.default)}"` : String(f.default);
+      expr += `.default(${dv})`;
+    } else if (f.optional) {
+      expr += '.nullish()';
+    } else if (f.nullable) {
+      expr += '.nullable()';
+    }
+    if (f.description) expr += `.describe("${escapeString(f.description)}")`;
+    return `${quoteKey(pascalKey)}: ${expr},`;
+  });
+}
+
+function renderFieldsAsSnakeCase(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
   return fields.map(f => {
     const snakeKey = camelToSnake(f.name);
-    let expr = renderType(f.type, true);
+    let expr = renderType(f.type, 'snake', defaultMode);
     if (f.default !== undefined) {
       if (f.nullable) expr += '.nullable()';
       const dv = typeof f.default === 'string' ? `"${escapeString(f.default)}"` : String(f.default);
@@ -296,8 +344,11 @@ function renderFieldsAsSnakeCase(fields: FieldNode[]): string[] {
   });
 }
 
-function renderField(field: FieldNode): string {
-  let expr = renderType(field.type);
+function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
+  const lines: string[] = [];
+  if (field.deprecated) lines.push('/** @deprecated */');
+
+  let expr = renderType(field.type, undefined, defaultMode);
 
   if (field.nullable) expr += '.nullable()';
   if (field.default !== undefined) {
@@ -308,17 +359,18 @@ function renderField(field: FieldNode): string {
   }
   if (field.description) expr += `.describe("${escapeString(field.description)}")`;
 
-  return `${quoteKey(field.name)}: ${expr},`;
+  lines.push(`${quoteKey(field.name)}: ${expr},`);
+  return lines;
 }
 
 // ─── Type rendering ────────────────────────────────────────────────────────
 
-export function renderType(type: DtoTypeNode, camel = false): string {
+export function renderType(type: DtoTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
   switch (type.kind) {
     case 'scalar':
       return renderScalar(type);
     case 'array':
-      return renderArray(type, camel);
+      return renderArray(type, parseCaseTransform, defaultMode);
     case 'tuple':
       return renderTuple(type);
     case 'record':
@@ -328,15 +380,15 @@ export function renderType(type: DtoTypeNode, camel = false): string {
     case 'literal':
       return renderLiteral(type);
     case 'union':
-      return renderUnion(type, camel);
+      return renderUnion(type, parseCaseTransform, defaultMode);
     case 'intersection':
-      return renderIntersection(type, camel);
+      return renderIntersection(type, parseCaseTransform, defaultMode);
     case 'ref':
       return type.name;
     case 'lazy':
-      return `z.lazy(() => ${renderType(type.inner, camel)})`;
+      return `z.lazy(() => ${renderType(type.inner, parseCaseTransform, defaultMode)})`;
     case 'inlineObject':
-      return renderInlineObject(type, camel);
+      return renderInlineObject(type, parseCaseTransform, defaultMode);
     default:
       return 'z.unknown()';
   }
@@ -404,8 +456,8 @@ function renderScalar(s: ScalarTypeNode): string {
   }
 }
 
-function renderArray(a: ArrayTypeNode, camel = false): string {
-  let e = `z.array(${renderType(a.item, camel)})`;
+function renderArray(a: ArrayTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
+  let e = `z.array(${renderType(a.item, parseCaseTransform, defaultMode)})`;
   if (a.min !== undefined) e += `.min(${a.min})`;
   if (a.max !== undefined) e += `.max(${a.max})`;
   return e;
@@ -429,35 +481,35 @@ function renderLiteral(l: LiteralTypeNode): string {
   return `z.literal(${l.value})`;
 }
 
-function renderUnion(u: UnionTypeNode, camel = false): string {
-  return `z.union([${u.members.map(m => renderType(m, camel)).join(', ')}])`;
+function renderUnion(u: UnionTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
+  return `z.union([${u.members.map(m => renderType(m, parseCaseTransform, defaultMode)).join(', ')}])`;
 }
 
-function renderIntersection(i: IntersectionTypeNode, camel = false): string {
+function renderIntersection(i: IntersectionTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
   const [first, ...rest] = i.members;
   // When the pattern is ref & { inlineObject(s) }, use .extend() to produce a
   // single merged ZodObject. Using .and(z.strictObject) breaks because each
   // strict side rejects the other side's keys during intersection parsing.
   if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'inlineObject')) {
     const allFields = rest.flatMap(m => (m as InlineObjectTypeNode).fields);
-    const fieldLines = camel
-      ? renderFieldsAsSnakeCase(allFields)
-          .map(l => `    ${l}`)
-          .join('\n')
-      : allFields.map(f => `    ${renderField(f)}`).join('\n');
+    const fieldLines = parseCaseTransform === 'snake'
+      ? renderFieldsAsSnakeCase(allFields, defaultMode).map(l => `    ${l}`).join('\n')
+      : parseCaseTransform === 'pascal'
+        ? renderFieldsAsPascalCase(allFields, defaultMode).map(l => `    ${l}`).join('\n')
+        : allFields.flatMap(f => renderField(f, defaultMode)).map(l => `    ${l}`).join('\n');
     return `${first.name}.extend({\n${fieldLines}\n})`;
   }
-  let expr = renderType(first!, camel);
+  let expr = renderType(first!, parseCaseTransform, defaultMode);
   for (const member of rest) {
-    expr += `.and(${renderType(member, camel)})`;
+    expr += `.and(${renderType(member, parseCaseTransform, defaultMode)})`;
   }
   return expr;
 }
 
-function renderInlineObject(o: InlineObjectTypeNode, camel = false): string {
-  const wrapper = modeToWrapper(o.mode ?? 'strict');
-  if (camel) {
-    const snakeLines = renderFieldsAsSnakeCase(o.fields);
+function renderInlineObject(o: InlineObjectTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
+  const wrapper = modeToWrapper(o.mode ?? defaultMode ?? 'strict');
+  if (parseCaseTransform === 'snake') {
+    const snakeLines = renderFieldsAsSnakeCase(o.fields, defaultMode);
     const joined = snakeLines.map(l => `    ${l}`).join('\n');
     const transformEntries = o.fields
       .map(f => {
@@ -469,7 +521,19 @@ function renderInlineObject(o: InlineObjectTypeNode, camel = false): string {
       .join('\n');
     return `${wrapper}({\n${joined}\n}).transform(data => ({\n${transformEntries}\n}))`;
   }
-  const fields = o.fields.map(f => `    ${renderField(f)}`).join('\n');
+  if (parseCaseTransform === 'pascal') {
+    const pascalLines = renderFieldsAsPascalCase(o.fields, defaultMode);
+    const joined = pascalLines.map(l => `    ${l}`).join('\n');
+    const transformEntries = o.fields
+      .map(f => {
+        const pascalKey = camelToPascal(f.name);
+        const val = f.optional ? `data.${pascalKey} ?? undefined` : `data.${pascalKey}`;
+        return `    ${quoteKey(f.name)}: ${val},`;
+      })
+      .join('\n');
+    return `${wrapper}({\n${joined}\n}).transform(data => ({\n${transformEntries}\n}))`;
+  }
+  const fields = o.fields.flatMap(f => renderField(f, defaultMode)).map(l => `    ${l}`).join('\n');
   return `${wrapper}({\n${fields}\n})`;
 }
 
@@ -489,51 +553,54 @@ function renderInputScalar(s: ScalarTypeNode): string {
  * Used for Input (write) schema fields so that sub-type references also
  * point to their Input variants.
  */
-export function renderInputType(type: DtoTypeNode, modelsWithInput?: Set<string>): string {
+export function renderInputType(type: DtoTypeNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode): string {
   switch (type.kind) {
     case 'scalar':
       return renderInputScalar(type);
     case 'ref':
       return modelsWithInput?.has(type.name) ? `${type.name}Input` : type.name;
     case 'array': {
-      let e = `z.array(${renderInputType(type.item, modelsWithInput)})`;
+      let e = `z.array(${renderInputType(type.item, modelsWithInput, defaultMode)})`;
       if (type.min !== undefined) e += `.min(${type.min})`;
       if (type.max !== undefined) e += `.max(${type.max})`;
       return e;
     }
     case 'tuple':
-      return `z.tuple([${type.items.map(i => renderInputType(i, modelsWithInput)).join(', ')}])`;
+      return `z.tuple([${type.items.map(i => renderInputType(i, modelsWithInput, defaultMode)).join(', ')}])`;
     case 'record':
-      return `z.record(${renderInputType(type.key, modelsWithInput)}, ${renderInputType(type.value, modelsWithInput)})`;
+      return `z.record(${renderInputType(type.key, modelsWithInput, defaultMode)}, ${renderInputType(type.value, modelsWithInput, defaultMode)})`;
     case 'union':
-      return `z.union([${type.members.map(m => renderInputType(m, modelsWithInput)).join(', ')}])`;
+      return `z.union([${type.members.map(m => renderInputType(m, modelsWithInput, defaultMode)).join(', ')}])`;
     case 'intersection': {
       const [first, ...rest] = type.members;
       if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'inlineObject')) {
         const base = modelsWithInput?.has(first.name) ? `${first.name}Input` : first.name;
         const allFields = rest.flatMap(m => (m as InlineObjectTypeNode).fields);
-        const fieldLines = allFields.map(f => `    ${renderInputField(f, modelsWithInput ?? new Set())}`).join('\n');
+        const fieldLines = allFields.map(f => `    ${renderInputField(f, modelsWithInput ?? new Set(), defaultMode)}`).join('\n');
         return `${base}.extend({\n${fieldLines}\n})`;
       }
-      let expr = renderInputType(first!, modelsWithInput);
+      let expr = renderInputType(first!, modelsWithInput, defaultMode);
       for (const member of rest) {
-        expr += `.and(${renderInputType(member, modelsWithInput)})`;
+        expr += `.and(${renderInputType(member, modelsWithInput, defaultMode)})`;
       }
       return expr;
     }
     case 'lazy':
-      return `z.lazy(() => ${renderInputType(type.inner, modelsWithInput)})`;
+      return `z.lazy(() => ${renderInputType(type.inner, modelsWithInput, defaultMode)})`;
     case 'inlineObject': {
-      const fields = type.fields.map(f => `    ${renderInputField(f, modelsWithInput ?? new Set())}`).join('\n');
-      return `${modeToWrapper(type.mode ?? 'strict')}({\n${fields}\n})`;
+      const fields = type.fields.flatMap(f => renderInputField(f, modelsWithInput ?? new Set(), defaultMode)).map(l => `    ${l}`).join('\n');
+      return `${modeToWrapper(type.mode ?? defaultMode ?? 'strict')}({\n${fields}\n})`;
     }
     default:
-      return renderType(type);
+      return renderType(type, undefined, defaultMode);
   }
 }
 
-function renderInputField(field: FieldNode, modelsWithInput: Set<string>): string {
-  let expr = renderInputType(field.type, modelsWithInput);
+function renderInputField(field: FieldNode, modelsWithInput: Set<string>, defaultMode?: ObjectMode): string[] {
+  const lines: string[] = [];
+  if (field.deprecated) lines.push('/** @deprecated */');
+
+  let expr = renderInputType(field.type, modelsWithInput, defaultMode);
 
   if (field.nullable) expr += '.nullable()';
   if (field.default !== undefined) {
@@ -544,11 +611,12 @@ function renderInputField(field: FieldNode, modelsWithInput: Set<string>): strin
   }
   if (field.description) expr += `.describe("${escapeString(field.description)}")`;
 
-  return `${quoteKey(field.name)}: ${expr},`;
+  lines.push(`${quoteKey(field.name)}: ${expr},`);
+  return lines;
 }
 
-function renderInputFields(fields: FieldNode[], modelsWithInput: Set<string>): string[] {
-  return fields.map(f => renderInputField(f, modelsWithInput));
+function renderInputFields(fields: FieldNode[], modelsWithInput: Set<string>, defaultMode?: ObjectMode): string[] {
+  return fields.flatMap(f => renderInputField(f, modelsWithInput, defaultMode));
 }
 
 // ─── Query type rendering ─────────────────────────────────────────────────
@@ -558,44 +626,44 @@ function renderInputFields(fields: FieldNode[], modelsWithInput: Set<string>): s
  * query strings where a single value arrives as a string instead of a string[].
  * Also uses Input variants for model refs when modelsWithInput is provided.
  */
-export function renderQueryType(type: DtoTypeNode, modelsWithInput?: Set<string>): string {
+export function renderQueryType(type: DtoTypeNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode): string {
   switch (type.kind) {
     case 'array': {
-      const inner = modelsWithInput ? renderInputType(type, modelsWithInput) : renderType(type);
+      const inner = modelsWithInput ? renderInputType(type, modelsWithInput, defaultMode) : renderType(type, undefined, defaultMode);
       return `z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, ${inner})`;
     }
     case 'inlineObject': {
-      const fields = type.fields.map(f => `    ${renderQueryField(f, modelsWithInput)}`).join('\n');
-      return `${modeToWrapper(type.mode ?? 'strict')}({\n${fields}\n})`;
+      const fields = type.fields.map(f => `    ${renderQueryField(f, modelsWithInput, defaultMode)}`).join('\n');
+      return `${modeToWrapper(type.mode ?? defaultMode ?? 'strict')}({\n${fields}\n})`;
     }
     case 'intersection': {
       const [first, ...rest] = type.members;
       if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'inlineObject')) {
         const base = modelsWithInput?.has(first.name) ? `${first.name}Input` : first.name;
         const allFields = rest.flatMap(m => (m as InlineObjectTypeNode).fields);
-        const fieldLines = allFields.map(f => `    ${renderQueryField(f, modelsWithInput)}`).join('\n');
+        const fieldLines = allFields.map(f => `    ${renderQueryField(f, modelsWithInput, defaultMode)}`).join('\n');
         return `${base}.extend({\n${fieldLines}\n})`;
       }
-      let expr = renderQueryType(first!, modelsWithInput);
+      let expr = renderQueryType(first!, modelsWithInput, defaultMode);
       for (const member of rest) {
-        expr += `.and(${renderQueryType(member, modelsWithInput)})`;
+        expr += `.and(${renderQueryType(member, modelsWithInput, defaultMode)})`;
       }
       return expr;
     }
     case 'ref':
       return modelsWithInput?.has(type.name) ? `${type.name}Input` : type.name;
     default:
-      return modelsWithInput ? renderInputType(type, modelsWithInput) : renderType(type);
+      return modelsWithInput ? renderInputType(type, modelsWithInput, defaultMode) : renderType(type, undefined, defaultMode);
   }
 }
 
-function renderQueryField(field: FieldNode, modelsWithInput?: Set<string>): string {
+function renderQueryField(field: FieldNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode): string {
   let expr =
     field.type.kind === 'array'
-      ? renderQueryType(field.type, modelsWithInput)
+      ? renderQueryType(field.type, modelsWithInput, defaultMode)
       : modelsWithInput
-        ? renderInputType(field.type, modelsWithInput)
-        : renderType(field.type);
+        ? renderInputType(field.type, modelsWithInput, defaultMode)
+        : renderType(field.type, undefined, defaultMode);
 
   if (field.nullable) expr += '.nullable()';
   if (field.default !== undefined) {

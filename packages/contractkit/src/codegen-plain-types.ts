@@ -77,6 +77,9 @@ function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set
 function generateComments(model: ModelNode, outPath?: string): string[] {
   const lines: string[] = [];
   lines.push('/**');
+  if (model.deprecated) {
+    lines.push(` * @deprecated`);
+  }
   if (model.description) {
     lines.push(` * ${model.description}`);
   }
@@ -157,8 +160,11 @@ function renderField(field: FieldNode): string {
   let typeStr = renderTsType(field.type);
   if (field.nullable) typeStr += ' | null';
   const line = `${quoteKey(field.name)}${opt}: ${typeStr};`;
-  if (field.description) {
-    return `/** ${field.description} */\n    ${line}`;
+  const jsdocParts: string[] = [];
+  if (field.deprecated) jsdocParts.push('@deprecated');
+  if (field.description) jsdocParts.push(field.description);
+  if (jsdocParts.length > 0) {
+    return `/** ${jsdocParts.join(' ')} */\n    ${line}`;
   }
   return line;
 }
@@ -168,8 +174,11 @@ function renderInputField(field: FieldNode, modelsWithInput: Set<string>): strin
   let typeStr = renderInputTsType(field.type, modelsWithInput);
   if (field.nullable) typeStr += ' | null';
   const line = `${quoteKey(field.name)}${opt}: ${typeStr};`;
-  if (field.description) {
-    return `/** ${field.description} */\n    ${line}`;
+  const jsdocParts: string[] = [];
+  if (field.deprecated) jsdocParts.push('@deprecated');
+  if (field.description) jsdocParts.push(field.description);
+  if (jsdocParts.length > 0) {
+    return `/** ${jsdocParts.join(' ')} */\n    ${line}`;
   }
   return line;
 }

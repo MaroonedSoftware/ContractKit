@@ -164,6 +164,65 @@ operation /health: {
     });
   });
 
+  describe('deprecated modifier', () => {
+    it('marks a contract as deprecated', () => {
+      const { ast, diag } = parse(`
+contract deprecated User: {
+  id: string
+}
+`);
+      expect(diag.hasErrors()).toBe(false);
+      expect(ast.models[0]!.deprecated).toBe(true);
+    });
+
+    it('marks a field as deprecated', () => {
+      const { ast, diag } = parse(`
+contract User: {
+  id: string
+  legacyId: deprecated string
+}
+`);
+      expect(diag.hasErrors()).toBe(false);
+      expect(ast.models[0]!.fields[0]!.deprecated).toBeUndefined();
+      expect(ast.models[0]!.fields[1]!.deprecated).toBe(true);
+    });
+
+    it('allows deprecated before visibility modifier on a field', () => {
+      const { ast, diag } = parse(`
+contract User: {
+  password: deprecated writeonly string
+}
+`);
+      expect(diag.hasErrors()).toBe(false);
+      const field = ast.models[0]!.fields[0]!;
+      expect(field.deprecated).toBe(true);
+      expect(field.visibility).toBe('writeonly');
+    });
+
+    it('allows deprecated after visibility modifier on a field', () => {
+      const { ast, diag } = parse(`
+contract User: {
+  password: writeonly deprecated string
+}
+`);
+      expect(diag.hasErrors()).toBe(false);
+      const field = ast.models[0]!.fields[0]!;
+      expect(field.deprecated).toBe(true);
+      expect(field.visibility).toBe('writeonly');
+    });
+
+    it('combines deprecated with other model modifiers', () => {
+      const { ast, diag } = parse(`
+contract deprecated mode(strip) LegacyUser: {
+  id: string
+}
+`);
+      expect(diag.hasErrors()).toBe(false);
+      expect(ast.models[0]!.deprecated).toBe(true);
+      expect(ast.models[0]!.mode).toBe('strip');
+    });
+  });
+
   describe('test.ck fixture', () => {
     it('parses the test.ck file', () => {
       const source = readFileSync(resolve(__dirname, '../../../contracts/test.ck'), 'utf-8');

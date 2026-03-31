@@ -62,6 +62,7 @@ function printInlineObjectCompact(obj: InlineObjectTypeNode): string {
 /** Print a full field declaration, including visibility, default, and inline comment. */
 export function printField(field: FieldNode, indent: string): string {
   const opt = field.optional ? '?' : '';
+  const dep = field.deprecated ? 'deprecated ' : '';
   const vis = field.visibility !== 'normal' ? `${field.visibility} ` : '';
   const def = field.default !== undefined ? ` = ${formatDefault(field.default)}` : '';
   const comment = field.description ? ` # ${field.description}` : '';
@@ -75,15 +76,15 @@ export function printField(field: FieldNode, indent: string): string {
       const { prefix, inlineObj } = trailing;
       const modePart = inlineObj.mode ? `mode(${inlineObj.mode}) ` : '';
       const header = prefix
-        ? `${indent}${field.name}${opt}: ${vis}${prefix} & ${modePart}{${comment}`
-        : `${indent}${field.name}${opt}: ${vis}${modePart}{${comment}`;
+        ? `${indent}${field.name}${opt}: ${dep}${vis}${prefix} & ${modePart}{${comment}`
+        : `${indent}${field.name}${opt}: ${dep}${vis}${modePart}{${comment}`;
       return [header, ...printInlineObjectExpanded(inlineObj, innerIndent), `${indent}}`].join('\n');
     }
   }
 
   let typeStr = printType(field.type);
   if (field.nullable) typeStr += ' | null';
-  return `${indent}${field.name}${opt}: ${vis}${typeStr}${def}${comment}`;
+  return `${indent}${field.name}${opt}: ${dep}${vis}${typeStr}${def}${comment}`;
 }
 
 /** Print inline-object fields expanded (used when an inline brace object trails a type alias). */

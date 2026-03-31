@@ -127,6 +127,7 @@ export interface FieldNode {
   visibility: 'readonly' | 'writeonly' | 'normal';
   type: DtoTypeNode;
   default?: string | number | boolean;
+  deprecated?: boolean;
   description?: string;
   loc: SourceLocation;
 }
@@ -139,6 +140,7 @@ export interface ModelNode {
   type?: DtoTypeNode; // type alias: Name: typeExpression (fields will be empty)
   mode?: ObjectMode; // object validation mode — defaults to 'strict'
   parseCase?: 'camel' | 'snake' | 'pascal'; // input key casing transform mode
+  deprecated?: boolean;
   description?: string;
   loc: SourceLocation;
 }
