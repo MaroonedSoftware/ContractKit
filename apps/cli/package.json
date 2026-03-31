@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@maroonedsoftware/contractkit": "workspace:*",
+    "@maroonedsoftware/openapi-to-ck": "workspace:*",
     "glob": "^13.0.6"
   },
   "peerDependencies": {

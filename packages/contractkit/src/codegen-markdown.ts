@@ -13,7 +13,7 @@ import type {
 } from './ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
 import { renderTsType, collectPublicTypeNames } from './codegen-sdk.js';
-import { collectTypeRefs } from './codegen-dto.js';
+import { collectTypeRefs } from './codegen-contract.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 

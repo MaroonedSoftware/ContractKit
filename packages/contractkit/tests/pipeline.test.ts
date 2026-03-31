@@ -1,8 +1,8 @@
 import { parseCk } from '../src/parser.js';
 import { decomposeCk } from '../src/decompose.js';
-import { generateDto } from '../src/codegen-dto.js';
-import { generateOp } from '../src/codegen-op.js';
-import { validateOp } from '../src/validate-op.js';
+import { generateDto } from '../src/codegen-contract.js';
+import { generateOp } from '../src/codegen-operation.js';
+import { validateOp } from '../src/validate-operation.js';
 import { validateRefs } from '../src/validate-refs.js';
 import { DiagnosticCollector } from '../src/diagnostics.js';
 import { SIMPLE_USER_DTO, VISIBILITY_DTO, INHERITANCE_DTO, SIMPLE_USERS_OP, PARAMETERIZED_OP } from './helpers.js';

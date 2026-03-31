@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generatePlainTypes } from '../src/codegen-plain-types.js';
-import type { DtoCodegenContext } from '../src/codegen-dto.js';
+import type { DtoCodegenContext } from '../src/codegen-contract.js';
 import {
   scalarType,
   arrayType,

@@ -1,6 +1,6 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource, ObjectMode } from './ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
-import { renderType, renderInputType, renderQueryType, pascalToDotCase, typeNeedsDateTime, typeNeedsScalar, modeToWrapper } from './codegen-dto.js';
+import { renderType, renderInputType, renderQueryType, pascalToDotCase, typeNeedsDateTime, typeNeedsScalar, modeToWrapper } from './codegen-contract.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Public entry point ────────────────────────────────────────────────────

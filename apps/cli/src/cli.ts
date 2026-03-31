@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+
+// ─── Subcommand dispatch ──────────────────────────────────────────────────
+if (process.argv[2] === 'import-openapi') {
+  const { runImportOpenApi } = await import('./import-openapi.js');
+  await runImportOpenApi();
+  process.exit(0);
+}
+
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join, dirname, relative, basename } from 'node:path';
 import { glob } from 'glob';

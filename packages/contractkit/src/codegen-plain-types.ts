@@ -1,6 +1,6 @@
 import { relative, dirname } from 'node:path';
 import type { DtoRootNode, ModelNode, FieldNode } from './ast.js';
-import type { DtoCodegenContext } from './codegen-dto.js';
+import type { DtoCodegenContext } from './codegen-contract.js';
 import {
   collectExternalRefs,
   collectExternalInputRefs,
@@ -8,7 +8,7 @@ import {
   topoSortModels,
   resolveImportPath,
   rootNeedsScalar,
-} from './codegen-dto.js';
+} from './codegen-contract.js';
 import { renderTsType, renderInputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './codegen-sdk.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────

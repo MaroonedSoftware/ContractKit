@@ -1,5 +1,5 @@
-import { generateDto, renderType } from '../src/codegen-dto.js';
-import type { DtoCodegenContext } from '../src/codegen-dto.js';
+import { generateDto, renderType } from '../src/codegen-contract.js';
+import type { DtoCodegenContext } from '../src/codegen-contract.js';
 import {
   scalarType,
   arrayType,
@@ -207,7 +207,7 @@ describe('renderType', () => {
   });
 });
 
-describe('generateDto', () => {
+describe('generateContract', () => {
   // ─── Simple model ──────────────────────────────────────────────
 
   describe('simple model', () => {
@@ -741,11 +741,11 @@ describe('generateDto', () => {
     });
   });
 
-  // ─── parseCase ─────────────────────────────────────────────────
-  describe('parseCase', () => {
-    it('snake: parses snake_case input keys and transforms to camelCase', () => {
+  // ─── format(input=, output=) ────────────────────────────────────
+  describe('format modifier', () => {
+    it('input=snake: parses snake_case keys, outputs camelCase', () => {
       const root = dtoRoot([
-        model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { parseCase: 'snake' }),
+        model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { inputCase: 'snake' }),
       ]);
       const output = generateDto(root);
       expect(output).toContain('first_name: z.string()');
@@ -756,9 +756,9 @@ describe('generateDto', () => {
       expect(output).toContain('export type User = z.output<typeof User>');
     });
 
-    it('camel: parses camelCase input keys with no transform', () => {
+    it('input=camel: no transform (camel is identity)', () => {
       const root = dtoRoot([
-        model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { parseCase: 'camel' }),
+        model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { inputCase: 'camel' }),
       ]);
       const output = generateDto(root);
       expect(output).toContain('firstName: z.string()');
@@ -767,22 +767,9 @@ describe('generateDto', () => {
       expect(output).toContain('export type User = z.infer<typeof User>');
     });
 
-    it('mode cascades to inline object fields', () => {
-      const dataType = inlineObjectType([field('id', scalarType('uuid')), field('amount', scalarType('number'))]);
+    it('input=pascal: parses PascalCase keys, outputs camelCase', () => {
       const root = dtoRoot([
-        model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { mode: 'loose' }),
-      ]);
-      const output = generateDto(root);
-      // Top-level uses loose
-      expect(output).toContain('export const Webhook = z.looseObject({');
-      // Inline data field also uses loose (cascaded)
-      expect(output).toContain('z.looseObject({');
-      expect(output).not.toContain('z.strictObject(');
-    });
-
-    it('pascal: parses PascalCase input keys and transforms to camelCase', () => {
-      const root = dtoRoot([
-        model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { parseCase: 'pascal' }),
+        model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { inputCase: 'pascal' }),
       ]);
       const output = generateDto(root);
       expect(output).toContain('FirstName: z.string()');
@@ -793,20 +780,51 @@ describe('generateDto', () => {
       expect(output).toContain('export type User = z.output<typeof User>');
     });
 
-    it('pascal: nested inline objects also use PascalCase keys with transforms', () => {
-      const dataType = inlineObjectType([field('id', scalarType('uuid')), field('amount', scalarType('number'))]);
+    it('output=snake: parses camelCase keys, outputs snake_case', () => {
       const root = dtoRoot([
-        model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { parseCase: 'pascal' }),
+        model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { outputCase: 'snake' }),
       ]);
       const output = generateDto(root);
-      // Top-level PascalCase keys
+      expect(output).toContain('firstName: z.string()');
+      expect(output).toContain('.transform(data => ({');
+      expect(output).toContain('first_name: data.firstName');
+      expect(output).toContain('last_name: data.lastName');
+      expect(output).toContain('export type User = z.output<typeof User>');
+    });
+
+    it('input=pascal, output=snake: parses PascalCase, outputs snake_case', () => {
+      const root = dtoRoot([
+        model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { inputCase: 'pascal', outputCase: 'snake' }),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('FirstName: z.string()');
+      expect(output).toContain('.transform(data => ({');
+      expect(output).toContain('first_name: data.FirstName');
+      expect(output).toContain('last_name: data.LastName');
+      expect(output).toContain('export type User = z.output<typeof User>');
+    });
+
+    it('input=pascal: nested inline objects also use PascalCase keys with transforms', () => {
+      const dataType = inlineObjectType([field('id', scalarType('uuid')), field('amount', scalarType('number'))]);
+      const root = dtoRoot([
+        model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { inputCase: 'pascal' }),
+      ]);
+      const output = generateDto(root);
       expect(output).toContain('Event: z.string()');
-      expect(output).toContain('Data:');
-      // Nested inline object also has PascalCase keys and transform
       expect(output).toContain('Id: z.uuid()');
-      expect(output).toContain('Amount:');
       expect(output).toContain('id: data.Id');
       expect(output).toContain('amount: data.Amount');
+    });
+
+    it('mode cascades to inline object fields', () => {
+      const dataType = inlineObjectType([field('id', scalarType('uuid')), field('amount', scalarType('number'))]);
+      const root = dtoRoot([
+        model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { mode: 'loose' }),
+      ]);
+      const output = generateDto(root);
+      expect(output).toContain('export const Webhook = z.looseObject({');
+      expect(output).toContain('z.looseObject({');
+      expect(output).not.toContain('z.strictObject(');
     });
   });
 });

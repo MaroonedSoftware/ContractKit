@@ -191,35 +191,27 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
 
   const wrapper = modeToWrapper(model.mode ?? 'strict');
 
-  if (model.parseCase === 'snake') {
-    const snakeBody = renderFieldsAsSnakeCase(model.fields, model.mode);
+  const { inputCase, outputCase } = model;
+  const hasInputTransform = !!inputCase && inputCase !== 'camel';
+  const hasOutputTransform = !!outputCase && outputCase !== 'camel';
+
+  if (hasInputTransform || hasOutputTransform) {
+    const inputBody =
+      inputCase === 'snake' ? renderFieldsAsSnakeCase(model.fields, model.mode) :
+      inputCase === 'pascal' ? renderFieldsAsPascalCase(model.fields, model.mode) :
+      renderFields(model.fields, model.mode);
     lines.push(`export const ${model.name} = ${wrapper}({`);
-    lines.push(...snakeBody.map(l => `    ${l}`));
+    lines.push(...inputBody.map(l => `    ${l}`));
     lines.push(`}).transform(data => ({`);
     for (const field of model.fields) {
-      const snakeKey = camelToSnake(field.name);
-      lines.push(`    ${quoteKey(field.name)}: data.${snakeKey},`);
+      const inputKey = applyCase(field.name, inputCase);
+      const outputKey = applyCase(field.name, outputCase);
+      lines.push(`    ${quoteKey(outputKey)}: data.${inputKey},`);
     }
     lines.push(`}));`);
     lines.push(`export type ${model.name} = z.output<typeof ${model.name}>;`);
     return lines;
   }
-
-  if (model.parseCase === 'pascal') {
-    const pascalBody = renderFieldsAsPascalCase(model.fields, model.mode);
-    lines.push(`export const ${model.name} = ${wrapper}({`);
-    lines.push(...pascalBody.map(l => `    ${l}`));
-    lines.push(`}).transform(data => ({`);
-    for (const field of model.fields) {
-      const pascalKey = camelToPascal(field.name);
-      lines.push(`    ${quoteKey(field.name)}: data.${pascalKey},`);
-    }
-    lines.push(`}));`);
-    lines.push(`export type ${model.name} = z.output<typeof ${model.name}>;`);
-    return lines;
-  }
-
-  // parseCase === 'camel': input keys already match field names — no transform needed
 
   const body = renderFields(model.fields, model.mode);
   if (model.base) {
@@ -301,6 +293,12 @@ function camelToSnake(s: string): string {
 
 function camelToPascal(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function applyCase(name: string, caseTransform: 'camel' | 'snake' | 'pascal' | undefined): string {
+  if (!caseTransform || caseTransform === 'camel') return name;
+  if (caseTransform === 'snake') return camelToSnake(name);
+  return camelToPascal(name);
 }
 
 function renderFields(fields: FieldNode[], defaultMode?: ObjectMode): string[] {

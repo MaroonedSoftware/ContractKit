@@ -139,7 +139,8 @@ export interface ModelNode {
   fields: FieldNode[];
   type?: DtoTypeNode; // type alias: Name: typeExpression (fields will be empty)
   mode?: ObjectMode; // object validation mode — defaults to 'strict'
-  parseCase?: 'camel' | 'snake' | 'pascal'; // input key casing transform mode
+  inputCase?: 'camel' | 'snake' | 'pascal'; // format(input=) — key casing of incoming data
+  outputCase?: 'camel' | 'snake' | 'pascal'; // format(output=) — key casing of emitted data
   deprecated?: boolean;
   description?: string;
   loc: SourceLocation;

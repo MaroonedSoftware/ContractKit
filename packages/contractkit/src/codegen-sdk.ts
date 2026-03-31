@@ -1,6 +1,6 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, DtoTypeNode, ParamSource, FieldNode } from './ast.js';
 import { resolveModifiers } from './ast.js';
-import { pascalToDotCase, typeNeedsScalar } from './codegen-dto.js';
+import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { basename, dirname, relative } from 'path';
 
 export const JSON_VALUE_TYPE_DECL = 'export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };';

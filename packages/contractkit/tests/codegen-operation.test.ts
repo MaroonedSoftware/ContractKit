@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { generateOp } from '../src/codegen-op.js';
+import { generateOp } from '../src/codegen-operation.js';
 import { SECURITY_NONE } from '../src/ast.js';
 import { scalarType, arrayType, refType, inlineObjectType, field, opParam, opRequest, opResponse, opOperation, opRoute, opRoot } from './helpers.js';
 
-describe('generateOp', () => {
+describe('generateOperation', () => {
   // ─── Router name derivation ─────────────────────────────────────
 
   describe('router naming', () => {

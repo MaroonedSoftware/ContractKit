@@ -161,7 +161,7 @@ export function createSemantics(grammar: Grammar) {
         ? comments.map(c => c.sourceString.replace(/^#\s?/, '').trimEnd()).join('\n')
         : undefined;
 
-      const prefix = prefixNode.toAst(file, this.args.diag) as { name: string; mode?: ObjectMode; parseCase?: 'camel' | 'snake' | 'pascal'; deprecated?: boolean; line: number };
+      const prefix = prefixNode.toAst(file, this.args.diag) as { name: string; mode?: ObjectMode; inputCase?: 'camel' | 'snake' | 'pascal'; outputCase?: 'camel' | 'snake' | 'pascal'; deprecated?: boolean; line: number };
       const body = bodyNode.toAst(file, this.args.diag);
 
       const result: ModelNode = {
@@ -174,7 +174,8 @@ export function createSemantics(grammar: Grammar) {
       if (body.base) result.base = body.base;
       if (body.type) result.type = body.type;
       if (prefix.mode) result.mode = prefix.mode;
-      if (prefix.parseCase) result.parseCase = prefix.parseCase;
+      if (prefix.inputCase) result.inputCase = prefix.inputCase;
+      if (prefix.outputCase) result.outputCase = prefix.outputCase;
       if (prefix.deprecated) result.deprecated = true;
       if (description) {
         result.description = description;
@@ -189,7 +190,8 @@ export function createSemantics(grammar: Grammar) {
 
     ModelPrefix(modifiers, nameNode) {
       let mode: ObjectMode | undefined;
-      let parseCase: 'camel' | 'snake' | 'pascal' | undefined;
+      let inputCase: 'camel' | 'snake' | 'pascal' | undefined;
+      let outputCase: 'camel' | 'snake' | 'pascal' | undefined;
       let deprecated: boolean | undefined;
       for (let i = 0; i < modifiers.numChildren; i++) {
         const text = modifiers.child(i).sourceString.trim();
@@ -200,15 +202,22 @@ export function createSemantics(grammar: Grammar) {
           if (modeMatch && OBJECT_MODES.has(modeMatch[1]!)) {
             mode = modeMatch[1] as ObjectMode;
           } else {
-            const m = text.match(/^format\(input=(\w+)\)$/);
-            if (m) parseCase = m[1] as 'camel' | 'snake' | 'pascal';
+            const formatMatch = text.match(/^format\(([^)]+)\)$/);
+            if (formatMatch) {
+              const args = formatMatch[1]!;
+              const inputMatch = args.match(/(?:^|,\s*)input=(\w+)/);
+              const outputMatch = args.match(/(?:^|,\s*)output=(\w+)/);
+              if (inputMatch) inputCase = inputMatch[1] as 'camel' | 'snake' | 'pascal';
+              if (outputMatch) outputCase = outputMatch[1] as 'camel' | 'snake' | 'pascal';
+            }
           }
         }
       }
       return {
         name: nameNode.sourceString,
         mode,
-        parseCase,
+        inputCase,
+        outputCase,
         deprecated,
         line: getLine(nameNode),
       };

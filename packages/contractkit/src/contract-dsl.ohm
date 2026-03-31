@@ -128,7 +128,8 @@ Contract {
 
   modeOption = "strict" | "strip" | "loose"
 
-  formatMode = formatKw "(" "input" "=" caseOption ")"
+  formatMode = formatKw "(" space* formatArg (space* "," space* formatArg)* space* ")"
+  formatArg = ("input" | "output") "=" caseOption
 
   caseOption = "camel" | "snake" | "pascal"
 
