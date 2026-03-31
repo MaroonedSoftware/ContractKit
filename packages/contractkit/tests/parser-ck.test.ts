@@ -113,9 +113,9 @@ operation(internal) /admin: {
       expect(ast.routes[0]!.modifiers).toEqual(['internal']);
     });
 
-    it('parses contract modifiers (camel, loose)', () => {
+    it('parses contract modifiers (format input, loose)', () => {
       const { ast } = parse(`
-contract parse(camel) mode(loose) Webhook: {
+contract format(input=camel) mode(loose) Webhook: {
     eventType: string
 }
 `);

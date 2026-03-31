@@ -200,7 +200,7 @@ export function createSemantics(grammar: Grammar) {
           if (modeMatch && OBJECT_MODES.has(modeMatch[1]!)) {
             mode = modeMatch[1] as ObjectMode;
           } else {
-            const m = text.match(/^parse\((\w+)\)$/);
+            const m = text.match(/^format\(input=(\w+)\)$/);
             if (m) parseCase = m[1] as 'camel' | 'snake' | 'pascal';
           }
         }

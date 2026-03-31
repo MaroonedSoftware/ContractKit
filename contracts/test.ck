@@ -16,7 +16,7 @@ contract ModernTreasuryWebhookHeaders: {
     x-organization-id: uuid
 }
 
-contract parse(camel) mode(loose) ModernTreasuryWebhookTransaction: {
+contract format(input=camel) mode(loose) ModernTreasuryWebhookTransaction: {
     event: enum(created, reconciled, updated)
     data: mode(loose) {
         id: uuid

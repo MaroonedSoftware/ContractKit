@@ -52,7 +52,7 @@ Contract {
 
   ModelPrefix = modelModifier* identifier
 
-  modelModifier = objectMode | parseMode | deprecatedKw
+  modelModifier = objectMode | formatMode | deprecatedKw
 
   ModelBody = identifier "&" "{" FieldList "}"  -- inheritance
             | "{" FieldList "}"                  -- fields
@@ -128,7 +128,7 @@ Contract {
 
   modeOption = "strict" | "strip" | "loose"
 
-  parseMode = parseKw "(" caseOption ")"
+  formatMode = formatKw "(" "input" "=" caseOption ")"
 
   caseOption = "camel" | "snake" | "pascal"
 
@@ -226,7 +226,7 @@ Contract {
   // ─── Keywords (lexical to avoid whitespace-skipping issues) ─────
 
   modeKw = "mode" ~identPart
-  parseKw = "parse" ~identPart
+  formatKw = "format" ~identPart
   contractKw = "contract" ~identPart
   optionsKw = "options" ~identPart
   keysKw = "keys" ~identPart
