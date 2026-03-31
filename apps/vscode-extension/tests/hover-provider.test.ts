@@ -1,6 +1,6 @@
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { getHover } from '../hover-provider.js';
-import { WorkspaceIndex } from '../workspace-index.js';
+import { getHover } from '../src/server/hover-provider.js';
+import { WorkspaceIndex } from '../src/server/workspace-index.js';
 
 describe('getHover', () => {
   it('returns hover info for builtin types', () => {

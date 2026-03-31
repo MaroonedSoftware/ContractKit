@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { printCk } from '../print-ck.js';
+import { printCk } from '../src/print-ck.js';
 import type { OpRouteNode, OpOperationNode, CkRootNode, SecurityFields } from '@maroonedsoftware/contractkit';
 
 // ─── Minimal AST builders ────────────────────────────────────────────────────

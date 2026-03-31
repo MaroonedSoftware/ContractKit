@@ -1,6 +1,6 @@
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { getCompletions } from '../completion-provider.js';
-import { WorkspaceIndex } from '../workspace-index.js';
+import { getCompletions } from '../src/server/completion-provider.js';
+import { WorkspaceIndex } from '../src/server/workspace-index.js';
 
 function makeDoc(uri: string, content: string) {
   return TextDocument.create(uri, 'contract-ck', 1, content);

@@ -1,4 +1,4 @@
-import { WorkspaceIndex } from '../workspace-index.js';
+import { WorkspaceIndex } from '../src/server/workspace-index.js';
 
 describe('WorkspaceIndex', () => {
   describe('indexFromSource - contracts', () => {

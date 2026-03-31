@@ -4,7 +4,7 @@ import swc from 'unplugin-swc';
 export default defineProject({
   test: {
     globals: true,
-    include: ['./src/**/__tests__/**/*.test.ts'],
+    include: ['./tests/**/*.test.ts'],
     environment: 'node',
   },
   plugins: [swc.vite()],
