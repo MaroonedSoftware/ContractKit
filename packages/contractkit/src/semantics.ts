@@ -586,7 +586,7 @@ export function createSemantics(grammar: Grammar) {
 
     // ─── HTTP Operations ──────────────────────────────────────────
 
-    HttpOperation(commentNodes, httpMethodCallNode, _colon, _lb, bodyNode, _rb) {
+    HttpOperation(commentNodes, httpMethodCallNode, _colon, _lb, inlineCommentOpt, bodyNode, _rb) {
       const file = this.args.file as string;
       const diag = this.args.diag as DiagnosticCollector;
 
@@ -594,9 +594,11 @@ export function createSemantics(grammar: Grammar) {
       for (let i = 0; i < commentNodes.numChildren; i++) {
         comments.push(commentNodes.child(i));
       }
-      const description = comments.length > 0
-        ? comments.map(c => c.sourceString.replace(/^#\s?/, '').trimEnd()).join('\n')
+      const inlineComment = (inlineCommentOpt as IterationNode).numChildren > 0
+        ? (inlineCommentOpt as IterationNode).child(0).sourceString.replace(/^#\s?/, '').trimEnd()
         : undefined;
+      const description = inlineComment
+        ?? (comments.length > 0 ? comments.map(c => c.sourceString.replace(/^#\s?/, '').trimEnd()).join('\n') : undefined);
 
       const methodText = httpMethodCallNode.sourceString.trim();
       const modMatch = methodText.match(/\((\w+)\)$/);

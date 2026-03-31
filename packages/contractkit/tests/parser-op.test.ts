@@ -519,6 +519,16 @@ operation /users: {
       expect(root.routes[0]!.operations[0]!.description).toBe('List all users');
     });
 
+    it('parses operation description from inline comment after {', () => {
+      const { root } = parse(`\
+operation /users: {
+    post: { # Create a user
+        service: UserService.create
+    }
+}`);
+      expect(root.routes[0]!.operations[0]!.description).toBe('Create a user');
+    });
+
     it('returns undefined description when no comment present', () => {
       const { root } = parse(`\
 operation /users: {

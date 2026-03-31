@@ -166,7 +166,7 @@ Contract {
   httpMethodCall = httpMethod "(" routeModifier ")"  -- modified
                  | httpMethod                         -- plain
 
-  HttpOperation = comment* httpMethodCall ":" "{" OperationBody "}"
+  HttpOperation = comment* httpMethodCall ":" "{" comment? OperationBody "}"
 
   OperationBody = OperationBodyItem*
 
