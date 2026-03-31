@@ -177,6 +177,8 @@ export function createSemantics(grammar: Grammar) {
       if (prefix.parseCase) result.parseCase = prefix.parseCase;
       if (description) {
         result.description = description;
+      } else if (body.inlineDescription) {
+        result.description = body.inlineDescription;
       } else if (body.firstCommentText && body.firstCommentLine === prefix.line) {
         result.description = body.firstCommentText;
       }
@@ -232,9 +234,12 @@ export function createSemantics(grammar: Grammar) {
       };
     },
 
-    ModelBody_alias(typeExprNode) {
+    ModelBody_alias(typeExprNode, inlineCommentOpt) {
       const type = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
-      return { type, fields: [] };
+      const inlineDescription = (inlineCommentOpt as IterationNode).numChildren > 0
+        ? (inlineCommentOpt as IterationNode).child(0).sourceString.replace(/^#\s?/, '').trimEnd()
+        : undefined;
+      return { type, fields: [], inlineDescription };
     },
 
     FieldList(items) {

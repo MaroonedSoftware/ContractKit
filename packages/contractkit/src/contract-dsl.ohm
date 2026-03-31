@@ -56,7 +56,7 @@ Contract {
 
   ModelBody = identifier "&" "{" FieldList "}"  -- inheritance
             | "{" FieldList "}"                  -- fields
-            | TypeExpression                     -- alias
+            | TypeExpression comment?            -- alias
 
   // ─── Fields ─────────────────────────────────────────────────────
 

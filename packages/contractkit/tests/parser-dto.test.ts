@@ -452,6 +452,16 @@ contract Pagination: { # Represents a pagination object
     });
   });
 
+  describe('type alias descriptions', () => {
+    it('parses description from trailing comment on type alias', () => {
+      const { root, diag } = parse(
+        `contract OfferStatus: enum(active, accepted, declined) # The status of the offer`
+      );
+      expect(diag.hasErrors()).toBe(false);
+      expect(root.models[0]!.description).toBe('The status of the offer');
+    });
+  });
+
   // ─── Error recovery ────────────────────────────────────────────
 
   describe('error recovery', () => {
