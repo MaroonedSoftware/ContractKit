@@ -104,7 +104,7 @@ operation /users: {
 
     it('parses operations with modifiers', () => {
       const { ast } = parse(`
-operation internal /admin: {
+operation(internal) /admin: {
     get: {}
 }
 `);

@@ -436,6 +436,20 @@ contract User: { # A user model
 }`);
       expect(root.models[0]!.description).toBe('A user model');
     });
+
+    it('inline model comment does not shift field descriptions', () => {
+      const { root } = parse(`\
+contract Pagination: { # Represents a pagination object
+    page: int = 0 # The page number
+    pageSize: int = 25 # The page size
+    total: int # The total count
+}`);
+      const model = root.models[0]!;
+      expect(model.description).toBe('Represents a pagination object');
+      expect(model.fields[0]!.description).toBe('The page number');
+      expect(model.fields[1]!.description).toBe('The page size');
+      expect(model.fields[2]!.description).toBe('The total count');
+    });
   });
 
   // ─── Error recovery ────────────────────────────────────────────

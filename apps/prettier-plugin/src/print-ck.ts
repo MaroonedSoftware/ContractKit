@@ -61,7 +61,8 @@ export function printCk(ast: CkRootNode): string {
   const emptyIdx = { value: 0 };
   for (const route of ast.routes) {
     if (parts.length > 0) parts.push('');
-    parts.push(`operation ${printRoute(route, emptyBlocks, emptyIdx, Infinity)}`);
+    const modPart = route.modifiers?.length ? `(${route.modifiers[0]})` : '';
+    parts.push(`operation${modPart} ${printRoute(route, emptyBlocks, emptyIdx, Infinity)}`);
   }
 
   return parts.join('\n') + '\n';

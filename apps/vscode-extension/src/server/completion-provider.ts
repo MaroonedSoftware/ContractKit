@@ -75,8 +75,8 @@ export function getCompletions(params: TextDocumentPositionParams, document: Tex
     return getOpCompletions(textBefore, lines, line, index);
   }
 
-  // Top-level — check if we're in a partial operation declaration (before the opening brace)
-  if (/\boperation\s+\/[a-zA-Z0-9_/:.-]+\s*:\s*\w*$/.test(textBefore)) {
+  // Top-level — inside operation( modifier call
+  if (/\boperation\(\w*$/.test(textBefore)) {
     return ROUTE_MODIFIERS.map(({ label, detail }) => ({
       label,
       kind: CompletionItemKind.Keyword,
@@ -171,17 +171,8 @@ function getDtoCompletions(textBefore: string, lines: string[], line: number, in
 function getOpCompletions(textBefore: string, lines: string[], line: number, index: WorkspaceIndex): CompletionItem[] {
   const context = getOpContext(lines, line);
 
-  // After route path + `:` at top-level — offer route modifiers
-  if (context === 'top-level' && /\/[a-zA-Z0-9_/:.-]+\s*:\s*\w*$/.test(textBefore)) {
-    return ROUTE_MODIFIERS.map(({ label, detail }) => ({
-      label,
-      kind: CompletionItemKind.Keyword,
-      detail,
-    }));
-  }
-
-  // After `httpMethod:` in route-body — offer modifiers (before `{`)
-  if (context === 'route-body' && /\b(?:get|post|put|patch|delete)\s*:\s*(?:(?:internal|deprecated|public)\s+)*\w*$/.test(textBefore)) {
+  // Inside verb(modifier) call in route-body — offer verb modifiers
+  if (context === 'route-body' && /\b(?:get|post|put|patch|delete)\(\w*$/.test(textBefore)) {
     return OP_MODIFIERS.map(({ label, detail }) => ({
       label,
       kind: CompletionItemKind.Keyword,

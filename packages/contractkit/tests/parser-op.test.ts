@@ -591,18 +591,13 @@ operation /capital: { get: {} }`);
 
   describe('route modifiers', () => {
     it('parses single internal modifier on route', () => {
-      const { root } = parse('operation internal /admin/users: { get: {} }');
+      const { root } = parse('operation(internal) /admin/users: { get: {} }');
       expect(root.routes[0]!.modifiers).toEqual(['internal']);
     });
 
     it('parses deprecated modifier on route', () => {
-      const { root } = parse('operation deprecated /old/users: { get: {} }');
+      const { root } = parse('operation(deprecated) /old/users: { get: {} }');
       expect(root.routes[0]!.modifiers).toEqual(['deprecated']);
-    });
-
-    it('parses multiple modifiers on route', () => {
-      const { root } = parse('operation internal deprecated /admin/users: { get: {} }');
-      expect(root.routes[0]!.modifiers).toEqual(['internal', 'deprecated']);
     });
 
     it('route without modifier has undefined modifiers', () => {
@@ -611,18 +606,13 @@ operation /capital: { get: {} }`);
     });
 
     it('parses internal modifier on operation', () => {
-      const { root } = parse('operation /users: { post: internal { } }');
+      const { root } = parse('operation /users: { post(internal): { } }');
       expect(root.routes[0]!.operations[0]!.modifiers).toEqual(['internal']);
     });
 
     it('parses deprecated modifier on operation', () => {
-      const { root } = parse('operation /users: { get: deprecated { } }');
+      const { root } = parse('operation /users: { get(deprecated): { } }');
       expect(root.routes[0]!.operations[0]!.modifiers).toEqual(['deprecated']);
-    });
-
-    it('parses multiple modifiers on operation', () => {
-      const { root } = parse('operation /users: { get: internal deprecated { } }');
-      expect(root.routes[0]!.operations[0]!.modifiers).toEqual(['internal', 'deprecated']);
     });
 
     it('operation without modifier has undefined modifiers', () => {
@@ -631,14 +621,14 @@ operation /capital: { get: {} }`);
     });
 
     it('operation modifier overrides route modifier', () => {
-      const { root } = parse('operation internal /admin: { get: deprecated {} }');
+      const { root } = parse('operation(internal) /admin: { get(deprecated): {} }');
       const route = root.routes[0]!;
       expect(route.modifiers).toEqual(['internal']);
       expect(route.operations[0]!.modifiers).toEqual(['deprecated']);
     });
 
     it('operation without modifier inherits route modifier', () => {
-      const { root } = parse('operation internal /admin: { get: {} post: deprecated {} }');
+      const { root } = parse('operation(internal) /admin: { get: {} post(deprecated): {} }');
       const route = root.routes[0]!;
       expect(route.modifiers).toEqual(['internal']);
       expect(route.operations[0]!.modifiers).toBeUndefined(); // inherits via resolveModifiers
@@ -646,25 +636,17 @@ operation /capital: { get: {} }`);
     });
 
     it('public modifier on operation is stored in AST for round-trip fidelity', () => {
-      const { root } = parse('operation internal /admin: { get: public {} }');
+      const { root } = parse('operation(internal) /admin: { get(public): {} }');
       const route = root.routes[0]!;
       expect(route.modifiers).toEqual(['internal']);
       expect(route.operations[0]!.modifiers).toEqual(['public']);
     });
 
     it('public modifier strips inherited internal via resolveModifiers', () => {
-      const { root } = parse('operation internal /admin: { get: public {} }');
+      const { root } = parse('operation(internal) /admin: { get(public): {} }');
       const route = root.routes[0]!;
       const op = route.operations[0]!;
       expect(resolveModifiers(route, op)).toEqual([]);
-    });
-
-    it('public combined with deprecated: AST keeps both, resolveModifiers strips public', () => {
-      const { root } = parse('operation internal /admin: { get: public deprecated {} }');
-      const route = root.routes[0]!;
-      const op = route.operations[0]!;
-      expect(op.modifiers).toEqual(['public', 'deprecated']);
-      expect(resolveModifiers(route, op)).toEqual(['deprecated']);
     });
   });
 

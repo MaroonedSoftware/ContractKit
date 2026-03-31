@@ -106,36 +106,29 @@ describe('getCompletions', () => {
   });
 
   describe('modifier completions', () => {
-    it('offers internal and deprecated after route path + colon (top-level)', () => {
-      const doc = makeDoc('file:///test.ck', 'operation /admin/users: ');
+    it('offers internal and deprecated inside operation( at top-level', () => {
+      const doc = makeDoc('file:///test.ck', 'operation(');
       const index = new WorkspaceIndex();
-      const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 0, character: 23 } }, doc, index);
+      const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 0, character: 10 } }, doc, index);
       expect(items.some(i => i.label === 'internal')).toBe(true);
       expect(items.some(i => i.label === 'deprecated')).toBe(true);
     });
 
-    it('offers internal and deprecated after HTTP method + colon (route-body)', () => {
-      const doc = makeDoc('file:///test.ck', 'operation /users: {\n    get: \n}');
+    it('offers partial match inside operation(int...', () => {
+      const doc = makeDoc('file:///test.ck', 'operation(int');
       const index = new WorkspaceIndex();
-      const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 1, character: 9 } }, doc, index);
+      const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 0, character: 13 } }, doc, index);
       expect(items.some(i => i.label === 'internal')).toBe(true);
       expect(items.some(i => i.label === 'deprecated')).toBe(true);
     });
 
-    it('offers second modifier after first modifier already typed (get: internal )', () => {
-      const doc = makeDoc('file:///test.ck', 'operation /users: {\n    get: internal \n}');
+    it('offers internal, deprecated, public inside verb( in route-body', () => {
+      const doc = makeDoc('file:///test.ck', 'operation /users: {\n    get(\n}');
       const index = new WorkspaceIndex();
-      const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 1, character: 18 } }, doc, index);
+      const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 1, character: 8 } }, doc, index);
       expect(items.some(i => i.label === 'internal')).toBe(true);
       expect(items.some(i => i.label === 'deprecated')).toBe(true);
-    });
-
-    it('offers second modifier after deprecated already typed (post: deprecated )', () => {
-      const doc = makeDoc('file:///test.ck', 'operation /users: {\n    post: deprecated \n}');
-      const index = new WorkspaceIndex();
-      const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 1, character: 20 } }, doc, index);
-      expect(items.some(i => i.label === 'internal')).toBe(true);
-      expect(items.some(i => i.label === 'deprecated')).toBe(true);
+      expect(items.some(i => i.label === 'public')).toBe(true);
     });
 
     it('does not offer route modifiers in operation body (wrong context)', () => {
@@ -149,9 +142,9 @@ describe('getCompletions', () => {
     });
 
     it('route modifier completions are kind Keyword', () => {
-      const doc = makeDoc('file:///test.ck', 'operation /admin: ');
+      const doc = makeDoc('file:///test.ck', 'operation(');
       const index = new WorkspaceIndex();
-      const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 0, character: 18 } }, doc, index);
+      const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 0, character: 10 } }, doc, index);
       const internalItem = items.find(i => i.label === 'internal');
       const deprecatedItem = items.find(i => i.label === 'deprecated');
       expect(internalItem).toBeDefined();

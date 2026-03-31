@@ -43,7 +43,7 @@ contract parse(camel) mode(loose) ModernTreasuryWebhookTransaction: {
 }
 
 
-operation internal /webhooks/moderntreasury: {
+operation(internal) /webhooks/moderntreasury: {
     post: { # handle a modern treasury webhook
         service: WebhooksService.handleModernTreasury
         signature: MODERN_TREASURY_WEBHOOK

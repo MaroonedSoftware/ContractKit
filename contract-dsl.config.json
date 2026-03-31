@@ -6,11 +6,11 @@
     "baseDir": "apps/api/",
     "types": {
       "output": "src/modules/{area}/types/{filename}.ts",
-      "include": ["contracts/types/**/*.dto"]
+      "include": ["contracts/types/**/*.ck"]
     },
     "routes": {
       "output": "src/routes/{filename}.router.ts",
-      "include": ["contracts/operations/**/*.op"],
+      "include": ["contracts/operations/**/*.ck"],
       "servicePathTemplate": "#modules/{module}/{module}.service.js",
       "typeImportPathTemplate": "#modules/{module}/types/index.js"
     }
@@ -21,11 +21,11 @@
     "output": "src/{name}.sdk.ts",
     "types": {
       "output": "src/{area}/types/{filename}.ts",
-      "include": ["contracts/types/**/*.dto"]
+      "include": ["contracts/types/**/*.ck"]
     },
     "clients": {
       "output": "src/{area}/{filename}.client.ts",
-      "include": ["contracts/operations/**/*.op"]
+      "include": ["contracts/operations/**/*.ck"]
     }
   },
   "security": {

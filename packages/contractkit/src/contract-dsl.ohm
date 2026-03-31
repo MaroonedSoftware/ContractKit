@@ -131,7 +131,10 @@ Contract {
 
   // ─── Routes ─────────────────────────────────────────────────────
 
-  RouteDecl = comment* operationKw routeModifier* RoutePath ":" "{" RouteBody "}"
+  RouteDecl = comment* operationKwCall RoutePath ":" "{" RouteBody "}"
+
+  operationKwCall = operationKw "(" routeModifier ")"  -- modified
+                  | operationKw                         -- plain
 
   RoutePath = PathSegment+
 
@@ -160,7 +163,10 @@ Contract {
 
   routeModifier = ("internal" | "deprecated" | "public") ~identPart
 
-  HttpOperation = comment* httpMethod ":" routeModifier* "{" OperationBody "}"
+  httpMethodCall = httpMethod "(" routeModifier ")"  -- modified
+                 | httpMethod                         -- plain
+
+  HttpOperation = comment* httpMethodCall ":" "{" OperationBody "}"
 
   OperationBody = OperationBodyItem*
 

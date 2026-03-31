@@ -100,12 +100,12 @@
     },
 
     "operation-declaration": {
-      "begin": "\\b(operation)\\s+(/[a-zA-Z0-9_/:.-]+)(?:\\s*(:)\\s*((?:internal|deprecated)(?:\\s+(?:internal|deprecated))*))?\\s*(\\{)",
+      "begin": "\\b(operation)(?:\\((internal|deprecated)\\))?\\s+(/[a-zA-Z0-9_/:.-]+)\\s*(:)\\s*(\\{)",
       "beginCaptures": {
         "1": { "name": "keyword.control.operation.ck" },
-        "2": { "patterns": [{ "include": "#route-path" }] },
-        "3": { "name": "punctuation.separator.colon.ck" },
-        "4": { "patterns": [{ "match": "\\b(internal|deprecated)\\b", "name": "keyword.control.modifier.ck" }] },
+        "2": { "name": "keyword.control.modifier.ck" },
+        "3": { "patterns": [{ "include": "#route-path" }] },
+        "4": { "name": "punctuation.separator.colon.ck" },
         "5": { "name": "punctuation.definition.block.begin.ck" }
       },
       "end": "(\\})",
@@ -164,13 +164,14 @@
       "patterns": [{ "include": "#comment" }, { "include": "#type-shorthand" }, { "include": "#param-decl-block" }]
     },
     "http-operation": {
-      "begin": "\\b(get|post|put|patch|delete)\\b\\s*(?:(:)\\s*)?",
+      "begin": "\\b(get|post|put|patch|delete)(?:\\((internal|deprecated|public)\\))?\\s*(:)\\s*",
       "beginCaptures": {
         "1": { "name": "keyword.control.http-method.ck" },
-        "2": { "name": "punctuation.separator.colon.ck" }
+        "2": { "name": "keyword.control.modifier.ck" },
+        "3": { "name": "punctuation.separator.colon.ck" }
       },
       "end": "(?<=\\})|(?=\\b(?:get|post|put|patch|delete|params|security)\\b)|(?=\\})",
-      "patterns": [{ "match": "\\b(internal|deprecated|public)\\b", "name": "keyword.control.modifier.ck" }, { "include": "#operation-body" }]
+      "patterns": [{ "include": "#operation-body" }]
     },
     "operation-body": {
       "begin": "(\\{)",

@@ -1,9 +1,7 @@
 import type { Plugin } from 'prettier';
 import { builders } from 'prettier/doc';
-import { parseCk, decomposeCk, DiagnosticCollector } from '@maroonedsoftware/contractkit';
-import type { CkRootNode, DtoRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
-import { printDto } from './print-dto.js';
-import { printOp } from './print-op.js';
+import { parseCk, DiagnosticCollector } from '@maroonedsoftware/contractkit';
+import type { CkRootNode } from '@maroonedsoftware/contractkit';
 import { printCk } from './print-ck.js';
 
 const { hardline, join } = builders;
@@ -13,26 +11,13 @@ function toDoc(text: string) {
   return join(hardline, lines);
 }
 
-const plugin: Plugin<CkRootNode | DtoRootNode | OpRootNode> = {
+const plugin: Plugin<CkRootNode> = {
   languages: [
     {
       name: 'ContractDSL',
       parsers: ['contract-ck'],
       extensions: ['.ck'],
       vscodeLanguageIds: ['contract-ck'],
-    },
-    // Legacy support for .dto and .op extensions
-    {
-      name: 'ContractDTO',
-      parsers: ['contract-ck'],
-      extensions: ['.dto'],
-      vscodeLanguageIds: ['contract-dto'],
-    },
-    {
-      name: 'ContractOP',
-      parsers: ['contract-ck'],
-      extensions: ['.op'],
-      vscodeLanguageIds: ['contract-op'],
     },
   ],
 

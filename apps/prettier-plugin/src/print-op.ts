@@ -1,5 +1,4 @@
 import type {
-  OpRootNode,
   OpRouteNode,
   OpOperationNode,
   OpResponseNode,
@@ -43,69 +42,11 @@ export function groupComments(entries: CommentEntry[]): CommentBlock[] {
  * Emit any comment blocks whose startLine is < beforeLine.
  * Lines are emitted verbatim — they already carry their original indentation.
  */
-function flushBlocks(out: string[], blocks: CommentBlock[], idx: { value: number }, beforeLine: number, _indent = '') {
+export function flushBlocks(out: string[], blocks: CommentBlock[], idx: { value: number }, beforeLine: number, _indent = '') {
   while (idx.value < blocks.length && blocks[idx.value]!.startLine < beforeLine) {
     for (const l of blocks[idx.value]!.lines) out.push(l);
     idx.value++;
   }
-}
-
-// ─── OP file printer ────────────────────────────────────────────────────────
-
-export function printOp(ast: OpRootNode): string {
-  const parts: string[] = [];
-  const blocks = groupComments(ast.orphanComments ?? []);
-  const idx = { value: 0 };
-
-  if (Object.keys(ast.meta).length > 0) {
-    parts.push(printFrontMatter(ast.meta));
-  }
-
-  if (ast.security !== undefined) {
-    if (parts.length > 0) parts.push('');
-    parts.push(...printSecurity(ast.security, '', I1));
-  }
-
-  for (let i = 0; i < ast.routes.length; i++) {
-    const route = ast.routes[i]!;
-    const nextRouteStart = ast.routes[i + 1]?.loc.line ?? Infinity;
-
-    // Emit orphan blocks that appear before this route
-    const pending: string[] = [];
-    flushBlocks(pending, blocks, idx, route.loc.line);
-    for (const l of pending) {
-      if (parts.length > 0 || l) parts.push(l);
-    }
-
-    if (parts.length > 0) parts.push('');
-    parts.push(printRoute(route, blocks, idx, nextRouteStart));
-  }
-
-  // Emit any remaining blocks after the last route
-  const trailing: string[] = [];
-  flushBlocks(trailing, blocks, idx, Infinity);
-  for (const l of trailing) {
-    parts.push('');
-    parts.push(l);
-  }
-
-  return parts.join('\n') + '\n';
-}
-
-// ─── Front matter ────────────────────────────────────────────────────────────
-
-function printFrontMatter(meta: Record<string, string>): string {
-  const lines = ['---'];
-  for (const [key, value] of Object.entries(meta)) {
-    lines.push(`${key}: ${printMetaValue(value)}`);
-  }
-  lines.push('---');
-  return lines.join('\n');
-}
-
-function printMetaValue(value: string): string {
-  if (value.startsWith('#') || value.includes(' ')) return `"${value}"`;
-  return value;
 }
 
 // ─── Route ───────────────────────────────────────────────────────────────────
@@ -113,8 +54,7 @@ function printMetaValue(value: string): string {
 export function printRoute(route: OpRouteNode, blocks: CommentBlock[], idx: { value: number }, nextRouteStart: number): string {
   const lines: string[] = [];
   const commentSuffix = route.description ? ` # ${route.description}` : '';
-  const modifiersPart = route.modifiers?.length ? `: ${route.modifiers.join(' ')}` : '';
-  lines.push(`${route.path}${modifiersPart} {${commentSuffix}`);
+  lines.push(`${route.path}: {${commentSuffix}`);
 
   if (route.params !== undefined) {
     lines.push(...printParamsBlock(route.params, I1, route.paramsMode));
@@ -167,8 +107,8 @@ function printParamsBlock(source: ParamSource, indent: string, mode?: ObjectMode
 function printOperation(op: OpOperationNode): string[] {
   const lines: string[] = [];
   const commentSuffix = op.description ? ` # ${op.description}` : '';
-  const modifiersPart = op.modifiers?.length ? ` ${op.modifiers.join(' ')}` : '';
-  lines.push(`${I1}${op.method}:${modifiersPart} {${commentSuffix}`);
+  const modPart = op.modifiers?.length ? `(${op.modifiers[0]})` : '';
+  lines.push(`${I1}${op.method}${modPart}: {${commentSuffix}`);
 
   if (op.service) lines.push(`${I2}service: ${op.service}`);
   if (op.sdk) lines.push(`${I2}sdk: ${op.sdk}`);

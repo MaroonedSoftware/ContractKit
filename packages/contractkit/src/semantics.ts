@@ -251,8 +251,8 @@ export function createSemantics(grammar: Grammar) {
           const commentText = child.sourceString.replace(/^#\s?/, '').trimEnd();
           if (fields.length > 0) {
             const lastField = fields[fields.length - 1]!;
-            if (commentLine === lastField.loc.line && !lastField.description) {
-              lastField.description = commentText;
+            if (commentLine === lastField.loc.line) {
+              lastField.description = commentText; // inline comment always wins
               continue;
             }
           }
@@ -392,8 +392,8 @@ export function createSemantics(grammar: Grammar) {
           const commentText = child.sourceString.replace(/^#\s?/, '').trimEnd();
           if (fields.length > 0) {
             const lastField = fields[fields.length - 1]!;
-            if (commentLine === lastField.loc.line && !lastField.description) {
-              lastField.description = commentText;
+            if (commentLine === lastField.loc.line) {
+              lastField.description = commentText; // inline comment always wins
               continue;
             }
           }
@@ -434,8 +434,8 @@ export function createSemantics(grammar: Grammar) {
 
     // ─── Routes ───────────────────────────────────────────────────
 
-    // RouteDecl = comment* operationKw routeModifier* RoutePath ":" "{" RouteBody "}"
-    RouteDecl(commentNodes, _operationKw, modifierNodes, routePathNode, _colon, _lb, routeBodyNode, _rb) {
+    // RouteDecl = comment* operationKwCall RoutePath ":" "{" RouteBody "}"
+    RouteDecl(commentNodes, operationKwCallNode, routePathNode, _colon, _lb, routeBodyNode, _rb) {
       const file = this.args.file as string;
       const diag = this.args.diag as DiagnosticCollector;
 
@@ -450,11 +450,9 @@ export function createSemantics(grammar: Grammar) {
       const path = routePathNode.toAst(file, diag) as string;
       const line = getLine(routePathNode);
 
-      const modifiers: RouteModifier[] = [];
-      for (let i = 0; i < modifierNodes.numChildren; i++) {
-        const modText = modifierNodes.child(i).sourceString.trim();
-        if (modText) modifiers.push(modText as RouteModifier);
-      }
+      const kwText = operationKwCallNode.sourceString.trim();
+      const modMatch = kwText.match(/^operation\((\w+)\)$/);
+      const modifiers: RouteModifier[] = modMatch ? [modMatch[1] as RouteModifier] : [];
 
       const routeBody = routeBodyNode.toAst(file, diag) as {
         params?: ParamSource;
@@ -588,7 +586,7 @@ export function createSemantics(grammar: Grammar) {
 
     // ─── HTTP Operations ──────────────────────────────────────────
 
-    HttpOperation(commentNodes, methodNode, _colon, modifierNodes, _lb, bodyNode, _rb) {
+    HttpOperation(commentNodes, httpMethodCallNode, _colon, _lb, bodyNode, _rb) {
       const file = this.args.file as string;
       const diag = this.args.diag as DiagnosticCollector;
 
@@ -600,13 +598,12 @@ export function createSemantics(grammar: Grammar) {
         ? comments.map(c => c.sourceString.replace(/^#\s?/, '').trimEnd()).join('\n')
         : undefined;
 
-      const method = methodNode.sourceString.toLowerCase() as HttpMethod;
-      const line = getLine(methodNode);
+      const methodText = httpMethodCallNode.sourceString.trim();
+      const modMatch = methodText.match(/\((\w+)\)$/);
+      const method = methodText.replace(/\(\w+\)$/, '').trim() as HttpMethod;
+      const line = getLine(httpMethodCallNode);
 
-      const modifiers: RouteModifier[] = [];
-      for (let i = 0; i < modifierNodes.numChildren; i++) {
-        modifiers.push(modifierNodes.child(i).sourceString.trim() as RouteModifier);
-      }
+      const modifiers: RouteModifier[] = modMatch ? [modMatch[1] as RouteModifier] : [];
 
       const body = bodyNode.toAst(file, diag) as {
         service?: string;
