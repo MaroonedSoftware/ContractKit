@@ -1,5 +1,5 @@
 {
-  "name": "contract-dsl",
+  "name": "contractkit",
   "private": true,
   "scripts": {
     "build": "turbo run build",

@@ -196,11 +196,15 @@ options {
     services: {
         LedgerService: "#src/modules/ledger/ledger.service.js"
     }
+    security: {
+        roles: admin
+    }
 }
 ```
 
 - **`keys`** — arbitrary key/value pairs attached to the file's metadata (e.g. `area` is used for grouping in generated docs)
 - **`services`** — maps service identifiers to import paths; used in `service:` bindings within operations. Paths starting with `#` are resolved as package-relative imports.
+- **`security`** — file-level default security applied to all operations unless overridden at the route or operation level. Accepts the same syntax as operation-level `security:` blocks.
 
 ---
 
@@ -288,24 +292,35 @@ contract mode(strip) UserInput: {
 | `strip`  | `z.object`        | Silently removes unknown keys        |
 | `loose`  | `z.looseObject`   | Passes unknown keys through          |
 
-#### `parse(camel|snake|pascal)`
+#### `format(input=camel|snake|pascal)` and `format(output=camel|snake|pascal)`
 
-Applies a key-casing transform on input before validation. Useful for external data sources that use a different naming convention than the application.
+Applies a key-casing transform when parsing input and/or serializing output. Useful for external data sources that use a different naming convention than the application's internal camelCase convention.
 
 ```
-contract parse(camel) mode(loose) WebhookPayload: {
+contract format(input=camel) mode(loose) WebhookPayload: {
     eventType: string
     createdAt: datetime
     organizationId: uuid
 }
 ```
 
-With `parse(camel)`, the schema uses a `snake_case` input schema (e.g. `event_type`, `created_at`) and transforms to camelCase output. The `parse(snake)` and `parse(pascal)` options apply analogous transforms.
+With `format(input=camel)`, the schema accepts camelCase keys (e.g. `eventType`) and transforms them to the internal camelCase representation. Use `format(input=snake)` to accept `snake_case` keys, or `format(input=pascal)` to accept `PascalCase` keys.
+
+`format(output=snake)` transforms the output keys from internal camelCase to `snake_case` before serialization. Both args can be combined:
+
+```
+contract format(input=pascal, output=snake) ExternalEvent: {
+    eventType: string
+    createdAt: datetime
+}
+```
+
+This accepts `PascalCase` input keys and emits `snake_case` output keys.
 
 Multiple modifiers may appear in any order:
 
 ```
-contract deprecated parse(camel) mode(strip) OldWebhookPayload: {
+contract deprecated format(input=camel) mode(strip) OldWebhookPayload: {
     eventType: string
 }
 ```
@@ -970,24 +985,23 @@ contract-dsl/
       src/
         print-ck.ts          # .ck file formatter
         print-op.ts          # Route/operation printing helpers
-        print-dto.ts         # Model printing helpers
+        print-dto.ts         # Model/contract printing helpers
         print-type.ts        # Type expression and field printing
       tests/
   contracts/                 # Example contract files
-    operations/              # Operation .ck files
   packages/
     contractkit/             # Core parser, AST, and code generators
       src/
-        contract-dsl.ohm     # Ohm PEG grammar (source of truth)
-        semantics.ts         # Parse tree → AST
-        parser.ts            # parseCk() entry point
-        ast.ts               # AST type definitions
-        codegen-dto.ts       # Zod schema generation
-        codegen-op.ts        # Koa router generation
-        codegen-sdk.ts       # SDK client generation
-        codegen-openapi.ts   # OpenAPI YAML generation
-        codegen-markdown.ts  # Markdown docs generation
+        contract-dsl.ohm       # Ohm PEG grammar (source of truth)
+        semantics.ts           # Parse tree → AST
+        parser.ts              # parseCk() entry point
+        ast.ts                 # AST type definitions
+        codegen-contract.ts    # Zod schema generation
+        codegen-operation.ts   # Koa router generation
+        codegen-sdk.ts         # SDK client generation
+        codegen-openapi.ts     # OpenAPI YAML generation
+        codegen-markdown.ts    # Markdown docs generation
         codegen-plain-types.ts # Plain TypeScript interface generation
-        validate-op.ts       # Path parameter validation
+        validate-operation.ts  # Path parameter validation
       tests/
 ```
