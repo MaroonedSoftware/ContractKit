@@ -547,19 +547,28 @@ async function main() {
           allDtoInfo.map(d => d.ast),
           modelsWithInput,
         );
+
+        // Pass 1: register ALL model→outPath entries before generating any files,
+        // so cross-file references (e.g. CounterpartyAccount → FinancialInstitutionRoutingDetails)
+        // resolve correctly regardless of file iteration order.
+        const sdkDtoEntries: { ast: DtoRootNode; filePath: string; typeOutPath: string }[] = [];
         for (const { ast, filePath } of allDtoInfo) {
           const typeOutPath = computeSdkTypeOutPath(filePath, sdkBase, config.sdk.types.output, commonRoot, ast.meta);
           if (!typeOutPath) continue;
           // Skip files where no model is reachable from a public operation
           if (publicTypes !== null && !ast.models.some(m => publicTypes.has(m.name))) continue;
           sdkTypePaths.push(typeOutPath);
-          // Track model paths for import resolution
+          sdkDtoEntries.push({ ast, filePath, typeOutPath });
           for (const model of ast.models) {
             sdkModelOutPaths.set(model.name, typeOutPath);
             if (modelsWithInput.has(model.name)) {
               sdkModelOutPaths.set(`${model.name}Input`, typeOutPath);
             }
           }
+        }
+
+        // Pass 2: generate files now that sdkModelOutPaths is fully populated.
+        for (const { ast, filePath, typeOutPath } of sdkDtoEntries) {
           // Only regenerate if source or dependencies changed
           const source = readFileSync(filePath, 'utf-8');
           if (!depsChanged && !config.force && !isFileChanged(filePath, source, typeOutPath, cache)) {
