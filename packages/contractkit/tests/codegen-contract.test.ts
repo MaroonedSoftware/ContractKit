@@ -1,5 +1,5 @@
-import { generateDto, renderType } from '../src/codegen-contract.js';
-import type { DtoCodegenContext } from '../src/codegen-contract.js';
+import { generateContract, renderType } from '../src/codegen-contract.js';
+import type { ContractCodegenContext } from '../src/codegen-contract.js';
 import {
     scalarType,
     arrayType,
@@ -13,7 +13,7 @@ import {
     inlineObjectType,
     field,
     model,
-    dtoRoot,
+    contractRoot,
 } from './helpers.js';
 import type { ScalarTypeNode } from '../src/ast.js';
 
@@ -212,8 +212,8 @@ describe('generateContract', () => {
 
     describe('simple model', () => {
         it('generates z.strictObject with fields', () => {
-            const root = dtoRoot([model('User', [field('name', scalarType('string')), field('age', scalarType('number'))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('User', [field('name', scalarType('string')), field('age', scalarType('number'))])]);
+            const output = generateContract(root);
             expect(output).toContain('export const User = z.strictObject({');
             expect(output).toContain('name: z.string(),');
             expect(output).toContain('age: z.coerce.number(),');
@@ -221,60 +221,60 @@ describe('generateContract', () => {
         });
 
         it('includes zod import', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'))])]);
+            const output = generateContract(root);
             expect(output).toContain("import { z } from 'zod';");
         });
 
         it('includes luxon import when DateTime fields exist', () => {
-            const root = dtoRoot([model('M', [field('d', scalarType('date'))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('d', scalarType('date'))])]);
+            const output = generateContract(root);
             expect(output).toContain("import { DateTime } from 'luxon';");
         });
 
         it('omits luxon import when no DateTime fields', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'))])]);
+            const output = generateContract(root);
             expect(output).not.toContain('luxon');
         });
 
         it('detects DateTime in nested array types', () => {
-            const root = dtoRoot([model('M', [field('d', arrayType(scalarType('datetime')))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('d', arrayType(scalarType('datetime')))])]);
+            const output = generateContract(root);
             expect(output).toContain("import { DateTime } from 'luxon';");
         });
 
         it('emits _ZodBinary helper when binary field present', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('binary'))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('binary'))])]);
+            const output = generateContract(root);
             expect(output).toContain('const _ZodBinary = z.custom<Buffer>');
             expect(output).toContain('_ZodBinary,');
         });
 
         it('omits _ZodBinary helper when no binary fields', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'))])]);
+            const output = generateContract(root);
             expect(output).not.toContain('_ZodBinary');
         });
 
         it('emits _ZodDatetime helper when datetime field present', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('datetime'))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('datetime'))])]);
+            const output = generateContract(root);
             expect(output).toContain('const _ZodDatetime =');
             expect(output).toContain('_ZodDatetime,');
         });
 
         it('emits _ZodJson helper when json field present', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('json'))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('json'))])]);
+            const output = generateContract(root);
             expect(output).toContain('type _JsonValue =');
             expect(output).toContain('const _ZodJson:');
             expect(output).toContain('_ZodJson,');
         });
 
         it('omits _ZodJson helper when no json fields', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'))])]);
+            const output = generateContract(root);
             expect(output).not.toContain('_ZodJson');
         });
 
@@ -287,62 +287,62 @@ describe('generateContract', () => {
 
     describe('field rendering', () => {
         it('renders nullable field with .nullable()', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'), { nullable: true })])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'), { nullable: true })])]);
+            const output = generateContract(root);
             expect(output).toContain('.nullable()');
         });
 
         it('renders optional field with .optional()', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'), { optional: true })])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'), { optional: true })])]);
+            const output = generateContract(root);
             expect(output).toContain('.optional()');
         });
 
         it('renders default string value with .default()', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'), { default: 'user' })])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'), { default: 'user' })])]);
+            const output = generateContract(root);
             expect(output).toContain('.default("user")');
         });
 
         it('renders default number value with .default()', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('number'), { default: 0 })])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('number'), { default: 0 })])]);
+            const output = generateContract(root);
             expect(output).toContain('.default(0)');
         });
 
         it('renders description with .describe()', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'), { description: 'A name' })])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'), { description: 'A name' })])]);
+            const output = generateContract(root);
             expect(output).toContain('.describe("A name")');
         });
 
         it('escapes quotes in default string values', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'), { default: 'he said "hello"' })])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'), { default: 'he said "hello"' })])]);
+            const output = generateContract(root);
             expect(output).toContain('.default("he said \\"hello\\"")');
         });
 
         it('escapes backslashes in default string values', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'), { default: 'path\\to\\file' })])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'), { default: 'path\\to\\file' })])]);
+            const output = generateContract(root);
             expect(output).toContain('.default("path\\\\to\\\\file")');
         });
 
         it('escapes quotes in field descriptions', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'), { description: 'A "quoted" desc' })])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'), { description: 'A "quoted" desc' })])]);
+            const output = generateContract(root);
             expect(output).toContain('.describe("A \\"quoted\\" desc")');
         });
 
         it('escapes newlines in field descriptions', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'), { description: 'line1\nline2' })])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('string'), { description: 'line1\nline2' })])]);
+            const output = generateContract(root);
             expect(output).toContain('.describe("line1\\nline2")');
         });
 
         it('prefers .default() over .optional() when default is set', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('boolean'), { optional: true, default: true })])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('M', [field('f', scalarType('boolean'), { optional: true, default: true })])]);
+            const output = generateContract(root);
             expect(output).toContain('.default(true)');
             // .optional() should not appear for this field since default is set
             const fieldLine = output.split('\n').find(l => l.includes('f:'))!;
@@ -354,14 +354,14 @@ describe('generateContract', () => {
 
     describe('three-schema pattern', () => {
         it('generates Base, Read, and Write schemas when visibility fields exist', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [
                     field('id', scalarType('uuid'), { visibility: 'readonly' }),
                     field('name', scalarType('string')),
                     field('password', scalarType('string'), { visibility: 'writeonly' }),
                 ]),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             expect(output).toContain('const UserBase = z.strictObject({');
             expect(output).toContain('export const User = z.strictObject({');
             expect(output).toContain('export const UserInput = z.strictObject({');
@@ -370,10 +370,10 @@ describe('generateContract', () => {
         });
 
         it('read schema omits writeonly fields', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('name', scalarType('string')), field('password', scalarType('string'), { visibility: 'writeonly' })]),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             // Find the exported User (read) schema section
             const userSection = output.split('export const User =')[1]!.split('});')[0]!;
             expect(userSection).toContain('name:');
@@ -381,8 +381,8 @@ describe('generateContract', () => {
         });
 
         it('write schema omits readonly fields', () => {
-            const root = dtoRoot([model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))])]);
+            const output = generateContract(root);
             // Find the UserInput (write) schema section
             const inputSection = output.split('export const UserInput =')[1]!.split('});')[0]!;
             expect(inputSection).toContain('name:');
@@ -394,11 +394,11 @@ describe('generateContract', () => {
 
     describe('transitive Input variants', () => {
         it('generates Input variant for model that references a visibility model (local)', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Entry', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('amount', scalarType('bigint'))]),
                 model('Transaction', [field('entries', arrayType(refType('Entry')))]),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             // Transaction references Entry (which has readonly → EntryInput exists)
             // so Transaction must also get an Input variant
             expect(output).toContain('export const TransactionInput = z.strictObject({');
@@ -406,23 +406,23 @@ describe('generateContract', () => {
         });
 
         it('write schema of parent uses Input variant of referenced child', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Entry', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('amount', scalarType('bigint'))]),
                 model('Transaction', [field('entries', arrayType(refType('Entry')))]),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             const inputSection = output.split('export const TransactionInput =')[1]!.split('});')[0]!;
             expect(inputSection).toContain('EntryInput');
             expect(inputSection).not.toContain('Entry,');
         });
 
         it('handles multi-level transitive chain', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Leaf', [field('id', scalarType('uuid'), { visibility: 'readonly' })]),
                 model('Middle', [field('leaf', refType('Leaf'))]),
                 model('Top', [field('middle', refType('Middle'))]),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             expect(output).toContain('export const MiddleInput = z.strictObject({');
             expect(output).toContain('export const TopInput = z.strictObject({');
             // TopInput should use MiddleInput; MiddleInput should use LeafInput
@@ -433,19 +433,19 @@ describe('generateContract', () => {
         });
 
         it('handles transitive ref through union type', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Child', [field('id', scalarType('uuid'), { visibility: 'readonly' })]),
                 model('Parent', [field('data', unionType(refType('Child'), scalarType('null')))]),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             expect(output).toContain('export const ParentInput = z.strictObject({');
             const inputSection = output.split('export const ParentInput =')[1]!.split('});')[0]!;
             expect(inputSection).toContain('ChildInput');
         });
 
         it('handles transitive ref from external context', () => {
-            const root = dtoRoot([model('Transaction', [field('entries', arrayType(refType('ExternalEntry')))])]);
-            const context: DtoCodegenContext = {
+            const root = contractRoot([model('Transaction', [field('entries', arrayType(refType('ExternalEntry')))])]);
+            const context: ContractCodegenContext = {
                 currentOutPath: '/out/transaction.ts',
                 modelOutPaths: new Map([
                     ['ExternalEntry', '/out/entry.ts'],
@@ -453,7 +453,7 @@ describe('generateContract', () => {
                 ]),
                 modelsWithInput: new Set(['ExternalEntry']),
             };
-            const output = generateDto(root, context);
+            const output = generateContract(root, context);
             // Transaction should get an Input variant referencing ExternalEntryInput
             expect(output).toContain('export const TransactionInput = z.strictObject({');
             const inputSection = output.split('export const TransactionInput =')[1]!.split('});')[0]!;
@@ -463,11 +463,11 @@ describe('generateContract', () => {
         });
 
         it('model without visibility that only refs plain models stays simple', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('PlainChild', [field('name', scalarType('string'))]),
                 model('Parent', [field('child', refType('PlainChild'))]),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             // Neither model has visibility or transitive Input deps
             expect(output).not.toContain('ParentInput');
             expect(output).not.toContain('PlainChildInput');
@@ -478,17 +478,17 @@ describe('generateContract', () => {
 
     describe('inheritance', () => {
         it('generates .extend() for models with a base', () => {
-            const root = dtoRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
-            const output = generateDto(root);
+            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
+            const output = generateContract(root);
             expect(output).toContain('User.extend({');
         });
 
         it('child extends parent in same file: both get three-schema when parent has visibility', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))]),
                 model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             // User has only readonly (no writeonly) — Base === Read, so no UserBase emitted
             expect(output).not.toContain('UserBase');
             expect(output).toContain('export const User =');
@@ -500,11 +500,11 @@ describe('generateContract', () => {
         });
 
         it('child with visibility extending parent without visibility: uses .extend() for base, read, and write', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('name', scalarType('string'))]),
                 model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { base: 'User' }),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             // User has no visibility — simple schema
             expect(output).not.toContain('UserBase');
             expect(output).not.toContain('UserInput');
@@ -515,11 +515,11 @@ describe('generateContract', () => {
         });
 
         it('parent with writeonly fields generates Base; child Base extends ParentBase', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('password', scalarType('string'), { visibility: 'writeonly' }), field('name', scalarType('string'))]),
                 model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             // User has writeonly — Base !== Read, so UserBase is emitted
             expect(output).toContain('const UserBase =');
             expect(output).toContain('export const User =');
@@ -531,10 +531,10 @@ describe('generateContract', () => {
         });
 
         it('child inheriting from external parent with Input variant uses ParentInput.extend()', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { base: 'User' }),
             ]);
-            const output = generateDto(root, {
+            const output = generateContract(root, {
                 modelsWithInput: new Set(['User']),
                 currentOutPath: '/out/admin.ts',
                 modelOutPaths: new Map(),
@@ -547,7 +547,7 @@ describe('generateContract', () => {
 
     describe('type alias Input variants', () => {
         it('type alias referencing a model with Input variant gets its own Input variant', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Pagination', [field('page', scalarType('int')), field('total', scalarType('int'), { visibility: 'readonly' })]),
                 model('ListQuery', [], {
                     type: {
@@ -559,7 +559,7 @@ describe('generateContract', () => {
                     },
                 }),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             // ListQuery itself is a type alias — read schema
             expect(output).toContain('export const ListQuery = Pagination.extend({');
             // Input variant uses PaginationInput
@@ -567,7 +567,7 @@ describe('generateContract', () => {
         });
 
         it('imports PaginationInput when type alias references external Pagination with Input variant', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('ListQuery', [], {
                     type: {
                         kind: 'intersection',
@@ -578,7 +578,7 @@ describe('generateContract', () => {
                     },
                 }),
             ]);
-            const output = generateDto(root, {
+            const output = generateContract(root, {
                 modelsWithInput: new Set(['Pagination']),
                 currentOutPath: '/out/list.query.ts',
                 modelOutPaths: new Map([
@@ -592,8 +592,8 @@ describe('generateContract', () => {
         });
 
         it('type alias NOT referencing any model with Input stays simple', () => {
-            const root = dtoRoot([model('UserId', [], { type: { kind: 'scalar', name: 'uuid' } })]);
-            const output = generateDto(root);
+            const root = contractRoot([model('UserId', [], { type: { kind: 'scalar', name: 'uuid' } })]);
+            const output = generateContract(root);
             expect(output).toContain('export const UserId = z.uuid()');
             expect(output).not.toContain('UserIdInput');
         });
@@ -603,8 +603,8 @@ describe('generateContract', () => {
 
     describe('model description', () => {
         it('generates JSDoc comment for model description', () => {
-            const root = dtoRoot([model('User', [field('name', scalarType('string'))], { description: 'A user' })]);
-            const output = generateDto(root);
+            const root = contractRoot([model('User', [field('name', scalarType('string'))], { description: 'A user' })]);
+            const output = generateContract(root);
             expect(output).toContain('* A user');
         });
     });
@@ -613,18 +613,18 @@ describe('generateContract', () => {
 
     describe('source line comments', () => {
         it('includes source location comment above schema', () => {
-            const root = dtoRoot([model('User', [field('name', scalarType('string'))], { loc: { file: 'user.dto', line: 5 } })]);
-            const output = generateDto(root);
+            const root = contractRoot([model('User', [field('name', scalarType('string'))], { loc: { file: 'user.dto', line: 5 } })]);
+            const output = generateContract(root);
             expect(output).toContain('file://./user.dto#L5');
         });
 
         it('includes source location for three-schema models', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))], {
                     loc: { file: 'user.dto', line: 1 },
                 }),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             expect(output).toContain('file://./user.dto#L1');
         });
     });
@@ -633,38 +633,38 @@ describe('generateContract', () => {
 
     describe('model reference imports', () => {
         it('imports externally referenced model types', () => {
-            const root = dtoRoot([model('Counterparty', [field('accounts', arrayType(refType('CounterpartyAccount')))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('Counterparty', [field('accounts', arrayType(refType('CounterpartyAccount')))])]);
+            const output = generateContract(root);
             expect(output).toContain("import { CounterpartyAccount } from './counterparty.account.js';");
         });
 
         it('does not import locally defined models', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('CustomCurrency', [field('code', scalarType('string'))]),
                 model('LedgerAccount', [field('currency', refType('CustomCurrency'))]),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             expect(output).not.toContain('import { CustomCurrency }');
         });
 
         it('imports base model when inherited from external', () => {
-            const root = dtoRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
-            const output = generateDto(root);
+            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
+            const output = generateContract(root);
             expect(output).toContain("import { User } from './user.js';");
         });
 
         it('does not import base model when defined locally', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('name', scalarType('string'))]),
                 model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             expect(output).not.toContain('import { User }');
         });
 
         it('emits no model imports when all refs are local', () => {
-            const root = dtoRoot([model('User', [field('name', scalarType('string'))])]);
-            const output = generateDto(root);
+            const root = contractRoot([model('User', [field('name', scalarType('string'))])]);
+            const output = generateContract(root);
             const importLines = output.split('\n').filter(l => l.startsWith('import'));
             expect(importLines).toHaveLength(1); // only zod
         });
@@ -674,71 +674,71 @@ describe('generateContract', () => {
 
     describe('cross-directory import resolution', () => {
         it('generates correct relative path for ref in a different directory', () => {
-            const root = dtoRoot([model('Counterparty', [field('accounts', arrayType(refType('CounterpartyAccount')))])]);
-            const context: DtoCodegenContext = {
+            const root = contractRoot([model('Counterparty', [field('accounts', arrayType(refType('CounterpartyAccount')))])]);
+            const context: ContractCodegenContext = {
                 currentOutPath: '/out/modules/transfers/counterparty.ts',
                 modelOutPaths: new Map([['CounterpartyAccount', '/out/modules/transfers/counterparty.account.ts']]),
             };
-            const output = generateDto(root, context);
+            const output = generateContract(root, context);
             expect(output).toContain("import { CounterpartyAccount } from './counterparty.account.js';");
         });
 
         it('generates ../ path when ref is in a parent directory', () => {
-            const root = dtoRoot([model('Invoice', [field('pagination', refType('Pagination'))])]);
-            const context: DtoCodegenContext = {
+            const root = contractRoot([model('Invoice', [field('pagination', refType('Pagination'))])]);
+            const context: ContractCodegenContext = {
                 currentOutPath: '/out/modules/billing/invoice.ts',
                 modelOutPaths: new Map([['Pagination', '/out/shared/pagination.ts']]),
             };
-            const output = generateDto(root, context);
+            const output = generateContract(root, context);
             expect(output).toContain("import { Pagination } from '../../shared/pagination.js';");
         });
 
         it('generates nested ../ path for deeply separated files', () => {
-            const root = dtoRoot([model('Transfer', [field('account', refType('LedgerAccount'))])]);
-            const context: DtoCodegenContext = {
+            const root = contractRoot([model('Transfer', [field('account', refType('LedgerAccount'))])]);
+            const context: ContractCodegenContext = {
                 currentOutPath: '/out/modules/transfers/types/transfer.ts',
                 modelOutPaths: new Map([['LedgerAccount', '/out/modules/ledger/types/ledger.account.ts']]),
             };
-            const output = generateDto(root, context);
+            const output = generateContract(root, context);
             expect(output).toContain("import { LedgerAccount } from '../../ledger/types/ledger.account.js';");
         });
 
         it('generates subdirectory path when ref is in a child directory', () => {
-            const root = dtoRoot([model('Dashboard', [field('user', refType('User'))])]);
-            const context: DtoCodegenContext = {
+            const root = contractRoot([model('Dashboard', [field('user', refType('User'))])]);
+            const context: ContractCodegenContext = {
                 currentOutPath: '/out/dashboard.ts',
                 modelOutPaths: new Map([['User', '/out/users/user.ts']]),
             };
-            const output = generateDto(root, context);
+            const output = generateContract(root, context);
             expect(output).toContain("import { User } from './users/user.js';");
         });
 
         it('falls back to pascalToDotCase when ref is not in modelOutPaths', () => {
-            const root = dtoRoot([model('Order', [field('item', refType('UnknownExternal'))])]);
-            const context: DtoCodegenContext = {
+            const root = contractRoot([model('Order', [field('item', refType('UnknownExternal'))])]);
+            const context: ContractCodegenContext = {
                 currentOutPath: '/out/order.ts',
                 modelOutPaths: new Map(), // empty — ref not found
             };
-            const output = generateDto(root, context);
+            const output = generateContract(root, context);
             expect(output).toContain("import { UnknownExternal } from './unknown.external.js';");
         });
 
         it('falls back to pascalToDotCase when no context is provided', () => {
-            const root = dtoRoot([model('Counterparty', [field('accounts', arrayType(refType('CounterpartyAccount')))])]);
-            const output = generateDto(root); // no context
+            const root = contractRoot([model('Counterparty', [field('accounts', arrayType(refType('CounterpartyAccount')))])]);
+            const output = generateContract(root); // no context
             expect(output).toContain("import { CounterpartyAccount } from './counterparty.account.js';");
         });
 
         it('resolves multiple refs to different directories', () => {
-            const root = dtoRoot([model('Transfer', [field('from', refType('Counterparty')), field('pagination', refType('Pagination'))])]);
-            const context: DtoCodegenContext = {
+            const root = contractRoot([model('Transfer', [field('from', refType('Counterparty')), field('pagination', refType('Pagination'))])]);
+            const context: ContractCodegenContext = {
                 currentOutPath: '/out/modules/transfers/transfer.ts',
                 modelOutPaths: new Map([
                     ['Counterparty', '/out/modules/transfers/counterparty.ts'],
                     ['Pagination', '/out/shared/pagination.ts'],
                 ]),
             };
-            const output = generateDto(root, context);
+            const output = generateContract(root, context);
             expect(output).toContain("import { Counterparty } from './counterparty.js';");
             expect(output).toContain("import { Pagination } from '../../shared/pagination.js';");
         });
@@ -747,10 +747,10 @@ describe('generateContract', () => {
     // ─── format(input=, output=) ────────────────────────────────────
     describe('format modifier', () => {
         it('input=snake: parses snake_case keys, outputs camelCase', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { inputCase: 'snake' }),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             expect(output).toContain('first_name: z.string()');
             expect(output).toContain('last_name: z.string()');
             expect(output).toContain('.transform(data => ({');
@@ -760,10 +760,10 @@ describe('generateContract', () => {
         });
 
         it('input=camel: no transform (camel is identity)', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { inputCase: 'camel' }),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             expect(output).toContain('firstName: z.string()');
             expect(output).toContain('lastName: z.string()');
             expect(output).not.toContain('.transform(');
@@ -771,10 +771,10 @@ describe('generateContract', () => {
         });
 
         it('input=pascal: parses PascalCase keys, outputs camelCase', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { inputCase: 'pascal' }),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             expect(output).toContain('FirstName: z.string()');
             expect(output).toContain('LastName: z.string()');
             expect(output).toContain('.transform(data => ({');
@@ -784,10 +784,10 @@ describe('generateContract', () => {
         });
 
         it('output=snake: parses camelCase keys, outputs snake_case', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { outputCase: 'snake' }),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             expect(output).toContain('firstName: z.string()');
             expect(output).toContain('.transform(data => ({');
             expect(output).toContain('first_name: data.firstName');
@@ -796,13 +796,13 @@ describe('generateContract', () => {
         });
 
         it('input=pascal, output=snake: parses PascalCase, outputs snake_case', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], {
                     inputCase: 'pascal',
                     outputCase: 'snake',
                 }),
             ]);
-            const output = generateDto(root);
+            const output = generateContract(root);
             expect(output).toContain('FirstName: z.string()');
             expect(output).toContain('.transform(data => ({');
             expect(output).toContain('first_name: data.FirstName');
@@ -812,8 +812,8 @@ describe('generateContract', () => {
 
         it('input=pascal: nested inline objects also use PascalCase keys with transforms', () => {
             const dataType = inlineObjectType([field('id', scalarType('uuid')), field('amount', scalarType('number'))]);
-            const root = dtoRoot([model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { inputCase: 'pascal' })]);
-            const output = generateDto(root);
+            const root = contractRoot([model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { inputCase: 'pascal' })]);
+            const output = generateContract(root);
             expect(output).toContain('Event: z.string()');
             expect(output).toContain('Id: z.uuid()');
             expect(output).toContain('id: data.Id');
@@ -822,8 +822,8 @@ describe('generateContract', () => {
 
         it('mode cascades to inline object fields', () => {
             const dataType = inlineObjectType([field('id', scalarType('uuid')), field('amount', scalarType('number'))]);
-            const root = dtoRoot([model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { mode: 'loose' })]);
-            const output = generateDto(root);
+            const root = contractRoot([model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { mode: 'loose' })]);
+            const output = generateContract(root);
             expect(output).toContain('export const Webhook = z.looseObject({');
             expect(output).toContain('z.looseObject({');
             expect(output).not.toContain('z.strictObject(');

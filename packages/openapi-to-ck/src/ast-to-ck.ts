@@ -2,7 +2,7 @@ import type {
     CkRootNode,
     ModelNode,
     FieldNode,
-    DtoTypeNode,
+    ContractTypeNode,
     OpRouteNode,
     OpOperationNode,
     OpRequestNode,
@@ -156,7 +156,7 @@ function serializeField(field: FieldNode, depth: number, ctx: Ctx): string {
     return `${indent}${field.name}${optional}: ${deprecated}${visibility}${typeStr}${defaultVal}${comment}`;
 }
 
-function typeContainsNull(type: DtoTypeNode): boolean {
+function typeContainsNull(type: ContractTypeNode): boolean {
     if (type.kind === 'scalar' && type.name === 'null') return true;
     if (type.kind === 'union') return type.members.some(typeContainsNull);
     return false;
@@ -173,7 +173,7 @@ function serializeDefault(value: string | number | boolean): string {
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
-export function serializeType(type: DtoTypeNode): string {
+export function serializeType(type: ContractTypeNode): string {
     switch (type.kind) {
         case 'scalar':
             return serializeScalar(type);
@@ -219,7 +219,7 @@ function serializeScalar(type: {
     return `${type.name}(${args.join(', ')})`;
 }
 
-function serializeArray(type: { item: DtoTypeNode; min?: number; max?: number }): string {
+function serializeArray(type: { item: ContractTypeNode; min?: number; max?: number }): string {
     const args: string[] = [serializeType(type.item)];
     if (type.min !== undefined) args.push(`min=${type.min}`);
     if (type.max !== undefined) args.push(`max=${type.max}`);
@@ -338,7 +338,7 @@ function serializeParamSource(lines: string[], keyword: string, source: ParamSou
         return;
     }
 
-    // DtoTypeNode reference
+    // ContractTypeNode reference
     if (source.kind === 'type') {
         lines.push(`${indent}${keyword}: ${serializeType(source.node)}`);
         return;

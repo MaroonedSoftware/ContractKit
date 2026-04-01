@@ -2,7 +2,7 @@
  * Shared type-building utilities used by both DTO and OP semantic actions.
  * Extracted from visitor-dto.ts and visitor-op.ts to eliminate duplication.
  */
-import type { DtoTypeNode, ScalarTypeNode, UnionTypeNode } from './ast.js';
+import type { ContractTypeNode, ScalarTypeNode, UnionTypeNode } from './ast.js';
 import { SCALAR_NAMES } from './ast.js';
 
 export const OBJECT_MODES = new Set<string>(['strict', 'strip', 'loose']);
@@ -14,11 +14,11 @@ export type TypeArgKeyValue = { key: string; value: string | number | boolean };
 export type TypeArgString = { type: 'string'; value: string };
 export type TypeArgNumber = { type: 'number'; value: number };
 export type TypeArgBoolean = { type: 'boolean'; value: boolean };
-export type TypeArgType = { type: 'type'; value: DtoTypeNode };
+export type TypeArgType = { type: 'type'; value: ContractTypeNode };
 export type TypeArg = TypeArgKeyValue | TypeArgString | TypeArgNumber | TypeArgBoolean | TypeArgType;
 
-/** Resolve a simple type name to a DtoTypeNode (scalar or model ref). */
-export function resolveSimpleType(name: string): DtoTypeNode {
+/** Resolve a simple type name to a ContractTypeNode (scalar or model ref). */
+export function resolveSimpleType(name: string): ContractTypeNode {
     if (SCALAR_NAMES.has(name as any)) {
         return { kind: 'scalar', name: name as ScalarTypeNode['name'] };
     }
@@ -26,7 +26,7 @@ export function resolveSimpleType(name: string): DtoTypeNode {
 }
 
 /** Build a compound or constrained type from a type name and parsed arguments. */
-export function buildCompoundType(name: string, args: TypeArg[]): DtoTypeNode {
+export function buildCompoundType(name: string, args: TypeArg[]): ContractTypeNode {
     switch (name) {
         case 'array':
             return buildArrayType(args);
@@ -49,9 +49,9 @@ export function buildCompoundType(name: string, args: TypeArg[]): DtoTypeNode {
     }
 }
 
-function buildArrayType(args: TypeArg[]): DtoTypeNode {
+function buildArrayType(args: TypeArg[]): ContractTypeNode {
     const typeArgs = args.filter((a): a is TypeArgType => 'type' in a && a.type === 'type');
-    const item: DtoTypeNode = typeArgs[0]?.value ?? { kind: 'scalar', name: 'unknown' };
+    const item: ContractTypeNode = typeArgs[0]?.value ?? { kind: 'scalar', name: 'unknown' };
     let min: number | undefined;
     let max: number | undefined;
     for (const a of args) {
@@ -61,19 +61,19 @@ function buildArrayType(args: TypeArg[]): DtoTypeNode {
     return { kind: 'array', item, min, max };
 }
 
-function buildTupleType(args: TypeArg[]): DtoTypeNode {
+function buildTupleType(args: TypeArg[]): ContractTypeNode {
     const items = args.filter((a): a is TypeArgType => 'type' in a && a.type === 'type').map(a => a.value);
     return { kind: 'tuple', items };
 }
 
-function buildRecordType(args: TypeArg[]): DtoTypeNode {
+function buildRecordType(args: TypeArg[]): ContractTypeNode {
     const typeArgs = args.filter((a): a is TypeArgType => 'type' in a && a.type === 'type');
-    const key: DtoTypeNode = typeArgs[0]?.value ?? { kind: 'scalar', name: 'string' };
-    const value: DtoTypeNode = typeArgs[1]?.value ?? { kind: 'scalar', name: 'unknown' };
+    const key: ContractTypeNode = typeArgs[0]?.value ?? { kind: 'scalar', name: 'string' };
+    const value: ContractTypeNode = typeArgs[1]?.value ?? { kind: 'scalar', name: 'unknown' };
     return { kind: 'record', key, value };
 }
 
-function buildEnumType(args: TypeArg[]): DtoTypeNode {
+function buildEnumType(args: TypeArg[]): ContractTypeNode {
     const values: string[] = [];
     for (const a of args) {
         if ('type' in a && a.type === 'type' && a.value.kind === 'ref') {
@@ -87,7 +87,7 @@ function buildEnumType(args: TypeArg[]): DtoTypeNode {
     return { kind: 'enum', values };
 }
 
-function buildLiteralType(args: TypeArg[]): DtoTypeNode {
+function buildLiteralType(args: TypeArg[]): ContractTypeNode {
     const arg = args[0];
     if (!arg) return { kind: 'literal', value: '' };
     if ('type' in arg) {
@@ -98,9 +98,9 @@ function buildLiteralType(args: TypeArg[]): DtoTypeNode {
     return { kind: 'literal', value: String('value' in arg ? arg.value : '') };
 }
 
-function buildLazyType(args: TypeArg[]): DtoTypeNode {
+function buildLazyType(args: TypeArg[]): ContractTypeNode {
     const typeArg = args.find((a): a is TypeArgType => 'type' in a && a.type === 'type');
-    const inner: DtoTypeNode = typeArg?.value ?? { kind: 'scalar', name: 'unknown' };
+    const inner: ContractTypeNode = typeArg?.value ?? { kind: 'scalar', name: 'unknown' };
     return { kind: 'lazy', inner };
 }
 
@@ -135,7 +135,7 @@ function buildScalarWithModifiers(name: ScalarTypeNode['name'], args: TypeArg[])
  * Extract nullability from a type node.
  * If the type is a union containing `null`, remove the null member and return nullable=true.
  */
-export function extractNullability(type: DtoTypeNode): { type: DtoTypeNode; nullable: boolean } {
+export function extractNullability(type: ContractTypeNode): { type: ContractTypeNode; nullable: boolean } {
     if (type.kind === 'union') {
         const union = type as UnionTypeNode;
         const nullIdx = union.members.findIndex(m => m.kind === 'scalar' && (m as ScalarTypeNode).name === 'null');
@@ -151,9 +151,9 @@ export function extractNullability(type: DtoTypeNode): { type: DtoTypeNode; null
 }
 
 /**
- * Convert a DtoTypeNode to ParamSource for query/headers blocks.
+ * Convert a ContractTypeNode to ParamSource for query/headers blocks.
  */
-export function typeNodeToParamSource(node: DtoTypeNode): import('./ast.js').ParamSource {
+export function typeNodeToParamSource(node: ContractTypeNode): import('./ast.js').ParamSource {
     if (node.kind === 'ref') return { kind: 'ref', name: node.name };
     if (node.kind === 'inlineObject') {
         return {

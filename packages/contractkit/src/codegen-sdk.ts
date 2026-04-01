@@ -1,4 +1,4 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, DtoTypeNode, ParamSource, FieldNode } from './ast.js';
+import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, ContractTypeNode, ParamSource, FieldNode } from './ast.js';
 import { resolveModifiers } from './ast.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { basename, dirname, relative } from 'path';
@@ -307,7 +307,7 @@ export function quoteKey(name: string): string {
 
 // ─── TypeScript type rendering ────────────────────────────────────────────
 
-export function renderTsType(type: DtoTypeNode): string {
+export function renderTsType(type: ContractTypeNode): string {
     switch (type.kind) {
         case 'scalar':
             return renderTsScalar(type.name);
@@ -384,7 +384,7 @@ function renderTsInlineObject(fields: FieldNode[]): string {
  * when the model has visibility modifiers. Used for request-side types
  * (body, params, query, headers).
  */
-export function renderInputTsType(type: DtoTypeNode, modelsWithInput?: Set<string>): string {
+export function renderInputTsType(type: ContractTypeNode, modelsWithInput?: Set<string>): string {
     if (!modelsWithInput || modelsWithInput.size === 0) return renderTsType(type);
     switch (type.kind) {
         case 'ref':
@@ -503,8 +503,8 @@ function collectParamSourceInputRefs(source: ParamSource | undefined, out: Set<s
     }
 }
 
-/** Collect Input variant refs for request-side DtoTypeNode types. */
-function collectInputTypeNodeRefs(type: DtoTypeNode, out: Set<string>, modelsWithInput?: Set<string>): void {
+/** Collect Input variant refs for request-side ContractTypeNode types. */
+function collectInputTypeNodeRefs(type: ContractTypeNode, out: Set<string>, modelsWithInput?: Set<string>): void {
     if (!modelsWithInput) return;
     switch (type.kind) {
         case 'ref':
@@ -560,7 +560,7 @@ function sdkNeedsJson(root: OpRootNode): boolean {
     return false;
 }
 
-function collectTypeNodeRefs(type: DtoTypeNode, out: Set<string>): void {
+function collectTypeNodeRefs(type: ContractTypeNode, out: Set<string>): void {
     switch (type.kind) {
         case 'ref':
             if (/^[A-Z]/.test(type.name)) out.add(type.name);

@@ -1,17 +1,17 @@
 import { parseCk } from '../src/parser.js';
 import { decomposeCk } from '../src/decompose.js';
-import { generateDto } from '../src/codegen-contract.js';
+import { generateContract } from '../src/codegen-contract.js';
 import { generateOp } from '../src/codegen-operation.js';
 import { validateOp } from '../src/validate-operation.js';
 import { validateRefs } from '../src/validate-refs.js';
 import { DiagnosticCollector } from '../src/diagnostics.js';
-import { SIMPLE_USER_DTO, VISIBILITY_DTO, INHERITANCE_DTO, SIMPLE_USERS_OP, PARAMETERIZED_OP } from './helpers.js';
+import { SIMPLE_USER_CONTRACT, VISIBILITY_CONTRACT, INHERITANCE_CONTRACT, SIMPLE_USERS_OP, PARAMETERIZED_OP } from './helpers.js';
 
-function compileDtoSource(source: string) {
+function compileContractSource(source: string) {
     const diag = new DiagnosticCollector();
     const ck = parseCk(source, 'test.ck', diag);
     const { dto } = decomposeCk(ck);
-    const output = generateDto(dto);
+    const output = generateContract(dto);
     return { root: dto, output, diag };
 }
 
@@ -23,9 +23,9 @@ function compileOpSource(source: string, file = 'users.ck') {
     return { root: op, output, diag };
 }
 
-describe('DTO pipeline (source -> parse -> codegen)', () => {
+describe('Contract pipeline (source -> parse -> codegen)', () => {
     it('compiles a simple DTO to valid Zod schema code', () => {
-        const { output, diag } = compileDtoSource(SIMPLE_USER_DTO);
+        const { output, diag } = compileContractSource(SIMPLE_USER_CONTRACT);
         expect(diag.hasErrors()).toBe(false);
         expect(output).toContain("import { z } from 'zod';");
         expect(output).toContain('id: z.uuid()');
@@ -36,7 +36,7 @@ describe('DTO pipeline (source -> parse -> codegen)', () => {
     });
 
     it('compiles a DTO with visibility to three-schema pattern', () => {
-        const { output, diag } = compileDtoSource(VISIBILITY_DTO);
+        const { output, diag } = compileContractSource(VISIBILITY_CONTRACT);
         expect(diag.hasErrors()).toBe(false);
         expect(output).toContain('const UserBase = z.strictObject({');
         expect(output).toContain('export const User = z.strictObject({');
@@ -52,7 +52,7 @@ describe('DTO pipeline (source -> parse -> codegen)', () => {
     });
 
     it('compiles a DTO with inheritance', () => {
-        const { output, diag } = compileDtoSource(INHERITANCE_DTO);
+        const { output, diag } = compileContractSource(INHERITANCE_CONTRACT);
         expect(diag.hasErrors()).toBe(false);
         expect(output).toContain('User.extend({');
         expect(output).toContain('z.enum(["admin", "superadmin"])');
@@ -70,7 +70,7 @@ contract Kitchen: {
     ref: Address
     children: lazy(Kitchen)
 }`;
-        const { output, diag } = compileDtoSource(source);
+        const { output, diag } = compileContractSource(source);
         expect(diag.hasErrors()).toBe(false);
         expect(output).toContain('z.array(z.string())');
         expect(output).toContain('z.tuple([z.coerce.number(), z.coerce.number()])');
@@ -88,7 +88,7 @@ contract Event: {
     startDate: date
     createdAt: datetime
 }`;
-        const { output } = compileDtoSource(source);
+        const { output } = compileContractSource(source);
         expect(output).toContain("import { DateTime } from 'luxon';");
     });
 });
@@ -200,7 +200,7 @@ describe('param type warnings', () => {
 
 describe('error handling pipeline', () => {
     it('reports diagnostics for invalid DTO source', () => {
-        const { diag } = compileDtoSource('Bad name: string');
+        const { diag } = compileContractSource('Bad name: string');
         expect(diag.hasErrors()).toBe(true);
     });
 

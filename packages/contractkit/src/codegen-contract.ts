@@ -1,9 +1,9 @@
 import { relative, dirname } from 'node:path';
 import type {
-    DtoRootNode,
+    ContractRootNode,
     ModelNode,
     FieldNode,
-    DtoTypeNode,
+    ContractTypeNode,
     ScalarTypeNode,
     ArrayTypeNode,
     TupleTypeNode,
@@ -31,7 +31,7 @@ export function modeToWrapper(mode: ObjectMode): string {
 
 // ─── Cross-file import resolution ─────────────────────────────────────────
 
-export interface DtoCodegenContext {
+export interface ContractCodegenContext {
     /** Map from model name → absolute output file path */
     modelOutPaths: Map<string, string>;
     /** Absolute output file path for the current DTO file */
@@ -105,7 +105,7 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
     return lines;
 }
 
-export function generateDto(root: DtoRootNode, context?: DtoCodegenContext): string {
+export function generateContract(root: ContractRootNode, context?: ContractCodegenContext): string {
     const needsDateTime = rootNeedsDateTime(root);
     const needsBinary = rootNeedsScalar(root, 'binary');
     const needsDatetime = rootNeedsScalar(root, 'datetime');
@@ -365,7 +365,7 @@ function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
 
 // ─── Type rendering ────────────────────────────────────────────────────────
 
-export function renderType(type: DtoTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
+export function renderType(type: ContractTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
     switch (type.kind) {
         case 'scalar':
             return renderScalar(type);
@@ -564,7 +564,7 @@ function renderInputScalar(s: ScalarTypeNode): string {
  * Used for Input (write) schema fields so that sub-type references also
  * point to their Input variants.
  */
-export function renderInputType(type: DtoTypeNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode): string {
+export function renderInputType(type: ContractTypeNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode): string {
     switch (type.kind) {
         case 'scalar':
             return renderInputScalar(type);
@@ -640,7 +640,7 @@ function renderInputFields(fields: FieldNode[], modelsWithInput: Set<string>, de
  * query strings where a single value arrives as a string instead of a string[].
  * Also uses Input variants for model refs when modelsWithInput is provided.
  */
-export function renderQueryType(type: DtoTypeNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode): string {
+export function renderQueryType(type: ContractTypeNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode): string {
     switch (type.kind) {
         case 'array': {
             const inner = modelsWithInput ? renderInputType(type, modelsWithInput, defaultMode) : renderType(type, undefined, defaultMode);
@@ -707,11 +707,11 @@ function escapeString(s: string): string {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function rootNeedsDateTime(root: DtoRootNode): boolean {
+function rootNeedsDateTime(root: ContractRootNode): boolean {
     return root.models.some(m => (m.type && typeNeedsDateTime(m.type)) || m.fields.some(f => typeNeedsDateTime(f.type)));
 }
 
-export function typeNeedsScalar(type: DtoTypeNode, name: string): boolean {
+export function typeNeedsScalar(type: ContractTypeNode, name: string): boolean {
     switch (type.kind) {
         case 'scalar':
             return type.name === name;
@@ -734,11 +734,11 @@ export function typeNeedsScalar(type: DtoTypeNode, name: string): boolean {
     }
 }
 
-export function rootNeedsScalar(root: DtoRootNode, name: string): boolean {
+export function rootNeedsScalar(root: ContractRootNode, name: string): boolean {
     return root.models.some(m => (m.type && typeNeedsScalar(m.type, name)) || m.fields.some(f => typeNeedsScalar(f.type, name)));
 }
 
-export function typeNeedsDateTime(type: DtoTypeNode): boolean {
+export function typeNeedsDateTime(type: ContractTypeNode): boolean {
     switch (type.kind) {
         case 'scalar':
             return type.name === 'date' || type.name === 'time' || type.name === 'datetime';
@@ -755,7 +755,7 @@ export function typeNeedsDateTime(type: DtoTypeNode): boolean {
     }
 }
 
-export function collectExternalRefs(root: DtoRootNode): string[] {
+export function collectExternalRefs(root: ContractRootNode): string[] {
     const localNames = new Set(root.models.map(m => m.name));
     const refs = new Set<string>();
 
@@ -772,7 +772,7 @@ export function collectExternalRefs(root: DtoRootNode): string[] {
 }
 
 /** Collect external Input variant refs needed for Input schema fields. */
-export function collectExternalInputRefs(root: DtoRootNode, modelsWithInput: Set<string>): string[] {
+export function collectExternalInputRefs(root: ContractRootNode, modelsWithInput: Set<string>): string[] {
     const localNames = new Set(root.models.map(m => m.name));
     const refs = new Set<string>();
 
@@ -802,7 +802,7 @@ export function collectExternalInputRefs(root: DtoRootNode, modelsWithInput: Set
     return [...refs].sort();
 }
 
-function collectInputTypeRefs(type: DtoTypeNode, out: Set<string>, modelsWithInput: Set<string>): void {
+function collectInputTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWithInput: Set<string>): void {
     switch (type.kind) {
         case 'ref':
             if (modelsWithInput.has(type.name)) out.add(`${type.name}Input`);
@@ -832,7 +832,7 @@ function collectInputTypeRefs(type: DtoTypeNode, out: Set<string>, modelsWithInp
     }
 }
 
-export function collectTypeRefs(type: DtoTypeNode, out: Set<string>): void {
+export function collectTypeRefs(type: ContractTypeNode, out: Set<string>): void {
     switch (type.kind) {
         case 'ref':
             out.add(type.name);
@@ -935,7 +935,7 @@ export function topoSortModels(models: ModelNode[]): ModelNode[] {
  * from the current file to the referenced model's output file.
  * Falls back to same-directory PascalCase → dot.case convention.
  */
-export function resolveImportPath(refName: string, context?: DtoCodegenContext): string {
+export function resolveImportPath(refName: string, context?: ContractCodegenContext): string {
     if (context) {
         const refOutPath = context.modelOutPaths.get(refName);
         if (refOutPath) {

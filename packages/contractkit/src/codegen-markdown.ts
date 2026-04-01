@@ -1,4 +1,4 @@
-import type { DtoRootNode, OpRootNode, OpRouteNode, OpOperationNode, DtoTypeNode, FieldNode, ModelNode, ParamSource, HttpMethod } from './ast.js';
+import type { ContractRootNode, OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, FieldNode, ModelNode, ParamSource, HttpMethod } from './ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
 import { renderTsType, collectPublicTypeNames } from './codegen-sdk.js';
 import { collectTypeRefs } from './codegen-contract.js';
@@ -6,13 +6,13 @@ import { collectTypeRefs } from './codegen-contract.js';
 // ─── Public entry point ────────────────────────────────────────────────────
 
 export interface MarkdownCodegenContext {
-    dtoRoots: DtoRootNode[];
+    contractRoots: ContractRootNode[];
     opRoots: OpRootNode[];
 }
 
 export function generateMarkdown(ctx: MarkdownCodegenContext): string {
-    const { dtoRoots, opRoots } = ctx;
-    const modelIndex = buildModelIndex(dtoRoots);
+    const { contractRoots, opRoots } = ctx;
+    const modelIndex = buildModelIndex(contractRoots);
     const lines: string[] = [];
 
     lines.push('# API Reference');
@@ -20,8 +20,8 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
 
     // ── Collect grouped data ─────────────────────────────────────
     const endpointGroups = groupEndpoints(opRoots);
-    const publicModels = computePubliclyReachableModels(opRoots, dtoRoots);
-    const modelGroups = groupModels(dtoRoots, publicModels);
+    const publicModels = computePubliclyReachableModels(opRoots, contractRoots);
+    const modelGroups = groupModels(contractRoots, publicModels);
 
     // ── Table of Contents ────────────────────────────────────────
     const hasEndpoints = endpointGroups.length > 0;
@@ -123,9 +123,9 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
 
 // ─── Model index ──────────────────────────────────────────────────────────
 
-function buildModelIndex(dtoRoots: DtoRootNode[]): Map<string, ModelNode> {
+function buildModelIndex(contractRoots: ContractRootNode[]): Map<string, ModelNode> {
     const index = new Map<string, ModelNode>();
-    for (const root of dtoRoots) {
+    for (const root of contractRoots) {
         for (const model of root.models) {
             index.set(model.name, model);
         }
@@ -208,7 +208,7 @@ function groupEndpoints(opRoots: OpRootNode[]): EndpointGroup[] {
  * transitively through model dependencies. Returns null when there are no .op files,
  * meaning all models should be shown.
  */
-function computePubliclyReachableModels(opRoots: OpRootNode[], dtoRoots: DtoRootNode[]): Set<string> | null {
+function computePubliclyReachableModels(opRoots: OpRootNode[], contractRoots: ContractRootNode[]): Set<string> | null {
     if (opRoots.length === 0) return null;
 
     // Seed with type names directly referenced by public ops
@@ -221,7 +221,7 @@ function computePubliclyReachableModels(opRoots: OpRootNode[], dtoRoots: DtoRoot
 
     // Build model → dependency map
     const modelDeps = new Map<string, Set<string>>();
-    for (const dtoRoot of dtoRoots) {
+    for (const dtoRoot of contractRoots) {
         for (const model of dtoRoot.models) {
             const deps = new Set<string>();
             if (model.base) deps.add(model.base);
@@ -246,11 +246,11 @@ function computePubliclyReachableModels(opRoots: OpRootNode[], dtoRoots: DtoRoot
     return reachable;
 }
 
-function groupModels(dtoRoots: DtoRootNode[], publicModels: Set<string> | null): ModelGroup[] {
+function groupModels(contractRoots: ContractRootNode[], publicModels: Set<string> | null): ModelGroup[] {
     const grouped = new Map<string, ModelNode[]>();
     const ungrouped: ModelNode[] = [];
 
-    for (const dtoRoot of dtoRoots) {
+    for (const dtoRoot of contractRoots) {
         const area = dtoRoot.meta?.area;
         for (const model of dtoRoot.models) {
             if (publicModels !== null && !publicModels.has(model.name)) continue;
@@ -469,7 +469,7 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
 
 interface AttributeEntry {
     name: string;
-    type: DtoTypeNode;
+    type: ContractTypeNode;
     required: boolean;
     description: string;
     source: 'path' | 'query' | 'header';
@@ -577,7 +577,7 @@ function renderFieldsTable(fields: FieldNode[], opts: FieldsTableOpts): string[]
  * E.g. "Accepts a [CreateUser](#createuser) object."
  *      "Returns a list of [User](#user) objects."
  */
-function typeProseLink(type: DtoTypeNode, verb: 'Accepts' | 'Returns'): string {
+function typeProseLink(type: ContractTypeNode, verb: 'Accepts' | 'Returns'): string {
     if (type.kind === 'ref') {
         return `${verb} a [${type.name}](#${anchor(type.name)}) object.`;
     }
@@ -655,7 +655,7 @@ function renderModel(model: ModelNode, nested: boolean): string[] {
 
 interface FlatParam {
     name: string;
-    type: DtoTypeNode;
+    type: ContractTypeNode;
     optional: boolean;
     description?: string;
 }
@@ -677,7 +677,7 @@ function flattenParamSource(source: ParamSource, modelIndex: Map<string, ModelNo
         }
         return [];
     }
-    // DtoTypeNode
+    // ContractTypeNode
     const node = source.node;
     if (node.kind === 'inlineObject') {
         return node.fields.map(f => ({
@@ -711,7 +711,7 @@ function flattenParamSource(source: ParamSource, modelIndex: Map<string, ModelNo
     return [];
 }
 
-function renderTypeWithLink(type: DtoTypeNode): string {
+function renderTypeWithLink(type: ContractTypeNode): string {
     if (type.kind === 'ref') {
         return `[${type.name}](#${anchor(type.name)})`;
     }

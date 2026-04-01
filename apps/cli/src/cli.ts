@@ -14,7 +14,7 @@ import {
     DiagnosticCollector,
     parseCk,
     decomposeCk,
-    generateDto,
+    generateContract,
     collectTypeRefs,
     generateOp,
     generateSdk,
@@ -30,7 +30,7 @@ import {
     validateOp,
     validateRefs,
 } from '@maroonedsoftware/contractkit';
-import type { DtoCodegenContext, DtoRootNode, OpRootNode, CkRootNode } from '@maroonedsoftware/contractkit';
+import type { ContractCodegenContext, ContractRootNode, OpRootNode, CkRootNode } from '@maroonedsoftware/contractkit';
 import { loadConfig, mergeConfig, isHmacScheme } from './config.js';
 import { loadCache, saveCache, computeHash, isFileChanged } from './cache.js';
 import type { ResolvedConfig } from './config.js';
@@ -296,7 +296,7 @@ function generateBarrelFiles(dtoPaths: string[]): { outPath: string; content: st
  *
  * Returns null when there are no operation files (no filtering should be applied).
  */
-function computePubliclyReachableTypes(opAsts: OpRootNode[], dtoAsts: DtoRootNode[], modelsWithInput: Set<string>): Set<string> | null {
+function computePubliclyReachableTypes(opAsts: OpRootNode[], dtoAsts: ContractRootNode[], modelsWithInput: Set<string>): Set<string> | null {
     if (opAsts.length === 0) return null;
 
     // Collect direct type refs from all public ops
@@ -387,9 +387,9 @@ async function main() {
 
         // ── Pass 1: Parse all .ck files ────────────────────────────────
         // allDtoInfo/allOpInfo track every file (even unchanged) for cross-file import resolution and SDK generation
-        const allDtoInfo: { ast: DtoRootNode; filePath: string; outPath: string }[] = [];
+        const allDtoInfo: { ast: ContractRootNode; filePath: string; outPath: string }[] = [];
         const allOpInfo: { ast: OpRootNode; filePath: string; outPath: string }[] = [];
-        const dtoRoots: { ast: DtoRootNode; filePath: string; outPath: string }[] = [];
+        const contractRoots: { ast: ContractRootNode; filePath: string; outPath: string }[] = [];
         const opRoots: { ast: OpRootNode; filePath: string; outPath: string }[] = [];
 
         for (const filePath of files) {
@@ -414,7 +414,7 @@ async function main() {
                 if (!config.force && !isFileChanged(filePath, source, typesOutPath, cache)) {
                     console.log(`  -  ${typesOutPath} (unchanged)`);
                 } else {
-                    dtoRoots.push({ ast: dto, filePath, outPath: typesOutPath });
+                    contractRoots.push({ ast: dto, filePath, outPath: typesOutPath });
                 }
             }
 
@@ -487,7 +487,7 @@ async function main() {
         if (depsChanged) {
             // Cross-file dependencies changed — regenerate all outputs
             for (const info of allDtoInfo) {
-                if (!dtoRoots.includes(info)) dtoRoots.push(info);
+                if (!contractRoots.includes(info)) contractRoots.push(info);
             }
             for (const info of allOpInfo) {
                 if (!opRoots.includes(info)) opRoots.push(info);
@@ -503,7 +503,7 @@ async function main() {
 
         // ── Pass 1.5: Cross-file validation ─────────────────────────
         validateRefs(
-            dtoRoots.map(r => r.ast),
+            contractRoots.map(r => r.ast),
             opRoots.map(r => r.ast),
             diag,
             allDtoInfo.map(r => r.ast),
@@ -512,8 +512,8 @@ async function main() {
         // ── Pass 2: Generate code ───────────────────────────────────
         const results: { outPath: string; content: string }[] = [];
 
-        for (const { ast, outPath } of dtoRoots) {
-            const content = generateDto(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput });
+        for (const { ast, outPath } of contractRoots) {
+            const content = generateContract(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput });
             results.push({ outPath, content });
         }
 
@@ -555,7 +555,7 @@ async function main() {
                 // Pass 1: register ALL model→outPath entries before generating any files,
                 // so cross-file references (e.g. CounterpartyAccount → FinancialInstitutionRoutingDetails)
                 // resolve correctly regardless of file iteration order.
-                const sdkDtoEntries: { ast: DtoRootNode; filePath: string; typeOutPath: string }[] = [];
+                const sdkDtoEntries: { ast: ContractRootNode; filePath: string; typeOutPath: string }[] = [];
                 for (const { ast, filePath } of allDtoInfo) {
                     const typeOutPath = computeSdkTypeOutPath(filePath, sdkBase, config.sdk.types.output, commonRoot, ast.meta);
                     if (!typeOutPath) continue;
@@ -723,7 +723,7 @@ async function main() {
                     ? Object.fromEntries(Object.entries(config.security.schemes).filter(([, v]) => !isHmacScheme(v)))
                     : undefined;
                 const openapiContent = generateOpenApi({
-                    dtoRoots: allDtoInfo.map(d => d.ast),
+                    contractRoots: allDtoInfo.map(d => d.ast),
                     opRoots: allOpInfo.map(o => o.ast),
                     config: openapiConfig,
                     securitySchemes: openapiSchemes,
@@ -754,7 +754,7 @@ async function main() {
                 console.log(`  -  ${mdOutPath} (unchanged)`);
             } else {
                 const mdContent = generateMarkdown({
-                    dtoRoots: allDtoInfo.map(d => d.ast),
+                    contractRoots: allDtoInfo.map(d => d.ast),
                     opRoots: allOpInfo.map(o => o.ast),
                 });
                 results.push({ outPath: mdOutPath, content: mdContent });

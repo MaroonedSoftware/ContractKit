@@ -1,9 +1,9 @@
-import type { DtoTypeNode, FieldNode, InlineObjectTypeNode } from '@maroonedsoftware/contractkit';
+import type { ContractTypeNode, FieldNode, InlineObjectTypeNode } from '@maroonedsoftware/contractkit';
 import { INDENT } from './indent.js';
 
 // ─── Type expression printer ────────────────────────────────────────────────
 
-export function printType(type: DtoTypeNode): string {
+export function printType(type: ContractTypeNode): string {
     switch (type.kind) {
         case 'scalar': {
             const constraints: string[] = [];
@@ -108,7 +108,7 @@ export function formatDefault(val: string | number | boolean): string {
  * return the prefix type string and the inline object for expanded printing.
  * Returns null if the type doesn't end with an inline object.
  */
-export function extractTrailingInlineObject(type: DtoTypeNode): {
+export function extractTrailingInlineObject(type: ContractTypeNode): {
     prefix: string | null;
     inlineObj: InlineObjectTypeNode;
 } | null {

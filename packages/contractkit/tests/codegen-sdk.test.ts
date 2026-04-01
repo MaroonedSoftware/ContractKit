@@ -854,7 +854,7 @@ describe('generateSdk — path param shapes', () => {
         expect(out).toContain('params: ThingParamsInput');
     });
 
-    it('handles DtoTypeNode-typed route params', () => {
+    it('handles ContractTypeNode-typed route params', () => {
         const root = opRoot([
             opRoute(
                 '/things/{id}',
@@ -878,7 +878,7 @@ describe('generateSdk — headers shapes', () => {
         expect(out).toContain('customHeaders?: AuthHeaders');
     });
 
-    it('handles DtoTypeNode-typed headers', () => {
+    it('handles ContractTypeNode-typed headers', () => {
         const root = opRoot([
             opRoute('/users', [
                 opOperation('get', {
@@ -892,7 +892,7 @@ describe('generateSdk — headers shapes', () => {
         expect(out).toContain('customHeaders?: { authorization: string }');
     });
 
-    it('handles DtoTypeNode-typed query', () => {
+    it('handles ContractTypeNode-typed query', () => {
         const root = opRoot([
             opRoute('/users', [
                 opOperation('get', {

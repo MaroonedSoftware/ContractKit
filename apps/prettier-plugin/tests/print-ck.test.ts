@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { printCk } from '../src/print-ck.js';
-import type { OpRouteNode, OpOperationNode, CkRootNode, SecurityFields, ParamSource, DtoTypeNode, OpParamNode } from '@maroonedsoftware/contractkit';
+import type { OpRouteNode, OpOperationNode, CkRootNode, SecurityFields, ParamSource, ContractTypeNode, OpParamNode } from '@maroonedsoftware/contractkit';
 
 // ─── Minimal AST builders ────────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@ function normalizeParamSource(value: any): ParamSource {
     if (typeof value === 'string') return { kind: 'ref', name: value };
     if (Array.isArray(value)) return { kind: 'params', nodes: value as OpParamNode[] };
     if (value.kind === 'params' || value.kind === 'ref' || value.kind === 'type') return value as ParamSource;
-    return { kind: 'type', node: value as DtoTypeNode };
+    return { kind: 'type', node: value as ContractTypeNode };
 }
 
 function makeOp(method: OpOperationNode['method'], overrides?: Partial<OpOperationNode> & { query?: unknown; headers?: unknown }): OpOperationNode {

@@ -2,7 +2,7 @@ import type {
     CkRootNode,
     ModelNode,
     FieldNode,
-    DtoTypeNode,
+    ContractTypeNode,
     ScalarTypeNode,
     ArrayTypeNode,
     TupleTypeNode,
@@ -36,15 +36,15 @@ export function scalarType(name: ScalarTypeNode['name'], mods?: Partial<ScalarTy
     return { kind: 'scalar', name, ...mods };
 }
 
-export function arrayType(item: DtoTypeNode, mods?: { min?: number; max?: number }): ArrayTypeNode {
+export function arrayType(item: ContractTypeNode, mods?: { min?: number; max?: number }): ArrayTypeNode {
     return { kind: 'array', item, ...mods };
 }
 
-export function tupleType(...items: DtoTypeNode[]): TupleTypeNode {
+export function tupleType(...items: ContractTypeNode[]): TupleTypeNode {
     return { kind: 'tuple', items };
 }
 
-export function recordType(key: DtoTypeNode, value: DtoTypeNode): RecordTypeNode {
+export function recordType(key: ContractTypeNode, value: ContractTypeNode): RecordTypeNode {
     return { kind: 'record', key, value };
 }
 
@@ -56,11 +56,11 @@ export function literalType(value: string | number | boolean): LiteralTypeNode {
     return { kind: 'literal', value };
 }
 
-export function unionType(...members: DtoTypeNode[]): UnionTypeNode {
+export function unionType(...members: ContractTypeNode[]): UnionTypeNode {
     return { kind: 'union', members };
 }
 
-export function intersectionType(...members: DtoTypeNode[]): IntersectionTypeNode {
+export function intersectionType(...members: ContractTypeNode[]): IntersectionTypeNode {
     return { kind: 'intersection', members };
 }
 
@@ -72,11 +72,11 @@ export function inlineObjectType(fields: FieldNode[]): InlineObjectTypeNode {
     return { kind: 'inlineObject', fields };
 }
 
-export function lazyType(inner: DtoTypeNode): LazyTypeNode {
+export function lazyType(inner: ContractTypeNode): LazyTypeNode {
     return { kind: 'lazy', inner };
 }
 
-export function field(name: string, type: DtoTypeNode, overrides?: Partial<FieldNode>): FieldNode {
+export function field(name: string, type: ContractTypeNode, overrides?: Partial<FieldNode>): FieldNode {
     return {
         name,
         optional: false,
@@ -110,15 +110,15 @@ export function ckRoot(overrides?: Partial<CkRootNode>): CkRootNode {
     };
 }
 
-export function opParam(name: string, type: DtoTypeNode, overrides?: Partial<OpParamNode>): OpParamNode {
+export function opParam(name: string, type: ContractTypeNode, overrides?: Partial<OpParamNode>): OpParamNode {
     return { name, optional: false, nullable: false, type, loc: loc(), ...overrides };
 }
 
-export function opRequest(bodyType: DtoTypeNode, contentType: string = 'application/json'): OpRequestNode {
+export function opRequest(bodyType: ContractTypeNode, contentType: string = 'application/json'): OpRequestNode {
     return { contentType: contentType as OpRequestNode['contentType'], bodyType };
 }
 
-export function opResponse(statusCode: number, bodyType?: DtoTypeNode, contentType?: 'application/json'): OpResponseNode {
+export function opResponse(statusCode: number, bodyType?: ContractTypeNode, contentType?: 'application/json'): OpResponseNode {
     return { statusCode, contentType, bodyType };
 }
 
@@ -129,7 +129,7 @@ function normalizeParamSource(value: any): ParamSource {
     if (typeof value === 'string') return { kind: 'ref', name: value };
     if (Array.isArray(value)) return { kind: 'params', nodes: value };
     if (value.kind === 'params' || value.kind === 'ref' || value.kind === 'type') return value as ParamSource;
-    return { kind: 'type', node: value as DtoTypeNode };
+    return { kind: 'type', node: value as ContractTypeNode };
 }
 
 export function opOperation(method: HttpMethod, overrides?: Partial<OpOperationNode> & { query?: unknown; headers?: unknown }): OpOperationNode {

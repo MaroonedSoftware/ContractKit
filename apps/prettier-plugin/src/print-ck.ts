@@ -1,6 +1,6 @@
 import type { CkRootNode } from '@maroonedsoftware/contractkit';
-import { printModelDecl } from './print-dto.js';
-import { printRoute, printSecurity, groupComments, type CommentBlock } from './print-op.js';
+import { printModelDecl } from './print-contract.js';
+import { printRoute, printSecurity, groupComments, type CommentBlock } from './print-operation.js';
 import { INDENT } from './indent.js';
 
 // ─── Options block ──────────────────────────────────────────────────────────

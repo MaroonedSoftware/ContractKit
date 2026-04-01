@@ -21,7 +21,7 @@ export function validateOp(root: OpRootNode, diag: DiagnosticCollector): void {
                 diag.warn(root.file, route.loc.line, `Path parameter '{${name}}' is not explicitly defined in a params block`);
             }
         } else if (route.params.kind === 'ref' || route.params.kind === 'type') {
-            // Type-reference or DtoTypeNode form — all params are covered by the type
+            // Type-reference or ContractTypeNode form — all params are covered by the type
             continue;
         } else {
             // Block form — check each path param is declared

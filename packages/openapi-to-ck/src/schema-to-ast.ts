@@ -1,4 +1,4 @@
-import type { DtoTypeNode, ScalarTypeNode, ModelNode, FieldNode, SourceLocation } from '@maroonedsoftware/contractkit';
+import type { ContractTypeNode, ScalarTypeNode, ModelNode, FieldNode, SourceLocation } from '@maroonedsoftware/contractkit';
 import type { NormalizedSchema } from './types.js';
 import { extractRefName } from './circular-refs.js';
 import type { WarningCollector } from './warnings.js';
@@ -113,9 +113,9 @@ function schemaToModel(name: string, schema: NormalizedSchema, ctx: SchemaContex
 }
 
 /**
- * Convert an OpenAPI schema to a DtoTypeNode.
+ * Convert an OpenAPI schema to a ContractTypeNode.
  */
-export function schemaToTypeNode(schema: NormalizedSchema, ctx: SchemaContext): DtoTypeNode {
+export function schemaToTypeNode(schema: NormalizedSchema, ctx: SchemaContext): ContractTypeNode {
     // $ref
     if (schema.$ref) {
         const refName = extractRefName(schema.$ref);
@@ -171,7 +171,7 @@ export function schemaToTypeNode(schema: NormalizedSchema, ctx: SchemaContext): 
 
     const { baseType, nullable } = types;
 
-    let typeNode: DtoTypeNode;
+    let typeNode: ContractTypeNode;
 
     switch (baseType) {
         case 'string':
@@ -209,7 +209,7 @@ export function schemaToTypeNode(schema: NormalizedSchema, ctx: SchemaContext): 
 
 // ─── Type-Specific Converters ─────────────────────────────────────────────
 
-function stringSchemaToType(schema: NormalizedSchema): DtoTypeNode {
+function stringSchemaToType(schema: NormalizedSchema): ContractTypeNode {
     // Check format first
     if (schema.format) {
         const scalarName = FORMAT_TO_SCALAR[schema.format];
@@ -231,7 +231,7 @@ function stringSchemaToType(schema: NormalizedSchema): DtoTypeNode {
     return { kind: 'scalar', name: 'string', ...mods };
 }
 
-function integerSchemaToType(schema: NormalizedSchema): DtoTypeNode {
+function integerSchemaToType(schema: NormalizedSchema): ContractTypeNode {
     const name: ScalarTypeNode['name'] = schema.format === 'int64' ? 'bigint' : 'int';
     const mods: Partial<ScalarTypeNode> = {};
     if (schema.minimum !== undefined) mods.min = schema.minimum;
@@ -239,14 +239,14 @@ function integerSchemaToType(schema: NormalizedSchema): DtoTypeNode {
     return { kind: 'scalar', name, ...mods };
 }
 
-function numberSchemaToType(schema: NormalizedSchema): DtoTypeNode {
+function numberSchemaToType(schema: NormalizedSchema): ContractTypeNode {
     const mods: Partial<ScalarTypeNode> = {};
     if (schema.minimum !== undefined) mods.min = schema.minimum;
     if (schema.maximum !== undefined) mods.max = schema.maximum;
     return { kind: 'scalar', name: 'number', ...mods };
 }
 
-function arraySchemaToType(schema: NormalizedSchema, ctx: SchemaContext): DtoTypeNode {
+function arraySchemaToType(schema: NormalizedSchema, ctx: SchemaContext): ContractTypeNode {
     // Tuple: prefixItems (OAS 3.1)
     if (schema.prefixItems && schema.prefixItems.length > 0) {
         return {
@@ -263,7 +263,7 @@ function arraySchemaToType(schema: NormalizedSchema, ctx: SchemaContext): DtoTyp
     return { kind: 'array', item, ...mods };
 }
 
-function objectSchemaToType(schema: NormalizedSchema, ctx: SchemaContext): DtoTypeNode {
+function objectSchemaToType(schema: NormalizedSchema, ctx: SchemaContext): ContractTypeNode {
     // Record type: additionalProperties with no named properties
     if (schema.additionalProperties && typeof schema.additionalProperties === 'object' && !schema.properties) {
         return {
@@ -282,7 +282,7 @@ function objectSchemaToType(schema: NormalizedSchema, ctx: SchemaContext): DtoTy
     return { kind: 'scalar', name: 'object' };
 }
 
-function schemaToInlineObject(schema: NormalizedSchema, ctx: SchemaContext): DtoTypeNode {
+function schemaToInlineObject(schema: NormalizedSchema, ctx: SchemaContext): ContractTypeNode {
     const fields = schemaPropertiesToFields(schema, ctx);
     return { kind: 'inlineObject', fields };
 }
@@ -354,7 +354,7 @@ function normalizeTypeField(schema: NormalizedSchema): { baseType: string; nulla
     return null;
 }
 
-function toUnion(schemas: NormalizedSchema[], ctx: SchemaContext): DtoTypeNode {
+function toUnion(schemas: NormalizedSchema[], ctx: SchemaContext): ContractTypeNode {
     const members = schemas.map(s => schemaToTypeNode(s, ctx));
     if (members.length === 1) return members[0]!;
     return { kind: 'union', members };
@@ -374,7 +374,7 @@ export function extractInlineModel(
     schema: NormalizedSchema,
     suggestedName: string,
     ctx: SchemaContext,
-): { typeNode: DtoTypeNode; model?: ModelNode } {
+): { typeNode: ContractTypeNode; model?: ModelNode } {
     // If it's a $ref, just use the ref
     if (schema.$ref) {
         return { typeNode: schemaToTypeNode(schema, ctx) };

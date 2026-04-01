@@ -24,9 +24,9 @@ export const SCALAR_NAMES: ReadonlySet<string> = new Set<ScalarTypeNode['name']>
     'json',
 ]);
 
-// ─── Contracts AST (.dto) ──────────────────────────────────────────────────
+// ─── Contracts AST (.ck) ──────────────────────────────────────────────────
 
-export type DtoTypeNode =
+export type ContractTypeNode =
     | ScalarTypeNode
     | ArrayTypeNode
     | TupleTypeNode
@@ -67,20 +67,20 @@ export interface ScalarTypeNode {
 
 export interface ArrayTypeNode {
     kind: 'array';
-    item: DtoTypeNode;
+    item: ContractTypeNode;
     min?: number;
     max?: number;
 }
 
 export interface TupleTypeNode {
     kind: 'tuple';
-    items: DtoTypeNode[];
+    items: ContractTypeNode[];
 }
 
 export interface RecordTypeNode {
     kind: 'record';
-    key: DtoTypeNode;
-    value: DtoTypeNode;
+    key: ContractTypeNode;
+    value: ContractTypeNode;
 }
 
 export interface EnumTypeNode {
@@ -95,7 +95,7 @@ export interface LiteralTypeNode {
 
 export interface UnionTypeNode {
     kind: 'union';
-    members: DtoTypeNode[];
+    members: ContractTypeNode[];
 }
 
 export interface ModelRefTypeNode {
@@ -112,12 +112,12 @@ export interface InlineObjectTypeNode {
 
 export interface IntersectionTypeNode {
     kind: 'intersection';
-    members: DtoTypeNode[];
+    members: ContractTypeNode[];
 }
 
 export interface LazyTypeNode {
     kind: 'lazy';
-    inner: DtoTypeNode;
+    inner: ContractTypeNode;
 }
 
 export interface FieldNode {
@@ -125,7 +125,7 @@ export interface FieldNode {
     optional: boolean;
     nullable: boolean;
     visibility: 'readonly' | 'writeonly' | 'normal';
-    type: DtoTypeNode;
+    type: ContractTypeNode;
     default?: string | number | boolean;
     deprecated?: boolean;
     description?: string;
@@ -137,7 +137,7 @@ export interface ModelNode {
     name: string;
     base?: string;
     fields: FieldNode[];
-    type?: DtoTypeNode; // type alias: Name: typeExpression (fields will be empty)
+    type?: ContractTypeNode; // type alias: Name: typeExpression (fields will be empty)
     mode?: ObjectMode; // object validation mode — defaults to 'strict'
     inputCase?: 'camel' | 'snake' | 'pascal'; // format(input=) — key casing of incoming data
     outputCase?: 'camel' | 'snake' | 'pascal'; // format(output=) — key casing of emitted data
@@ -146,8 +146,8 @@ export interface ModelNode {
     loc: SourceLocation;
 }
 
-export interface DtoRootNode {
-    kind: 'dtoRoot';
+export interface ContractRootNode {
+    kind: 'contractRoot';
     meta: Record<string, string>;
     /** Service name → module path mappings from `options { services { ... } }`. */
     services?: Record<string, string>;
@@ -188,24 +188,24 @@ export interface OpParamNode {
     name: string;
     optional: boolean;
     nullable: boolean;
-    type: DtoTypeNode;
+    type: ContractTypeNode;
     default?: string | number | boolean;
     description?: string;
     loc: SourceLocation;
 }
 
-/** Either inline param declarations, a single type reference name, or a DtoTypeNode. */
-export type ParamSource = { kind: 'params'; nodes: OpParamNode[] } | { kind: 'ref'; name: string } | { kind: 'type'; node: DtoTypeNode };
+/** Either inline param declarations, a single type reference name, or a ContractTypeNode. */
+export type ParamSource = { kind: 'params'; nodes: OpParamNode[] } | { kind: 'ref'; name: string } | { kind: 'type'; node: ContractTypeNode };
 
 export interface OpRequestNode {
     contentType: 'application/json' | 'multipart/form-data';
-    bodyType: DtoTypeNode;
+    bodyType: ContractTypeNode;
 }
 
 export interface OpResponseNode {
     statusCode: number;
     contentType?: 'application/json';
-    bodyType?: DtoTypeNode;
+    bodyType?: ContractTypeNode;
 }
 
 export interface OpOperationNode {

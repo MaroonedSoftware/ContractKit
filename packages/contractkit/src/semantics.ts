@@ -10,7 +10,7 @@ import type {
     OpParamNode,
     OpRequestNode,
     OpResponseNode,
-    DtoTypeNode,
+    ContractTypeNode,
     FieldNode,
     ParamSource,
     SecurityNode,
@@ -248,7 +248,7 @@ export function createSemantics(grammar: Grammar) {
         },
 
         ModelBody_alias(typeExprNode, inlineCommentOpt) {
-            const type = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+            const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
             const inlineDescription =
                 (inlineCommentOpt as IterationNode).numChildren > 0
                     ? (inlineCommentOpt as IterationNode).child(0).sourceString.replace(/^#\s?/, '').trimEnd()
@@ -304,7 +304,7 @@ export function createSemantics(grammar: Grammar) {
             const line = getLine(nameNode);
             const optional = questionOpt.sourceString === '?';
             const body = bodyNode.toAst(file, this.args.diag) as {
-                type: DtoTypeNode;
+                type: ContractTypeNode;
                 visibility: 'readonly' | 'writeonly' | 'normal';
                 deprecated?: boolean;
                 default?: string | number | boolean;
@@ -317,7 +317,7 @@ export function createSemantics(grammar: Grammar) {
 
         FieldBody_depWithVisibility(_depKw, visNode, typeExprNode, _eqOpt, defaultValOpt) {
             const vis = visNode.sourceString.trim() as 'readonly' | 'writeonly';
-            const type = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+            const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
             let defaultVal: string | number | boolean | undefined;
             if ((defaultValOpt as IterationNode).numChildren > 0) {
                 defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
@@ -327,7 +327,7 @@ export function createSemantics(grammar: Grammar) {
 
         FieldBody_visibilityDep(visNode, _depKw, typeExprNode, _eqOpt, defaultValOpt) {
             const vis = visNode.sourceString.trim() as 'readonly' | 'writeonly';
-            const type = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+            const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
             let defaultVal: string | number | boolean | undefined;
             if ((defaultValOpt as IterationNode).numChildren > 0) {
                 defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
@@ -336,7 +336,7 @@ export function createSemantics(grammar: Grammar) {
         },
 
         FieldBody_depPlain(_depKw, typeExprNode, _eqOpt, defaultValOpt) {
-            const type = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+            const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
             let defaultVal: string | number | boolean | undefined;
             if ((defaultValOpt as IterationNode).numChildren > 0) {
                 defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
@@ -346,7 +346,7 @@ export function createSemantics(grammar: Grammar) {
 
         FieldBody_withVisibility(visNode, typeExprNode, _eqOpt, defaultValOpt) {
             const vis = visNode.sourceString.trim() as 'readonly' | 'writeonly';
-            const type = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+            const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
             let defaultVal: string | number | boolean | undefined;
             if ((defaultValOpt as IterationNode).numChildren > 0) {
                 defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
@@ -355,7 +355,7 @@ export function createSemantics(grammar: Grammar) {
         },
 
         FieldBody_plain(typeExprNode, _eqOpt, defaultValOpt) {
-            const type = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+            const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
             let defaultVal: string | number | boolean | undefined;
             if ((defaultValOpt as IterationNode).numChildren > 0) {
                 defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
@@ -367,24 +367,24 @@ export function createSemantics(grammar: Grammar) {
 
         TypeExpression(firstNode, _pipes, restNodes) {
             const file = this.args.file;
-            const first = firstNode.toAst(file, this.args.diag) as DtoTypeNode;
-            const rest: DtoTypeNode[] = [];
+            const first = firstNode.toAst(file, this.args.diag) as ContractTypeNode;
+            const rest: ContractTypeNode[] = [];
             for (let i = 0; i < restNodes.numChildren; i++) {
                 rest.push(restNodes.child(i).toAst(file, this.args.diag));
             }
             if (rest.length === 0) return first;
-            return { kind: 'union', members: [first, ...rest] } as DtoTypeNode;
+            return { kind: 'union', members: [first, ...rest] } as ContractTypeNode;
         },
 
         IntersectionExpr(firstNode, _amps, restNodes) {
             const file = this.args.file;
-            const first = firstNode.toAst(file, this.args.diag) as DtoTypeNode;
-            const rest: DtoTypeNode[] = [];
+            const first = firstNode.toAst(file, this.args.diag) as ContractTypeNode;
+            const rest: ContractTypeNode[] = [];
             for (let i = 0; i < restNodes.numChildren; i++) {
                 rest.push(restNodes.child(i).toAst(file, this.args.diag));
             }
             if (rest.length === 0) return first;
-            return { kind: 'intersection', members: [first, ...rest] } as DtoTypeNode;
+            return { kind: 'intersection', members: [first, ...rest] } as ContractTypeNode;
         },
 
         SingleType_modedObject(modeNode, objNode) {
@@ -489,7 +489,7 @@ export function createSemantics(grammar: Grammar) {
             const line = getLine(nameNode);
             const optional = questionOpt.sourceString === '?';
             const body = bodyNode.toAst(file, this.args.diag) as {
-                type: DtoTypeNode;
+                type: ContractTypeNode;
                 visibility: 'readonly' | 'writeonly' | 'normal';
                 deprecated?: boolean;
                 default?: string | number | boolean;
@@ -788,7 +788,7 @@ export function createSemantics(grammar: Grammar) {
                 const m = modeText.match(/^mode\((\w+)\)$/);
                 mode = (m ? m[1] : modeText) as ObjectMode;
             }
-            const typeNode = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+            const typeNode = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
             return { _type: 'query', source: typeNodeToParamSource(typeNode), mode };
         },
 
@@ -799,14 +799,14 @@ export function createSemantics(grammar: Grammar) {
                 const m = modeText.match(/^mode\((\w+)\)$/);
                 mode = (m ? m[1] : modeText) as ObjectMode;
             }
-            const typeNode = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+            const typeNode = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
             return { _type: 'headers', source: typeNodeToParamSource(typeNode), mode };
         },
 
         // ─── Request & Response ───────────────────────────────────────
 
         RequestBlock(_requestKw, _colon, _lb, ctLineNode, _rb) {
-            const ctLine = ctLineNode.toAst(this.args.file, this.args.diag) as { contentType: string; bodyType: DtoTypeNode };
+            const ctLine = ctLineNode.toAst(this.args.file, this.args.diag) as { contentType: string; bodyType: ContractTypeNode };
             const ct = ctLine.contentType.toLowerCase().includes('multipart') ? ('multipart/form-data' as const) : ('application/json' as const);
             return { _type: 'request', value: { contentType: ct, bodyType: ctLine.bodyType } as OpRequestNode };
         },
@@ -827,12 +827,12 @@ export function createSemantics(grammar: Grammar) {
         StatusCodeBlock(codeNode, _colon, _lbOpt, ctLineOpt, _rbOpt) {
             const statusCode = parseInt(codeNode.sourceString, 10);
             let contentType: 'application/json' | undefined;
-            let bodyType: DtoTypeNode | undefined;
+            let bodyType: ContractTypeNode | undefined;
 
             if ((ctLineOpt as IterationNode).numChildren > 0) {
                 const ctLine = (ctLineOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag) as {
                     contentType: string;
-                    bodyType: DtoTypeNode;
+                    bodyType: ContractTypeNode;
                 };
                 contentType = 'application/json';
                 bodyType = ctLine.bodyType;
@@ -843,7 +843,7 @@ export function createSemantics(grammar: Grammar) {
 
         ContentTypeLine(part1Node, _slash, part2Node, _colon, typeExprNode) {
             const contentType = part1Node.sourceString + '/' + part2Node.sourceString;
-            const bodyType = typeExprNode.toAst(this.args.file, this.args.diag) as DtoTypeNode;
+            const bodyType = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
             return { contentType, bodyType };
         },
 

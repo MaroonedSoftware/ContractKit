@@ -1,4 +1,4 @@
-import type { CkRootNode, ModelNode, OpRouteNode, DtoTypeNode } from '@maroonedsoftware/contractkit';
+import type { CkRootNode, ModelNode, OpRouteNode, ContractTypeNode } from '@maroonedsoftware/contractkit';
 
 /**
  * Split models and routes into per-tag CkRootNode instances.
@@ -138,17 +138,17 @@ function collectParamSourceRefs(source: unknown, refs: Set<string>): void {
     if (Array.isArray(source)) {
         for (const param of source) {
             if (param && typeof param === 'object' && 'type' in param) {
-                collectTypeRefs(param.type as DtoTypeNode, refs);
+                collectTypeRefs(param.type as ContractTypeNode, refs);
             }
         }
         return;
     }
     if (source && typeof source === 'object' && 'kind' in source) {
-        collectTypeRefs(source as DtoTypeNode, refs);
+        collectTypeRefs(source as ContractTypeNode, refs);
     }
 }
 
-function collectTypeRefs(type: DtoTypeNode, refs: Set<string>): void {
+function collectTypeRefs(type: ContractTypeNode, refs: Set<string>): void {
     switch (type.kind) {
         case 'ref':
             refs.add(type.name);

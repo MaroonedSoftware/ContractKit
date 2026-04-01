@@ -1,7 +1,7 @@
 import { Hover, MarkupKind, TextDocumentPositionParams } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { WorkspaceIndex } from './workspace-index.js';
-import type { DtoTypeNode, FieldNode, ModelNode } from '@maroonedsoftware/contractkit';
+import type { ContractTypeNode, FieldNode, ModelNode } from '@maroonedsoftware/contractkit';
 
 const SECURITY_SCHEME_DOCS: Record<string, string> = {
     bearer: 'Bearer token authentication\n\nAdds an `Authorization: Bearer <token>` header. Resolved at runtime via `securityHandler` in `SdkOptions`.',
@@ -94,7 +94,7 @@ function formatField(field: FieldNode): string {
     return parts.join('');
 }
 
-function formatType(type: DtoTypeNode): string {
+function formatType(type: ContractTypeNode): string {
     switch (type.kind) {
         case 'scalar': {
             const constraints: string[] = [];

@@ -5,7 +5,7 @@ import type {
     ParamSource,
     SecurityNode,
     SecurityFields,
-    DtoTypeNode,
+    ContractTypeNode,
     ObjectMode,
 } from '@maroonedsoftware/contractkit';
 import { SECURITY_NONE } from '@maroonedsoftware/contractkit';
@@ -98,7 +98,7 @@ function printParamsBlock(source: ParamSource, indent: string, mode?: ObjectMode
         lines.push(`${indent}}`);
         return lines;
     }
-    // DtoTypeNode
+    // ContractTypeNode
     return [`${indent}${prefix}params: ${printType(source.node)}`];
 }
 
@@ -174,14 +174,14 @@ function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource, 
         lines.push(`${I2}}`);
         return lines;
     }
-    // DtoTypeNode (e.g. intersection)
+    // ContractTypeNode (e.g. intersection)
     return [`${I2}${prefix}${keyword}: ${printType(source.node)}`];
 }
 
 // ─── Content-type line ───────────────────────────────────────────────────────
 
 /** Print a `contentType: bodyType` line, expanding inline brace objects onto separate lines. */
-function printContentTypeLine(contentType: string, bodyType: DtoTypeNode, lineIndent: string): string[] {
+function printContentTypeLine(contentType: string, bodyType: ContractTypeNode, lineIndent: string): string[] {
     if (bodyType.kind === 'inlineObject') {
         const fieldIndent = lineIndent + INDENT;
         const lines: string[] = [`${lineIndent}${contentType}: {`];

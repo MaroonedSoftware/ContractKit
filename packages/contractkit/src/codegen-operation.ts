@@ -1,4 +1,4 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, DtoTypeNode, ParamSource, ObjectMode } from './ast.js';
+import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, ContractTypeNode, ParamSource, ObjectMode } from './ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
 import {
     renderType,
@@ -231,7 +231,7 @@ function inferMethodName(method: string, path: string): string {
 
 function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
     const args: string[] = [];
-    // Path params: spread individually (inline) or pass 'params' object (type-ref/DtoTypeNode)
+    // Path params: spread individually (inline) or pass 'params' object (type-ref/ContractTypeNode)
     if (route.params) {
         if (route.params.kind === 'params') {
             args.push(...route.params.nodes.map(p => p.name));
@@ -250,7 +250,7 @@ function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
     return args.join(', ');
 }
 
-function formatTypeAnnotation(bodyType: DtoTypeNode): { annotation: string; prelude?: string } {
+function formatTypeAnnotation(bodyType: ContractTypeNode): { annotation: string; prelude?: string } {
     if (bodyType.kind === 'array') {
         const inner = formatTypeAnnotation(bodyType.item);
         return { annotation: `${inner.annotation}[]`, prelude: inner.prelude };
@@ -304,7 +304,7 @@ function generateParamValidation(
             lines.push('');
         }
     } else {
-        // DtoTypeNode — use query-aware rendering for query params (coerces single string → array),
+        // ContractTypeNode — use query-aware rendering for query params (coerces single string → array),
         // otherwise use Input variant rendering; apply mode as a method call
         const schema = isQuery ? renderQueryType(source.node, modelsWithInput) : renderInputType(source.node, modelsWithInput);
         lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, (${schema}).${mode}());`);
@@ -411,8 +411,8 @@ function collectParamSourceInputRefs(source: ParamSource | undefined, out: Set<s
     }
 }
 
-/** Collect Input variant refs for request-side DtoTypeNode types. */
-function collectInputTypeNodeRefs(type: DtoTypeNode, out: Set<string>, modelsWithInput?: Set<string>): void {
+/** Collect Input variant refs for request-side ContractTypeNode types. */
+function collectInputTypeNodeRefs(type: ContractTypeNode, out: Set<string>, modelsWithInput?: Set<string>): void {
     if (!modelsWithInput) return;
     switch (type.kind) {
         case 'ref':
@@ -424,7 +424,7 @@ function collectInputTypeNodeRefs(type: DtoTypeNode, out: Set<string>, modelsWit
     }
 }
 
-function collectTypeNodeRefs(type: DtoTypeNode, out: Set<string>): void {
+function collectTypeNodeRefs(type: ContractTypeNode, out: Set<string>): void {
     switch (type.kind) {
         case 'ref':
             if (/^[A-Z]/.test(type.name)) out.add(type.name);

@@ -5,7 +5,7 @@ import type {
     OpRequestNode,
     OpResponseNode,
     HttpMethod,
-    DtoTypeNode,
+    ContractTypeNode,
     ModelNode,
     SourceLocation,
     SecurityNode,

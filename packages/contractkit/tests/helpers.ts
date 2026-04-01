@@ -1,8 +1,8 @@
 import type {
-    DtoRootNode,
+    ContractRootNode,
     ModelNode,
     FieldNode,
-    DtoTypeNode,
+    ContractTypeNode,
     ScalarTypeNode,
     ArrayTypeNode,
     TupleTypeNode,
@@ -35,15 +35,15 @@ export function scalarType(name: ScalarTypeNode['name'], mods?: Partial<ScalarTy
     return { kind: 'scalar', name, ...mods };
 }
 
-export function arrayType(item: DtoTypeNode, mods?: { min?: number; max?: number }): ArrayTypeNode {
+export function arrayType(item: ContractTypeNode, mods?: { min?: number; max?: number }): ArrayTypeNode {
     return { kind: 'array', item, ...mods };
 }
 
-export function tupleType(...items: DtoTypeNode[]): TupleTypeNode {
+export function tupleType(...items: ContractTypeNode[]): TupleTypeNode {
     return { kind: 'tuple', items };
 }
 
-export function recordType(key: DtoTypeNode, value: DtoTypeNode): RecordTypeNode {
+export function recordType(key: ContractTypeNode, value: ContractTypeNode): RecordTypeNode {
     return { kind: 'record', key, value };
 }
 
@@ -55,7 +55,7 @@ export function literalType(value: string | number | boolean): LiteralTypeNode {
     return { kind: 'literal', value };
 }
 
-export function unionType(...members: DtoTypeNode[]): UnionTypeNode {
+export function unionType(...members: ContractTypeNode[]): UnionTypeNode {
     return { kind: 'union', members };
 }
 
@@ -67,11 +67,11 @@ export function inlineObjectType(fields: FieldNode[]): InlineObjectTypeNode {
     return { kind: 'inlineObject', fields };
 }
 
-export function lazyType(inner: DtoTypeNode): LazyTypeNode {
+export function lazyType(inner: ContractTypeNode): LazyTypeNode {
     return { kind: 'lazy', inner };
 }
 
-export function field(name: string, type: DtoTypeNode, overrides?: Partial<FieldNode>): FieldNode {
+export function field(name: string, type: ContractTypeNode, overrides?: Partial<FieldNode>): FieldNode {
     return {
         name,
         optional: false,
@@ -93,11 +93,11 @@ export function model(name: string, fields: FieldNode[], overrides?: Partial<Mod
     };
 }
 
-export function dtoRoot(models: ModelNode[], file = 'test.dto'): DtoRootNode {
-    return { kind: 'dtoRoot', meta: {}, models, file };
+export function contractRoot(models: ModelNode[], file = 'test.dto'): ContractRootNode {
+    return { kind: 'contractRoot', meta: {}, models, file };
 }
 
-export function opParam(name: string, type: DtoTypeNode): OpParamNode {
+export function opParam(name: string, type: ContractTypeNode): OpParamNode {
     return { name, type, loc: loc(1, 'test.op') };
 }
 
@@ -109,21 +109,21 @@ export function paramRef(name: string): ParamSource {
     return { kind: 'ref', name };
 }
 
-export function paramType(node: DtoTypeNode): ParamSource {
+export function paramType(node: ContractTypeNode): ParamSource {
     return { kind: 'type', node };
 }
 
-export function opRequest(bodyType: string | DtoTypeNode, contentType: OpRequestNode['contentType'] = 'application/json'): OpRequestNode {
-    const bt: DtoTypeNode = typeof bodyType === 'string' ? refType(bodyType) : bodyType;
+export function opRequest(bodyType: string | ContractTypeNode, contentType: OpRequestNode['contentType'] = 'application/json'): OpRequestNode {
+    const bt: ContractTypeNode = typeof bodyType === 'string' ? refType(bodyType) : bodyType;
     return { contentType, bodyType: bt };
 }
 
-export function opResponse(statusCode: number, bodyType?: string | DtoTypeNode, contentType?: 'application/json'): OpResponseNode {
-    const bt: DtoTypeNode | undefined = bodyType === undefined ? undefined : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
+export function opResponse(statusCode: number, bodyType?: string | ContractTypeNode, contentType?: 'application/json'): OpResponseNode {
+    const bt: ContractTypeNode | undefined = bodyType === undefined ? undefined : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
     return { statusCode, contentType, bodyType: bt };
 }
 
-function parseBodyTypeString(s: string): DtoTypeNode {
+function parseBodyTypeString(s: string): ContractTypeNode {
     const arrayMatch = s.match(/^array\((.+)\)$/);
     if (arrayMatch?.[1]) {
         return { kind: 'array', item: refType(arrayMatch[1]) };
@@ -138,7 +138,7 @@ function normalizeParamSource(value: any): ParamSource {
     if (typeof value === 'string') return { kind: 'ref', name: value };
     if (Array.isArray(value)) return { kind: 'params', nodes: value };
     if (value.kind === 'params' || value.kind === 'ref' || value.kind === 'type') return value as ParamSource;
-    return { kind: 'type', node: value as DtoTypeNode };
+    return { kind: 'type', node: value as ContractTypeNode };
 }
 
 export function opOperation(method: HttpMethod, overrides?: Partial<OpOperationNode> & { query?: unknown; headers?: unknown }): OpOperationNode {
@@ -169,7 +169,7 @@ export function opRoot(routes: OpRouteNode[], file = 'users.op', meta: Record<st
 
 // ─── DSL Fixture Strings ────────────────────────────────────────────────────
 
-export const SIMPLE_USER_DTO = `\
+export const SIMPLE_USER_CONTRACT = `\
 contract User: {
     id: readonly uuid
     name: string
@@ -179,7 +179,7 @@ contract User: {
 }
 `;
 
-export const VISIBILITY_DTO = `\
+export const VISIBILITY_CONTRACT = `\
 contract User: {
     id: readonly uuid
     name: string
@@ -187,7 +187,7 @@ contract User: {
 }
 `;
 
-export const INHERITANCE_DTO = `\
+export const INHERITANCE_CONTRACT = `\
 contract Admin: User & {
     role: enum(admin, superadmin)
 }

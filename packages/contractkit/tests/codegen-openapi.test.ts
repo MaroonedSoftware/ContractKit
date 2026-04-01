@@ -12,7 +12,7 @@ import {
     tupleType,
     field,
     model,
-    dtoRoot,
+    contractRoot,
     opParam,
     opRequest,
     opResponse,
@@ -82,7 +82,7 @@ describe('generateOpenApi', () => {
     describe('document structure', () => {
         it('generates openapi 3.1.0 header', () => {
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [],
                 config: {},
             });
@@ -91,7 +91,7 @@ describe('generateOpenApi', () => {
 
         it('uses config info values', () => {
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [],
                 config: {
                     info: { title: 'My API', version: '2.0.0', description: 'A test API' },
@@ -104,7 +104,7 @@ describe('generateOpenApi', () => {
 
         it('defaults title and version when not specified', () => {
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [],
                 config: {},
             });
@@ -114,7 +114,7 @@ describe('generateOpenApi', () => {
 
         it('includes servers when configured', () => {
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [],
                 config: {
                     servers: [{ url: 'https://api.example.com', description: 'Prod' }],
@@ -127,7 +127,7 @@ describe('generateOpenApi', () => {
 
         it('includes security when configured', () => {
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [],
                 config: {
                     security: [{ bearerAuth: [] }],
@@ -148,7 +148,7 @@ describe('generateOpenApi', () => {
 
     describe('component schemas', () => {
         it('generates schema for simple model', () => {
-            const dto = dtoRoot([
+            const dto = contractRoot([
                 model('User', [
                     field('id', scalarType('uuid')),
                     field('name', scalarType('string', { min: 1, max: 100 })),
@@ -156,7 +156,7 @@ describe('generateOpenApi', () => {
                 ]),
             ]);
             const output = generateOpenApi({
-                dtoRoots: [dto],
+                contractRoots: [dto],
                 opRoots: [],
                 config: {},
             });
@@ -171,9 +171,9 @@ describe('generateOpenApi', () => {
         });
 
         it('handles optional fields by omitting from required', () => {
-            const dto = dtoRoot([model('User', [field('id', scalarType('uuid')), field('bio', scalarType('string'), { optional: true })])]);
+            const dto = contractRoot([model('User', [field('id', scalarType('uuid')), field('bio', scalarType('string'), { optional: true })])]);
             const output = generateOpenApi({
-                dtoRoots: [dto],
+                contractRoots: [dto],
                 opRoots: [],
                 config: {},
             });
@@ -181,7 +181,7 @@ describe('generateOpenApi', () => {
         });
 
         it('marks readonly/writeonly fields', () => {
-            const dto = dtoRoot([
+            const dto = contractRoot([
                 model('User', [
                     field('id', scalarType('uuid'), { visibility: 'readonly' }),
                     field('password', scalarType('string'), { visibility: 'writeonly' }),
@@ -189,7 +189,7 @@ describe('generateOpenApi', () => {
                 ]),
             ]);
             const output = generateOpenApi({
-                dtoRoots: [dto],
+                contractRoots: [dto],
                 opRoots: [],
                 config: {},
             });
@@ -198,11 +198,11 @@ describe('generateOpenApi', () => {
         });
 
         it('handles default values', () => {
-            const dto = dtoRoot([
+            const dto = contractRoot([
                 model('Config', [field('active', scalarType('boolean'), { default: true }), field('pageSize', scalarType('int'), { default: 25 })]),
             ]);
             const output = generateOpenApi({
-                dtoRoots: [dto],
+                contractRoots: [dto],
                 opRoots: [],
                 config: {},
             });
@@ -211,9 +211,9 @@ describe('generateOpenApi', () => {
         });
 
         it('generates enum schema', () => {
-            const dto = dtoRoot([model('Status', [], { type: enumType('active', 'inactive', 'pending') })]);
+            const dto = contractRoot([model('Status', [], { type: enumType('active', 'inactive', 'pending') })]);
             const output = generateOpenApi({
-                dtoRoots: [dto],
+                contractRoots: [dto],
                 opRoots: [],
                 config: {},
             });
@@ -222,9 +222,9 @@ describe('generateOpenApi', () => {
         });
 
         it('generates array field schema', () => {
-            const dto = dtoRoot([model('Response', [field('items', arrayType(refType('Item')))])]);
+            const dto = contractRoot([model('Response', [field('items', arrayType(refType('Item')))])]);
             const output = generateOpenApi({
-                dtoRoots: [dto],
+                contractRoots: [dto],
                 opRoots: [],
                 config: {},
             });
@@ -233,9 +233,9 @@ describe('generateOpenApi', () => {
         });
 
         it('generates model with base (allOf)', () => {
-            const dto = dtoRoot([model('Admin', [field('role', enumType('admin', 'superadmin'))], { base: 'User' })]);
+            const dto = contractRoot([model('Admin', [field('role', enumType('admin', 'superadmin'))], { base: 'User' })]);
             const output = generateOpenApi({
-                dtoRoots: [dto],
+                contractRoots: [dto],
                 opRoots: [],
                 config: {},
             });
@@ -244,11 +244,11 @@ describe('generateOpenApi', () => {
         });
 
         it('handles scalar type constraints', () => {
-            const dto = dtoRoot([
+            const dto = contractRoot([
                 model('Pagination', [field('page', scalarType('int', { min: 0 })), field('pageSize', scalarType('int', { min: 1, max: 100 }))]),
             ]);
             const output = generateOpenApi({
-                dtoRoots: [dto],
+                contractRoots: [dto],
                 opRoots: [],
                 config: {},
             });
@@ -259,9 +259,9 @@ describe('generateOpenApi', () => {
         });
 
         it('handles record type', () => {
-            const dto = dtoRoot([model('Metadata', [], { type: recordType(scalarType('string'), scalarType('string')) })]);
+            const dto = contractRoot([model('Metadata', [], { type: recordType(scalarType('string'), scalarType('string')) })]);
             const output = generateOpenApi({
-                dtoRoots: [dto],
+                contractRoots: [dto],
                 opRoots: [],
                 config: {},
             });
@@ -270,11 +270,11 @@ describe('generateOpenApi', () => {
         });
 
         it('handles description on models and fields', () => {
-            const dto = dtoRoot([
+            const dto = contractRoot([
                 model('User', [field('name', scalarType('string'), { description: 'The user name' })], { description: 'A user object' }),
             ]);
             const output = generateOpenApi({
-                dtoRoots: [dto],
+                contractRoots: [dto],
                 opRoots: [],
                 config: {},
             });
@@ -289,7 +289,7 @@ describe('generateOpenApi', () => {
         it('converts :param to {param} in paths', () => {
             const op = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op],
                 config: {},
             });
@@ -305,7 +305,7 @@ describe('generateOpenApi', () => {
                 ]),
             ]);
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op],
                 config: {},
             });
@@ -325,7 +325,7 @@ describe('generateOpenApi', () => {
                 ]),
             ]);
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op],
                 config: {},
             });
@@ -338,7 +338,7 @@ describe('generateOpenApi', () => {
         it('generates path parameters', () => {
             const op = opRoot([opRoute('/users/{userId}', [opOperation('get')], [opParam('userId', scalarType('uuid'))])]);
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op],
                 config: {},
             });
@@ -357,7 +357,7 @@ describe('generateOpenApi', () => {
                 ]),
             ]);
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op],
                 config: {},
             });
@@ -375,7 +375,7 @@ describe('generateOpenApi', () => {
                 ]),
             ]);
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op],
                 config: {},
             });
@@ -386,7 +386,7 @@ describe('generateOpenApi', () => {
         it('uses operationId from service binding', () => {
             const op = opRoot([opRoute('/users', [opOperation('get', { service: 'UserService.listUsers' })])]);
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op],
                 config: {},
             });
@@ -396,7 +396,7 @@ describe('generateOpenApi', () => {
         it('uses operationId from sdk name', () => {
             const op = opRoot([opRoute('/users', [opOperation('get', { sdk: 'getUsers' })])]);
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op],
                 config: {},
             });
@@ -416,7 +416,7 @@ describe('generateOpenApi', () => {
                 ),
             ]);
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op],
                 config: {},
             });
@@ -427,7 +427,7 @@ describe('generateOpenApi', () => {
         it('includes operation description', () => {
             const op = opRoot([opRoute('/users', [opOperation('get', { description: 'List all users' })])]);
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op],
                 config: {},
             });
@@ -449,7 +449,7 @@ describe('generateOpenApi', () => {
                 ]),
             ]);
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op],
                 config: {},
             });
@@ -466,7 +466,7 @@ describe('generateOpenApi', () => {
             const op1 = opRoot([opRoute('/users', [opOperation('get')])], 'users.op');
             const op2 = opRoot([opRoute('/orders', [opOperation('get')])], 'orders.op');
             const output = generateOpenApi({
-                dtoRoots: [],
+                contractRoots: [],
                 opRoots: [op1, op2],
                 config: {},
             });
@@ -475,10 +475,10 @@ describe('generateOpenApi', () => {
         });
 
         it('merges schemas from multiple dto files', () => {
-            const dto1 = dtoRoot([model('User', [field('id', scalarType('uuid'))])], 'user.dto');
-            const dto2 = dtoRoot([model('Order', [field('id', scalarType('uuid'))])], 'order.dto');
+            const dto1 = contractRoot([model('User', [field('id', scalarType('uuid'))])], 'user.dto');
+            const dto2 = contractRoot([model('Order', [field('id', scalarType('uuid'))])], 'order.dto');
             const output = generateOpenApi({
-                dtoRoots: [dto1, dto2],
+                contractRoots: [dto1, dto2],
                 opRoots: [],
                 config: {},
             });
@@ -497,7 +497,7 @@ describe('route modifiers', () => {
                     opOperation('post', { modifiers: ['internal'], responses: [opResponse(201)] }),
                 ]),
             ]);
-            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            const output = generateOpenApi({ contractRoots: [], opRoots: [op], config: {} });
             expect(output).toContain('get:');
             expect(output).not.toContain('post:');
         });
@@ -511,7 +511,7 @@ describe('route modifiers', () => {
                     ['internal'],
                 ),
             ]);
-            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            const output = generateOpenApi({ contractRoots: [], opRoots: [op], config: {} });
             expect(output).not.toContain('/admin/users');
         });
 
@@ -527,7 +527,7 @@ describe('route modifiers', () => {
                     ['internal'],
                 ),
             ]);
-            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            const output = generateOpenApi({ contractRoots: [], opRoots: [op], config: {} });
             expect(output).toContain('/admin/users');
             expect(output).toContain('get:');
             expect(output).not.toContain('post:');
@@ -536,7 +536,7 @@ describe('route modifiers', () => {
 
     describe('schema filtering — internal operations', () => {
         it('excludes schemas only referenced by internal operations', () => {
-            const dto = dtoRoot([
+            const dto = contractRoot([
                 model('PublicModel', [field('id', scalarType('uuid'))]),
                 model('InternalModel', [field('secret', scalarType('string'))]),
             ]);
@@ -549,13 +549,13 @@ describe('route modifiers', () => {
                     }),
                 ]),
             ]);
-            const output = generateOpenApi({ dtoRoots: [dto], opRoots: [op], config: {} });
+            const output = generateOpenApi({ contractRoots: [dto], opRoots: [op], config: {} });
             expect(output).toContain('PublicModel:');
             expect(output).not.toContain('InternalModel:');
         });
 
         it('transitively includes schemas referenced by public types', () => {
-            const dto = dtoRoot([
+            const dto = contractRoot([
                 model('Order', [field('item', refType('OrderItem'))]),
                 model('OrderItem', [field('name', scalarType('string'))]),
                 model('InternalData', [field('x', scalarType('string'))]),
@@ -569,14 +569,14 @@ describe('route modifiers', () => {
                     }),
                 ]),
             ]);
-            const output = generateOpenApi({ dtoRoots: [dto], opRoots: [op], config: {} });
+            const output = generateOpenApi({ contractRoots: [dto], opRoots: [op], config: {} });
             expect(output).toContain('Order:');
             expect(output).toContain('OrderItem:');
             expect(output).not.toContain('InternalData:');
         });
 
         it('excludes all schemas when all operations are internal', () => {
-            const dto = dtoRoot([model('Secret', [field('key', scalarType('string'))])]);
+            const dto = contractRoot([model('Secret', [field('key', scalarType('string'))])]);
             const op = opRoot([
                 opRoute(
                     '/admin',
@@ -590,14 +590,14 @@ describe('route modifiers', () => {
                     ['internal'],
                 ),
             ]);
-            const output = generateOpenApi({ dtoRoots: [dto], opRoots: [op], config: {} });
+            const output = generateOpenApi({ contractRoots: [dto], opRoots: [op], config: {} });
             expect(output).not.toContain('Secret:');
             expect(output).not.toContain('schemas:');
         });
 
         it('includes all schemas when there are no op files', () => {
-            const dto = dtoRoot([model('Foo', [field('id', scalarType('uuid'))]), model('Bar', [field('name', scalarType('string'))])]);
-            const output = generateOpenApi({ dtoRoots: [dto], opRoots: [], config: {} });
+            const dto = contractRoot([model('Foo', [field('id', scalarType('uuid'))]), model('Bar', [field('name', scalarType('string'))])]);
+            const output = generateOpenApi({ contractRoots: [dto], opRoots: [], config: {} });
             expect(output).toContain('Foo:');
             expect(output).toContain('Bar:');
         });
@@ -606,13 +606,13 @@ describe('route modifiers', () => {
     describe('deprecated', () => {
         it('sets deprecated: true for a deprecated operation', () => {
             const op = opRoot([opRoute('/users', [opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200)] })])]);
-            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            const output = generateOpenApi({ contractRoots: [], opRoots: [op], config: {} });
             expect(output).toContain('deprecated: true');
         });
 
         it('does not set deprecated for a normal operation', () => {
             const op = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200)] })])]);
-            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            const output = generateOpenApi({ contractRoots: [], opRoots: [op], config: {} });
             expect(output).not.toContain('deprecated:');
         });
 
@@ -625,7 +625,7 @@ describe('route modifiers', () => {
                     ['deprecated'],
                 ),
             ]);
-            const output = generateOpenApi({ dtoRoots: [], opRoots: [op], config: {} });
+            const output = generateOpenApi({ contractRoots: [], opRoots: [op], config: {} });
             const deprecatedCount = (output.match(/deprecated: true/g) ?? []).length;
             expect(deprecatedCount).toBe(2);
         });

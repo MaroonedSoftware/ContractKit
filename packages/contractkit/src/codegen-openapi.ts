@@ -1,4 +1,4 @@
-import type { DtoRootNode, OpRootNode, DtoTypeNode, FieldNode, ModelNode, OpRouteNode, OpOperationNode, ParamSource } from './ast.js';
+import type { ContractRootNode, OpRootNode, ContractTypeNode, FieldNode, ModelNode, OpRouteNode, OpOperationNode, ParamSource } from './ast.js';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
 export interface OpenApiServerEntry {
     url: string;
@@ -28,7 +28,7 @@ export interface OpenApiConfig {
 
 // ─── Type reachability ────────────────────────────────────────────────────
 
-function collectRefsFromType(type: DtoTypeNode, out: Set<string>): void {
+function collectRefsFromType(type: ContractTypeNode, out: Set<string>): void {
     switch (type.kind) {
         case 'ref':
             out.add(type.name);
@@ -113,7 +113,7 @@ function computeReachableSchemas(seeds: Set<string>, modelMap: Map<string, Model
 // ─── Public entry point ────────────────────────────────────────────────────
 
 export interface OpenApiCodegenContext {
-    dtoRoots: DtoRootNode[];
+    contractRoots: ContractRootNode[];
     opRoots: OpRootNode[];
     config: OpenApiConfig;
     /** Named OpenAPI security scheme definitions to include in components.securitySchemes */
@@ -121,7 +121,7 @@ export interface OpenApiCodegenContext {
 }
 
 export function generateOpenApi(ctx: OpenApiCodegenContext): string {
-    const { dtoRoots, opRoots, config, securitySchemes } = ctx;
+    const { contractRoots, opRoots, config, securitySchemes } = ctx;
 
     const doc: Record<string, unknown> = {
         openapi: '3.1.0',
@@ -144,7 +144,7 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
     const allSchemas: Record<string, unknown> = {};
     const modelMap = new Map<string, ModelNode>();
 
-    for (const dtoRoot of dtoRoots) {
+    for (const dtoRoot of contractRoots) {
         for (const model of dtoRoot.models) {
             modelMap.set(model.name, model);
             allSchemas[model.name] = modelToSchema(model);
@@ -278,7 +278,7 @@ function fieldToSchema(field: FieldNode): Record<string, unknown> {
     return schema;
 }
 
-function typeToSchema(type: DtoTypeNode): Record<string, unknown> {
+function typeToSchema(type: ContractTypeNode): Record<string, unknown> {
     switch (type.kind) {
         case 'scalar':
             return scalarToSchema(type);
@@ -515,7 +515,7 @@ function paramSourceToParams(source: ParamSource, location: 'path' | 'query' | '
         }));
     }
 
-    // DtoTypeNode (inline object or other type) — if it's an inlineObject, expand fields
+    // ContractTypeNode (inline object or other type) — if it's an inlineObject, expand fields
     if (source.node.kind === 'inlineObject') {
         return source.node.fields.map(f => ({
             name: f.name,

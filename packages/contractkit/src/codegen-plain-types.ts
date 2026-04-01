@@ -1,6 +1,6 @@
 import { relative, dirname } from 'node:path';
-import type { DtoRootNode, ModelNode, FieldNode } from './ast.js';
-import type { DtoCodegenContext } from './codegen-contract.js';
+import type { ContractRootNode, ModelNode, FieldNode } from './ast.js';
+import type { ContractCodegenContext } from './codegen-contract.js';
 import {
     collectExternalRefs,
     collectExternalInputRefs,
@@ -15,11 +15,11 @@ import { renderTsType, renderInputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from 
 
 /**
  * Generate plain TypeScript interfaces/types from a DTO AST.
- * Unlike `generateDto()` which produces Zod schemas, this emits
+ * Unlike `generateContract()` which produces Zod schemas, this emits
  * vanilla TypeScript `interface` and `type` declarations suitable
  * for SDK consumers that don't need runtime validation.
  */
-export function generatePlainTypes(root: DtoRootNode, context?: DtoCodegenContext): string {
+export function generatePlainTypes(root: ContractRootNode, context?: ContractCodegenContext): string {
     const externalRefs = collectExternalRefs(root);
     const lines: string[] = [];
 

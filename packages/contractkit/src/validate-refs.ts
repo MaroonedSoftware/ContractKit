@@ -1,22 +1,22 @@
-import type { DtoRootNode, OpRootNode, DtoTypeNode } from './ast.js';
+import type { ContractRootNode, OpRootNode, ContractTypeNode } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
 
 /**
  * After all files are parsed, validate that type references point to
  * defined models.
  */
-export function validateRefs(dtoRoots: DtoRootNode[], opRoots: OpRootNode[], diag: DiagnosticCollector, allDtoRoots?: DtoRootNode[]): void {
-    // Phase 1: Collect all defined model names from ALL dto files (not just changed ones)
+export function validateRefs(contractRoots: ContractRootNode[], opRoots: OpRootNode[], diag: DiagnosticCollector, allContractRoots?: ContractRootNode[]): void {
+    // Phase 1: Collect all defined model names from ALL contract files (not just changed ones)
     // so that cached/unchanged files don't cause false "not defined" warnings.
     const modelNames = new Set<string>();
-    for (const root of allDtoRoots ?? dtoRoots) {
+    for (const root of allContractRoots ?? contractRoots) {
         for (const model of root.models) {
             modelNames.add(model.name);
         }
     }
 
-    // Phase 2: Check DTO type references
-    for (const root of dtoRoots) {
+    // Phase 2: Check contract type references
+    for (const root of contractRoots) {
         for (const model of root.models) {
             if (model.base && !modelNames.has(model.base)) {
                 diag.warn(model.loc.file, model.loc.line, `Base model "${model.base}" is not defined in any contract file`);
@@ -50,7 +50,7 @@ export function validateRefs(dtoRoots: DtoRootNode[], opRoots: OpRootNode[], dia
     }
 }
 
-function checkTypeRefs(type: DtoTypeNode, file: string, line: number, models: Set<string>, diag: DiagnosticCollector): void {
+function checkTypeRefs(type: ContractTypeNode, file: string, line: number, models: Set<string>, diag: DiagnosticCollector): void {
     switch (type.kind) {
         case 'ref':
             if (!models.has(type.name)) {

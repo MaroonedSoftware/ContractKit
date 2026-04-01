@@ -1,12 +1,12 @@
 /**
- * Decompose a unified CkRootNode into separate DtoRootNode + OpRootNode
+ * Decompose a unified CkRootNode into separate ContractRootNode + OpRootNode
  * for downstream codegen functions that operate on models or routes independently.
  */
-import type { CkRootNode, DtoRootNode, OpRootNode } from './ast.js';
+import type { CkRootNode, ContractRootNode, OpRootNode } from './ast.js';
 
-export function decomposeCk(ck: CkRootNode): { dto: DtoRootNode; op: OpRootNode } {
-    const dto: DtoRootNode = {
-        kind: 'dtoRoot',
+export function decomposeCk(ck: CkRootNode): { dto: ContractRootNode; op: OpRootNode } {
+    const dto: ContractRootNode = {
+        kind: 'contractRoot',
         meta: { ...ck.meta },
         services: { ...ck.services },
         models: ck.models,

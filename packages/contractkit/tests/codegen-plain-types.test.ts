@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generatePlainTypes } from '../src/codegen-plain-types.js';
-import type { DtoCodegenContext } from '../src/codegen-contract.js';
+import type { ContractCodegenContext } from '../src/codegen-contract.js';
 import {
     scalarType,
     arrayType,
@@ -14,7 +14,7 @@ import {
     inlineObjectType,
     field,
     model,
-    dtoRoot,
+    contractRoot,
 } from './helpers.js';
 
 describe('generatePlainTypes', () => {
@@ -22,7 +22,7 @@ describe('generatePlainTypes', () => {
 
     describe('simple model', () => {
         it('generates interface with fields', () => {
-            const root = dtoRoot([model('User', [field('name', scalarType('string')), field('age', scalarType('number'))])]);
+            const root = contractRoot([model('User', [field('name', scalarType('string')), field('age', scalarType('number'))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('export interface User {');
             expect(output).toContain('name: string;');
@@ -30,7 +30,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('does not contain Zod imports or references', () => {
-            const root = dtoRoot([model('User', [field('name', scalarType('string'))])]);
+            const root = contractRoot([model('User', [field('name', scalarType('string'))])]);
             const output = generatePlainTypes(root);
             expect(output).not.toContain('zod');
             expect(output).not.toContain('z.');
@@ -38,7 +38,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('does not contain luxon imports for date fields', () => {
-            const root = dtoRoot([model('Event', [field('startDate', scalarType('date')), field('endDate', scalarType('datetime'))])]);
+            const root = contractRoot([model('Event', [field('startDate', scalarType('date')), field('endDate', scalarType('datetime'))])]);
             const output = generatePlainTypes(root);
             expect(output).not.toContain('luxon');
             expect(output).not.toContain('DateTime');
@@ -51,7 +51,7 @@ describe('generatePlainTypes', () => {
 
     describe('scalar type mapping', () => {
         it('maps string types to string', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('M', [
                     field('s', scalarType('string')),
                     field('e', scalarType('email')),
@@ -67,7 +67,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('maps numeric types correctly', () => {
-            const root = dtoRoot([model('M', [field('n', scalarType('number')), field('i', scalarType('int')), field('b', scalarType('bigint'))])]);
+            const root = contractRoot([model('M', [field('n', scalarType('number')), field('i', scalarType('int')), field('b', scalarType('bigint'))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('n: number;');
             expect(output).toContain('i: number;');
@@ -75,13 +75,13 @@ describe('generatePlainTypes', () => {
         });
 
         it('maps boolean type', () => {
-            const root = dtoRoot([model('M', [field('active', scalarType('boolean'))])]);
+            const root = contractRoot([model('M', [field('active', scalarType('boolean'))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('active: boolean;');
         });
 
         it('maps special types correctly', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('M', [
                     field('u', scalarType('unknown')),
                     field('n', scalarType('null')),
@@ -101,49 +101,49 @@ describe('generatePlainTypes', () => {
 
     describe('compound types', () => {
         it('renders array type', () => {
-            const root = dtoRoot([model('M', [field('items', arrayType(scalarType('string')))])]);
+            const root = contractRoot([model('M', [field('items', arrayType(scalarType('string')))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('items: string[];');
         });
 
         it('renders array of refs', () => {
-            const root = dtoRoot([model('M', [field('users', arrayType(refType('User')))])]);
+            const root = contractRoot([model('M', [field('users', arrayType(refType('User')))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('users: User[];');
         });
 
         it('wraps union item in parens when used as array element type', () => {
-            const root = dtoRoot([model('M', [field('statuses', arrayType(enumType('pending', 'posted', 'archived')))])]);
+            const root = contractRoot([model('M', [field('statuses', arrayType(enumType('pending', 'posted', 'archived')))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain("statuses: ('pending' | 'posted' | 'archived')[];");
         });
 
         it('wraps union item in parens for array of union type', () => {
-            const root = dtoRoot([model('M', [field('items', arrayType(unionType(scalarType('string'), scalarType('int'))))])]);
+            const root = contractRoot([model('M', [field('items', arrayType(unionType(scalarType('string'), scalarType('int'))))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('items: (string | number)[];');
         });
 
         it('renders tuple type', () => {
-            const root = dtoRoot([model('M', [field('pair', tupleType(scalarType('number'), scalarType('string')))])]);
+            const root = contractRoot([model('M', [field('pair', tupleType(scalarType('number'), scalarType('string')))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('pair: [number, string];');
         });
 
         it('renders record type', () => {
-            const root = dtoRoot([model('M', [field('data', recordType(scalarType('string'), scalarType('number')))])]);
+            const root = contractRoot([model('M', [field('data', recordType(scalarType('string'), scalarType('number')))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('data: Record<string, number>;');
         });
 
         it('renders enum type as union of literals', () => {
-            const root = dtoRoot([model('M', [field('role', enumType('admin', 'user', 'guest'))])]);
+            const root = contractRoot([model('M', [field('role', enumType('admin', 'user', 'guest'))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain("role: 'admin' | 'user' | 'guest';");
         });
 
         it('renders literal types', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('M', [field('kind', literalType('message')), field('count', literalType(42)), field('flag', literalType(true))]),
             ]);
             const output = generatePlainTypes(root);
@@ -153,25 +153,25 @@ describe('generatePlainTypes', () => {
         });
 
         it('renders union type', () => {
-            const root = dtoRoot([model('M', [field('value', unionType(scalarType('string'), scalarType('number')))])]);
+            const root = contractRoot([model('M', [field('value', unionType(scalarType('string'), scalarType('number')))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('value: string | number;');
         });
 
         it('renders model reference as type name', () => {
-            const root = dtoRoot([model('M', [field('user', refType('User'))])]);
+            const root = contractRoot([model('M', [field('user', refType('User'))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('user: User;');
         });
 
         it('renders lazy type transparently', () => {
-            const root = dtoRoot([model('TreeNode', [field('children', arrayType(lazyType(refType('TreeNode'))))])]);
+            const root = contractRoot([model('TreeNode', [field('children', arrayType(lazyType(refType('TreeNode'))))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('children: TreeNode[];');
         });
 
         it('renders inline object type', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('M', [field('data', inlineObjectType([field('key', scalarType('string')), field('value', scalarType('number'))]))]),
             ]);
             const output = generatePlainTypes(root);
@@ -183,25 +183,25 @@ describe('generatePlainTypes', () => {
 
     describe('field modifiers', () => {
         it('renders optional field with ?', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'), { optional: true })])]);
+            const root = contractRoot([model('M', [field('f', scalarType('string'), { optional: true })])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('f?: string;');
         });
 
         it('renders nullable field with | null', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'), { nullable: true })])]);
+            const root = contractRoot([model('M', [field('f', scalarType('string'), { nullable: true })])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('f: string | null;');
         });
 
         it('renders field with default as optional', () => {
-            const root = dtoRoot([model('M', [field('active', scalarType('boolean'), { default: true })])]);
+            const root = contractRoot([model('M', [field('active', scalarType('boolean'), { default: true })])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('active?: boolean;');
         });
 
         it('renders nullable + optional field', () => {
-            const root = dtoRoot([model('M', [field('f', scalarType('string'), { optional: true, nullable: true })])]);
+            const root = contractRoot([model('M', [field('f', scalarType('string'), { optional: true, nullable: true })])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('f?: string | null;');
         });
@@ -211,14 +211,14 @@ describe('generatePlainTypes', () => {
 
     describe('type alias', () => {
         it('generates type alias for type-only models', () => {
-            const root = dtoRoot([model('Currency', [], { type: scalarType('string') })]);
+            const root = contractRoot([model('Currency', [], { type: scalarType('string') })]);
             const output = generatePlainTypes(root);
             expect(output).toContain('export type Currency = string;');
             expect(output).not.toContain('interface');
         });
 
         it('generates type alias for complex types', () => {
-            const root = dtoRoot([model('UserIds', [], { type: arrayType(scalarType('uuid')) })]);
+            const root = contractRoot([model('UserIds', [], { type: arrayType(scalarType('uuid')) })]);
             const output = generatePlainTypes(root);
             expect(output).toContain('export type UserIds = string[];');
         });
@@ -228,7 +228,7 @@ describe('generatePlainTypes', () => {
 
     describe('visibility pattern', () => {
         it('generates read and write interfaces for models with visibility', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [
                     field('id', scalarType('uuid'), { visibility: 'readonly' }),
                     field('name', scalarType('string')),
@@ -241,7 +241,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('read interface omits writeonly fields', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [
                     field('id', scalarType('uuid'), { visibility: 'readonly' }),
                     field('name', scalarType('string')),
@@ -256,7 +256,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('write interface omits readonly fields', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [
                     field('id', scalarType('uuid'), { visibility: 'readonly' }),
                     field('name', scalarType('string')),
@@ -275,7 +275,7 @@ describe('generatePlainTypes', () => {
 
     describe('transitive Input variants', () => {
         it('generates Input interface for model that references a visibility model (local)', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Entry', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('amount', scalarType('bigint'))]),
                 model('Transaction', [field('entries', arrayType(refType('Entry')))]),
             ]);
@@ -284,7 +284,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('write interface of parent uses Input variant of referenced child', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Entry', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('amount', scalarType('bigint'))]),
                 model('Transaction', [field('entries', arrayType(refType('Entry')))]),
             ]);
@@ -295,7 +295,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('handles multi-level transitive chain', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Leaf', [field('id', scalarType('uuid'), { visibility: 'readonly' })]),
                 model('Middle', [field('leaf', refType('Leaf'))]),
                 model('Top', [field('middle', refType('Middle'))]),
@@ -310,8 +310,8 @@ describe('generatePlainTypes', () => {
         });
 
         it('handles transitive ref from external context', () => {
-            const root = dtoRoot([model('Transaction', [field('entries', arrayType(refType('ExternalEntry')))])]);
-            const context: DtoCodegenContext = {
+            const root = contractRoot([model('Transaction', [field('entries', arrayType(refType('ExternalEntry')))])]);
+            const context: ContractCodegenContext = {
                 currentOutPath: '/out/transaction.ts',
                 modelOutPaths: new Map([
                     ['ExternalEntry', '/out/entry.ts'],
@@ -327,7 +327,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('model without visibility that only refs plain models stays simple', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('PlainChild', [field('name', scalarType('string'))]),
                 model('Parent', [field('child', refType('PlainChild'))]),
             ]);
@@ -341,13 +341,13 @@ describe('generatePlainTypes', () => {
 
     describe('inheritance', () => {
         it('generates extends clause for models with a base', () => {
-            const root = dtoRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
+            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
             const output = generatePlainTypes(root);
             expect(output).toContain('export interface Admin extends User {');
         });
 
         it('generates extends for visibility model with base (base has no Input variant)', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { base: 'User' }),
             ]);
             const output = generatePlainTypes(root);
@@ -357,7 +357,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('generates extends for visibility model with base (base has Input variant)', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { base: 'User' }),
             ]);
             const output = generatePlainTypes(root, {
@@ -371,7 +371,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('child extends parent in same file both get Input when parent has visibility', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))]),
                 model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
             ]);
@@ -388,7 +388,7 @@ describe('generatePlainTypes', () => {
 
     describe('type alias Input variants', () => {
         it('type alias referencing model with Input variant gets its own Input variant', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Pagination', [field('page', scalarType('int')), field('total', scalarType('int'), { visibility: 'readonly' })]),
                 model('ListQuery', [], {
                     type: {
@@ -406,7 +406,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('imports PaginationInput when type alias references external Pagination with Input variant', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('ListQuery', [], {
                     type: {
                         kind: 'intersection',
@@ -431,7 +431,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('type alias NOT referencing any model with Input stays simple', () => {
-            const root = dtoRoot([model('UserId', [], { type: { kind: 'scalar', name: 'uuid' } })]);
+            const root = contractRoot([model('UserId', [], { type: { kind: 'scalar', name: 'uuid' } })]);
             const output = generatePlainTypes(root);
             expect(output).toContain('export type UserId =');
             expect(output).not.toContain('UserIdInput');
@@ -442,13 +442,13 @@ describe('generatePlainTypes', () => {
 
     describe('comments', () => {
         it('includes model description in JSDoc', () => {
-            const root = dtoRoot([model('User', [field('name', scalarType('string'))], { description: 'A system user' })]);
+            const root = contractRoot([model('User', [field('name', scalarType('string'))], { description: 'A system user' })]);
             const output = generatePlainTypes(root);
             expect(output).toContain('* A system user');
         });
 
         it('includes source location in JSDoc', () => {
-            const root = dtoRoot([model('User', [field('name', scalarType('string'))], { loc: { file: 'user.dto', line: 5 } })]);
+            const root = contractRoot([model('User', [field('name', scalarType('string'))], { loc: { file: 'user.dto', line: 5 } })]);
             const output = generatePlainTypes(root);
             expect(output).toContain('file://./user.dto#L5');
         });
@@ -458,13 +458,13 @@ describe('generatePlainTypes', () => {
 
     describe('import resolution', () => {
         it('uses type-only imports for external references', () => {
-            const root = dtoRoot([model('Counterparty', [field('accounts', arrayType(refType('CounterpartyAccount')))])]);
+            const root = contractRoot([model('Counterparty', [field('accounts', arrayType(refType('CounterpartyAccount')))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain("import type { CounterpartyAccount } from './counterparty.account.js';");
         });
 
         it('does not import locally defined models', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('Currency', [field('code', scalarType('string'))]),
                 model('Account', [field('currency', refType('Currency'))]),
             ]);
@@ -473,8 +473,8 @@ describe('generatePlainTypes', () => {
         });
 
         it('resolves imports using modelOutPaths context', () => {
-            const root = dtoRoot([model('Transfer', [field('account', refType('LedgerAccount'))])]);
-            const context: DtoCodegenContext = {
+            const root = contractRoot([model('Transfer', [field('account', refType('LedgerAccount'))])]);
+            const context: ContractCodegenContext = {
                 currentOutPath: '/out/modules/transfers/transfer.ts',
                 modelOutPaths: new Map([['LedgerAccount', '/out/modules/ledger/ledger.account.ts']]),
             };
@@ -483,8 +483,8 @@ describe('generatePlainTypes', () => {
         });
 
         it('falls back to pascalToDotCase when ref not in modelOutPaths', () => {
-            const root = dtoRoot([model('Order', [field('item', refType('UnknownExternal'))])]);
-            const context: DtoCodegenContext = {
+            const root = contractRoot([model('Order', [field('item', refType('UnknownExternal'))])]);
+            const context: ContractCodegenContext = {
                 currentOutPath: '/out/order.ts',
                 modelOutPaths: new Map(),
             };
@@ -493,7 +493,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('imports base model when inherited from external', () => {
-            const root = dtoRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
+            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
             const output = generatePlainTypes(root);
             expect(output).toContain("import type { User } from './user.js';");
         });
@@ -503,7 +503,7 @@ describe('generatePlainTypes', () => {
 
     describe('topological sorting', () => {
         it('emits dependencies before dependents', () => {
-            const root = dtoRoot([model('B', [field('a', refType('A'))]), model('A', [field('name', scalarType('string'))])]);
+            const root = contractRoot([model('B', [field('a', refType('A'))]), model('A', [field('name', scalarType('string'))])]);
             const output = generatePlainTypes(root);
             const aIndex = output.indexOf('export interface A {');
             const bIndex = output.indexOf('export interface B {');
@@ -515,7 +515,7 @@ describe('generatePlainTypes', () => {
 
     describe('multiple models', () => {
         it('generates all models in one output', () => {
-            const root = dtoRoot([
+            const root = contractRoot([
                 model('User', [field('id', scalarType('uuid')), field('name', scalarType('string'))]),
                 model('Post', [field('id', scalarType('uuid')), field('title', scalarType('string')), field('author', refType('User'))]),
             ]);
@@ -531,7 +531,7 @@ describe('generatePlainTypes', () => {
 
 describe('field name quoting', () => {
     it('quotes hyphenated field names in interfaces', () => {
-        const root = dtoRoot([
+        const root = contractRoot([
             model('WebhookHeaders', [
                 field('x-topic', scalarType('string')),
                 field('x-event-id', scalarType('string')),
@@ -545,7 +545,7 @@ describe('field name quoting', () => {
     });
 
     it('quotes hyphenated optional fields correctly', () => {
-        const root = dtoRoot([model('Headers', [field('x-request-id', scalarType('string'), { optional: true })])]);
+        const root = contractRoot([model('Headers', [field('x-request-id', scalarType('string'), { optional: true })])]);
         const output = generatePlainTypes(root);
         expect(output).toContain("'x-request-id'?: string;");
     });

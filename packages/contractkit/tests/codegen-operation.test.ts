@@ -232,7 +232,7 @@ describe('generateOperation', () => {
             expect(output).toContain('limit: z.coerce.number().int()');
         });
 
-        it('wraps DtoTypeNode intersection query with array fields using z.preprocess', () => {
+        it('wraps ContractTypeNode intersection query with array fields using z.preprocess', () => {
             const root = opRoot([
                 opRoute('/offers', [
                     opOperation('get', {
