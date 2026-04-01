@@ -1,27 +1,27 @@
 {
-  "name": "@maroonedsoftware/contractkit",
-  "version": "0.1.0",
-  "description": "Core DSL compiler library: grammar-driven parser, codegen, and validation",
-  "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": "./dist/index.js"
-  },
-  "scripts": {
-    "build": "tsup src/index.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration && cp src/contractkit.ohm dist/",
-    "build:ci": "eslint --max-warnings=0 && pnpm run build",
-    "lint": "eslint --fix",
-    "format": "prettier --write .",
-    "test": "vitest run",
-    "test:ci": "vitest run --coverage"
-  },
-  "dependencies": {
-    "ohm-js": "^17.5.0"
-  },
-  "devDependencies": {
-    "@repo/config-eslint": "workspace:*",
-    "@repo/config-typescript": "workspace:*"
-  }
+    "name": "@maroonedsoftware/contractkit",
+    "version": "0.1.0",
+    "description": "Core DSL compiler library: grammar-driven parser, codegen, and validation",
+    "type": "module",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": "./dist/index.js"
+    },
+    "scripts": {
+        "build": "tsup src/index.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration && cp src/contractkit.ohm dist/",
+        "build:ci": "eslint --max-warnings=0 && pnpm run build",
+        "lint": "eslint --fix",
+        "format": "prettier --write .",
+        "test": "vitest run",
+        "test:ci": "vitest run --coverage"
+    },
+    "dependencies": {
+        "ohm-js": "^17.5.0"
+    },
+    "devDependencies": {
+        "@repo/config-eslint": "workspace:*",
+        "@repo/config-typescript": "workspace:*"
+    }
 }

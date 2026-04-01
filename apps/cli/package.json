@@ -1,37 +1,37 @@
 {
-  "name": "contractkit",
-  "version": "0.1.0",
-  "description": "Compiler for .dto and .op DSL files into TypeScript/Zod/Koa code",
-  "type": "module",
-  "main": "./dist/cli.js",
-  "bin": {
-    "contractkit": "dist/cli.js"
-  },
-  "scripts": {
-    "build": "tsup src/cli.ts --format esm --sourcemap",
-    "build:ci": "eslint --max-warnings=0 && pnpm run build",
-    "dev": "node --inspect --no-warnings --no-deprecation --import @swc-node/register/esm-register --enable-source-maps --watch --watch-preserve-output ./src/index.ts",
-    "lint": "eslint --fix",
-    "format": "prettier --write .",
-    "test": "vitest run",
-    "test:ci": "vitest run --coverage",
-    "start": "node dist/cli.js"
-  },
-  "dependencies": {
-    "@maroonedsoftware/contractkit": "workspace:*",
-    "@maroonedsoftware/openapi-to-ck": "workspace:*",
-    "glob": "^13.0.6"
-  },
-  "peerDependencies": {
-    "prettier": ">=3.0.0"
-  },
-  "peerDependenciesMeta": {
-    "prettier": {
-      "optional": true
+    "name": "contractkit",
+    "version": "0.1.0",
+    "description": "Compiler for .dto and .op DSL files into TypeScript/Zod/Koa code",
+    "type": "module",
+    "main": "./dist/cli.js",
+    "bin": {
+        "contractkit": "dist/cli.js"
+    },
+    "scripts": {
+        "build": "tsup src/cli.ts --format esm --sourcemap",
+        "build:ci": "eslint --max-warnings=0 && pnpm run build",
+        "dev": "node --inspect --no-warnings --no-deprecation --import @swc-node/register/esm-register --enable-source-maps --watch --watch-preserve-output ./src/index.ts",
+        "lint": "eslint --fix",
+        "format": "prettier --write .",
+        "test": "vitest run",
+        "test:ci": "vitest run --coverage",
+        "start": "node dist/cli.js"
+    },
+    "dependencies": {
+        "@maroonedsoftware/contractkit": "workspace:*",
+        "@maroonedsoftware/openapi-to-ck": "workspace:*",
+        "glob": "^13.0.6"
+    },
+    "peerDependencies": {
+        "prettier": ">=3.0.0"
+    },
+    "peerDependenciesMeta": {
+        "prettier": {
+            "optional": true
+        }
+    },
+    "devDependencies": {
+        "@repo/config-eslint": "workspace:*",
+        "@repo/config-typescript": "workspace:*"
     }
-  },
-  "devDependencies": {
-    "@repo/config-eslint": "workspace:*",
-    "@repo/config-typescript": "workspace:*"
-  }
 }

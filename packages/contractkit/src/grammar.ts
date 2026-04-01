@@ -17,11 +17,11 @@ let grammarPath = join(__dirname, 'contractkit.ohm');
 
 let grammarSource: string;
 try {
-  grammarSource = readFileSync(grammarPath, 'utf-8');
+    grammarSource = readFileSync(grammarPath, 'utf-8');
 } catch {
-  // Fallback: try relative to cwd (for tests running from source)
-  grammarPath = join(process.cwd(), 'src', 'contractkit.ohm');
-  grammarSource = readFileSync(grammarPath, 'utf-8');
+    // Fallback: try relative to cwd (for tests running from source)
+    grammarPath = join(process.cwd(), 'src', 'contractkit.ohm');
+    grammarSource = readFileSync(grammarPath, 'utf-8');
 }
 
 export const grammar: ohm.Grammar = ohm.grammar(grammarSource);

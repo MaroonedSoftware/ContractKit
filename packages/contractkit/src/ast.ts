@@ -1,171 +1,171 @@
 // ─── Shared ────────────────────────────────────────────────────────────────
 
 export interface SourceLocation {
-  file: string;
-  line: number;
+    file: string;
+    line: number;
 }
 
 export const SCALAR_NAMES: ReadonlySet<string> = new Set<ScalarTypeNode['name']>([
-  'string',
-  'number',
-  'int',
-  'bigint',
-  'boolean',
-  'date',
-  'time',
-  'datetime',
-  'email',
-  'url',
-  'uuid',
-  'unknown',
-  'null',
-  'object',
-  'binary',
-  'json',
+    'string',
+    'number',
+    'int',
+    'bigint',
+    'boolean',
+    'date',
+    'time',
+    'datetime',
+    'email',
+    'url',
+    'uuid',
+    'unknown',
+    'null',
+    'object',
+    'binary',
+    'json',
 ]);
 
 // ─── Contracts AST (.dto) ──────────────────────────────────────────────────
 
 export type DtoTypeNode =
-  | ScalarTypeNode
-  | ArrayTypeNode
-  | TupleTypeNode
-  | RecordTypeNode
-  | EnumTypeNode
-  | LiteralTypeNode
-  | UnionTypeNode
-  | IntersectionTypeNode
-  | ModelRefTypeNode
-  | InlineObjectTypeNode
-  | LazyTypeNode;
+    | ScalarTypeNode
+    | ArrayTypeNode
+    | TupleTypeNode
+    | RecordTypeNode
+    | EnumTypeNode
+    | LiteralTypeNode
+    | UnionTypeNode
+    | IntersectionTypeNode
+    | ModelRefTypeNode
+    | InlineObjectTypeNode
+    | LazyTypeNode;
 
 export interface ScalarTypeNode {
-  kind: 'scalar';
-  name:
-    | 'string'
-    | 'number'
-    | 'int'
-    | 'bigint'
-    | 'boolean'
-    | 'date'
-    | 'time'
-    | 'datetime'
-    | 'email'
-    | 'url'
-    | 'uuid'
-    | 'unknown'
-    | 'null'
-    | 'object'
-    | 'binary'
-    | 'json';
-  min?: number | bigint;
-  max?: number | bigint;
-  len?: number;
-  regex?: string;
-  format?: string;
+    kind: 'scalar';
+    name:
+        | 'string'
+        | 'number'
+        | 'int'
+        | 'bigint'
+        | 'boolean'
+        | 'date'
+        | 'time'
+        | 'datetime'
+        | 'email'
+        | 'url'
+        | 'uuid'
+        | 'unknown'
+        | 'null'
+        | 'object'
+        | 'binary'
+        | 'json';
+    min?: number | bigint;
+    max?: number | bigint;
+    len?: number;
+    regex?: string;
+    format?: string;
 }
 
 export interface ArrayTypeNode {
-  kind: 'array';
-  item: DtoTypeNode;
-  min?: number;
-  max?: number;
+    kind: 'array';
+    item: DtoTypeNode;
+    min?: number;
+    max?: number;
 }
 
 export interface TupleTypeNode {
-  kind: 'tuple';
-  items: DtoTypeNode[];
+    kind: 'tuple';
+    items: DtoTypeNode[];
 }
 
 export interface RecordTypeNode {
-  kind: 'record';
-  key: DtoTypeNode;
-  value: DtoTypeNode;
+    kind: 'record';
+    key: DtoTypeNode;
+    value: DtoTypeNode;
 }
 
 export interface EnumTypeNode {
-  kind: 'enum';
-  values: string[];
+    kind: 'enum';
+    values: string[];
 }
 
 export interface LiteralTypeNode {
-  kind: 'literal';
-  value: string | number | boolean;
+    kind: 'literal';
+    value: string | number | boolean;
 }
 
 export interface UnionTypeNode {
-  kind: 'union';
-  members: DtoTypeNode[];
+    kind: 'union';
+    members: DtoTypeNode[];
 }
 
 export interface ModelRefTypeNode {
-  kind: 'ref';
-  name: string;
-  lazy?: boolean;
+    kind: 'ref';
+    name: string;
+    lazy?: boolean;
 }
 
 export interface InlineObjectTypeNode {
-  kind: 'inlineObject';
-  fields: FieldNode[];
-  mode?: ObjectMode;
+    kind: 'inlineObject';
+    fields: FieldNode[];
+    mode?: ObjectMode;
 }
 
 export interface IntersectionTypeNode {
-  kind: 'intersection';
-  members: DtoTypeNode[];
+    kind: 'intersection';
+    members: DtoTypeNode[];
 }
 
 export interface LazyTypeNode {
-  kind: 'lazy';
-  inner: DtoTypeNode;
+    kind: 'lazy';
+    inner: DtoTypeNode;
 }
 
 export interface FieldNode {
-  name: string;
-  optional: boolean;
-  nullable: boolean;
-  visibility: 'readonly' | 'writeonly' | 'normal';
-  type: DtoTypeNode;
-  default?: string | number | boolean;
-  deprecated?: boolean;
-  description?: string;
-  loc: SourceLocation;
+    name: string;
+    optional: boolean;
+    nullable: boolean;
+    visibility: 'readonly' | 'writeonly' | 'normal';
+    type: DtoTypeNode;
+    default?: string | number | boolean;
+    deprecated?: boolean;
+    description?: string;
+    loc: SourceLocation;
 }
 
 export interface ModelNode {
-  kind: 'model';
-  name: string;
-  base?: string;
-  fields: FieldNode[];
-  type?: DtoTypeNode; // type alias: Name: typeExpression (fields will be empty)
-  mode?: ObjectMode; // object validation mode — defaults to 'strict'
-  inputCase?: 'camel' | 'snake' | 'pascal'; // format(input=) — key casing of incoming data
-  outputCase?: 'camel' | 'snake' | 'pascal'; // format(output=) — key casing of emitted data
-  deprecated?: boolean;
-  description?: string;
-  loc: SourceLocation;
+    kind: 'model';
+    name: string;
+    base?: string;
+    fields: FieldNode[];
+    type?: DtoTypeNode; // type alias: Name: typeExpression (fields will be empty)
+    mode?: ObjectMode; // object validation mode — defaults to 'strict'
+    inputCase?: 'camel' | 'snake' | 'pascal'; // format(input=) — key casing of incoming data
+    outputCase?: 'camel' | 'snake' | 'pascal'; // format(output=) — key casing of emitted data
+    deprecated?: boolean;
+    description?: string;
+    loc: SourceLocation;
 }
 
 export interface DtoRootNode {
-  kind: 'dtoRoot';
-  meta: Record<string, string>;
-  /** Service name → module path mappings from `options { services { ... } }`. */
-  services?: Record<string, string>;
-  models: ModelNode[];
-  file: string;
-  /** Comment lines not attached to any node, sorted by line number. */
-  orphanComments?: Array<{ line: number; text: string }>;
+    kind: 'dtoRoot';
+    meta: Record<string, string>;
+    /** Service name → module path mappings from `options { services { ... } }`. */
+    services?: Record<string, string>;
+    models: ModelNode[];
+    file: string;
+    /** Comment lines not attached to any node, sorted by line number. */
+    orphanComments?: Array<{ line: number; text: string }>;
 }
 
 // ─── Operations AST (.op) ──────────────────────────────────────────────────
 
 /** Constrained security declaration — roles-only auth fields. */
 export interface SecurityFields {
-  /** Allowlisted role names required for this endpoint (e.g. `["admin", "moderator"]`). */
-  roles?: string[];
-  /** Inline comment attached to the `roles:` line. */
-  rolesDescription?: string;
-  loc: SourceLocation;
+    /** Allowlisted role names required for this endpoint (e.g. `["admin", "moderator"]`). */
+    roles?: string[];
+    /** Inline comment attached to the `roles:` line. */
+    rolesDescription?: string;
+    loc: SourceLocation;
 }
 
 /** Sentinel value for explicitly public endpoints (`security: none`). */
@@ -185,64 +185,61 @@ export type ObjectMode = 'strict' | 'strip' | 'loose';
 export type RouteModifier = 'internal' | 'deprecated' | 'public';
 
 export interface OpParamNode {
-  name: string;
-  optional: boolean;
-  nullable: boolean;
-  type: DtoTypeNode;
-  default?: string | number | boolean;
-  description?: string;
-  loc: SourceLocation;
+    name: string;
+    optional: boolean;
+    nullable: boolean;
+    type: DtoTypeNode;
+    default?: string | number | boolean;
+    description?: string;
+    loc: SourceLocation;
 }
 
 /** Either inline param declarations, a single type reference name, or a DtoTypeNode. */
-export type ParamSource =
-  | { kind: 'params'; nodes: OpParamNode[] }
-  | { kind: 'ref'; name: string }
-  | { kind: 'type'; node: DtoTypeNode };
+export type ParamSource = { kind: 'params'; nodes: OpParamNode[] } | { kind: 'ref'; name: string } | { kind: 'type'; node: DtoTypeNode };
 
 export interface OpRequestNode {
-  contentType: 'application/json' | 'multipart/form-data';
-  bodyType: DtoTypeNode;
+    contentType: 'application/json' | 'multipart/form-data';
+    bodyType: DtoTypeNode;
 }
 
 export interface OpResponseNode {
-  statusCode: number;
-  contentType?: 'application/json';
-  bodyType?: DtoTypeNode;
+    statusCode: number;
+    contentType?: 'application/json';
+    bodyType?: DtoTypeNode;
 }
 
 export interface OpOperationNode {
-  method: HttpMethod;
-  service?: string; // e.g. "LedgerService.updateCategoryNesting"
-  sdk?: string; // e.g. "getUser" — explicit SDK method name
-  /** HMAC signature key name for this endpoint (e.g. `WEBHOOK_SECRET`). */
-  signature?: string;
-  /** Inline comment attached to the `signature:` line. */
-  signatureDescription?: string;
-  request?: OpRequestNode;
-  responses: OpResponseNode[];
-  query?: ParamSource;
-  queryMode?: ObjectMode;
-  headers?: ParamSource;
-  headersMode?: ObjectMode;
-  security?: SecurityNode; // overrides config default; "none" = explicitly public
-  /** Explicit modifiers. undefined = inherit from route; [] or array = override. */
-  modifiers?: RouteModifier[];
-  description?: string;
-  loc: SourceLocation;
+    method: HttpMethod;
+    service?: string; // e.g. "LedgerService.updateCategoryNesting"
+    sdk?: string; // e.g. "getUser" — explicit SDK method name
+    /** HMAC signature key name for this endpoint (e.g. `WEBHOOK_SECRET`). */
+    signature?: string;
+    /** Inline comment attached to the `signature:` line. */
+    signatureDescription?: string;
+    request?: OpRequestNode;
+    responses: OpResponseNode[];
+    query?: ParamSource;
+    queryMode?: ObjectMode;
+    headers?: ParamSource;
+    headersMode?: ObjectMode;
+    security?: SecurityNode; // overrides config default; "none" = explicitly public
+    /** Explicit modifiers. undefined = inherit from route; [] or array = override. */
+    modifiers?: RouteModifier[];
+    description?: string;
+    loc: SourceLocation;
 }
 
 export interface OpRouteNode {
-  path: string;
-  params?: ParamSource;
-  paramsMode?: ObjectMode;
-  operations: OpOperationNode[];
-  /** Route-level modifiers — cascade to all operations unless overridden. */
-  modifiers?: RouteModifier[];
-  /** Route-level security default — cascades to operations that have no explicit security declaration. */
-  security?: SecurityNode;
-  description?: string;
-  loc: SourceLocation;
+    path: string;
+    params?: ParamSource;
+    paramsMode?: ObjectMode;
+    operations: OpOperationNode[];
+    /** Route-level modifiers — cascade to all operations unless overridden. */
+    modifiers?: RouteModifier[];
+    /** Route-level security default — cascades to operations that have no explicit security declaration. */
+    security?: SecurityNode;
+    description?: string;
+    loc: SourceLocation;
 }
 
 /**
@@ -252,8 +249,8 @@ export interface OpRouteNode {
  * it is stripped from the returned array (it is not a codegen modifier itself).
  */
 export function resolveModifiers(route: OpRouteNode, op: OpOperationNode): RouteModifier[] {
-  const raw = op.modifiers ?? route.modifiers ?? [];
-  return raw.filter(m => m !== 'public');
+    const raw = op.modifiers ?? route.modifiers ?? [];
+    return raw.filter(m => m !== 'public');
 }
 
 /**
@@ -261,33 +258,33 @@ export function resolveModifiers(route: OpRouteNode, op: OpOperationNode): Route
  * Operation-level security always wins; if absent, the route's security is used; if absent, the file's.
  */
 export function resolveSecurity(route: OpRouteNode, op: OpOperationNode, root?: OpRootNode): SecurityNode | undefined {
-  if (op.security !== undefined) return op.security;
-  if (route.security !== undefined) return route.security;
-  return root?.security;
+    if (op.security !== undefined) return op.security;
+    if (route.security !== undefined) return route.security;
+    return root?.security;
 }
 
 export interface OpRootNode {
-  kind: 'opRoot';
-  meta: Record<string, string>;
-  /** Service name → module path mappings from `options { services { ... } }`. */
-  services?: Record<string, string>;
-  /** File-level security default — cascades to all routes/operations unless overridden. */
-  security?: SecurityNode;
-  routes: OpRouteNode[];
-  file: string;
-  /** Comment lines not attached to any node, sorted by line number. */
-  orphanComments?: Array<{ line: number; text: string }>;
+    kind: 'opRoot';
+    meta: Record<string, string>;
+    /** Service name → module path mappings from `options { services { ... } }`. */
+    services?: Record<string, string>;
+    /** File-level security default — cascades to all routes/operations unless overridden. */
+    security?: SecurityNode;
+    routes: OpRouteNode[];
+    file: string;
+    /** Comment lines not attached to any node, sorted by line number. */
+    orphanComments?: Array<{ line: number; text: string }>;
 }
 
 // ─── Unified AST (.ck) ───────────────────────────────────────────────────
 
 export interface CkRootNode {
-  kind: 'ckRoot';
-  meta: Record<string, string>;
-  services: Record<string, string>;
-  /** File-level security default — cascades to all routes/operations unless overridden. */
-  security?: SecurityNode;
-  models: ModelNode[];
-  routes: OpRouteNode[];
-  file: string;
+    kind: 'ckRoot';
+    meta: Record<string, string>;
+    services: Record<string, string>;
+    /** File-level security default — cascades to all routes/operations unless overridden. */
+    security?: SecurityNode;
+    models: ModelNode[];
+    routes: OpRouteNode[];
+    file: string;
 }

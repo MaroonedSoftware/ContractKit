@@ -1,93 +1,93 @@
 {
-  "name": "contractkit-vscode",
-  "displayName": "Contract DSL",
-  "description": "Language support for .ck contract definition files",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "publisher": "MaroonedSoftware",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/marooned-software/"
-  },
-  "engines": {
-    "vscode": "^1.105.1"
-  },
-  "categories": [
-    "Programming Languages"
-  ],
-  "activationEvents": [
-    "onLanguage:contract-ck"
-  ],
-  "main": "./dist/client/extension.js",
-  "contributes": {
-    "languages": [
-      {
-        "id": "contract-ck",
-        "aliases": [
-          "Contract DSL",
-          "ck"
-        ],
-        "extensions": [
-          ".ck"
-        ],
-        "configuration": "./language-configuration/ck-language-config.json"
-      }
+    "name": "contractkit-vscode",
+    "displayName": "Contract DSL",
+    "description": "Language support for .ck contract definition files",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "publisher": "MaroonedSoftware",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/marooned-software/"
+    },
+    "engines": {
+        "vscode": "^1.105.1"
+    },
+    "categories": [
+        "Programming Languages"
     ],
-    "grammars": [
-      {
-        "language": "contract-ck",
-        "scopeName": "source.ck",
-        "path": "./syntaxes/ck.tmLanguage.json"
-      }
+    "activationEvents": [
+        "onLanguage:contract-ck"
     ],
-    "configurationDefaults": {
-      "editor.tokenColorCustomizations": {
-        "textMateRules": [
-          {
-            "scope": [
-              "support.type.builtin.ck",
-              "support.type.compound.ck"
-            ],
-            "settings": {
-              "foreground": "#4EC9B0"
+    "main": "./dist/client/extension.js",
+    "contributes": {
+        "languages": [
+            {
+                "id": "contract-ck",
+                "aliases": [
+                    "Contract DSL",
+                    "ck"
+                ],
+                "extensions": [
+                    ".ck"
+                ],
+                "configuration": "./language-configuration/ck-language-config.json"
             }
-          },
-          {
-            "scope": [
-              "storage.modifier.ck"
-            ],
-            "settings": {
-              "fontStyle": "italic"
+        ],
+        "grammars": [
+            {
+                "language": "contract-ck",
+                "scopeName": "source.ck",
+                "path": "./syntaxes/ck.tmLanguage.json"
             }
-          }
-        ]
-      }
+        ],
+        "configurationDefaults": {
+            "editor.tokenColorCustomizations": {
+                "textMateRules": [
+                    {
+                        "scope": [
+                            "support.type.builtin.ck",
+                            "support.type.compound.ck"
+                        ],
+                        "settings": {
+                            "foreground": "#4EC9B0"
+                        }
+                    },
+                    {
+                        "scope": [
+                            "storage.modifier.ck"
+                        ],
+                        "settings": {
+                            "fontStyle": "italic"
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "scripts": {
+        "build": "node esbuild.mjs",
+        "build:ci": "eslint --max-warnings=0 && pnpm run build",
+        "dev": "node esbuild.mjs --watch",
+        "lint": "eslint --fix",
+        "format": "prettier --write .",
+        "test": "vitest run",
+        "test:ci": "vitest run --coverage",
+        "package": "node esbuild.mjs && pnpm exec vsce package --no-dependencies",
+        "vscode:install": "pnpm run package && cursor --install-extension contractkit-vscode-0.1.0.vsix",
+        "vscode:uninstall": "cursor --uninstall-extension contractkit-vscode-0.1.0.vsix"
+    },
+    "dependencies": {
+        "@maroonedsoftware/contractkit": "workspace:*",
+        "vscode-languageclient": "^9.0.1",
+        "vscode-languageserver": "^9.0.1",
+        "vscode-languageserver-textdocument": "^1.0.12"
+    },
+    "devDependencies": {
+        "@repo/config-eslint": "workspace:*",
+        "@repo/config-typescript": "workspace:*",
+        "@types/vscode": "^1.105.1",
+        "@vscode/vsce": "^3.7.1",
+        "esbuild": "^0.25.0"
     }
-  },
-  "scripts": {
-    "build": "node esbuild.mjs",
-    "build:ci": "eslint --max-warnings=0 && pnpm run build",
-    "dev": "node esbuild.mjs --watch",
-    "lint": "eslint --fix",
-    "format": "prettier --write .",
-    "test": "vitest run",
-    "test:ci": "vitest run --coverage",
-    "package": "node esbuild.mjs && pnpm exec vsce package --no-dependencies",
-    "vscode:install": "pnpm run package && cursor --install-extension contractkit-vscode-0.1.0.vsix",
-    "vscode:uninstall": "cursor --uninstall-extension contractkit-vscode-0.1.0.vsix"
-  },
-  "dependencies": {
-    "@maroonedsoftware/contractkit": "workspace:*",
-    "vscode-languageclient": "^9.0.1",
-    "vscode-languageserver": "^9.0.1",
-    "vscode-languageserver-textdocument": "^1.0.12"
-  },
-  "devDependencies": {
-    "@repo/config-eslint": "workspace:*",
-    "@repo/config-typescript": "workspace:*",
-    "@types/vscode": "^1.105.1",
-    "@vscode/vsce": "^3.7.1",
-    "esbuild": "^0.25.0"
-  }
 }

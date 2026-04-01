@@ -1,22 +1,22 @@
 import type {
-  OpRouteNode,
-  OpOperationNode,
-  OpParamNode,
-  OpRequestNode,
-  OpResponseNode,
-  HttpMethod,
-  DtoTypeNode,
-  ModelNode,
-  SourceLocation,
-  SecurityNode,
+    OpRouteNode,
+    OpOperationNode,
+    OpParamNode,
+    OpRequestNode,
+    OpResponseNode,
+    HttpMethod,
+    DtoTypeNode,
+    ModelNode,
+    SourceLocation,
+    SecurityNode,
 } from '@maroonedsoftware/contractkit';
 import type {
-  NormalizedDocument,
-  NormalizedPathItem,
-  NormalizedOperation,
-  NormalizedParameter,
-  NormalizedRequestBody,
-  NormalizedResponse,
+    NormalizedDocument,
+    NormalizedPathItem,
+    NormalizedOperation,
+    NormalizedParameter,
+    NormalizedRequestBody,
+    NormalizedResponse,
 } from './types.js';
 import { schemaToTypeNode, extractInlineModel } from './schema-to-ast.js';
 import type { SchemaContext } from './schema-to-ast.js';
@@ -28,338 +28,311 @@ const HTTP_METHODS: HttpMethod[] = ['get', 'post', 'put', 'patch', 'delete'];
 // ─── Public API ───────────────────────────────────────────────────────────
 
 export interface PathsContext {
-  circularRefs: Set<string>;
-  warnings: WarningCollector;
-  includeComments: boolean;
-  namedSchemas: Record<string, unknown>;
-  /** Accumulates inline models extracted from request/response bodies. */
-  extractedModels: ModelNode[];
-  /** Global security from the spec (for detecting explicit overrides). */
-  globalSecurity?: Record<string, string[]>[];
+    circularRefs: Set<string>;
+    warnings: WarningCollector;
+    includeComments: boolean;
+    namedSchemas: Record<string, unknown>;
+    /** Accumulates inline models extracted from request/response bodies. */
+    extractedModels: ModelNode[];
+    /** Global security from the spec (for detecting explicit overrides). */
+    globalSecurity?: Record<string, string[]>[];
 }
 
 /**
  * Convert OpenAPI paths to OpRouteNode[].
  * Returns routes along with a tag mapping for each route.
  */
-export function pathsToRoutes(
-  doc: NormalizedDocument,
-  ctx: PathsContext,
-): { routes: OpRouteNode[]; routeTags: Map<OpRouteNode, string> } {
-  const routes: OpRouteNode[] = [];
-  const routeTags = new Map<OpRouteNode, string>();
-  const paths = doc.paths ?? {};
+export function pathsToRoutes(doc: NormalizedDocument, ctx: PathsContext): { routes: OpRouteNode[]; routeTags: Map<OpRouteNode, string> } {
+    const routes: OpRouteNode[] = [];
+    const routeTags = new Map<OpRouteNode, string>();
+    const paths = doc.paths ?? {};
 
-  for (const [path, pathItem] of Object.entries(paths)) {
-    if (!pathItem) continue;
-    const result = pathItemToRoute(path, pathItem, ctx);
-    if (result) {
-      routes.push(result.route);
-      routeTags.set(result.route, result.tag);
+    for (const [path, pathItem] of Object.entries(paths)) {
+        if (!pathItem) continue;
+        const result = pathItemToRoute(path, pathItem, ctx);
+        if (result) {
+            routes.push(result.route);
+            routeTags.set(result.route, result.tag);
+        }
     }
-  }
 
-  return { routes, routeTags };
+    return { routes, routeTags };
 }
 
 // ─── Path Item → Route ───────────────────────────────────────────────────
 
-function pathItemToRoute(
-  path: string,
-  pathItem: NormalizedPathItem,
-  ctx: PathsContext,
-): { route: OpRouteNode; tag: string } | null {
-  const operations: OpOperationNode[] = [];
-  let primaryTag = 'default';
+function pathItemToRoute(path: string, pathItem: NormalizedPathItem, ctx: PathsContext): { route: OpRouteNode; tag: string } | null {
+    const operations: OpOperationNode[] = [];
+    let primaryTag = 'default';
 
-  // Collect path-level parameters
-  const pathParams = (pathItem.parameters ?? []).filter(p => p.in === 'path');
+    // Collect path-level parameters
+    const pathParams = (pathItem.parameters ?? []).filter(p => p.in === 'path');
 
-  for (const method of HTTP_METHODS) {
-    const op = pathItem[method];
-    if (!op) continue;
+    for (const method of HTTP_METHODS) {
+        const op = pathItem[method];
+        if (!op) continue;
 
-    const opNode = operationToNode(method, op, path, ctx);
-    operations.push(opNode);
+        const opNode = operationToNode(method, op, path, ctx);
+        operations.push(opNode);
 
-    // Use first tag of first operation as the route's tag
-    if (op.tags && op.tags.length > 0 && primaryTag === 'default') {
-      primaryTag = op.tags[0]!;
+        // Use first tag of first operation as the route's tag
+        if (op.tags && op.tags.length > 0 && primaryTag === 'default') {
+            primaryTag = op.tags[0]!;
+        }
     }
-  }
 
-  if (operations.length === 0) return null;
+    if (operations.length === 0) return null;
 
-  // Build params from path-level + inferred from path template
-  const params = buildPathParams(path, pathParams, pathItem, ctx);
+    // Build params from path-level + inferred from path template
+    const params = buildPathParams(path, pathParams, pathItem, ctx);
 
-  const route: OpRouteNode = {
-    path,
-    operations,
-    loc: LOC,
-  };
+    const route: OpRouteNode = {
+        path,
+        operations,
+        loc: LOC,
+    };
 
-  if (params.length > 0) {
-    route.params = { kind: 'params', nodes: params };
-  }
+    if (params.length > 0) {
+        route.params = { kind: 'params', nodes: params };
+    }
 
-  if (pathItem.description && ctx.includeComments) {
-    route.description = pathItem.description;
-  }
+    if (pathItem.description && ctx.includeComments) {
+        route.description = pathItem.description;
+    }
 
-  return { route, tag: primaryTag };
+    return { route, tag: primaryTag };
 }
 
 // ─── Operation → Node ─────────────────────────────────────────────────────
 
-function operationToNode(
-  method: HttpMethod,
-  op: NormalizedOperation,
-  path: string,
-  ctx: PathsContext,
-): OpOperationNode {
-  const pathPrefix = `#/paths/${encodePathSegment(path)}/${method}`;
-  const schemaCtx = makeSchemaCtx(ctx, pathPrefix);
+function operationToNode(method: HttpMethod, op: NormalizedOperation, path: string, ctx: PathsContext): OpOperationNode {
+    const pathPrefix = `#/paths/${encodePathSegment(path)}/${method}`;
+    const schemaCtx = makeSchemaCtx(ctx, pathPrefix);
 
-  const node: OpOperationNode = {
-    method,
-    responses: [],
-    loc: LOC,
-  };
+    const node: OpOperationNode = {
+        method,
+        responses: [],
+        loc: LOC,
+    };
 
-  // operationId → sdk
-  if (op.operationId) {
-    node.sdk = op.operationId;
-  }
-
-  // Description
-  if (op.description && ctx.includeComments) {
-    node.description = op.description;
-  }
-
-  // Deprecated
-  if (op.deprecated) {
-    node.modifiers = ['deprecated'];
-  }
-
-  // Query and header parameters
-  const queryParams: OpParamNode[] = [];
-  const headerParams: OpParamNode[] = [];
-
-  for (const param of op.parameters ?? []) {
-    if (param.in === 'query') {
-      queryParams.push(parameterToNode(param, schemaCtx));
-    } else if (param.in === 'header') {
-      headerParams.push(parameterToNode(param, schemaCtx));
+    // operationId → sdk
+    if (op.operationId) {
+        node.sdk = op.operationId;
     }
-  }
 
-  if (queryParams.length > 0) {
-    node.query = { kind: 'params', nodes: queryParams };
-  }
-  if (headerParams.length > 0) {
-    node.headers = { kind: 'params', nodes: headerParams };
-  }
+    // Description
+    if (op.description && ctx.includeComments) {
+        node.description = op.description;
+    }
 
-  // Request body
-  if (op.requestBody) {
-    node.request = requestBodyToNode(op.requestBody, op.operationId ?? `${method}${toPascalCase(path)}`, schemaCtx, ctx);
-  }
+    // Deprecated
+    if (op.deprecated) {
+        node.modifiers = ['deprecated'];
+    }
 
-  // Responses
-  const responses = op.responses ?? {};
-  for (const [code, resp] of Object.entries(responses)) {
-    const statusCode = parseInt(code, 10);
-    if (isNaN(statusCode)) continue;
-    const respNode = responseToNode(statusCode, resp, op.operationId ?? `${method}${toPascalCase(path)}`, schemaCtx, ctx);
-    node.responses.push(respNode);
-  }
+    // Query and header parameters
+    const queryParams: OpParamNode[] = [];
+    const headerParams: OpParamNode[] = [];
 
-  // Security
-  if (op.security !== undefined) {
-    node.security = convertSecurity(op.security);
-  }
+    for (const param of op.parameters ?? []) {
+        if (param.in === 'query') {
+            queryParams.push(parameterToNode(param, schemaCtx));
+        } else if (param.in === 'header') {
+            headerParams.push(parameterToNode(param, schemaCtx));
+        }
+    }
 
-  return node;
+    if (queryParams.length > 0) {
+        node.query = { kind: 'params', nodes: queryParams };
+    }
+    if (headerParams.length > 0) {
+        node.headers = { kind: 'params', nodes: headerParams };
+    }
+
+    // Request body
+    if (op.requestBody) {
+        node.request = requestBodyToNode(op.requestBody, op.operationId ?? `${method}${toPascalCase(path)}`, schemaCtx, ctx);
+    }
+
+    // Responses
+    const responses = op.responses ?? {};
+    for (const [code, resp] of Object.entries(responses)) {
+        const statusCode = parseInt(code, 10);
+        if (isNaN(statusCode)) continue;
+        const respNode = responseToNode(statusCode, resp, op.operationId ?? `${method}${toPascalCase(path)}`, schemaCtx, ctx);
+        node.responses.push(respNode);
+    }
+
+    // Security
+    if (op.security !== undefined) {
+        node.security = convertSecurity(op.security);
+    }
+
+    return node;
 }
 
 // ─── Parameters ───────────────────────────────────────────────────────────
 
-function buildPathParams(
-  path: string,
-  pathLevelParams: NormalizedParameter[],
-  pathItem: NormalizedPathItem,
-  ctx: PathsContext,
-): OpParamNode[] {
-  const schemaCtx = makeSchemaCtx(ctx, `#/paths/${encodePathSegment(path)}`);
+function buildPathParams(path: string, pathLevelParams: NormalizedParameter[], pathItem: NormalizedPathItem, ctx: PathsContext): OpParamNode[] {
+    const schemaCtx = makeSchemaCtx(ctx, `#/paths/${encodePathSegment(path)}`);
 
-  // Collect all path params from path-level and operation-level
-  const paramMap = new Map<string, NormalizedParameter>();
+    // Collect all path params from path-level and operation-level
+    const paramMap = new Map<string, NormalizedParameter>();
 
-  for (const p of pathLevelParams) {
-    paramMap.set(p.name, p);
-  }
-
-  // Also check operation-level path params
-  for (const method of HTTP_METHODS) {
-    const op = pathItem[method];
-    if (!op?.parameters) continue;
-    for (const p of op.parameters) {
-      if (p.in === 'path' && !paramMap.has(p.name)) {
+    for (const p of pathLevelParams) {
         paramMap.set(p.name, p);
-      }
     }
-  }
 
-  // Extract param names from path template
-  const templateNames = [...path.matchAll(/\{([^}]+)\}/g)].map(m => m[1]!);
-
-  return templateNames.map(name => {
-    const param = paramMap.get(name);
-    if (param) {
-      return parameterToNode(param, schemaCtx);
+    // Also check operation-level path params
+    for (const method of HTTP_METHODS) {
+        const op = pathItem[method];
+        if (!op?.parameters) continue;
+        for (const p of op.parameters) {
+            if (p.in === 'path' && !paramMap.has(p.name)) {
+                paramMap.set(p.name, p);
+            }
+        }
     }
-    // Infer as uuid if no schema is given
-    return {
-      name,
-      optional: false,
-      nullable: false,
-      type: { kind: 'scalar' as const, name: 'string' as const },
-      loc: LOC,
-    };
-  });
+
+    // Extract param names from path template
+    const templateNames = [...path.matchAll(/\{([^}]+)\}/g)].map(m => m[1]!);
+
+    return templateNames.map(name => {
+        const param = paramMap.get(name);
+        if (param) {
+            return parameterToNode(param, schemaCtx);
+        }
+        // Infer as uuid if no schema is given
+        return {
+            name,
+            optional: false,
+            nullable: false,
+            type: { kind: 'scalar' as const, name: 'string' as const },
+            loc: LOC,
+        };
+    });
 }
 
 function parameterToNode(param: NormalizedParameter, ctx: SchemaContext): OpParamNode {
-  const type = param.schema
-    ? schemaToTypeNode(param.schema, ctx)
-    : { kind: 'scalar' as const, name: 'string' as const };
+    const type = param.schema ? schemaToTypeNode(param.schema, ctx) : { kind: 'scalar' as const, name: 'string' as const };
 
-  return {
-    name: param.name,
-    optional: param.in !== 'path' && !param.required,
-    nullable: false,
-    type,
-    description: ctx.includeComments ? param.description : undefined,
-    loc: LOC,
-  };
+    return {
+        name: param.name,
+        optional: param.in !== 'path' && !param.required,
+        nullable: false,
+        type,
+        description: ctx.includeComments ? param.description : undefined,
+        loc: LOC,
+    };
 }
 
 // ─── Request Body ─────────────────────────────────────────────────────────
 
 function requestBodyToNode(
-  reqBody: NormalizedRequestBody,
-  operationName: string,
-  schemaCtx: SchemaContext,
-  ctx: PathsContext,
+    reqBody: NormalizedRequestBody,
+    operationName: string,
+    schemaCtx: SchemaContext,
+    ctx: PathsContext,
 ): OpRequestNode | undefined {
-  const content = reqBody.content;
-  if (!content) return undefined;
+    const content = reqBody.content;
+    if (!content) return undefined;
 
-  // Pick the first content type
-  const [contentType, mediaType] = Object.entries(content)[0] ?? [];
-  if (!contentType || !mediaType?.schema) return undefined;
+    // Pick the first content type
+    const [contentType, mediaType] = Object.entries(content)[0] ?? [];
+    if (!contentType || !mediaType?.schema) return undefined;
 
-  const { typeNode, model } = extractInlineModel(
-    mediaType.schema,
-    `${toPascalCase(operationName)}Request`,
-    schemaCtx,
-  );
+    const { typeNode, model } = extractInlineModel(mediaType.schema, `${toPascalCase(operationName)}Request`, schemaCtx);
 
-  if (model) {
-    ctx.extractedModels.push(model);
-  }
+    if (model) {
+        ctx.extractedModels.push(model);
+    }
 
-  return {
-    contentType: contentType as OpRequestNode['contentType'],
-    bodyType: typeNode,
-  };
+    return {
+        contentType: contentType as OpRequestNode['contentType'],
+        bodyType: typeNode,
+    };
 }
 
 // ─── Responses ────────────────────────────────────────────────────────────
 
 function responseToNode(
-  statusCode: number,
-  resp: NormalizedResponse,
-  operationName: string,
-  schemaCtx: SchemaContext,
-  ctx: PathsContext,
+    statusCode: number,
+    resp: NormalizedResponse,
+    operationName: string,
+    schemaCtx: SchemaContext,
+    ctx: PathsContext,
 ): OpResponseNode {
-  if (!resp.content) {
-    return { statusCode };
-  }
+    if (!resp.content) {
+        return { statusCode };
+    }
 
-  // Pick the first content type
-  const [contentType, mediaType] = Object.entries(resp.content)[0] ?? [];
-  if (!contentType || !mediaType?.schema) {
-    return { statusCode };
-  }
+    // Pick the first content type
+    const [contentType, mediaType] = Object.entries(resp.content)[0] ?? [];
+    if (!contentType || !mediaType?.schema) {
+        return { statusCode };
+    }
 
-  const { typeNode, model } = extractInlineModel(
-    mediaType.schema,
-    `${toPascalCase(operationName)}Response${statusCode}`,
-    schemaCtx,
-  );
+    const { typeNode, model } = extractInlineModel(mediaType.schema, `${toPascalCase(operationName)}Response${statusCode}`, schemaCtx);
 
-  if (model) {
-    ctx.extractedModels.push(model);
-  }
+    if (model) {
+        ctx.extractedModels.push(model);
+    }
 
-  return {
-    statusCode,
-    contentType: contentType as 'application/json',
-    bodyType: typeNode,
-  };
+    return {
+        statusCode,
+        contentType: contentType as 'application/json',
+        bodyType: typeNode,
+    };
 }
 
 // ─── Security ─────────────────────────────────────────────────────────────
 
 function convertSecurity(security: Record<string, string[]>[]): SecurityNode {
-  // Empty array = explicitly no security
-  if (security.length === 0) {
-    return 'none';
-  }
-
-  // The DSL's security model is simpler — extract roles if present
-  // For most security schemes, just note that security is required
-  const allScopes: string[] = [];
-  for (const requirement of security) {
-    for (const scopes of Object.values(requirement)) {
-      allScopes.push(...scopes);
+    // Empty array = explicitly no security
+    if (security.length === 0) {
+        return 'none';
     }
-  }
 
-  if (allScopes.length > 0) {
-    return { roles: allScopes, loc: LOC };
-  }
+    // The DSL's security model is simpler — extract roles if present
+    // For most security schemes, just note that security is required
+    const allScopes: string[] = [];
+    for (const requirement of security) {
+        for (const scopes of Object.values(requirement)) {
+            allScopes.push(...scopes);
+        }
+    }
 
-  // Security required but no specific scopes/roles
-  return { roles: [], loc: LOC };
+    if (allScopes.length > 0) {
+        return { roles: allScopes, loc: LOC };
+    }
+
+    // Security required but no specific scopes/roles
+    return { roles: [], loc: LOC };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 function makeSchemaCtx(ctx: PathsContext, path: string): SchemaContext {
-  return {
-    circularRefs: ctx.circularRefs,
-    warnings: ctx.warnings,
-    path,
-    includeComments: ctx.includeComments,
-    namedSchemas: ctx.namedSchemas as Record<string, never>,
-    extractedModels: ctx.extractedModels,
-    inlineCounter: 0,
-  };
+    return {
+        circularRefs: ctx.circularRefs,
+        warnings: ctx.warnings,
+        path,
+        includeComments: ctx.includeComments,
+        namedSchemas: ctx.namedSchemas as Record<string, never>,
+        extractedModels: ctx.extractedModels,
+        inlineCounter: 0,
+    };
 }
 
 function toPascalCase(input: string): string {
-  return input
-    .replace(/[^a-zA-Z0-9]/g, ' ')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-    .join('');
+    return input
+        .replace(/[^a-zA-Z0-9]/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join('');
 }
 
 function encodePathSegment(s: string): string {
-  return s.replace(/~/g, '~0').replace(/\//g, '~1');
+    return s.replace(/~/g, '~0').replace(/\//g, '~1');
 }

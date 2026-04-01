@@ -1,12 +1,12 @@
 import type {
-  OpRouteNode,
-  OpOperationNode,
-  OpResponseNode,
-  ParamSource,
-  SecurityNode,
-  SecurityFields,
-  DtoTypeNode,
-  ObjectMode,
+    OpRouteNode,
+    OpOperationNode,
+    OpResponseNode,
+    ParamSource,
+    SecurityNode,
+    SecurityFields,
+    DtoTypeNode,
+    ObjectMode,
 } from '@maroonedsoftware/contractkit';
 import { SECURITY_NONE } from '@maroonedsoftware/contractkit';
 import { printType, formatDefault } from './print-type.js';
@@ -24,18 +24,18 @@ export type CommentBlock = { startLine: number; lines: string[] };
 
 /** Group sorted orphan comment entries into consecutive-line blocks. */
 export function groupComments(entries: CommentEntry[]): CommentBlock[] {
-  const blocks: CommentBlock[] = [];
-  let current: CommentBlock | null = null;
-  for (const { line, text } of entries) {
-    if (current && line === current.startLine + current.lines.length) {
-      current.lines.push(text);
-    } else {
-      if (current) blocks.push(current);
-      current = { startLine: line, lines: [text] };
+    const blocks: CommentBlock[] = [];
+    let current: CommentBlock | null = null;
+    for (const { line, text } of entries) {
+        if (current && line === current.startLine + current.lines.length) {
+            current.lines.push(text);
+        } else {
+            if (current) blocks.push(current);
+            current = { startLine: line, lines: [text] };
+        }
     }
-  }
-  if (current) blocks.push(current);
-  return blocks;
+    if (current) blocks.push(current);
+    return blocks;
 }
 
 /**
@@ -43,177 +43,177 @@ export function groupComments(entries: CommentEntry[]): CommentBlock[] {
  * Lines are emitted verbatim — they already carry their original indentation.
  */
 export function flushBlocks(out: string[], blocks: CommentBlock[], idx: { value: number }, beforeLine: number, _indent = '') {
-  while (idx.value < blocks.length && blocks[idx.value]!.startLine < beforeLine) {
-    for (const l of blocks[idx.value]!.lines) out.push(l);
-    idx.value++;
-  }
+    while (idx.value < blocks.length && blocks[idx.value]!.startLine < beforeLine) {
+        for (const l of blocks[idx.value]!.lines) out.push(l);
+        idx.value++;
+    }
 }
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 
 export function printRoute(route: OpRouteNode, blocks: CommentBlock[], idx: { value: number }, nextRouteStart: number): string {
-  const lines: string[] = [];
-  const commentSuffix = route.description ? ` # ${route.description}` : '';
-  lines.push(`${route.path}: {${commentSuffix}`);
+    const lines: string[] = [];
+    const commentSuffix = route.description ? ` # ${route.description}` : '';
+    lines.push(`${route.path}: {${commentSuffix}`);
 
-  if (route.params !== undefined) {
-    lines.push(...printParamsBlock(route.params, I1, route.paramsMode));
-  }
+    if (route.params !== undefined) {
+        lines.push(...printParamsBlock(route.params, I1, route.paramsMode));
+    }
 
-  if (route.security !== undefined) {
-    lines.push(...printSecurity(route.security, I1, I2));
-  }
+    if (route.security !== undefined) {
+        lines.push(...printSecurity(route.security, I1, I2));
+    }
 
-  for (const op of route.operations) {
-    // Flush comment blocks that appear before this operation (inside the route)
-    flushBlocks(lines, blocks, idx, op.loc.line, I1);
-    lines.push(...printOperation(op));
-  }
+    for (const op of route.operations) {
+        // Flush comment blocks that appear before this operation (inside the route)
+        flushBlocks(lines, blocks, idx, op.loc.line, I1);
+        lines.push(...printOperation(op));
+    }
 
-  // Flush comment blocks between last operation and the next route
-  flushBlocks(lines, blocks, idx, nextRouteStart, I1);
+    // Flush comment blocks between last operation and the next route
+    flushBlocks(lines, blocks, idx, nextRouteStart, I1);
 
-  lines.push('}');
-  return lines.join('\n');
+    lines.push('}');
+    return lines.join('\n');
 }
 
 // ─── Params block ────────────────────────────────────────────────────────────
 
 function printParamsBlock(source: ParamSource, indent: string, mode?: ObjectMode): string[] {
-  const prefix = mode ? `mode(${mode}) ` : '';
-  if (source.kind === 'ref') {
-    return [`${indent}${prefix}params: ${source.name}`];
-  }
-  if (source.kind === 'params') {
-    const lines: string[] = [`${indent}${prefix}params: {`];
-    const inner = indent + INDENT;
-    for (const p of source.nodes) {
-      const opt = p.optional ? '?' : '';
-      let t = printType(p.type);
-      if (p.nullable) t += ' | null';
-      const def = p.default !== undefined ? ` = ${formatDefault(p.default)}` : '';
-      const comment = p.description ? ` # ${p.description}` : '';
-      lines.push(`${inner}${p.name}${opt}: ${t}${def}${comment}`);
+    const prefix = mode ? `mode(${mode}) ` : '';
+    if (source.kind === 'ref') {
+        return [`${indent}${prefix}params: ${source.name}`];
     }
-    lines.push(`${indent}}`);
-    return lines;
-  }
-  // DtoTypeNode
-  return [`${indent}${prefix}params: ${printType(source.node)}`];
+    if (source.kind === 'params') {
+        const lines: string[] = [`${indent}${prefix}params: {`];
+        const inner = indent + INDENT;
+        for (const p of source.nodes) {
+            const opt = p.optional ? '?' : '';
+            let t = printType(p.type);
+            if (p.nullable) t += ' | null';
+            const def = p.default !== undefined ? ` = ${formatDefault(p.default)}` : '';
+            const comment = p.description ? ` # ${p.description}` : '';
+            lines.push(`${inner}${p.name}${opt}: ${t}${def}${comment}`);
+        }
+        lines.push(`${indent}}`);
+        return lines;
+    }
+    // DtoTypeNode
+    return [`${indent}${prefix}params: ${printType(source.node)}`];
 }
 
 // ─── HTTP operation ──────────────────────────────────────────────────────────
 
 function printOperation(op: OpOperationNode): string[] {
-  const lines: string[] = [];
-  const commentSuffix = op.description ? ` # ${op.description}` : '';
-  const modPart = op.modifiers?.length ? `(${op.modifiers[0]})` : '';
-  lines.push(`${I1}${op.method}${modPart}: {${commentSuffix}`);
+    const lines: string[] = [];
+    const commentSuffix = op.description ? ` # ${op.description}` : '';
+    const modPart = op.modifiers?.length ? `(${op.modifiers[0]})` : '';
+    lines.push(`${I1}${op.method}${modPart}: {${commentSuffix}`);
 
-  if (op.service) lines.push(`${I2}service: ${op.service}`);
-  if (op.sdk) lines.push(`${I2}sdk: ${op.sdk}`);
-  if (op.signature) {
-    const comment = op.signatureDescription ? ` # ${op.signatureDescription}` : '';
-    lines.push(`${I2}signature: ${formatSignatureValue(op.signature)}${comment}`);
-  }
-  if (op.security !== undefined) lines.push(...printSecurity(op.security));
-  if (op.query !== undefined) lines.push(...printQueryOrHeaders('query', op.query, op.queryMode));
-  if (op.headers !== undefined) lines.push(...printQueryOrHeaders('headers', op.headers, op.headersMode));
-  if (op.request) {
-    lines.push(`${I2}request: {`);
-    lines.push(...printContentTypeLine(op.request.contentType, op.request.bodyType, I3));
-    lines.push(`${I2}}`);
-  }
-  if (op.responses.length > 0) {
-    lines.push(...printResponseBlock(op.responses));
-  }
+    if (op.service) lines.push(`${I2}service: ${op.service}`);
+    if (op.sdk) lines.push(`${I2}sdk: ${op.sdk}`);
+    if (op.signature) {
+        const comment = op.signatureDescription ? ` # ${op.signatureDescription}` : '';
+        lines.push(`${I2}signature: ${formatSignatureValue(op.signature)}${comment}`);
+    }
+    if (op.security !== undefined) lines.push(...printSecurity(op.security));
+    if (op.query !== undefined) lines.push(...printQueryOrHeaders('query', op.query, op.queryMode));
+    if (op.headers !== undefined) lines.push(...printQueryOrHeaders('headers', op.headers, op.headersMode));
+    if (op.request) {
+        lines.push(`${I2}request: {`);
+        lines.push(...printContentTypeLine(op.request.contentType, op.request.bodyType, I3));
+        lines.push(`${I2}}`);
+    }
+    if (op.responses.length > 0) {
+        lines.push(...printResponseBlock(op.responses));
+    }
 
-  lines.push(`${I1}}`);
-  return lines;
+    lines.push(`${I1}}`);
+    return lines;
 }
 
 // ─── Security ────────────────────────────────────────────────────────────────
 
 /** Print a signature key: unquoted when it's a plain identifier, quoted otherwise. */
 function formatSignatureValue(value: string): string {
-  return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(value) ? value : `"${value}"`;
+    return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(value) ? value : `"${value}"`;
 }
 
 // indent: indentation for the `security` keyword line
 // innerIndent: indentation for field lines inside the block
 export function printSecurity(security: SecurityNode, indent = I2, innerIndent = I3): string[] {
-  if (security === SECURITY_NONE) return [`${indent}security: none`];
-  const fields = security as SecurityFields;
-  const hasRoles = fields.roles && fields.roles.length > 0;
-  if (!hasRoles) return [];
-  const lines = [`${indent}security: {`];
-  const comment = fields.rolesDescription ? ` # ${fields.rolesDescription}` : '';
-  lines.push(`${innerIndent}roles: ${fields.roles!.join(' ')}${comment}`);
-  lines.push(`${indent}}`);
-  return lines;
+    if (security === SECURITY_NONE) return [`${indent}security: none`];
+    const fields = security as SecurityFields;
+    const hasRoles = fields.roles && fields.roles.length > 0;
+    if (!hasRoles) return [];
+    const lines = [`${indent}security: {`];
+    const comment = fields.rolesDescription ? ` # ${fields.rolesDescription}` : '';
+    lines.push(`${innerIndent}roles: ${fields.roles!.join(' ')}${comment}`);
+    lines.push(`${indent}}`);
+    return lines;
 }
 
 // ─── Query / headers ─────────────────────────────────────────────────────────
 
 function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource, mode?: ObjectMode): string[] {
-  const prefix = mode ? `mode(${mode}) ` : '';
-  if (source.kind === 'ref') {
-    return [`${I2}${prefix}${keyword}: ${source.name}`];
-  }
-  if (source.kind === 'params') {
-    if (source.nodes.length === 0) return [];
-    const lines: string[] = [`${I2}${prefix}${keyword}: {`];
-    for (const p of source.nodes) {
-      const opt = p.optional ? '?' : '';
-      let t = printType(p.type);
-      if (p.nullable) t += ' | null';
-      const def = p.default !== undefined ? ` = ${formatDefault(p.default)}` : '';
-      const comment = p.description ? ` # ${p.description}` : '';
-      lines.push(`${I3}${p.name}${opt}: ${t}${def}${comment}`);
+    const prefix = mode ? `mode(${mode}) ` : '';
+    if (source.kind === 'ref') {
+        return [`${I2}${prefix}${keyword}: ${source.name}`];
     }
-    lines.push(`${I2}}`);
-    return lines;
-  }
-  // DtoTypeNode (e.g. intersection)
-  return [`${I2}${prefix}${keyword}: ${printType(source.node)}`];
+    if (source.kind === 'params') {
+        if (source.nodes.length === 0) return [];
+        const lines: string[] = [`${I2}${prefix}${keyword}: {`];
+        for (const p of source.nodes) {
+            const opt = p.optional ? '?' : '';
+            let t = printType(p.type);
+            if (p.nullable) t += ' | null';
+            const def = p.default !== undefined ? ` = ${formatDefault(p.default)}` : '';
+            const comment = p.description ? ` # ${p.description}` : '';
+            lines.push(`${I3}${p.name}${opt}: ${t}${def}${comment}`);
+        }
+        lines.push(`${I2}}`);
+        return lines;
+    }
+    // DtoTypeNode (e.g. intersection)
+    return [`${I2}${prefix}${keyword}: ${printType(source.node)}`];
 }
 
 // ─── Content-type line ───────────────────────────────────────────────────────
 
 /** Print a `contentType: bodyType` line, expanding inline brace objects onto separate lines. */
 function printContentTypeLine(contentType: string, bodyType: DtoTypeNode, lineIndent: string): string[] {
-  if (bodyType.kind === 'inlineObject') {
-    const fieldIndent = lineIndent + INDENT;
-    const lines: string[] = [`${lineIndent}${contentType}: {`];
-    for (const f of bodyType.fields) {
-      const opt = f.optional ? '?' : '';
-      let t = printType(f.type);
-      if (f.nullable) t += ' | null';
-      const def = f.default !== undefined ? ` = ${formatDefault(f.default)}` : '';
-      const comment = f.description ? ` # ${f.description}` : '';
-      lines.push(`${fieldIndent}${f.name}${opt}: ${t}${def}${comment}`);
+    if (bodyType.kind === 'inlineObject') {
+        const fieldIndent = lineIndent + INDENT;
+        const lines: string[] = [`${lineIndent}${contentType}: {`];
+        for (const f of bodyType.fields) {
+            const opt = f.optional ? '?' : '';
+            let t = printType(f.type);
+            if (f.nullable) t += ' | null';
+            const def = f.default !== undefined ? ` = ${formatDefault(f.default)}` : '';
+            const comment = f.description ? ` # ${f.description}` : '';
+            lines.push(`${fieldIndent}${f.name}${opt}: ${t}${def}${comment}`);
+        }
+        lines.push(`${lineIndent}}`);
+        return lines;
     }
-    lines.push(`${lineIndent}}`);
-    return lines;
-  }
-  return [`${lineIndent}${contentType}: ${printType(bodyType)}`];
+    return [`${lineIndent}${contentType}: ${printType(bodyType)}`];
 }
 
 // ─── Response block ──────────────────────────────────────────────────────────
 
 function printResponseBlock(responses: OpResponseNode[]): string[] {
-  const lines: string[] = [`${I2}response: {`];
+    const lines: string[] = [`${I2}response: {`];
 
-  for (const resp of responses) {
-    if (resp.contentType && resp.bodyType) {
-      lines.push(`${I3}${resp.statusCode}: {`);
-      lines.push(...printContentTypeLine(resp.contentType, resp.bodyType, I4));
-      lines.push(`${I3}}`);
-    } else {
-      lines.push(`${I3}${resp.statusCode}:`);
+    for (const resp of responses) {
+        if (resp.contentType && resp.bodyType) {
+            lines.push(`${I3}${resp.statusCode}: {`);
+            lines.push(...printContentTypeLine(resp.contentType, resp.bodyType, I4));
+            lines.push(`${I3}}`);
+        } else {
+            lines.push(`${I3}${resp.statusCode}:`);
+        }
     }
-  }
 
-  lines.push(`${I2}}`);
-  return lines;
+    lines.push(`${I2}}`);
+    return lines;
 }
