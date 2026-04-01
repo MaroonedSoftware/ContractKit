@@ -1,5 +1,5 @@
 {
-  "name": "contract-dsl-vscode",
+  "name": "contractkit-vscode",
   "displayName": "Contract DSL",
   "description": "Language support for .ck contract definition files",
   "version": "0.1.0",
@@ -74,8 +74,8 @@
     "test": "vitest run",
     "test:ci": "vitest run --coverage",
     "package": "node esbuild.mjs && pnpm exec vsce package --no-dependencies",
-    "vscode:install": "pnpm run package && cursor --install-extension contract-dsl-vscode-0.1.0.vsix",
-    "vscode:uninstall": "cursor --uninstall-extension contract-dsl-vscode-0.1.0.vsix"
+    "vscode:install": "pnpm run package && cursor --install-extension contractkit-vscode-0.1.0.vsix",
+    "vscode:uninstall": "cursor --uninstall-extension contractkit-vscode-0.1.0.vsix"
   },
   "dependencies": {
     "@maroonedsoftware/contractkit": "workspace:*",

@@ -1,11 +1,11 @@
 {
-  "name": "contract-dsl",
+  "name": "contractkit",
   "version": "0.1.0",
   "description": "Compiler for .dto and .op DSL files into TypeScript/Zod/Koa code",
   "type": "module",
   "main": "./dist/cli.js",
   "bin": {
-    "dsl-compile": "dist/cli.js"
+    "contractkit": "dist/cli.js"
   },
   "scripts": {
     "build": "tsup src/cli.ts --format esm --sourcemap",

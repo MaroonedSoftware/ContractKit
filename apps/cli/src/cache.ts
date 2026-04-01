@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 
-export const DEFAULT_CACHE_FILENAME = '.contract-dsl-cache';
+export const DEFAULT_CACHE_FILENAME = '.contractkit-cache';
 
 export interface FileHashMap {
   [filePath: string]: string; // path -> sha256 hex

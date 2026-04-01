@@ -69,7 +69,7 @@ describe('mergeConfig', () => {
   it('resolves cache config from boolean', () => {
     const result = mergeConfig({ cache: true }, baseCli);
     expect(result.cache.enabled).toBe(true);
-    expect(result.cache.filename).toBe('.contract-dsl-cache');
+    expect(result.cache.filename).toBe('.contractkit-cache');
   });
 
   it('resolves cache config from string', () => {

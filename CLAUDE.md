@@ -44,7 +44,7 @@ pnpm --filter @maroonedsoftware/contractkit exec vitest run tests/parser-ck.test
 
 | File                                                | Role                                                                    |
 | --------------------------------------------------- | ----------------------------------------------------------------------- |
-| `packages/contractkit/src/contract-dsl.ohm`         | PEG grammar — source of truth for the language                          |
+| `packages/contractkit/src/contractkit.ohm`         | PEG grammar — source of truth for the language                          |
 | `packages/contractkit/src/semantics.ts`             | Ohm parse tree → typed AST                                              |
 | `packages/contractkit/src/parser.ts`                | `parseCk(source, file, diag)` entry point                               |
 | `packages/contractkit/src/ast.ts`                   | All AST node types                                                      |
@@ -55,7 +55,7 @@ pnpm --filter @maroonedsoftware/contractkit exec vitest run tests/parser-ck.test
 | `packages/contractkit/src/codegen-markdown.ts`      | Generates Markdown docs                                                 |
 | `packages/contractkit/src/validate-operation.ts`    | Validates op AST against config constraints                             |
 | `apps/cli/src/cli.ts`                               | CLI entry point — file discovery, config loading, codegen orchestration |
-| `apps/cli/src/config.ts`                            | Loads and validates `contract-dsl.config.json`                          |
+| `apps/cli/src/config.ts`                            | Loads and validates `contractkit.config.json`                          |
 | `apps/cli/src/cache.ts`                             | Incremental build (file hashing, skip unchanged files)                  |
 | `apps/vscode-extension/syntaxes/ck.tmLanguage.json` | TextMate grammar for syntax highlighting                                |
 | `apps/prettier-plugin/src/print-*.ts`               | Idempotent formatter for `.ck` files                                    |
@@ -147,7 +147,7 @@ Models with visibility modifiers generate up to three schemas:
 
 `format(input=)` generates a `.transform()` that remaps keys from the incoming casing to camelCase internally. `format(output=)` remaps from camelCase to the output casing. Both can be combined.
 
-## Grammar conventions (contract-dsl.ohm)
+## Grammar conventions (contractkit.ohm)
 
 - **PascalCase rules** — syntactic (Ohm auto-skips whitespace)
 - **camelCase rules** — lexical (no whitespace skipping)

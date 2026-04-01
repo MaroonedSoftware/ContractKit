@@ -350,14 +350,14 @@ async function main() {
   const config = mergeConfig(fileConfig, cliArgs);
 
   if (config.patterns.length === 0) {
-    console.error('Usage: dsl-compile [--config <path>] [--watch] [--force]');
+    console.error('Usage: contractkit [--config <path>] [--watch] [--force]');
     console.error('');
     console.error('Options:');
-    console.error('  -c, --config <path>  Path to config file (default: searches for contract-dsl.config.json)');
+    console.error('  -c, --config <path>  Path to config file (default: searches for contractkit.config.json)');
     console.error('  -w, --watch          Watch for changes and recompile');
     console.error('      --force          Skip cache and recompile all files');
     console.error('');
-    console.error('Configure patterns, output dirs, and other options in contract-dsl.config.json.');
+    console.error('Configure patterns, output dirs, and other options in contractkit.config.json.');
     process.exit(1);
   }
 

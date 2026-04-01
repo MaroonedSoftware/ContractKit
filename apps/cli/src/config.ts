@@ -96,11 +96,11 @@ export interface ResolvedCacheConfig {
   filename: string;
 }
 
-const CONFIG_FILENAME = 'contract-dsl.config.json';
+const CONFIG_FILENAME = 'contractkit.config.json';
 
 /**
  * Load config from an explicit path, or search upward from `startDir`
- * for contract-dsl.config.json.
+ * for contractkit.config.json.
  */
 export function loadConfig(configPath?: string, startDir: string = process.cwd()): DslConfig {
   if (configPath) {

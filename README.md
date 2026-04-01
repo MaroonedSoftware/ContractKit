@@ -12,19 +12,19 @@ pnpm test
 ### CLI Usage
 
 ```bash
-dsl-compile [options]
+contractkit [options]
 
 Options:
-  -c, --config <path>  Path to config file (default: searches for contract-dsl.config.json)
+  -c, --config <path>  Path to config file (default: searches for contractkit.config.json)
   -w, --watch          Watch for changes and recompile
       --force          Skip incremental cache, recompile all
 ```
 
-The compiler searches upward from the current directory for `contract-dsl.config.json`.
+The compiler searches upward from the current directory for `contractkit.config.json`.
 
 ## Configuration File
 
-Create `contract-dsl.config.json` in your project root:
+Create `contractkit.config.json` in your project root:
 
 ```json
 {
@@ -938,11 +938,11 @@ The compiler validates type references across files. If a field or operation ref
 
 Set `"prettier": true` in your config to format all generated TypeScript files using your project's local prettier installation.
 
-The `prettier-plugin-contract-dsl` package formats `.ck` files themselves. Add it to your prettier config:
+The `prettier-plugin-contractkit` package formats `.ck` files themselves. Add it to your prettier config:
 
 ```json
 {
-  "plugins": ["prettier-plugin-contract-dsl"]
+  "plugins": ["prettier-plugin-contractkit"]
 }
 ```
 
@@ -950,7 +950,7 @@ The `prettier-plugin-contract-dsl` package formats `.ck` files themselves. Add i
 
 ## VS Code Extension
 
-The `contract-dsl-vscode` extension provides:
+The `contractkit-vscode` extension provides:
 
 - Syntax highlighting for `.ck` files
 - Autocompletion for types, keywords, modifiers, and model references
@@ -973,7 +973,7 @@ pnpm run vscode:install
 ## Project Structure
 
 ```
-contract-dsl/
+contractkit/
   apps/
     vscode-extension/        # VS Code / Cursor language support
       src/
@@ -992,7 +992,7 @@ contract-dsl/
   packages/
     contractkit/             # Core parser, AST, and code generators
       src/
-        contract-dsl.ohm       # Ohm PEG grammar (source of truth)
+        contractkit.ohm       # Ohm PEG grammar (source of truth)
         semantics.ts           # Parse tree → AST
         parser.ts              # parseCk() entry point
         ast.ts                 # AST type definitions

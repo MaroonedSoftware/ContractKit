@@ -13,14 +13,14 @@ const __dirname = dirname(__filename);
 
 // In dev (src/), the .ohm file is a sibling.
 // In dist, the .ohm file is copied to the dist directory by the build.
-let grammarPath = join(__dirname, 'contract-dsl.ohm');
+let grammarPath = join(__dirname, 'contractkit.ohm');
 
 let grammarSource: string;
 try {
   grammarSource = readFileSync(grammarPath, 'utf-8');
 } catch {
   // Fallback: try relative to cwd (for tests running from source)
-  grammarPath = join(process.cwd(), 'src', 'contract-dsl.ohm');
+  grammarPath = join(process.cwd(), 'src', 'contractkit.ohm');
   grammarSource = readFileSync(grammarPath, 'utf-8');
 }
 

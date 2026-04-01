@@ -8,7 +8,7 @@ export function toLspDiagnostics(diagnostics: Diagnostic[]): LspDiagnostic[] {
       severity: d.severity === 'error' ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
       range: Range.create(line, 0, line, Number.MAX_SAFE_INTEGER),
       message: d.message,
-      source: 'contract-dsl',
+      source: 'contractkit',
     };
   });
 }

@@ -10,7 +10,7 @@
     ".": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration && cp src/contract-dsl.ohm dist/",
+    "build": "tsup src/index.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration && cp src/contractkit.ohm dist/",
     "build:ci": "eslint --max-warnings=0 && pnpm run build",
     "lint": "eslint --fix",
     "format": "prettier --write .",

@@ -31,8 +31,8 @@ const serverConfig = {
 };
 
 function copyGrammar() {
-  const src = resolve(__dirname, '../../packages/contractkit/dist/contract-dsl.ohm');
-  const dest = resolve(__dirname, 'dist/server/contract-dsl.ohm');
+  const src = resolve(__dirname, '../../packages/contractkit/dist/contractkit.ohm');
+  const dest = resolve(__dirname, 'dist/server/contractkit.ohm');
   mkdirSync(dirname(dest), { recursive: true });
   copyFileSync(src, dest);
 }
