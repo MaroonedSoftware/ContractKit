@@ -54,7 +54,7 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     }
 
     if (needsParseAndValidate) {
-        body.push(`import { parseAndValidate } from '#src/shared/validator.js';`);
+        body.push(`import { parseAndValidate } from '@maroonedsoftware/zod';`);
     }
 
     const helpers: string[] = [];
