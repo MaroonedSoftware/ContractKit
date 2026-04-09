@@ -7,7 +7,7 @@ if (process.argv[2] === 'import-openapi') {
     process.exit(0);
 }
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { resolve, join, dirname, relative, basename } from 'node:path';
 import { glob } from 'glob';
 import {
@@ -27,6 +27,7 @@ import {
     generatePlainTypes,
     generateOpenApi,
     generateMarkdown,
+    generateOpenCollection,
     validateOp,
     validateRefs,
 } from '@maroonedsoftware/contractkit';
@@ -761,6 +762,44 @@ async function main() {
             }
         }
 
+        // ── Bruno collection generation (opt-in via config.docs.bruno) ──────
+        let brunoOutDirToClean: string | undefined;
+        if (config.docs?.bruno) {
+            const brunoConfig = config.docs.bruno;
+            const brunoBase = brunoConfig.baseDir ? resolve(config.rootDir, brunoConfig.baseDir) : config.rootDir;
+            const brunoOutput = brunoConfig.output ?? 'bruno-collection';
+            const brunoOutDir = resolve(brunoBase, brunoOutput);
+            const collectionName = brunoConfig.collectionName ?? basename(config.rootDir);
+
+            const brunoFingerprint = computeHash(
+                Object.entries(newCache)
+                    .filter(([k]) => !k.startsWith('__'))
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([k, v]) => `${k}:${v}`)
+                    .join('\n') +
+                    '\n' +
+                    JSON.stringify(brunoConfig),
+            );
+            newCache['__bruno__'] = brunoFingerprint;
+
+            if (!config.force && cacheEnabled && cache['__bruno__'] === brunoFingerprint && existsSync(brunoOutDir)) {
+                console.log(`  -  ${brunoOutDir} (unchanged)`);
+            } else {
+                brunoOutDirToClean = brunoOutDir;
+                const brunoSchemes = config.security?.schemes
+                    ? Object.fromEntries(Object.entries(config.security.schemes).filter(([, v]) => !isHmacScheme(v)))
+                    : undefined;
+                const brunoFiles = generateOpenCollection(allOpInfo.map(o => o.ast), {
+                    collectionName,
+                    contractRoots: allDtoInfo.map(d => d.ast),
+                    auth: config.security?.default ? { defaultScheme: config.security.default, schemes: brunoSchemes } : undefined,
+                });
+                for (const { relativePath, content } of brunoFiles) {
+                    results.push({ outPath: resolve(brunoOutDir, relativePath), content });
+                }
+            }
+        }
+
         diag.report();
 
         if (diag.hasErrors()) {
@@ -784,6 +823,10 @@ async function main() {
         // ── Write output files ──────────────────────────────────────
         mkdirSync(resolvedBase, { recursive: true });
 
+        if (brunoOutDirToClean && existsSync(brunoOutDirToClean)) {
+            rmSync(brunoOutDirToClean, { recursive: true, force: true });
+        }
+
         for (const { outPath, content } of results) {
             mkdirSync(dirname(outPath), { recursive: true });
             writeFileSync(outPath, content, 'utf-8');
@@ -800,8 +843,9 @@ async function main() {
             console.log(`  ✓  ${outPath}`);
         }
 
-        // Save cache
-        if (cacheEnabled) {
+        // Save cache — always save when cache is configured, even after --force,
+        // so subsequent non-force runs have accurate hashes.
+        if (config.cache.enabled) {
             saveCache(resolvedBase, newCache, config.cache.filename);
         }
 

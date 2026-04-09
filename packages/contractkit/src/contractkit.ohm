@@ -175,6 +175,7 @@ Contract {
   OperationBody = OperationBodyItem*
 
   OperationBodyItem = comment
+                    | NameDecl
                     | ServiceDecl
                     | SdkDecl
                     | SignatureDecl
@@ -185,6 +186,9 @@ Contract {
                     | SecurityBlock
 
   // ─── Service & SDK ──────────────────────────────────────────────
+
+  NameDecl = nameKw ":" nameText
+  nameText = (~("\n" | "#" | "}") any)+
 
   ServiceDecl = serviceKw ":" identifier
 
@@ -235,6 +239,7 @@ Contract {
   operationKw = "operation" ~identPart
   paramsKw = "params" ~identPart
   serviceKw = "service" ~identPart
+  nameKw = "name" ~identPart
   sdkKw = "sdk" ~identPart
   signatureKw = "signature" ~identPart
   queryKw = "query" ~identPart

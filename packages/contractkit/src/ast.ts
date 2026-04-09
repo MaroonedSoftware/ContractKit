@@ -210,6 +210,7 @@ export interface OpResponseNode {
 
 export interface OpOperationNode {
     method: HttpMethod;
+    name?: string; // e.g. "Create an Offer" — human-readable name for docs/collections
     service?: string; // e.g. "LedgerService.updateCategoryNesting"
     sdk?: string; // e.g. "getUser" — explicit SDK method name
     /** HMAC signature key name for this endpoint (e.g. `WEBHOOK_SECRET`). */

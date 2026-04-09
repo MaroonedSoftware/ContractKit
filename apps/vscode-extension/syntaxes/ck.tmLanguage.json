@@ -370,6 +370,9 @@
                     "include": "#comment"
                 },
                 {
+                    "include": "#name-decl"
+                },
+                {
                     "include": "#service-decl"
                 },
                 {
@@ -394,6 +397,20 @@
                     "include": "#response-block"
                 }
             ]
+        },
+        "name-decl": {
+            "match": "\\b(name)\\s*(:)\\s*(.+)",
+            "captures": {
+                "1": {
+                    "name": "keyword.control.name.ck"
+                },
+                "2": {
+                    "name": "punctuation.separator.colon.ck"
+                },
+                "3": {
+                    "name": "string.unquoted.name.ck"
+                }
+            }
         },
         "service-decl": {
             "match": "\\b(service)\\s*(:)\\s*([a-zA-Z_$][a-zA-Z0-9_$.]*)",

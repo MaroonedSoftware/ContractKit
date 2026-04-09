@@ -73,9 +73,16 @@ export interface MarkdownConfig {
     output?: string;
 }
 
+export interface BrunoConfig {
+    baseDir?: string;
+    output?: string;
+    collectionName?: string;
+}
+
 export interface DocsConfig {
     openapi?: OpenApiConfig;
     markdown?: MarkdownConfig;
+    bruno?: BrunoConfig;
 }
 
 export interface DslConfig {

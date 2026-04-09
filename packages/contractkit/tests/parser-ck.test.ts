@@ -833,6 +833,30 @@ operation /users: {
         });
     });
 
+    // ─── Name declaration ────────────────────────────────────────────
+
+    describe('name declaration', () => {
+        it('parses a single-word name', () => {
+            const { root } = parse('operation /users: { get: { name: Users } }');
+            expect(root.routes[0]!.operations[0]!.name).toBe('Users');
+        });
+
+        it('parses a multi-word name', () => {
+            const { root } = parse('operation /offers: { post: { name: Create an Offer } }');
+            expect(root.routes[0]!.operations[0]!.name).toBe('Create an Offer');
+        });
+
+        it('parses name alongside service', () => {
+            const { root } = parse('operation /users: { get: { name: List Users\n  service: UserService.list } }');
+            expect(root.routes[0]!.operations[0]!.name).toBe('List Users');
+            expect(root.routes[0]!.operations[0]!.service).toBe('UserService.list');
+        });
+
+        it('leaves name undefined when not declared', () => {
+            expect(parse('operation /users: { get: {} }').root.routes[0]!.operations[0]!.name).toBeUndefined();
+        });
+    });
+
     // ─── SDK declaration ─────────────────────────────────────────────
 
     describe('sdk declaration', () => {

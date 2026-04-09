@@ -403,7 +403,10 @@ describe('generateSdk', () => {
                 sdkOptionsPath: '/sdk/sdk-options.ts',
             });
             expect(out).toContain("import type { SdkFetch } from '../sdk-options.js'");
-            expect(out).toContain("import { SdkError, bigIntReplacer, bigIntReviver } from '../sdk-options.js'");
+            // GET-only: bigIntReviver needed (response body), bigIntReplacer not needed (no request body), SdkError never used in client methods
+            expect(out).toContain("import { bigIntReviver } from '../sdk-options.js'");
+            expect(out).not.toContain('bigIntReplacer');
+            expect(out).not.toContain('SdkError');
             expect(out).not.toContain('export interface SdkOptions');
         });
 
@@ -545,6 +548,32 @@ describe('generateSdk — route modifiers', () => {
         ]);
         const out = generateSdk(root);
         expect(out).toContain('/** @deprecated */');
+    });
+
+    it('adds @name jsdoc tag when op.name is set', () => {
+        const root = opRoot([
+            opRoute('/offers', [opOperation('post', { name: 'Create an Offer', responses: [opResponse(201, 'Offer', 'application/json')] })]),
+        ]);
+        const out = generateSdk(root);
+        expect(out).toContain('/** @name Create an Offer */');
+    });
+
+    it('emits multi-line jsdoc when both description and name are set', () => {
+        const root = opRoot([
+            opRoute('/offers', [opOperation('post', { name: 'Create an Offer', description: 'Creates a new offer', responses: [opResponse(201, 'Offer', 'application/json')] })]),
+        ]);
+        const out = generateSdk(root);
+        expect(out).toContain('* @name Create an Offer');
+        expect(out).toContain('* @description Creates a new offer');
+    });
+
+    it('emits single-line description jsdoc when only description is set', () => {
+        const root = opRoot([
+            opRoute('/offers', [opOperation('post', { description: 'Creates a new offer', responses: [opResponse(201, 'Offer', 'application/json')] })]),
+        ]);
+        const out = generateSdk(root);
+        expect(out).toContain('/** @description Creates a new offer */');
+        expect(out).not.toContain('@name');
     });
 });
 

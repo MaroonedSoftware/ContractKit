@@ -55,7 +55,12 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         if (!rel.startsWith('.')) rel = './' + rel;
         const jsonImport = sdkNeedsJson(root) ? ', JsonValue' : '';
         lines.push(`import type { SdkFetch${jsonImport} } from '${rel}';`);
-        lines.push(`import { SdkError, bigIntReplacer, bigIntReviver } from '${rel}';`);
+        const valueImports: string[] = [];
+        if (sdkNeedsBigIntReplacer(root)) valueImports.push('bigIntReplacer');
+        if (sdkNeedsBigIntReviver(root)) valueImports.push('bigIntReviver');
+        if (valueImports.length > 0) {
+            lines.push(`import { ${valueImports.join(', ')} } from '${rel}';`);
+        }
     } else {
         lines.push('');
         lines.push('export class SdkError extends Error {');
@@ -149,8 +154,17 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
 
     // JSDoc
     const desc = op.description ?? route.description;
-    if (desc) {
-        lines.push(`    /** ${desc} */`);
+    if (op.name || desc) {
+        const tags: string[] = [];
+        if (op.name) tags.push(`@name ${op.name}`);
+        if (desc) tags.push(`@description ${desc}`);
+        if (tags.length === 1) {
+            lines.push(`    /** ${tags[0]} */`);
+        } else {
+            lines.push(`    /**`);
+            for (const tag of tags) lines.push(`     * ${tag}`);
+            lines.push(`     */`);
+        }
     }
 
     lines.push(`    async ${methodName}(${paramStr}): Promise<${returnType}> {`);
@@ -537,6 +551,28 @@ function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string
     } else {
         collectTypeNodeRefs(source.node, out);
     }
+}
+
+/** True if any public operation serializes a JSON request body (uses bigIntReplacer). */
+function sdkNeedsBigIntReplacer(root: OpRootNode): boolean {
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (resolveModifiers(route, op).includes('internal')) continue;
+            if (op.request && op.request.contentType !== 'multipart/form-data') return true;
+        }
+    }
+    return false;
+}
+
+/** True if any public operation parses a JSON response body (uses bigIntReviver). */
+function sdkNeedsBigIntReviver(root: OpRootNode): boolean {
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (resolveModifiers(route, op).includes('internal')) continue;
+            if (op.responses.some(r => r.bodyType)) return true;
+        }
+    }
+    return false;
 }
 
 function sdkNeedsJson(root: OpRootNode): boolean {

@@ -679,6 +679,7 @@ export function createSemantics(grammar: Grammar) {
             const modifiers: RouteModifier[] = modMatch ? [modMatch[1] as RouteModifier] : [];
 
             const body = bodyNode.toAst(file, diag) as {
+                name?: string;
                 service?: string;
                 sdk?: string;
                 signature?: string;
@@ -708,6 +709,7 @@ export function createSemantics(grammar: Grammar) {
         OperationBody(items) {
             const file = this.args.file;
             const diag = this.args.diag;
+            let name: string | undefined;
             let service: string | undefined;
             let sdk: string | undefined;
             let signature: string | undefined;
@@ -724,6 +726,9 @@ export function createSemantics(grammar: Grammar) {
                 const item = items.child(i).toAst(file, diag);
                 if (!item) continue;
                 switch (item._type) {
+                    case 'name':
+                        name = item.value;
+                        break;
                     case 'service':
                         service = item.value;
                         break;
@@ -754,7 +759,7 @@ export function createSemantics(grammar: Grammar) {
                 }
             }
 
-            return { service, sdk, signature, signatureDescription, query, queryMode, headers, headersMode, request, responses, security };
+            return { name, service, sdk, signature, signatureDescription, query, queryMode, headers, headersMode, request, responses, security };
         },
 
         OperationBodyItem(child) {
@@ -763,6 +768,10 @@ export function createSemantics(grammar: Grammar) {
         },
 
         // ─── Service & SDK ────────────────────────────────────────────
+
+        NameDecl(_nameKw, _colon, textNode) {
+            return { _type: 'name', value: textNode.sourceString.trim() };
+        },
 
         ServiceDecl(_serviceKw, _colon, identNode) {
             return { _type: 'service', value: identNode.sourceString };

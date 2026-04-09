@@ -110,6 +110,7 @@ function printOperation(op: OpOperationNode): string[] {
     const modPart = op.modifiers?.length ? `(${op.modifiers[0]})` : '';
     lines.push(`${I1}${op.method}${modPart}: {${commentSuffix}`);
 
+    if (op.name) lines.push(`${I2}name: ${op.name}`);
     if (op.service) lines.push(`${I2}service: ${op.service}`);
     if (op.sdk) lines.push(`${I2}sdk: ${op.sdk}`);
     if (op.signature) {
