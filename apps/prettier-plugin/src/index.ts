@@ -35,9 +35,9 @@ const plugin: Plugin<CkRootNode> = {
 
     printers: {
         'contract-ck': {
-            print(path) {
+            print(path, options) {
                 const node = path.node as CkRootNode;
-                return toDoc(printCk(node));
+                return toDoc(printCk(node, options.printWidth));
             },
         },
     },

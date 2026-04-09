@@ -3,6 +3,8 @@ import { printModelDecl } from './print-contract.js';
 import { printRoute, printSecurity, groupComments, type CommentBlock } from './print-operation.js';
 import { INDENT } from './indent.js';
 
+export const DEFAULT_PRINT_WIDTH = 80;
+
 // ─── Options block ──────────────────────────────────────────────────────────
 
 function printOptionsBlock(ast: CkRootNode): string | null {
@@ -42,7 +44,7 @@ function printOptionsBlock(ast: CkRootNode): string | null {
 
 // ─── CK file printer ───────────────────────────────────────────────────────
 
-export function printCk(ast: CkRootNode): string {
+export function printCk(ast: CkRootNode, printWidth: number = DEFAULT_PRINT_WIDTH): string {
     const parts: string[] = [];
 
     // Options block
@@ -52,7 +54,7 @@ export function printCk(ast: CkRootNode): string {
     // Contracts (models)
     for (const model of ast.models) {
         if (parts.length > 0) parts.push('');
-        parts.push(`contract ${printModelDecl(model)}`);
+        parts.push(`contract ${printModelDecl(model, printWidth)}`);
     }
 
     // Operations (routes)

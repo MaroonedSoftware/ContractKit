@@ -58,10 +58,16 @@ function printInlineObjectCompact(obj: InlineObjectTypeNode): string {
     return `${prefix}{ ${parts.join(', ')} }`;
 }
 
+/** Multi-line enum form — one value per line, used when single-line would exceed print width. */
+export function printEnumExpanded(values: string[], indent: string): string {
+    const innerIndent = indent + INDENT;
+    return `enum(\n${values.map(v => `${innerIndent}${v}`).join(',\n')}\n${indent})`;
+}
+
 // ─── Field printer ──────────────────────────────────────────────────────────
 
 /** Print a full field declaration, including visibility, default, and inline comment. */
-export function printField(field: FieldNode, indent: string): string {
+export function printField(field: FieldNode, indent: string, printWidth: number = 80): string {
     const opt = field.optional ? '?' : '';
     const dep = field.deprecated ? 'deprecated ' : '';
     const vis = field.visibility !== 'normal' ? `${field.visibility} ` : '';
@@ -79,18 +85,23 @@ export function printField(field: FieldNode, indent: string): string {
             const header = prefix
                 ? `${indent}${field.name}${opt}: ${dep}${vis}${prefix} & ${modePart}{${comment}`
                 : `${indent}${field.name}${opt}: ${dep}${vis}${modePart}{${comment}`;
-            return [header, ...printInlineObjectExpanded(inlineObj, innerIndent), `${indent}}`].join('\n');
+            return [header, ...printInlineObjectExpanded(inlineObj, innerIndent, printWidth), `${indent}}`].join('\n');
         }
     }
 
     let typeStr = printType(field.type);
     if (field.nullable) typeStr += ' | null';
-    return `${indent}${field.name}${opt}: ${dep}${vis}${typeStr}${def}${comment}`;
+    const fullLine = `${indent}${field.name}${opt}: ${dep}${vis}${typeStr}${def}${comment}`;
+    if (field.type.kind === 'enum' && !field.nullable && field.default === undefined && fullLine.length > printWidth) {
+        const enumStr = printEnumExpanded(field.type.values, indent);
+        return `${indent}${field.name}${opt}: ${dep}${vis}${enumStr}${comment}`;
+    }
+    return fullLine;
 }
 
 /** Print inline-object fields expanded (used when an inline brace object trails a type alias). */
-export function printInlineObjectExpanded(obj: InlineObjectTypeNode, indent: string): string[] {
-    return obj.fields.map(f => printField(f, indent));
+export function printInlineObjectExpanded(obj: InlineObjectTypeNode, indent: string, printWidth: number = 80): string[] {
+    return obj.fields.map(f => printField(f, indent, printWidth));
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
