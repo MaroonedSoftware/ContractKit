@@ -6,10 +6,8 @@ import {
     deriveClientClassName,
     deriveClientPropertyName,
     hasPublicOperations,
-    collectPublicTypeNames,
-    renderTsType,
-    renderInputTsType,
 } from '../src/codegen-sdk.js';
+import { collectPublicTypeNames, renderTsType, renderInputTsType } from '@maroonedsoftware/contractkit';
 import {
     opRoot,
     opRoute,

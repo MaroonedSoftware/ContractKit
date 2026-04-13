@@ -19,7 +19,7 @@ import {
     opRoute,
     opRoot,
 } from './helpers.js';
-import type { IntersectionTypeNode, ContractTypeNode } from '../src/ast.js';
+import type { IntersectionTypeNode, ContractTypeNode } from '@maroonedsoftware/contractkit';
 
 function intersectionType(...members: ContractTypeNode[]): IntersectionTypeNode {
     return { kind: 'intersection', members };

@@ -1,30 +1,6 @@
-import type { ContractRootNode, OpRootNode, ContractTypeNode, FieldNode, ModelNode, OpRouteNode, OpOperationNode, ParamSource } from './ast.js';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
-export interface OpenApiServerEntry {
-    url: string;
-    description?: string;
-}
-
-export interface OpenApiSecurityScheme {
-    type: string;
-    scheme?: string;
-    bearerFormat?: string;
-    name?: string;
-    in?: string;
-}
-
-export interface OpenApiConfig {
-    baseDir?: string;
-    output?: string;
-    info?: {
-        title?: string;
-        version?: string;
-        description?: string;
-    };
-    servers?: OpenApiServerEntry[];
-    /** Global OpenAPI security requirements (e.g. [{ bearerAuth: [] }]). Distinct from scheme definitions. */
-    security?: Record<string, string[]>[];
-}
+import type { ContractRootNode, OpRootNode, ContractTypeNode, FieldNode, ModelNode, OpRouteNode, OpOperationNode, ParamSource, OpenApiServerEntry, OpenApiSecurityScheme, OpenApiConfig } from '@maroonedsoftware/contractkit';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
+export type { OpenApiServerEntry, OpenApiSecurityScheme, OpenApiConfig };
 
 // ─── Type reachability ────────────────────────────────────────────────────
 
@@ -305,7 +281,7 @@ function typeToSchema(type: ContractTypeNode): Record<string, unknown> {
     }
 }
 
-function scalarToSchema(type: import('./ast.js').ScalarTypeNode): Record<string, unknown> {
+function scalarToSchema(type: import('@maroonedsoftware/contractkit').ScalarTypeNode): Record<string, unknown> {
     const s: Record<string, unknown> = {};
 
     switch (type.name) {
@@ -377,7 +353,7 @@ function scalarToSchema(type: import('./ast.js').ScalarTypeNode): Record<string,
     return s;
 }
 
-function arrayToSchema(type: import('./ast.js').ArrayTypeNode): Record<string, unknown> {
+function arrayToSchema(type: import('@maroonedsoftware/contractkit').ArrayTypeNode): Record<string, unknown> {
     const s: Record<string, unknown> = { type: 'array', items: typeToSchema(type.item) };
     if (type.min !== undefined) s.minItems = type.min;
     if (type.max !== undefined) s.maxItems = type.max;

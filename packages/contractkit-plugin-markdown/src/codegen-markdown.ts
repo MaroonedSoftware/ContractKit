@@ -1,7 +1,7 @@
-import type { ContractRootNode, OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, FieldNode, ModelNode, ParamSource, HttpMethod } from './ast.js';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
-import { renderTsType, collectPublicTypeNames } from './codegen-sdk.js';
-import { collectTypeRefs } from './codegen-contract.js';
+import type { ContractRootNode, OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, FieldNode, ModelNode, ParamSource, HttpMethod } from '@maroonedsoftware/contractkit';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
+import { renderTsType, collectPublicTypeNames } from '@maroonedsoftware/contractkit';
+import { collectTypeRefs } from '@maroonedsoftware/contractkit';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 

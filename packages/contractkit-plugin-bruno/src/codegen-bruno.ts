@@ -1,5 +1,5 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, ParamSource, ContractTypeNode, ContractRootNode, ModelNode, FieldNode } from './ast.js';
-import { resolveSecurity, SECURITY_NONE } from './ast.js';
+import type { OpRootNode, OpRouteNode, OpOperationNode, ParamSource, ContractTypeNode, ContractRootNode, ModelNode, FieldNode } from '@maroonedsoftware/contractkit';
+import { resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
 import { basename } from 'path';
 
 export interface OpenCollectionFile {

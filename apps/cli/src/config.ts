@@ -85,6 +85,13 @@ export interface DocsConfig {
     bruno?: BrunoConfig;
 }
 
+export interface PluginEntry {
+    /** npm package name or local path relative to contractkit.config.json */
+    plugin: string;
+    /** Plugin-specific options passed as ctx.options */
+    options?: Record<string, unknown>;
+}
+
 export interface DslConfig {
     rootDir?: string;
     cache?: boolean | string;
@@ -96,6 +103,7 @@ export interface DslConfig {
     prettier?: boolean;
     /** Security configuration: default scheme and scheme definitions. */
     security?: SecurityConfig;
+    plugins?: PluginEntry[];
 }
 
 export interface ResolvedCacheConfig {
@@ -109,12 +117,12 @@ const CONFIG_FILENAME = 'contractkit.config.json';
  * Load config from an explicit path, or search upward from `startDir`
  * for contractkit.config.json.
  */
-export function loadConfig(configPath?: string, startDir: string = process.cwd()): DslConfig {
+export function loadConfig(configPath?: string, startDir: string = process.cwd()): { config: DslConfig; configDir: string } {
     if (configPath) {
         const resolved = resolve(configPath);
         try {
             const text = readFileSync(resolved, 'utf-8');
-            return JSON.parse(text) as DslConfig;
+            return { config: JSON.parse(text) as DslConfig, configDir: dirname(resolved) };
         } catch (err) {
             throw new Error(`Failed to load config from ${resolved}: ${(err as Error).message}`);
         }
@@ -125,7 +133,7 @@ export function loadConfig(configPath?: string, startDir: string = process.cwd()
         const candidate = join(dir, CONFIG_FILENAME);
         try {
             const text = readFileSync(candidate, 'utf-8');
-            return JSON.parse(text) as DslConfig;
+            return { config: JSON.parse(text) as DslConfig, configDir: dir };
         } catch {
             // File not found or invalid -- walk up
         }
@@ -134,7 +142,7 @@ export function loadConfig(configPath?: string, startDir: string = process.cwd()
         dir = parent;
     }
 
-    return {};
+    return { config: {}, configDir: resolve(startDir) };
 }
 
 export interface ResolvedConfig {
@@ -148,10 +156,12 @@ export interface ResolvedConfig {
     watch: boolean;
     force: boolean;
     prettier: boolean;
+    plugins: PluginEntry[];
+    configDir: string;
 }
 
 /** Merge config file values with CLI flags. */
-export function mergeConfig(config: DslConfig, cliArgs: { watch: boolean; force: boolean }): ResolvedConfig {
+export function mergeConfig(config: DslConfig, cliArgs: { watch: boolean; force: boolean }, configDir: string = process.cwd()): ResolvedConfig {
     const types = config.server?.types ?? {};
     const routes = config.server?.routes ?? {};
     const sdk = config.sdk;
@@ -184,5 +194,7 @@ export function mergeConfig(config: DslConfig, cliArgs: { watch: boolean; force:
         watch: cliArgs.watch,
         force: cliArgs.force,
         prettier: config.prettier ?? false,
+        plugins: config.plugins ?? [],
+        configDir,
     };
 }

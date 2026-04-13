@@ -44,6 +44,18 @@ importers:
       '@maroonedsoftware/contractkit':
         specifier: workspace:*
         version: link:../../packages/contractkit
+      '@maroonedsoftware/contractkit-plugin-bruno':
+        specifier: workspace:*
+        version: link:../../packages/contractkit-plugin-bruno
+      '@maroonedsoftware/contractkit-plugin-markdown':
+        specifier: workspace:*
+        version: link:../../packages/contractkit-plugin-markdown
+      '@maroonedsoftware/contractkit-plugin-openapi':
+        specifier: workspace:*
+        version: link:../../packages/contractkit-plugin-openapi
+      '@maroonedsoftware/contractkit-plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/contractkit-plugin-sdk
       '@maroonedsoftware/openapi-to-ck':
         specifier: workspace:*
         version: link:../../packages/openapi-to-ck
@@ -148,6 +160,58 @@ importers:
       ohm-js:
         specifier: ^17.5.0
         version: 17.5.0
+    devDependencies:
+      '@repo/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/config-typescript':
+        specifier: workspace:*
+        version: link:../config-typescript
+
+  packages/contractkit-plugin-bruno:
+    dependencies:
+      '@maroonedsoftware/contractkit':
+        specifier: workspace:*
+        version: link:../contractkit
+    devDependencies:
+      '@repo/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/config-typescript':
+        specifier: workspace:*
+        version: link:../config-typescript
+
+  packages/contractkit-plugin-markdown:
+    dependencies:
+      '@maroonedsoftware/contractkit':
+        specifier: workspace:*
+        version: link:../contractkit
+    devDependencies:
+      '@repo/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/config-typescript':
+        specifier: workspace:*
+        version: link:../config-typescript
+
+  packages/contractkit-plugin-openapi:
+    dependencies:
+      '@maroonedsoftware/contractkit':
+        specifier: workspace:*
+        version: link:../contractkit
+    devDependencies:
+      '@repo/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/config-typescript':
+        specifier: workspace:*
+        version: link:../config-typescript
+
+  packages/contractkit-plugin-sdk:
+    dependencies:
+      '@maroonedsoftware/contractkit':
+        specifier: workspace:*
+        version: link:../contractkit
     devDependencies:
       '@repo/config-eslint':
         specifier: workspace:*

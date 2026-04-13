@@ -7,8 +7,8 @@ if (process.argv[2] === 'import-openapi') {
     process.exit(0);
 }
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
-import { resolve, join, dirname, relative, basename } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { resolve, join, dirname, relative } from 'node:path';
 import { glob } from 'glob';
 import {
     DiagnosticCollector,
@@ -17,25 +17,21 @@ import {
     generateContract,
     collectTypeRefs,
     generateOp,
-    generateSdk,
-    generateSdkOptions,
-    generateSdkAggregator,
-    deriveClientClassName,
-    deriveClientPropertyName,
-    hasPublicOperations,
-    collectPublicTypeNames,
-    generatePlainTypes,
-    generateOpenApi,
-    generateMarkdown,
-    generateOpenCollection,
     validateOp,
     validateRefs,
 } from '@maroonedsoftware/contractkit';
 import type { ContractCodegenContext, ContractRootNode, OpRootNode, CkRootNode } from '@maroonedsoftware/contractkit';
 import { loadConfig, mergeConfig, isHmacScheme } from './config.js';
 import { loadCache, saveCache, computeHash, isFileChanged } from './cache.js';
+import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist } from './plugin.js';
+import { createOpenApiPlugin } from '@maroonedsoftware/contractkit-plugin-openapi';
+import { createMarkdownPlugin } from '@maroonedsoftware/contractkit-plugin-markdown';
+import { createBrunoPlugin } from '@maroonedsoftware/contractkit-plugin-bruno';
+import { createSdkPlugin } from '@maroonedsoftware/contractkit-plugin-sdk';
+import { resolveTemplate, includesFilename, commonDir, generateBarrelFiles, TEMPLATE_VAR_RE } from './path-utils.js';
 import type { ResolvedConfig } from './config.js';
 import type { FileHashMap } from './cache.js';
+import type { LoadedPlugin } from './plugin.js';
 
 // ─── Arg parsing ───────────────────────────────────────────────────────────
 
@@ -87,18 +83,6 @@ interface OutPathOptions {
     };
 }
 
-const TEMPLATE_VAR_RE = /\{\w+\}/;
-
-function resolveTemplate(template: string, vars: Record<string, string>): string {
-    return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
-}
-
-/** Check whether a path's last segment contains a file extension. */
-function includesFilename(p: string): boolean {
-    const last = p.split('/').pop() ?? '';
-    return last.includes('.');
-}
-
 /** Compute output paths for a .ck file — produces both types and routes outputs. */
 function computeCkOutPaths(
     filePath: string,
@@ -133,95 +117,6 @@ function computeCkOutPaths(
         typesOutPath: resolveOne(typesOutput, defaultTypesName),
         routesOutPath: resolveOne(routesOutput, defaultRoutesName),
     };
-}
-
-function computeSdkOutPath(
-    filePath: string,
-    rootDir: string,
-    clientOutput: string | undefined,
-    commonRoot: string,
-    meta: Record<string, string> = {},
-): string | null {
-    if (!filePath.endsWith('.ck')) return null;
-
-    const baseName = filePath.split('/').pop()!;
-    const defaultOutName = baseName.replace(/\.ck$/, '.client.ts');
-    const baseOutDir = resolve(rootDir);
-    const relDir = relative(commonRoot, dirname(filePath));
-    const filename = baseName.replace(/\.ck$/, '');
-
-    if (clientOutput && TEMPLATE_VAR_RE.test(clientOutput)) {
-        const resolved = resolveTemplate(clientOutput, {
-            filename,
-            dir: relDir,
-            ext: 'ck',
-            ...meta,
-        });
-        if (includesFilename(resolved)) {
-            return join(baseOutDir, resolved);
-        }
-        return join(baseOutDir, resolved, defaultOutName);
-    }
-
-    if (clientOutput) {
-        if (includesFilename(clientOutput)) {
-            return join(baseOutDir, clientOutput);
-        }
-        return join(baseOutDir, clientOutput, relDir, defaultOutName);
-    }
-
-    return join(baseOutDir, relDir, defaultOutName);
-}
-
-function computeSdkTypeOutPath(
-    filePath: string,
-    rootDir: string,
-    typeOutput: string,
-    commonRoot: string,
-    meta: Record<string, string> = {},
-): string | null {
-    if (!filePath.endsWith('.ck')) return null;
-
-    const baseName = filePath.split('/').pop()!;
-    const defaultOutName = baseName.replace(/\.ck$/, '.ts');
-    const baseOutDir = resolve(rootDir);
-    const relDir = relative(commonRoot, dirname(filePath));
-    const filename = baseName.replace(/\.ck$/, '');
-
-    if (TEMPLATE_VAR_RE.test(typeOutput)) {
-        const resolved = resolveTemplate(typeOutput, {
-            filename,
-            dir: relDir,
-            ext: 'ck',
-            ...meta,
-        });
-        if (includesFilename(resolved)) {
-            return join(baseOutDir, resolved);
-        }
-        return join(baseOutDir, resolved, defaultOutName);
-    }
-
-    if (includesFilename(typeOutput)) {
-        return join(baseOutDir, typeOutput);
-    }
-    return join(baseOutDir, typeOutput, relDir, defaultOutName);
-}
-
-/** Find the longest common directory prefix of a list of absolute paths. */
-function commonDir(files: string[], rootDir: string): string {
-    if (files.length === 0) return resolve(rootDir);
-    const parts = files.map(f => dirname(f).split('/'));
-    const first = parts[0]!;
-    let depth = first.length;
-    for (const p of parts) {
-        for (let i = 0; i < depth; i++) {
-            if (p[i] !== first[i]) {
-                depth = i;
-                break;
-            }
-        }
-    }
-    return first.slice(0, depth).join('/') || '/';
 }
 
 // ─── Prettier formatting ──────────────────────────────────────────────────
@@ -262,93 +157,13 @@ function isContentUnchanged(outPath: string, content: string): boolean {
     }
 }
 
-// ─── Barrel file generation ───────────────────────────────────────────────
-
-function generateBarrelFiles(dtoPaths: string[]): { outPath: string; content: string }[] {
-    // Group DTO output files by directory
-    const byDir = new Map<string, string[]>();
-    for (const outPath of dtoPaths) {
-        const dir = dirname(outPath);
-        const group = byDir.get(dir) ?? [];
-        group.push(outPath);
-        byDir.set(dir, group);
-    }
-
-    const results: { outPath: string; content: string }[] = [];
-    for (const [dir, files] of byDir) {
-        const exports = files
-            .map(f => {
-                const base = f.split('/').pop()!.replace(/\.ts$/, '.js');
-                return `export * from './${base}';`;
-            })
-            .sort()
-            .join('\n');
-
-        const content = `// Auto-generated barrel file\n${exports}\n`;
-        results.push({ outPath: join(dir, 'index.ts'), content });
-    }
-
-    return results;
-}
-
-/**
- * Returns the set of all type names needed by public (non-internal) operations,
- * expanded transitively through the DTO model graph.
- *
- * Returns null when there are no operation files (no filtering should be applied).
- */
-function computePubliclyReachableTypes(opAsts: OpRootNode[], dtoAsts: ContractRootNode[], modelsWithInput: Set<string>): Set<string> | null {
-    if (opAsts.length === 0) return null;
-
-    // Collect direct type refs from all public ops
-    const reachable = new Set<string>();
-    for (const opAst of opAsts) {
-        for (const name of collectPublicTypeNames(opAst, modelsWithInput)) {
-            reachable.add(name);
-        }
-    }
-
-    // Build model → dependency names map from all DTO files
-    const modelDeps = new Map<string, Set<string>>();
-    for (const dtoAst of dtoAsts) {
-        for (const model of dtoAst.models) {
-            const deps = new Set<string>();
-            if (model.base) deps.add(model.base);
-            if (model.type) collectTypeRefs(model.type, deps);
-            for (const field of model.fields) collectTypeRefs(field.type, deps);
-            modelDeps.set(model.name, deps);
-        }
-    }
-
-    // BFS: expand through model dependencies
-    const frontier = [...reachable];
-    while (frontier.length > 0) {
-        const name = frontier.pop()!;
-        const baseName = name.endsWith('Input') ? name.slice(0, -5) : name;
-        for (const dep of modelDeps.get(baseName) ?? []) {
-            if (!reachable.has(dep)) {
-                reachable.add(dep);
-                frontier.push(dep);
-            }
-            if (modelsWithInput.has(dep)) {
-                const inputDep = `${dep}Input`;
-                if (!reachable.has(inputDep)) {
-                    reachable.add(inputDep);
-                    frontier.push(inputDep);
-                }
-            }
-        }
-    }
-
-    return reachable;
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────
 
 async function main() {
     const cliArgs = parseArgs(process.argv);
-    const fileConfig = loadConfig(cliArgs.config);
-    const config = mergeConfig(fileConfig, cliArgs);
+    const { config: fileConfig, configDir } = loadConfig(cliArgs.config);
+    const config = mergeConfig(fileConfig, cliArgs, configDir);
+    const plugins = await loadPlugins(config.plugins, config.configDir);
 
     if (config.patterns.length === 0) {
         console.error('Usage: contractkit [--config <path>] [--watch] [--force]');
@@ -404,7 +219,21 @@ async function main() {
             newCache[filePath] = hash;
 
             const serverOpts: OutPathOptions = { rootDir: serverBase, server: config.server };
-            const ckAst = parseCk(source, filePath, diag);
+            let ckAst = parseCk(source, filePath, diag);
+
+            // Plugin: validate + transform hooks (run before decompose and cross-file validation)
+            for (const { plugin, entry } of plugins) {
+                const ctx = makePluginContext(entry, config);
+                if (plugin.validate) {
+                    try { await plugin.validate(ckAst, ctx); }
+                    catch (err) { diag.error(filePath, 0, `[plugin:${plugin.name}] ${(err as Error).message}`); }
+                }
+                if (plugin.transform) {
+                    try { ckAst = await plugin.transform(ckAst, ctx); }
+                    catch (err) { diag.error(filePath, 0, `[plugin:${plugin.name}] ${(err as Error).message}`); }
+                }
+            }
+
             const { dto, op } = decomposeCk(ckAst);
             const paths = computeCkOutPaths(filePath, serverOpts, commonRoot, ckAst.meta);
             const { typesOutPath, routesOutPath } = paths;
@@ -530,273 +359,64 @@ async function main() {
             results.push({ outPath, content });
         }
 
-        // ── SDK generation (opt-in via config.sdk) ──────────────
-        const sdkClientInfos: { outPath: string; className: string; propertyName: string }[] = [];
-        const sdkTypePaths: string[] = [];
-        const sdkName = config.sdk?.name;
-        const sdkEntryPath = config.sdk?.output
-            ? join(sdkBase, resolveTemplate(config.sdk.output, { name: sdkName ?? 'sdk' }))
-            : join(sdkBase, 'sdk.ts');
-        const sdkOptionsPath = join(dirname(sdkEntryPath), 'sdk-options.ts');
+        // ── Opt-in targets (built-in plugins) + user plugins ───────
+        // Pre-filter security schemes: HMAC schemes generate inline middleware (via codegen-operation)
+        // and are not valid OpenAPI/Bruno security scheme definitions.
+        const openApiSchemes = config.security?.schemes
+            ? Object.fromEntries(Object.entries(config.security.schemes).filter(([, v]) => !isHmacScheme(v)))
+            : undefined;
 
-        if (config.sdk) {
-            // If sdk.types is configured, generate DTO files into the SDK package
-            // and build a separate model→path map for SDK import resolution
-            let sdkModelOutPaths = modelOutPaths;
-            if (config.sdk.types?.output) {
-                sdkModelOutPaths = new Map<string, string>();
-                // Only generate type files for DTOs that are reachable from public ops.
-                // Returns null when there are no operation files (generate everything).
-                const publicTypes = computePubliclyReachableTypes(
-                    allOpInfo.map(o => o.ast),
-                    allDtoInfo.map(d => d.ast),
-                    modelsWithInput,
-                );
-
-                // Pass 1: register ALL model→outPath entries before generating any files,
-                // so cross-file references (e.g. CounterpartyAccount → FinancialInstitutionRoutingDetails)
-                // resolve correctly regardless of file iteration order.
-                const sdkDtoEntries: { ast: ContractRootNode; filePath: string; typeOutPath: string }[] = [];
-                for (const { ast, filePath } of allDtoInfo) {
-                    const typeOutPath = computeSdkTypeOutPath(filePath, sdkBase, config.sdk.types.output, commonRoot, ast.meta);
-                    if (!typeOutPath) continue;
-                    // Skip files where no model is reachable from a public operation
-                    if (publicTypes !== null && !ast.models.some(m => publicTypes.has(m.name))) continue;
-                    sdkTypePaths.push(typeOutPath);
-                    sdkDtoEntries.push({ ast, filePath, typeOutPath });
-                    for (const model of ast.models) {
-                        sdkModelOutPaths.set(model.name, typeOutPath);
-                        if (modelsWithInput.has(model.name)) {
-                            sdkModelOutPaths.set(`${model.name}Input`, typeOutPath);
-                        }
-                    }
-                }
-
-                // Pass 2: generate files now that sdkModelOutPaths is fully populated.
-                for (const { ast, filePath, typeOutPath } of sdkDtoEntries) {
-                    // Only regenerate if source or dependencies changed
-                    const source = readFileSync(filePath, 'utf-8');
-                    if (!depsChanged && !config.force && !isFileChanged(filePath, source, typeOutPath, cache)) {
-                        console.log(`  -  ${typeOutPath} (unchanged)`);
-                        continue;
-                    }
-                    let jsonValueImportPath: string | undefined;
-                    {
-                        let rel = relative(dirname(typeOutPath), sdkOptionsPath);
-                        rel = rel.replace(/\.ts$/, '.js');
-                        if (!rel.startsWith('.')) rel = './' + rel;
-                        jsonValueImportPath = rel;
-                    }
-                    const content = generatePlainTypes(ast, {
-                        modelOutPaths: sdkModelOutPaths,
-                        currentOutPath: typeOutPath,
-                        modelsWithInput,
-                        jsonValueImportPath,
-                    });
-                    results.push({ outPath: typeOutPath, content });
-                }
-            }
-
-            if (config.sdk.clients) {
-                for (const { ast, filePath } of allOpInfo) {
-                    const sdkOutPath = computeSdkOutPath(filePath, sdkBase, config.sdk.clients.output, commonRoot, ast.meta);
-                    if (!sdkOutPath) continue;
-                    // Skip files where every operation is internal — no public surface to expose
-                    if (!hasPublicOperations(ast)) continue;
-                    // Track client info for the aggregator
-                    sdkClientInfos.push({
-                        outPath: sdkOutPath,
-                        className: deriveClientClassName(ast.file),
-                        propertyName: deriveClientPropertyName(ast.file),
-                    });
-                    // Only regenerate if source or dependencies changed
-                    const source = readFileSync(filePath, 'utf-8');
-                    if (!depsChanged && !config.force && !isFileChanged(filePath, source, sdkOutPath, cache)) {
-                        console.log(`  -  ${sdkOutPath} (unchanged)`);
-                        continue;
-                    }
-                    const content = generateSdk(ast, {
-                        typeImportPathTemplate: config.sdk.clients.typeImportPathTemplate ?? config.server.routes.typeImportPathTemplate,
-                        outPath: sdkOutPath,
-                        modelOutPaths: sdkModelOutPaths,
-                        sdkOptionsPath,
-                        modelsWithInput,
-                    });
-                    results.push({ outPath: sdkOutPath, content });
-                }
-            }
-
-            // Generate shared sdk-options.ts
-            const sdkOptionsContent = generateSdkOptions();
-            if (config.force || !isContentUnchanged(sdkOptionsPath, sdkOptionsContent)) {
-                results.push({ outPath: sdkOptionsPath, content: sdkOptionsContent });
-            } else {
-                console.log(`  -  ${sdkOptionsPath} (unchanged)`);
-            }
-
-            // Generate sdk.ts aggregator
-            if (sdkClientInfos.length > 0) {
-                const sdkEntryDir = dirname(sdkEntryPath);
-                const clients = sdkClientInfos.map(c => {
-                    let rel = relative(sdkEntryDir, c.outPath).replace(/\.ts$/, '.js');
-                    if (!rel.startsWith('.')) rel = './' + rel;
-                    return { className: c.className, propertyName: c.propertyName, importPath: rel };
-                });
-                const sdkOptionsRel = relative(sdkEntryDir, sdkOptionsPath).replace(/\.ts$/, '.js');
-                const sdkClassName = sdkName
-                    ? sdkName
-                          .split(/[-._\s]+/)
-                          .map(s => s.charAt(0).toUpperCase() + s.slice(1))
-                          .join('') + 'Sdk'
-                    : 'Sdk';
-                const sdkAggregatorContent = generateSdkAggregator(
-                    clients,
-                    sdkOptionsRel.startsWith('.') ? sdkOptionsRel : './' + sdkOptionsRel,
-                    sdkClassName,
-                );
-                if (config.force || !isContentUnchanged(sdkEntryPath, sdkAggregatorContent)) {
-                    results.push({ outPath: sdkEntryPath, content: sdkAggregatorContent });
-                } else {
-                    console.log(`  -  ${sdkEntryPath} (unchanged)`);
-                }
-            }
-
-            // Generate SDK barrel files: per-directory type barrels + root index.ts
-            const sdkSrcDir = dirname(sdkEntryPath);
-            const sdkTypeBarrels = generateBarrelFiles(sdkTypePaths);
-            for (const barrel of sdkTypeBarrels) {
-                if (config.force || !isContentUnchanged(barrel.outPath, barrel.content)) {
-                    results.push(barrel);
-                } else {
-                    console.log(`  -  ${barrel.outPath} (unchanged)`);
-                }
-            }
-
-            const rootExports: string[] = [];
-            rootExports.push(`export * from './${basename(sdkOptionsPath).replace(/\.ts$/, '.js')}';`);
-            if (sdkClientInfos.length > 0) {
-                rootExports.push(`export * from './${basename(sdkEntryPath).replace(/\.ts$/, '.js')}';`);
-            }
-            for (const c of sdkClientInfos) {
-                let rel = relative(sdkSrcDir, c.outPath).replace(/\.ts$/, '.js');
-                if (!rel.startsWith('.')) rel = './' + rel;
-                rootExports.push(`export * from '${rel}';`);
-            }
-            for (const barrel of sdkTypeBarrels) {
-                let rel = relative(sdkSrcDir, barrel.outPath).replace(/\.ts$/, '.js');
-                if (!rel.startsWith('.')) rel = './' + rel;
-                rootExports.push(`export * from '${rel}';`);
-            }
-            const rootBarrelPath = join(sdkSrcDir, 'index.ts');
-            const rootBarrelContent = `// Auto-generated barrel file\n${rootExports.sort().join('\n')}\n`;
-            if (config.force || !isContentUnchanged(rootBarrelPath, rootBarrelContent)) {
-                results.push({ outPath: rootBarrelPath, content: rootBarrelContent });
-            } else {
-                console.log(`  -  ${rootBarrelPath} (unchanged)`);
-            }
-        }
-
-        // ── OpenAPI generation (opt-in via config.docs.openapi) ──────
-        if (config.docs?.openapi) {
-            const openapiConfig = config.docs.openapi;
-            const openapiBase = openapiConfig.baseDir ? resolve(config.rootDir, openapiConfig.baseDir) : config.rootDir;
-            const openapiOutput = openapiConfig.output ?? 'openapi.yaml';
-            const openapiOutPath = resolve(openapiBase, openapiOutput);
-
-            // Build a fingerprint from all source file hashes + config + deps,
-            // so we can skip generation entirely when nothing has changed.
-            const openapiFingerprint = computeHash(
-                Object.entries(newCache)
-                    .filter(([k]) => !k.startsWith('__'))
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([k, v]) => `${k}:${v}`)
-                    .join('\n') +
-                    '\n' +
-                    JSON.stringify(openapiConfig),
-            );
-            newCache['__openapi__'] = openapiFingerprint;
-
-            if (!config.force && cacheEnabled && cache['__openapi__'] === openapiFingerprint && existsSync(openapiOutPath)) {
-                console.log(`  -  ${openapiOutPath} (unchanged)`);
-            } else {
-                // Only pass OpenAPI-compatible schemes (exclude HMAC-only schemes)
-                const openapiSchemes = config.security?.schemes
-                    ? Object.fromEntries(Object.entries(config.security.schemes).filter(([, v]) => !isHmacScheme(v)))
-                    : undefined;
-                const openapiContent = generateOpenApi({
-                    contractRoots: allDtoInfo.map(d => d.ast),
-                    opRoots: allOpInfo.map(o => o.ast),
-                    config: openapiConfig,
-                    securitySchemes: openapiSchemes,
-                });
-                results.push({ outPath: openapiOutPath, content: openapiContent });
-            }
-        }
-
-        // ── Markdown generation (opt-in via config.docs.markdown) ──────
-        if (config.docs?.markdown) {
-            const mdConfig = config.docs.markdown;
-            const mdBase = mdConfig.baseDir ? resolve(config.rootDir, mdConfig.baseDir) : config.rootDir;
-            const mdOutput = mdConfig.output ?? 'api-reference.md';
-            const mdOutPath = resolve(mdBase, mdOutput);
-
-            const mdFingerprint = computeHash(
-                Object.entries(newCache)
-                    .filter(([k]) => !k.startsWith('__'))
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([k, v]) => `${k}:${v}`)
-                    .join('\n') +
-                    '\n' +
-                    JSON.stringify(mdConfig),
-            );
-            newCache['__markdown__'] = mdFingerprint;
-
-            if (!config.force && cacheEnabled && cache['__markdown__'] === mdFingerprint && existsSync(mdOutPath)) {
-                console.log(`  -  ${mdOutPath} (unchanged)`);
-            } else {
-                const mdContent = generateMarkdown({
-                    contractRoots: allDtoInfo.map(d => d.ast),
-                    opRoots: allOpInfo.map(o => o.ast),
-                });
-                results.push({ outPath: mdOutPath, content: mdContent });
-            }
-        }
-
-        // ── Bruno collection generation (opt-in via config.docs.bruno) ──────
-        let brunoOutDirToClean: string | undefined;
+        const builtInPlugins: LoadedPlugin[] = [];
+        if (config.sdk) builtInPlugins.push({ plugin: createSdkPlugin(config.sdk, config.rootDir), entry: { plugin: '@maroonedsoftware/contractkit-plugin-sdk' } });
+        if (config.docs?.openapi) builtInPlugins.push({ plugin: createOpenApiPlugin(config.docs.openapi, config.rootDir, openApiSchemes), entry: { plugin: '@maroonedsoftware/contractkit-plugin-openapi' } });
+        if (config.docs?.markdown) builtInPlugins.push({ plugin: createMarkdownPlugin(config.docs.markdown, config.rootDir), entry: { plugin: '@maroonedsoftware/contractkit-plugin-markdown' } });
         if (config.docs?.bruno) {
-            const brunoConfig = config.docs.bruno;
-            const brunoBase = brunoConfig.baseDir ? resolve(config.rootDir, brunoConfig.baseDir) : config.rootDir;
-            const brunoOutput = brunoConfig.output ?? 'bruno-collection';
-            const brunoOutDir = resolve(brunoBase, brunoOutput);
-            const collectionName = brunoConfig.collectionName ?? basename(config.rootDir);
+            const brunoAuth = config.security?.default
+                ? { defaultScheme: config.security.default, schemes: openApiSchemes }
+                : undefined;
+            builtInPlugins.push({ plugin: createBrunoPlugin(config.docs.bruno, config.rootDir, brunoAuth), entry: { plugin: '@maroonedsoftware/contractkit-plugin-bruno' } });
+        }
+        const allPlugins = [...builtInPlugins, ...plugins];
 
-            const brunoFingerprint = computeHash(
-                Object.entries(newCache)
-                    .filter(([k]) => !k.startsWith('__'))
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([k, v]) => `${k}:${v}`)
-                    .join('\n') +
-                    '\n' +
-                    JSON.stringify(brunoConfig),
-            );
-            newCache['__bruno__'] = brunoFingerprint;
+        for (const { plugin, entry } of allPlugins) {
+            if (!plugin.generateTargets) continue;
 
-            if (!config.force && cacheEnabled && cache['__bruno__'] === brunoFingerprint && existsSync(brunoOutDir)) {
-                console.log(`  -  ${brunoOutDir} (unchanged)`);
-            } else {
-                brunoOutDirToClean = brunoOutDir;
-                const brunoSchemes = config.security?.schemes
-                    ? Object.fromEntries(Object.entries(config.security.schemes).filter(([, v]) => !isHmacScheme(v)))
-                    : undefined;
-                const brunoFiles = generateOpenCollection(allOpInfo.map(o => o.ast), {
-                    collectionName,
-                    contractRoots: allDtoInfo.map(d => d.ast),
-                    auth: config.security?.default ? { defaultScheme: config.security.default, schemes: brunoSchemes } : undefined,
-                });
-                for (const { relativePath, content } of brunoFiles) {
-                    results.push({ outPath: resolve(brunoOutDir, relativePath), content });
+            const cacheKey = plugin.cacheKey;
+            if (cacheKey && !config.force && cacheEnabled) {
+                const fingerprint = computePluginFingerprint(newCache, cacheKey);
+                if (cache[`__plugin_${cacheKey}__`] === fingerprint && pluginOutputsExist(cache, cacheKey)) {
+                    console.log(`  -  [plugin:${plugin.name}] (unchanged)`);
+                    newCache[`__plugin_${cacheKey}__`] = fingerprint;
+                    newCache[`__plugin_${cacheKey}__files__`] = cache[`__plugin_${cacheKey}__files__`] ?? '';
+                    continue;
                 }
+            }
+
+            const pluginEmitted: { outPath: string; content: string }[] = [];
+            const ctx = makePluginContext(entry, config, (outPath, content) => {
+                pluginEmitted.push({ outPath, content });
+            });
+
+            try {
+                await plugin.generateTargets(
+                    {
+                        contractRoots: allDtoInfo.map(d => d.ast),
+                        opRoots: allOpInfo.map(o => o.ast),
+                        modelOutPaths,
+                        modelsWithInput,
+                    },
+                    ctx,
+                );
+            } catch (err) {
+                diag.error('', 0, `[plugin:${plugin.name}] generateTargets failed: ${(err as Error).message}`);
+                continue;
+            }
+
+            results.push(...pluginEmitted);
+
+            if (cacheKey) {
+                newCache[`__plugin_${cacheKey}__`] = computePluginFingerprint(newCache, cacheKey);
+                newCache[`__plugin_${cacheKey}__files__`] = pluginEmitted.map(f => f.outPath).join('|');
             }
         }
 
@@ -822,10 +442,6 @@ async function main() {
 
         // ── Write output files ──────────────────────────────────────
         mkdirSync(resolvedBase, { recursive: true });
-
-        if (brunoOutDirToClean && existsSync(brunoOutDirToClean)) {
-            rmSync(brunoOutDirToClean, { recursive: true, force: true });
-        }
 
         for (const { outPath, content } of results) {
             mkdirSync(dirname(outPath), { recursive: true });

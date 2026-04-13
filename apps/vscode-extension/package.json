@@ -1,6 +1,6 @@
 {
     "name": "contractkit-vscode",
-    "displayName": "Contract DSL",
+    "displayName": "ContractKit",
     "description": "Language support for .ck contract definition files",
     "version": "0.1.0",
     "private": true,
@@ -13,6 +13,7 @@
     "engines": {
         "vscode": "^1.105.1"
     },
+    "icon": "images/icon.png",
     "categories": [
         "Programming Languages"
     ],
@@ -25,7 +26,7 @@
             {
                 "id": "contract-ck",
                 "aliases": [
-                    "Contract DSL",
+                    "ContractKit",
                     "ck"
                 ],
                 "extensions": [

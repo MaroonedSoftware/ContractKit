@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generatePlainTypes } from '../src/codegen-plain-types.js';
-import type { ContractCodegenContext } from '../src/codegen-contract.js';
+import type { ContractCodegenContext } from '@maroonedsoftware/contractkit';
 import {
     scalarType,
     arrayType,

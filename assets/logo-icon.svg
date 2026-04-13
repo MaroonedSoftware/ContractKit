@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ContractKit">
+  <!-- Dark rounded square background -->
+  <rect width="64" height="64" rx="14" fill="#1e1b4b"/>
+
+  <!-- Left curly brace { -->
+  <path d="M29,10 L21,10 L21,21 L13,32 L21,43 L21,54 L29,54"
+        fill="none" stroke="#e0e7ff" stroke-width="3.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Right curly brace } -->
+  <path d="M35,10 L43,10 L43,21 L51,32 L43,43 L43,54 L35,54"
+        fill="none" stroke="#e0e7ff" stroke-width="3.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Center "ck" monogram -->
+  <text x="32" y="36" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="10" font-weight="800" fill="#818cf8" letter-spacing="-0.5">ck</text>
+</svg>
