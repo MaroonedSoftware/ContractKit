@@ -1,5 +1,6 @@
 import { resolve, isAbsolute } from 'node:path';
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { computeHash } from './cache.js';
 import type { PluginEntry, ResolvedConfig } from './config.js';
 import type { ContractKitPlugin, PluginContext } from '@maroonedsoftware/contractkit';
@@ -19,7 +20,7 @@ export async function loadPlugins(entries: PluginEntry[], configDir: string): Pr
         const modulePath =
             specifier.startsWith('.') || specifier.startsWith('/') || isAbsolute(specifier)
                 ? resolve(configDir, specifier)
-                : specifier;
+                : createRequire(resolve(configDir, 'package.json')).resolve(specifier);
         let mod: unknown;
         try {
             mod = await import(modulePath);
