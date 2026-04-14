@@ -118,9 +118,9 @@ describe('generateSdk', () => {
             ]);
             const out = generateSdk(root);
             expect(out).toContain('async getUser(id: string): Promise<User>');
-            expect(out).toContain('encodeURIComponent(String(id))');
+            expect(out).toContain('encodeURIComponent(id)');
             expect(out).toContain("method: 'GET'");
-            expect(out).toContain('return JSON.parse(await result.text(), bigIntReviver) as User');
+            expect(out).toContain('return await parseJson<User>(result)');
         });
     });
 
@@ -158,7 +158,7 @@ describe('generateSdk', () => {
             ]);
             const out = generateSdk(root);
             expect(out).toContain('async deleteUser(id: string): Promise<void>');
-            expect(out).toContain('await result.text()');
+            expect(out).not.toContain('await result.text()');
         });
     });
 
@@ -176,6 +176,35 @@ describe('generateSdk', () => {
             const out = generateSdk(root);
             expect(out).toContain('query?: { page?: number; limit?: number }');
             expect(out).toContain('URLSearchParams');
+        });
+
+        it('appends qs directly to URL', () => {
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        sdk: 'listUsers',
+                        query: [opParam('page', scalarType('int'))],
+                        responses: [opResponse(200, 'array(User)', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('`/users${qs}`');
+            expect(out).not.toContain('qs ? `/users');
+        });
+
+        it('buildQueryString returns ? prefix or empty string', () => {
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        sdk: 'listUsers',
+                        query: [opParam('page', scalarType('int'))],
+                        responses: [opResponse(200, 'array(User)', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain("return qs ? `?${qs}` : ''");
         });
 
         it('handles array query params with append instead of set', () => {
@@ -401,8 +430,8 @@ describe('generateSdk', () => {
                 sdkOptionsPath: '/sdk/sdk-options.ts',
             });
             expect(out).toContain("import type { SdkFetch } from '../sdk-options.js'");
-            // GET-only: bigIntReviver needed (response body), bigIntReplacer not needed (no request body), SdkError never used in client methods
-            expect(out).toContain("import { bigIntReviver } from '../sdk-options.js'");
+            // GET-only: parseJson needed (response body), bigIntReplacer not needed (no request body), SdkError never used in client methods
+            expect(out).toContain("import { parseJson } from '../sdk-options.js'");
             expect(out).not.toContain('bigIntReplacer');
             expect(out).not.toContain('SdkError');
             expect(out).not.toContain('export interface SdkOptions');
@@ -546,6 +575,31 @@ describe('generateSdk — route modifiers', () => {
         ]);
         const out = generateSdk(root);
         expect(out).toContain('/** @deprecated */');
+    });
+
+    it('uses op.name as method name when op.sdk is not set', () => {
+        const root = opRoot([
+            opRoute('/offers', [opOperation('post', { name: 'Create an Offer', responses: [opResponse(201, 'Offer', 'application/json')] })]),
+        ]);
+        const out = generateSdk(root);
+        expect(out).toContain('async createAnOffer(');
+    });
+
+    it('prefers op.sdk over op.name as method name', () => {
+        const root = opRoot([
+            opRoute('/offers', [opOperation('post', { sdk: 'makeOffer', name: 'Create an Offer', responses: [opResponse(201, 'Offer', 'application/json')] })]),
+        ]);
+        const out = generateSdk(root);
+        expect(out).toContain('async makeOffer(');
+        expect(out).not.toContain('async createAnOffer(');
+    });
+
+    it('falls back to inferred method name when neither op.sdk nor op.name is set', () => {
+        const root = opRoot([
+            opRoute('/offers', [opOperation('post', { responses: [opResponse(201, 'Offer', 'application/json')] })]),
+        ]);
+        const out = generateSdk(root);
+        expect(out).toContain('async postOffers(');
     });
 
     it('adds @name jsdoc tag when op.name is set', () => {

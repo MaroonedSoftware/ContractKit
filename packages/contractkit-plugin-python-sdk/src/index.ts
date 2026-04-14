@@ -12,10 +12,25 @@ import {
 
 export interface PythonSdkPluginConfig {
     /** Output directory relative to rootDir (default: "python-sdk") */
-    output?: string;
+    baseDir?: string;
     /** Python package name used in the aggregator class name (default: "Sdk") */
     packageName?: string;
 }
+
+// ─── Default export: loaded via plugins array, reads config from ctx.options ─
+
+const plugin: ContractKitPlugin = {
+    name: 'python-sdk',
+    cacheKey: 'python-sdk',
+    async generateTargets(inputs, ctx) {
+        const config = ctx.options as PythonSdkPluginConfig;
+        return createPythonSdkPlugin(config, ctx.rootDir).generateTargets!(inputs, ctx);
+    },
+};
+
+export default plugin;
+
+// ─── Factory: for programmatic use with explicit config ────────────────────
 
 export function createPythonSdkPlugin(config: PythonSdkPluginConfig, rootDir: string): ContractKitPlugin {
     return {
@@ -23,7 +38,7 @@ export function createPythonSdkPlugin(config: PythonSdkPluginConfig, rootDir: st
         cacheKey: `python-sdk:${JSON.stringify(config)}`,
         async generateTargets({ contractRoots, opRoots, modelsWithInput: _modelsWithInput }, ctx) {
             const modelsWithInput = _modelsWithInput as Set<string>;
-            const outDir = resolve(rootDir, config.output ?? 'python-sdk');
+            const outDir = resolve(rootDir, config.baseDir ?? 'python-sdk');
 
             // ── Build model module path map ──
             // model name → importable Python module string, e.g. "._models_payment"
@@ -73,6 +88,9 @@ export function createPythonSdkPlugin(config: PythonSdkPluginConfig, rootDir: st
 
             // ── Emit shared _base_client.py ──
             ctx.emitFile(join(outDir, '_base_client.py'), BASE_CLIENT_PY);
+
+            // ── Emit requirements.txt ──
+            ctx.emitFile(join(outDir, 'requirements.txt'), 'httpx\npydantic>=2.0\n');
 
             // ── Emit __init__.py aggregator ──
             const sdkClassName = config.packageName

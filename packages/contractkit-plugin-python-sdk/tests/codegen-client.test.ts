@@ -86,6 +86,27 @@ describe('generatePythonClient', () => {
         expect(output).toContain('async def get_payment(self, id: UUID)');
     });
 
+    it('uses op.name as method name when op.sdk is not set', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('post', { name: 'Create a Payment', responses: [opResponse(201, 'Payment')] }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('async def create_a_payment(self)');
+    });
+
+    it('prefers op.sdk over op.name as method name', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('post', { sdk: 'makePayment', name: 'Create a Payment', responses: [opResponse(201, 'Payment')] }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('async def make_payment(self)');
+        expect(output).not.toContain('create_a_payment');
+    });
+
     it('generates void return for operations with no body', () => {
         const root = opRoot([
             opRoute('/payments/{id}', [

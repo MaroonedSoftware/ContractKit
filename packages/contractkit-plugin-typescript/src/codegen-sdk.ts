@@ -46,7 +46,8 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push(`import type { SdkFetch${jsonImport} } from '${rel}';`);
         const valueImports: string[] = [];
         if (sdkNeedsBigIntReplacer(root)) valueImports.push('bigIntReplacer');
-        if (sdkNeedsBigIntReviver(root)) valueImports.push('bigIntReviver');
+        if (sdkNeedsBigIntReviver(root)) valueImports.push('parseJson');
+        if (sdkNeedsQueryString(root)) valueImports.push('buildQueryString');
         if (valueImports.length > 0) {
             lines.push(`import { ${valueImports.join(', ')} } from '${rel}';`);
         }
@@ -91,6 +92,23 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('        }');
         lines.push('        return res;');
         lines.push('    };');
+        lines.push('}');
+        lines.push('');
+        lines.push('export function buildQueryString(query: object | undefined): string {');
+        lines.push('    const searchParams = new URLSearchParams();');
+        lines.push('    if (query) {');
+        lines.push('        for (const [k, v] of Object.entries(query)) {');
+        lines.push('            if (v === undefined || v === null) continue;');
+        lines.push('            if (Array.isArray(v)) { for (const item of v) searchParams.append(k, String(item)); }');
+        lines.push('            else searchParams.set(k, String(v));');
+        lines.push('        }');
+        lines.push('    }');
+        lines.push('    const qs = searchParams.toString();');
+        lines.push("    return qs ? `?${qs}` : '';");
+        lines.push('}');
+        lines.push('');
+        lines.push('export async function parseJson<T>(res: Response): Promise<T> {');
+        lines.push('    return JSON.parse(await res.text(), bigIntReviver) as T;');
         lines.push('}');
     }
 
@@ -165,15 +183,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
     const hasQuery = !!op.query;
     let fetchUrl = urlExpr;
     if (hasQuery) {
-        lines.push(`        const searchParams = new URLSearchParams();`);
-        lines.push(`        if (query) {`);
-        lines.push(`            for (const [k, v] of Object.entries(query)) {`);
-        lines.push(`                if (v === undefined || v === null) continue;`);
-        lines.push(`                if (Array.isArray(v)) { for (const item of v) searchParams.append(k, String(item)); }`);
-        lines.push(`                else searchParams.set(k, String(v));`);
-        lines.push(`            }`);
-        lines.push(`        }`);
-        lines.push(`        const qs = searchParams.toString();`);
+        lines.push(`        const qs = buildQueryString(query);`);
         fetchUrl = urlExpr;
     }
 
@@ -185,7 +195,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
     const fetchArgs: string[] = [];
 
     if (hasQuery) {
-        fetchArgs.push(`url: qs ? \`${fetchUrl}?\${qs}\` : \`${fetchUrl}\``);
+        fetchArgs.push(`url: \`${fetchUrl}\${qs}\``);
     } else {
         fetchArgs.push(`url: \`${fetchUrl}\``);
     }
@@ -210,21 +220,20 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
         }
     }
 
+    const resultPrefix = isVoid ? '' : 'const result = ';
     if (fetchArgs.length === 2 && !hasBody && !hasOpHeaders && !hasQuery) {
         // Simple case — inline
-        lines.push(`        const result = await this.fetch(\`${fetchUrl}\`, { method: '${httpMethod}' });`);
+        lines.push(`        ${resultPrefix}await this.fetch(\`${fetchUrl}\`, { method: '${httpMethod}' });`);
     } else {
-        lines.push(`        const result = await this.fetch(${fetchArgs[0]!.split(': ').slice(1).join(': ')}, {`);
+        lines.push(`        ${resultPrefix}await this.fetch(${fetchArgs[0]!.split(': ').slice(1).join(': ')}, {`);
         for (let i = 1; i < fetchArgs.length; i++) {
             lines.push(`            ${fetchArgs[i]},`);
         }
         lines.push(`        });`);
     }
 
-    if (isVoid) {
-        lines.push(`        await result.text();`);
-    } else {
-        lines.push(`        return JSON.parse(await result.text(), bigIntReviver) as ${returnType};`);
+    if (!isVoid) {
+        lines.push(`        return await parseJson<${returnType}>(result);`);
     }
 
     lines.push('    }');
@@ -237,7 +246,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
 function buildUrlExpression(path: string, params?: ParamSource): string {
     // Replace {paramName} with ${encodeURIComponent(paramName)}
     return path.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (_match, name) => {
-        return `\${encodeURIComponent(String(${name}))}`;
+        return `\${encodeURIComponent(${name})}`;
     });
 }
 
@@ -308,7 +317,13 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
 
 function deriveMethodName(op: OpOperationNode, route: OpRouteNode): string {
     if (op.sdk) return op.sdk;
+    if (op.name) return nameToMethodName(op.name);
     return inferMethodName(op.method, route.path);
+}
+
+function nameToMethodName(name: string): string {
+    const parts = name.split(/[\s\-_]+/).filter(Boolean);
+    return parts.map((p, i) => (i === 0 ? p.charAt(0).toLowerCase() + p.slice(1) : p.charAt(0).toUpperCase() + p.slice(1))).join('');
 }
 
 function inferMethodName(method: string, path: string): string {
@@ -437,6 +452,16 @@ function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string
 }
 
 /** True if any public operation serializes a JSON request body (uses bigIntReplacer). */
+function sdkNeedsQueryString(root: OpRootNode): boolean {
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (resolveModifiers(route, op).includes('internal')) continue;
+            if (op.query) return true;
+        }
+    }
+    return false;
+}
+
 function sdkNeedsBigIntReplacer(root: OpRootNode): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
@@ -623,6 +648,23 @@ export function generateSdkOptions(): string {
         '        }',
         '        return res;',
         '    };',
+        '}',
+        '',
+        'export function buildQueryString(query: object | undefined): string {',
+        '    const searchParams = new URLSearchParams();',
+        '    if (query) {',
+        '        for (const [k, v] of Object.entries(query)) {',
+        '            if (v === undefined || v === null) continue;',
+        '            if (Array.isArray(v)) { for (const item of v) searchParams.append(k, String(item)); }',
+        '            else searchParams.set(k, String(v));',
+        '        }',
+        '    }',
+        '    const qs = searchParams.toString();',
+        "    return qs ? `?${qs}` : '';",
+        '}',
+        '',
+        'export async function parseJson<T>(res: Response): Promise<T> {',
+        '    return JSON.parse(await res.text(), bigIntReviver) as T;',
         '}',
         '',
     ].join('\n');

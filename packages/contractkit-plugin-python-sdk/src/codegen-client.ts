@@ -412,6 +412,7 @@ export function deriveClientPropertyName(file: string): string {
 
 function deriveMethodName(op: OpOperationNode, route: OpRouteNode): string {
     if (op.sdk) return toSnakeCase(op.sdk);
+    if (op.name) return toSnakeCase(op.name);
     return inferMethodName(op.method, route.path);
 }
 
