@@ -22,9 +22,11 @@ import {
 export interface SdkPluginConfig {
     baseDir?: string;
     name?: string;
-    output?: string;
-    types?: { output?: string };
-    clients?: { output?: string; typeImportPathTemplate?: string };
+    output?: {
+        sdk?: string;
+        types?: string;
+        clients?: string;
+    };
 }
 
 // ─── Shared generateTargets implementation ─────────────────────────────────
@@ -32,8 +34,9 @@ export interface SdkPluginConfig {
 function buildGenerateTargets(config: SdkPluginConfig, rootDir: string): NonNullable<ContractKitPlugin['generateTargets']> {
     const sdkBase = config.baseDir ? resolve(rootDir, config.baseDir) : rootDir;
     const sdkName = config.name;
-    const sdkEntryPath = config.output
-        ? join(sdkBase, TEMPLATE_VAR_RE.test(config.output) ? resolveTemplate(config.output, { name: sdkName ?? 'sdk' }) : config.output)
+    const sdkOutput = config.output?.sdk;
+    const sdkEntryPath = sdkOutput
+        ? join(sdkBase, TEMPLATE_VAR_RE.test(sdkOutput) ? resolveTemplate(sdkOutput, { name: sdkName ?? 'sdk' }) : sdkOutput)
         : join(sdkBase, 'sdk.ts');
     const sdkOptionsPath = join(dirname(sdkEntryPath), 'sdk-options.ts');
 
@@ -47,14 +50,14 @@ function buildGenerateTargets(config: SdkPluginConfig, rootDir: string): NonNull
         const sdkClientInfos: { outPath: string; className: string; propertyName: string }[] = [];
 
         // ── SDK types ──
-        if (config.types?.output) {
+        if (config.output?.types) {
             sdkModelOutPaths = new Map<string, string>();
             const publicTypes = computePubliclyReachableTypes(opRoots, contractRoots, modelsWithInput);
 
             // Pass 1: register all model→outPath entries
             const sdkDtoEntries: { ast: typeof contractRoots[number]; typeOutPath: string }[] = [];
             for (const ast of contractRoots) {
-                const typeOutPath = computeSdkTypeOutPath(ast.file, sdkBase, config.types.output, ckCommonRoot, ast.meta);
+                const typeOutPath = computeSdkTypeOutPath(ast.file, sdkBase, config.output.types, ckCommonRoot, ast.meta);
                 if (!typeOutPath) continue;
                 if (publicTypes !== null && !ast.models.some(m => publicTypes.has(m.name))) continue;
                 sdkTypePaths.push(typeOutPath);
@@ -79,9 +82,9 @@ function buildGenerateTargets(config: SdkPluginConfig, rootDir: string): NonNull
         }
 
         // ── SDK clients ──
-        if (config.clients) {
+        if (config.output?.clients) {
             for (const ast of opRoots) {
-                const sdkOutPath = computeSdkOutPath(ast.file, sdkBase, config.clients.output, ckCommonRoot, ast.meta);
+                const sdkOutPath = computeSdkOutPath(ast.file, sdkBase, config.output.clients, ckCommonRoot, ast.meta);
                 if (!sdkOutPath || !hasPublicOperations(ast)) continue;
                 sdkClientInfos.push({
                     outPath: sdkOutPath,
@@ -89,7 +92,7 @@ function buildGenerateTargets(config: SdkPluginConfig, rootDir: string): NonNull
                     propertyName: deriveClientPropertyName(ast.file),
                 });
                 ctx.emitFile(sdkOutPath, generateSdk(ast, {
-                    typeImportPathTemplate: config.clients.typeImportPathTemplate,
+                    typeImportPathTemplate: undefined,
                     outPath: sdkOutPath,
                     modelOutPaths: sdkModelOutPaths,
                     sdkOptionsPath,

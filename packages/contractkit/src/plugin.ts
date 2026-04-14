@@ -9,6 +9,14 @@ export interface PluginContext {
     emitFile(outPath: string, content: string): void;
 }
 
+/** Context passed to a plugin's command handler. */
+export interface CommandContext {
+    /** Absolute resolved rootDir from config (best-effort; falls back to cwd). */
+    rootDir: string;
+    /** Directory containing contractkit.config.json (best-effort; falls back to cwd). */
+    configDir: string;
+}
+
 export interface ContractKitPlugin {
     /** Human-readable name used in error messages. */
     name: string;
@@ -46,4 +54,18 @@ export interface ContractKitPlugin {
         },
         ctx: PluginContext,
     ) => Promise<void>;
+
+    /**
+     * Register a CLI subcommand exposed as `contractkit <name> [args...]`.
+     * Built-in plugins (imported directly by the CLI) can use this to add
+     * first-class subcommands without any config wiring.
+     */
+    command?: {
+        /** The subcommand name, e.g. "import-openapi". */
+        name: string;
+        /** One-line description shown in --help. */
+        description: string;
+        /** Handler — receives raw argv after the subcommand name. */
+        run: (args: string[], ctx: CommandContext) => Promise<void>;
+    };
 }

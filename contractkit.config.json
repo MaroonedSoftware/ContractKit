@@ -2,16 +2,7 @@
     "rootDir": "~/projects/homegrown_v2/",
     "cache": true,
     "prettier": true,
-    "server": {
-        "baseDir": "apps/api/",
-        "types": {
-            "output": "src/modules/{area}/types/{filename}.ts",
-            "include": ["contracts/types/**/*.ck"]
-        },
-        "routes": {
-            "include": ["contracts/operations/**/*.ck"]
-        }
-    },
+    "include": ["contracts/types/**/*.ck", "contracts/operations/**/*.ck"],
     "plugins": {
         "@maroonedsoftware/contractkit-plugin-server": {
             "baseDir": "apps/api/",
@@ -22,14 +13,10 @@
         "@maroonedsoftware/contractkit-plugin-sdk": {
             "baseDir": "packages/sdk/",
             "name": "homegrown",
-            "output": "src/{name}.sdk.ts",
-            "types": {
-                "output": "src/{area}/types/{filename}.ts",
-                "include": ["contracts/types/**/*.ck"]
-            },
-            "clients": {
-                "output": "src/{area}/{filename}.client.ts",
-                "include": ["contracts/operations/**/*.ck"]
+            "output": {
+                "sdk": "src/{name}.sdk.ts",
+                "types": "src/{area}/types/{filename}.ts",
+                "clients": "src/{area}/{filename}.client.ts"
             }
         },
         "@maroonedsoftware/contractkit-plugin-openapi": {

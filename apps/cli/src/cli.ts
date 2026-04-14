@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 
-// ─── Subcommand dispatch ──────────────────────────────────────────────────
-if (process.argv[2] === 'import-openapi') {
-    const { runImportOpenApi } = await import('./import-openapi.js');
-    await runImportOpenApi();
-    process.exit(0);
-}
+// ─── Built-in command plugins ─────────────────────────────────────────────
+// Each plugin may expose a `command` hook — the CLI dispatches subcommands
+// to the first plugin whose command.name matches argv[2].
+import { default as importOpenApiPlugin } from '@maroonedsoftware/openapi-to-ck/plugin';
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join, dirname, relative } from 'node:path';
@@ -34,6 +32,28 @@ interface CliArgs {
     config?: string;
     watch: boolean;
     force: boolean;
+    help: boolean;
+}
+
+const BUILTIN_COMMAND_PLUGINS = [importOpenApiPlugin];
+
+function printHelp(): void {
+    console.log('Usage: contractkit [command] [options]');
+    console.log('');
+    console.log('Commands:');
+    for (const plugin of BUILTIN_COMMAND_PLUGINS) {
+        if (plugin.command) {
+            console.log(`  ${plugin.command.name.padEnd(20)} ${plugin.command.description}`);
+        }
+    }
+    console.log('');
+    console.log('Options:');
+    console.log('  -c, --config <path>  Path to config file (default: contractkit.config.json)');
+    console.log('  -w, --watch          Watch for changes and recompile');
+    console.log('      --force          Skip cache and recompile all files');
+    console.log('  -h, --help           Show this help message');
+    console.log('');
+    console.log('Configure patterns, output dirs, and plugins in contractkit.config.json.');
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -41,6 +61,7 @@ function parseArgs(argv: string[]): CliArgs {
     let config: string | undefined;
     let watch = false;
     let force = false;
+    let help = false;
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i]!;
@@ -50,10 +71,12 @@ function parseArgs(argv: string[]): CliArgs {
             watch = true;
         } else if (arg === '--force') {
             force = true;
+        } else if (arg === '--help' || arg === '-h') {
+            help = true;
         }
     }
 
-    return { config, watch, force };
+    return { config, watch, force, help };
 }
 
 // ─── File resolution ───────────────────────────────────────────────────────
@@ -156,19 +179,32 @@ function isContentUnchanged(outPath: string, content: string): boolean {
 
 async function main() {
     const cliArgs = parseArgs(process.argv);
+
+    if (cliArgs.help) {
+        printHelp();
+        process.exit(0);
+    }
+
+    // ── Built-in subcommand dispatch ──────────────────────────────────────
+    const subcommand = process.argv[2];
+    if (subcommand && !subcommand.startsWith('-')) {
+        const matched = BUILTIN_COMMAND_PLUGINS.find(p => p.command?.name === subcommand);
+        if (matched?.command) {
+            const { config: fileConfig, configDir } = loadConfig(cliArgs.config);
+            const resolved = mergeConfig(fileConfig, { watch: false, force: false, help: false }, configDir);
+            await matched.command.run(process.argv.slice(3), { rootDir: resolved.rootDir, configDir });
+            process.exit(0);
+        }
+        console.error(`Unknown command: "${subcommand}". Run "contractkit --help" for usage.`);
+        process.exit(1);
+    }
+
     const { config: fileConfig, configDir } = loadConfig(cliArgs.config);
     const config = mergeConfig(fileConfig, cliArgs, configDir);
     const plugins = await loadPlugins(config.plugins, config.configDir);
 
     if (config.patterns.length === 0) {
-        console.error('Usage: contractkit [--config <path>] [--watch] [--force]');
-        console.error('');
-        console.error('Options:');
-        console.error('  -c, --config <path>  Path to config file (default: searches for contractkit.config.json)');
-        console.error('  -w, --watch          Watch for changes and recompile');
-        console.error('      --force          Skip cache and recompile all files');
-        console.error('');
-        console.error('Configure patterns, output dirs, and other options in contractkit.config.json.');
+        printHelp();
         process.exit(1);
     }
 
