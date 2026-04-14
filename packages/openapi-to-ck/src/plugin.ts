@@ -30,20 +30,29 @@ function parseImportArgs(argv: string[]): ImportArgs {
     return { specPath, output, split };
 }
 
+const USAGE = `Usage: contractkit import-openapi <spec-path> [options]
+
+Convert an OpenAPI 2.0/3.0/3.1 YAML or JSON spec into .ck contract files.
+
+Arguments:
+  <spec-path>          Path to the OpenAPI spec file
+
+Options:
+  -o, --output <dir>   Output directory for .ck files (default: current directory)
+      --split <mode>   How to split output: "by-tag" (one file per tag) or "single" (default: by-tag)
+  -h, --help           Show this help message`;
+
 const plugin: ContractKitPlugin = {
     name: 'import-openapi',
     command: {
         name: 'import-openapi',
-        description: 'Convert an OpenAPI YAML file to .ck contracts',
+        description: 'Convert an OpenAPI YAML/JSON spec to .ck contracts',
+        usage: USAGE,
         async run(args: string[], _ctx: CommandContext): Promise<void> {
             const parsed = parseImportArgs(args);
 
             if (!parsed.specPath) {
-                console.error('Usage: contractkit import-openapi <spec-path> [--output <dir>] [--split single|by-tag]');
-                console.error('');
-                console.error('Options:');
-                console.error('  -o, --output <dir>   Output directory for .ck files (default: current directory)');
-                console.error('      --split <mode>   Split mode: "single" or "by-tag" (default: by-tag)');
+                console.error(USAGE);
                 process.exit(1);
             }
 

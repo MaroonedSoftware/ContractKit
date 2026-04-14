@@ -190,9 +190,14 @@ async function main() {
     if (subcommand && !subcommand.startsWith('-')) {
         const matched = BUILTIN_COMMAND_PLUGINS.find(p => p.command?.name === subcommand);
         if (matched?.command) {
+            const subArgs = process.argv.slice(3);
+            if (subArgs.includes('--help') || subArgs.includes('-h')) {
+                console.log(matched.command.usage);
+                process.exit(0);
+            }
             const { config: fileConfig, configDir } = loadConfig(cliArgs.config);
             const resolved = mergeConfig(fileConfig, { watch: false, force: false, help: false }, configDir);
-            await matched.command.run(process.argv.slice(3), { rootDir: resolved.rootDir, configDir });
+            await matched.command.run(subArgs, { rootDir: resolved.rootDir, configDir });
             process.exit(0);
         }
         console.error(`Unknown command: "${subcommand}". Run "contractkit --help" for usage.`);

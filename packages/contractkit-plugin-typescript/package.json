@@ -1,7 +1,7 @@
 {
-    "name": "@maroonedsoftware/contractkit-plugin-server",
+    "name": "@maroonedsoftware/contractkit-plugin-typescript",
     "version": "0.1.0",
-    "description": "ContractKit built-in plugin: Koa router server code generation",
+    "description": "ContractKit built-in plugin: TypeScript codegen (SDK clients, Koa routers, Zod schemas, plain types)",
     "type": "module",
     "main": "./dist/index.js",
     "module": "./dist/index.js",

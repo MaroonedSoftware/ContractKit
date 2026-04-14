@@ -8,7 +8,7 @@ export function resolveTemplate(template: string, vars: Record<string, string>):
     return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
 }
 
-function includesFilename(p: string): boolean {
+export function includesFilename(p: string): boolean {
     const last = p.split('/').pop() ?? '';
     return last.includes('.');
 }
@@ -25,6 +25,47 @@ export function commonDir(files: string[], rootDir: string): string {
     }
     return first.slice(0, depth).join('/') || '/';
 }
+
+// ─── Server / Zod output paths ─────────────────────────────────────────────
+
+export function computeOpOutPath(
+    filePath: string,
+    baseDir: string,
+    output: string | undefined,
+    defaultSuffix: string,
+    commonRoot: string,
+    meta: Record<string, string> = {},
+): string {
+    const baseName = filePath.split('/').pop()!;
+    const relDir = relative(commonRoot, dirname(filePath));
+    const filename = baseName.replace(/\.ck$/, '');
+    const defaultName = `${filename}${defaultSuffix}`;
+    const baseOutDir = resolve(baseDir);
+
+    if (output && TEMPLATE_VAR_RE.test(output)) {
+        const resolved = resolveTemplate(output, { filename, dir: relDir, ext: 'ck', ...meta });
+        if (includesFilename(resolved)) return join(baseOutDir, resolved);
+        return join(baseOutDir, resolved, defaultName);
+    }
+    if (output) {
+        if (includesFilename(output)) return join(baseOutDir, output);
+        return join(baseOutDir, output, relDir, defaultName);
+    }
+    return join(baseOutDir, relDir, defaultName);
+}
+
+export function computeContractOutPath(
+    filePath: string,
+    baseDir: string,
+    output: string | undefined,
+    defaultSuffix: string,
+    commonRoot: string,
+    meta: Record<string, string> = {},
+): string {
+    return computeOpOutPath(filePath, baseDir, output, defaultSuffix, commonRoot, meta);
+}
+
+// ─── SDK output paths ──────────────────────────────────────────────────────
 
 export function computeSdkOutPath(
     filePath: string,

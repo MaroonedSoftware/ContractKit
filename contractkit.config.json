@@ -4,19 +4,25 @@
     "prettier": true,
     "include": ["contracts/types/**/*.ck", "contracts/operations/**/*.ck"],
     "plugins": {
-        "@maroonedsoftware/contractkit-plugin-server": {
-            "baseDir": "apps/api/",
-            "output": "src/routes/{filename}.router.ts",
-            "servicePathTemplate": "#modules/{module}/{module}.service.js",
-            "typeImportPathTemplate": "#modules/{module}/types/index.js"
-        },
-        "@maroonedsoftware/contractkit-plugin-sdk": {
-            "baseDir": "packages/sdk/",
-            "name": "homegrown",
-            "output": {
-                "sdk": "src/{name}.sdk.ts",
-                "types": "src/{area}/types/{filename}.ts",
-                "clients": "src/{area}/{filename}.client.ts"
+        "@maroonedsoftware/contractkit-plugin-typescript": {
+            "server": {
+                "baseDir": "apps/api/",
+                "zod": true,
+                "output": {
+                    "routes": "src/routes/{filename}.router.ts",
+                    "types": "src/modules/{area}/types/{filename}.ts"
+                },
+                "servicePathTemplate": "#modules/{module}/{module}.service.js"
+            },
+            "sdk": {
+                "baseDir": "packages/sdk/",
+                "name": "homegrown",
+                "zod": true,
+                "output": {
+                    "sdk": "src/{name}.sdk.ts",
+                    "types": "src/{area}/types/{filename}.ts",
+                    "clients": "src/{area}/{filename}.client.ts"
+                }
             }
         },
         "@maroonedsoftware/contractkit-plugin-openapi": {

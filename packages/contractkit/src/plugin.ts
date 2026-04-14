@@ -63,8 +63,13 @@ export interface ContractKitPlugin {
     command?: {
         /** The subcommand name, e.g. "import-openapi". */
         name: string;
-        /** One-line description shown in --help. */
+        /** One-line description shown in the top-level --help listing. */
         description: string;
+        /**
+         * Full usage text shown when the subcommand is invoked with --help/-h.
+         * Should include the usage line, argument descriptions, and option flags.
+         */
+        usage: string;
         /** Handler — receives raw argv after the subcommand name. */
         run: (args: string[], ctx: CommandContext) => Promise<void>;
     };
