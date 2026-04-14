@@ -1,7 +1,7 @@
 {
     "name": "contractkit",
     "version": "0.1.0",
-    "description": "Compiler for .dto and .op DSL files into TypeScript/Zod/Koa code",
+    "description": "Compiler for .ck files",
     "type": "module",
     "main": "./dist/cli.js",
     "bin": {

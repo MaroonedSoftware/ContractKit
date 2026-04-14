@@ -166,3 +166,67 @@ export function opRoute(
 export function opRoot(routes: OpRouteNode[], file = 'users.op', meta: Record<string, string> = {}): OpRootNode {
     return { kind: 'opRoot', meta, routes, file };
 }
+
+// ─── DSL Fixture Strings ────────────────────────────────────────────────────
+
+export const SIMPLE_USER_CONTRACT = `\
+contract User: {
+    id: readonly uuid
+    name: string
+    email: email
+    age?: number
+    active: boolean = true
+}
+`;
+
+export const VISIBILITY_CONTRACT = `\
+contract User: {
+    id: readonly uuid
+    name: string
+    password: writeonly string
+}
+`;
+
+export const INHERITANCE_CONTRACT = `\
+contract Admin: User & {
+    role: enum(admin, superadmin)
+}
+`;
+
+export const SIMPLE_USERS_OP = `\
+operation /users: {
+    get: {
+        response: {
+            200: {
+                application/json: array(User)
+            }
+        }
+    }
+    post: {
+        request: {
+            application/json: CreateUserInput
+        }
+        response: {
+            201: {
+                application/json: User
+            }
+        }
+    }
+}
+`;
+
+export const PARAMETERIZED_OP = `\
+operation /users/{id}: {
+    params: {
+        id: uuid
+    }
+    get: {
+        response: {
+            200: {
+                application/json: User
+            }
+        }
+    }
+    delete: {}
+}
+`;

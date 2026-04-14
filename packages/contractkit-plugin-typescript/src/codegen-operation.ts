@@ -1,5 +1,5 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, ContractTypeNode, ParamSource, ObjectMode } from './ast.js';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE } from './ast.js';
+import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, OpResponseNode, ContractTypeNode, ParamSource, ObjectMode } from '@maroonedsoftware/contractkit';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
 import {
     renderType,
     renderInputType,
@@ -554,15 +554,6 @@ function deriveBaseName(file: string): string {
 
 function deriveRouterName(file: string): string {
     return `${deriveBaseName(file)}Router`;
-}
-
-function deriveRouterFilename(file: string): string {
-    const base =
-        file
-            .split('/')
-            .pop()
-            ?.replace(/\.(op|ck)$/, '') ?? 'resource';
-    return `${base}.router`;
 }
 
 function deriveModulePath(serviceName: string, template?: string): string {

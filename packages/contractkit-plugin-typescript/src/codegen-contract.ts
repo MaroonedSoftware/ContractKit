@@ -16,7 +16,8 @@ import type {
     IntersectionTypeNode,
     LazyTypeNode,
     ObjectMode,
-} from './ast.js';
+} from '@maroonedsoftware/contractkit';
+import { collectTypeRefs } from '@maroonedsoftware/contractkit';
 
 export function modeToWrapper(mode: ObjectMode): string {
     switch (mode) {
@@ -828,36 +829,6 @@ function collectInputTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWi
             break;
         case 'inlineObject':
             type.fields.forEach(f => collectInputTypeRefs(f.type, out, modelsWithInput));
-            break;
-    }
-}
-
-export function collectTypeRefs(type: ContractTypeNode, out: Set<string>): void {
-    switch (type.kind) {
-        case 'ref':
-            out.add(type.name);
-            break;
-        case 'array':
-            collectTypeRefs(type.item, out);
-            break;
-        case 'tuple':
-            type.items.forEach(t => collectTypeRefs(t, out));
-            break;
-        case 'record':
-            collectTypeRefs(type.key, out);
-            collectTypeRefs(type.value, out);
-            break;
-        case 'union':
-            type.members.forEach(t => collectTypeRefs(t, out));
-            break;
-        case 'intersection':
-            type.members.forEach(t => collectTypeRefs(t, out));
-            break;
-        case 'lazy':
-            collectTypeRefs(type.inner, out);
-            break;
-        case 'inlineObject':
-            type.fields.forEach(f => collectTypeRefs(f.type, out));
             break;
     }
 }

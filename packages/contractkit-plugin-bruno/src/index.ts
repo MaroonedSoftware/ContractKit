@@ -1,7 +1,7 @@
 import { resolve, basename } from 'node:path';
 import { existsSync, rmSync } from 'node:fs';
 import { generateOpenCollection } from './codegen-bruno.js';
-import type { OpenApiSecurityScheme } from '@maroonedsoftware/contractkit';
+import type { BrunoSecurityScheme } from './codegen-bruno.js';
 import type { ContractKitPlugin } from '@maroonedsoftware/contractkit';
 
 export interface BrunoPluginConfig {
@@ -11,7 +11,7 @@ export interface BrunoPluginConfig {
 }
 
 export interface BrunoPluginOptions extends BrunoPluginConfig {
-    auth?: { defaultScheme: string; schemes?: Record<string, OpenApiSecurityScheme> };
+    auth?: { defaultScheme: string; schemes?: Record<string, BrunoSecurityScheme> };
 }
 
 // ─── Default export: loaded via plugins array, reads config from ctx.options ─
@@ -41,7 +41,7 @@ export default plugin;
 export function createBrunoPlugin(
     config: BrunoPluginConfig,
     rootDir: string,
-    auth?: { defaultScheme: string; schemes?: Record<string, OpenApiSecurityScheme> },
+    auth?: { defaultScheme: string; schemes?: Record<string, BrunoSecurityScheme> },
 ): ContractKitPlugin {
     return {
         name: 'bruno',

@@ -12,16 +12,15 @@ import {
     DiagnosticCollector,
     parseCk,
     decomposeCk,
-    generateContract,
     collectTypeRefs,
     validateOp,
     validateRefs,
 } from '@maroonedsoftware/contractkit';
-import type { ContractCodegenContext, ContractRootNode, OpRootNode, CkRootNode } from '@maroonedsoftware/contractkit';
+import type { ContractRootNode, OpRootNode, CkRootNode } from '@maroonedsoftware/contractkit';
 import { loadConfig, mergeConfig } from './config.js';
 import { loadCache, saveCache, computeHash, isFileChanged } from './cache.js';
 import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist } from './plugin.js';
-import { resolveTemplate, includesFilename, commonDir, generateBarrelFiles, TEMPLATE_VAR_RE } from './path-utils.js';
+import { resolveTemplate, includesFilename, commonDir, TEMPLATE_VAR_RE } from './path-utils.js';
 import type { ResolvedConfig } from './config.js';
 import type { FileHashMap } from './cache.js';
 import type { LoadedPlugin } from './plugin.js';
@@ -378,11 +377,6 @@ async function main() {
         // ── Pass 2: Generate code ───────────────────────────────────
         const results: { outPath: string; content: string }[] = [];
 
-        for (const { ast, outPath } of contractRoots) {
-            const content = generateContract(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput });
-            results.push({ outPath, content });
-        }
-
         for (const { ast } of opRoots) {
             validateOp(ast, diag);
         }
@@ -444,32 +438,15 @@ async function main() {
             return;
         }
 
-        // ── Generate barrel index files for DTO directories ─────────
-        const barrelFiles = generateBarrelFiles(allDtoInfo.map(d => d.outPath));
-
         // ── Format with prettier (opt-in) ────────────────────────────
-        // Format before writing so barrel unchanged-check uses formatted content.
-        if (config.prettier) {
-            const toFormat = [...results, ...barrelFiles];
-            if (toFormat.length > 0) {
-                await formatWithPrettier(toFormat);
-            }
+        if (config.prettier && results.length > 0) {
+            await formatWithPrettier(results);
         }
 
         // ── Write output files ──────────────────────────────────────
         mkdirSync(resolvedBase, { recursive: true });
 
         for (const { outPath, content } of results) {
-            mkdirSync(dirname(outPath), { recursive: true });
-            writeFileSync(outPath, content, 'utf-8');
-            console.log(`  ✓  ${outPath}`);
-        }
-
-        for (const { outPath, content } of barrelFiles) {
-            if (!config.force && isContentUnchanged(outPath, content)) {
-                console.log(`  -  ${outPath} (unchanged)`);
-                continue;
-            }
             mkdirSync(dirname(outPath), { recursive: true });
             writeFileSync(outPath, content, 'utf-8');
             console.log(`  ✓  ${outPath}`);

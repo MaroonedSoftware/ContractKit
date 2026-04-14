@@ -15,7 +15,7 @@ import {
     model,
     contractRoot,
 } from './helpers.js';
-import type { ScalarTypeNode } from '../src/ast.js';
+import type { ScalarTypeNode } from '@maroonedsoftware/contractkit';
 
 describe('renderType', () => {
     // ─── Scalar types ───────────────────────────────────────────────

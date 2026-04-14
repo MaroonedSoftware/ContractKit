@@ -1,8 +1,6 @@
 import { resolve, join, relative, dirname, basename } from 'node:path';
-import {
-    generateContract,
-    generateOp,
-} from '@maroonedsoftware/contractkit';
+import { generateContract } from './codegen-contract.js';
+import { generateOp } from './codegen-operation.js';
 import type { ContractKitPlugin } from '@maroonedsoftware/contractkit';
 import {
     generateSdk,

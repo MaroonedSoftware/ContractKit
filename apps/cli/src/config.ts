@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { DEFAULT_CACHE_FILENAME } from './cache.js';
 import { homedir } from 'node:os';
-import type { OpenApiServerEntry, OpenApiSecurityScheme, OpenApiConfig } from '@maroonedsoftware/contractkit';
+import type { OpenApiServerEntry, OpenApiSecurityScheme, OpenApiConfig } from '@maroonedsoftware/contractkit-plugin-openapi';
 export type { OpenApiServerEntry, OpenApiSecurityScheme, OpenApiConfig };
 
 export interface TypesConfig {

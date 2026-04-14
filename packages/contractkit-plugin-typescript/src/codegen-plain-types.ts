@@ -1,6 +1,6 @@
 import { relative, dirname } from 'node:path';
 import type { ContractRootNode, ModelNode, FieldNode } from '@maroonedsoftware/contractkit';
-import type { ContractCodegenContext } from '@maroonedsoftware/contractkit';
+import type { ContractCodegenContext } from './codegen-contract.js';
 import {
     collectExternalRefs,
     collectExternalInputRefs,
@@ -8,7 +8,7 @@ import {
     topoSortModels,
     resolveImportPath,
     rootNeedsScalar,
-} from '@maroonedsoftware/contractkit';
+} from './codegen-contract.js';
 import { renderTsType, renderInputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from '@maroonedsoftware/contractkit';
 
 // ─── Public entry point ────────────────────────────────────────────────────

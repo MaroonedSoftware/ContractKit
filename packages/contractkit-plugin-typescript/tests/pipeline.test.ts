@@ -1,10 +1,6 @@
-import { parseCk } from '../src/parser.js';
-import { decomposeCk } from '../src/decompose.js';
+import { parseCk, decomposeCk, validateOp, validateRefs, DiagnosticCollector } from '@maroonedsoftware/contractkit';
 import { generateContract } from '../src/codegen-contract.js';
 import { generateOp } from '../src/codegen-operation.js';
-import { validateOp } from '../src/validate-operation.js';
-import { validateRefs } from '../src/validate-refs.js';
-import { DiagnosticCollector } from '../src/diagnostics.js';
 import { SIMPLE_USER_CONTRACT, VISIBILITY_CONTRACT, INHERITANCE_CONTRACT, SIMPLE_USERS_OP, PARAMETERIZED_OP } from './helpers.js';
 
 function compileContractSource(source: string) {

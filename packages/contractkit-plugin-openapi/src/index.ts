@@ -1,6 +1,8 @@
 import { resolve } from 'node:path';
 import { generateOpenApi } from './codegen-openapi.js';
-import type { OpenApiConfig, OpenApiSecurityScheme, ContractKitPlugin } from '@maroonedsoftware/contractkit';
+import type { ContractKitPlugin } from '@maroonedsoftware/contractkit';
+import type { OpenApiConfig, OpenApiSecurityScheme } from './codegen-openapi.js';
+export type { OpenApiServerEntry, OpenApiConfig, OpenApiSecurityScheme } from './codegen-openapi.js';
 
 export interface OpenApiPluginOptions extends OpenApiConfig {
     securitySchemes?: Record<string, OpenApiSecurityScheme>;

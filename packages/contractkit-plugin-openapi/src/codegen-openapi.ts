@@ -1,6 +1,31 @@
-import type { ContractRootNode, OpRootNode, ContractTypeNode, FieldNode, ModelNode, OpRouteNode, OpOperationNode, ParamSource, OpenApiServerEntry, OpenApiSecurityScheme, OpenApiConfig } from '@maroonedsoftware/contractkit';
+import type { ContractRootNode, OpRootNode, ContractTypeNode, FieldNode, ModelNode, OpRouteNode, OpOperationNode, ParamSource } from '@maroonedsoftware/contractkit';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
-export type { OpenApiServerEntry, OpenApiSecurityScheme, OpenApiConfig };
+
+export interface OpenApiServerEntry {
+    url: string;
+    description?: string;
+}
+
+export interface OpenApiSecurityScheme {
+    type: string;
+    scheme?: string;
+    bearerFormat?: string;
+    name?: string;
+    in?: string;
+}
+
+export interface OpenApiConfig {
+    baseDir?: string;
+    output?: string;
+    info?: {
+        title?: string;
+        version?: string;
+        description?: string;
+    };
+    servers?: OpenApiServerEntry[];
+    /** Global OpenAPI security requirements (e.g. [{ bearerAuth: [] }]). Distinct from scheme definitions. */
+    security?: Record<string, string[]>[];
+}
 
 // ─── Type reachability ────────────────────────────────────────────────────
 
