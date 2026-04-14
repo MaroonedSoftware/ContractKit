@@ -9,7 +9,7 @@ import {
     resolveImportPath,
     rootNeedsScalar,
 } from './codegen-contract.js';
-import { renderTsType, renderInputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from '@maroonedsoftware/contractkit';
+import { renderTsType, renderInputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 

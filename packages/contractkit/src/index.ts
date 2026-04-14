@@ -4,7 +4,7 @@ export * from './grammar.js';
 export * from './type-builders.js';
 export * from './parser.js';
 export * from './decompose.js';
-export * from './ts-render.js';
+export * from './type-utils.js';
 export * from './validate-operation.js';
 export * from './validate-refs.js';
 export * from './plugin.js';

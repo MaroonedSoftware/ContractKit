@@ -58,9 +58,7 @@ pnpm --filter @maroonedsoftware/contractkit exec vitest run tests/parser-ck.test
 | `semantics.ts`          | Ohm parse tree → typed AST                              |
 | `parser.ts`             | `parseCk(source, file, diag)` entry point               |
 | `ast.ts`                | All AST node types                                      |
-| `codegen-contract.ts`   | Generates Zod schemas from `contract` declarations      |
-| `codegen-operation.ts`  | Generates Koa routers from `operation` declarations     |
-| `ts-render.ts`          | Shared TypeScript type rendering utilities              |
+| `type-utils.ts`         | Generic model/graph utilities — type ref collection, topo sort, `computeModelsWithInput` |
 | `validate-operation.ts` | Validates op AST against config constraints             |
 | `plugin.ts`             | `ContractKitPlugin` and `PluginContext` interface types |
 
@@ -69,8 +67,11 @@ pnpm --filter @maroonedsoftware/contractkit exec vitest run tests/parser-ck.test
 | File                     | Role                                                             |
 | ------------------------ | ---------------------------------------------------------------- |
 | `index.ts`               | Combined plugin — server, SDK, Zod, and plain-types generation   |
+| `codegen-contract.ts`    | Generates Zod schemas from `contract` declarations               |
+| `codegen-operation.ts`   | Generates Koa routers from `operation` declarations              |
 | `codegen-sdk.ts`         | TypeScript SDK client codegen                                    |
 | `codegen-plain-types.ts` | Plain TypeScript interface/type codegen (no Zod runtime)         |
+| `ts-render.ts`           | TypeScript type rendering — `renderTsType`, `renderInputTsType`, `quoteKey` |
 | `path-utils.ts`          | Output path template resolution shared across all sub-generators |
 
 ### CLI (`apps/cli/src/`)
@@ -91,25 +92,25 @@ pnpm --filter @maroonedsoftware/contractkit exec vitest run tests/parser-ck.test
 
 ## Test files
 
-Core parser and codegen tests live in `packages/contractkit/tests/`:
+Core parser tests live in `packages/contractkit/tests/`:
 
-| File                        | What it tests                                                          |
-| --------------------------- | ---------------------------------------------------------------------- |
-| `parser-ck.test.ts`         | Full grammar coverage — contracts, operations, options block, combined |
-| `codegen-contract.test.ts`  | Zod schema generation from `contract` declarations                     |
-| `codegen-operation.test.ts` | Koa router generation from `operation` declarations                    |
-| `diagnostics.test.ts`       | Error/warning collection                                               |
-| `pipeline.test.ts`          | End-to-end parse → codegen flow                                        |
-| `helpers.ts`                | AST builder helpers shared across codegen tests                        |
+| File                | What it tests                                                          |
+| ------------------- | ---------------------------------------------------------------------- |
+| `parser-ck.test.ts` | Full grammar coverage — contracts, operations, options block, combined |
+| `diagnostics.test.ts` | Error/warning collection                                             |
+| `helpers.ts`        | AST builder helpers                                                    |
 
 TypeScript plugin tests live in `packages/contractkit-plugin-typescript/tests/`:
 
-| File                          | What it tests                         |
-| ----------------------------- | ------------------------------------- |
-| `codegen-sdk.test.ts`         | SDK client generation                 |
-| `codegen-plain-types.test.ts` | Plain TypeScript interface generation |
-| `codegen-server.test.ts`      | Koa router generation via the plugin  |
-| `helpers.ts`                  | AST builder helpers                   |
+| File                          | What it tests                                      |
+| ----------------------------- | -------------------------------------------------- |
+| `codegen-contract.test.ts`    | Zod schema generation from `contract` declarations |
+| `codegen-operation.test.ts`   | Koa router generation from `operation` declarations |
+| `codegen-sdk.test.ts`         | SDK client generation                              |
+| `codegen-plain-types.test.ts` | Plain TypeScript interface generation              |
+| `codegen-server.test.ts`      | Koa router generation via the plugin               |
+| `pipeline.test.ts`            | End-to-end parse → codegen flow                    |
+| `helpers.ts`                  | AST builder helpers                                |
 
 ## Plugin system
 
@@ -143,6 +144,10 @@ The `@maroonedsoftware/contractkit-plugin-typescript` plugin handles all TypeScr
 
 Each sub-config is optional. `zod: true` makes `output.types` emit Zod schemas (via `generateContract`) instead of plain TypeScript interfaces. Path templates support `{filename}`, `{dir}`, `{area}`, and `{name}`.
 
+SDK method names follow this priority: `sdk:` field → `name:` field (converted to camelCase) → inferred from HTTP method + path. The Python SDK plugin uses the same priority but converts to `snake_case`.
+
+The SDK emits a shared `sdk-options.ts` alongside the client files. It contains `SdkOptions`, `createSdkFetch`, `buildQueryString`, `parseJson<T>`, and bigint JSON helpers. Void operations (no response body) skip body consumption entirely.
+
 The plugin interface is defined in `packages/contractkit/src/plugin.ts`. Hooks:
 
 - `transform` — mutate the AST per file before validation
@@ -174,6 +179,7 @@ operation(internal) /payments/{id}: {
 
     get: {
         sdk: getPayment
+        name: "Get Payment"
         service: PaymentsService.getById
         response: {
             200: { application/json: Payment }

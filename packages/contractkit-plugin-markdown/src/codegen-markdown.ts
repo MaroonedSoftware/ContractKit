@@ -1,7 +1,79 @@
 import type { ContractRootNode, OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, FieldNode, ModelNode, ParamSource, HttpMethod } from '@maroonedsoftware/contractkit';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
-import { renderTsType, collectPublicTypeNames } from '@maroonedsoftware/contractkit';
-import { collectTypeRefs } from '@maroonedsoftware/contractkit';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, collectPublicTypeNames, collectTypeRefs } from '@maroonedsoftware/contractkit';
+
+// ─── Local TypeScript type rendering ─────────────────────────────────────
+
+function renderTsType(type: ContractTypeNode): string {
+    switch (type.kind) {
+        case 'scalar':
+            return renderTsScalar(type.name);
+        case 'array': {
+            const inner = renderTsType(type.item);
+            const needsParens = type.item.kind === 'union' || type.item.kind === 'intersection' || type.item.kind === 'enum';
+            return needsParens ? `(${inner})[]` : `${inner}[]`;
+        }
+        case 'tuple':
+            return `[${type.items.map(renderTsType).join(', ')}]`;
+        case 'record':
+            return `Record<${renderTsType(type.key)}, ${renderTsType(type.value)}>`;
+        case 'enum':
+            return type.values.map(v => `'${v}'`).join(' | ');
+        case 'literal':
+            return typeof type.value === 'string' ? `'${type.value}'` : String(type.value);
+        case 'union':
+            return type.members.map(renderTsType).join(' | ');
+        case 'intersection':
+            return type.members.map(renderTsType).join(' & ');
+        case 'ref':
+            return type.name;
+        case 'lazy':
+            return renderTsType(type.inner);
+        case 'inlineObject':
+            return renderTsInlineObject(type.fields);
+        default:
+            return 'unknown';
+    }
+}
+
+function renderTsScalar(name: string): string {
+    switch (name) {
+        case 'string':
+        case 'email':
+        case 'url':
+        case 'uuid':
+            return 'string';
+        case 'number':
+        case 'int':
+            return 'number';
+        case 'bigint':
+            return 'bigint';
+        case 'boolean':
+            return 'boolean';
+        case 'date':
+        case 'datetime':
+            return 'string';
+        case 'null':
+            return 'null';
+        case 'unknown':
+            return 'unknown';
+        case 'object':
+            return 'Record<string, unknown>';
+        case 'binary':
+            return 'Blob';
+        case 'json':
+            return 'JsonValue';
+        default:
+            return 'unknown';
+    }
+}
+
+function renderTsInlineObject(fields: FieldNode[]): string {
+    const entries = fields.map(f => {
+        const opt = f.optional ? '?' : '';
+        return `${f.name}${opt}: ${renderTsType(f.type)}`;
+    });
+    return `{ ${entries.join('; ')} }`;
+}
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
