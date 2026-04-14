@@ -92,6 +92,9 @@ export interface PluginEntry {
     options?: Record<string, unknown>;
 }
 
+/** Record-keyed plugin config: each key is the plugin package name, value is options. */
+export type PluginsConfig = Record<string, Record<string, unknown>>;
+
 export interface DslConfig {
     rootDir?: string;
     cache?: boolean | string;
@@ -103,7 +106,8 @@ export interface DslConfig {
     prettier?: boolean;
     /** Security configuration: default scheme and scheme definitions. */
     security?: SecurityConfig;
-    plugins?: PluginEntry[];
+    /** Plugins to load: each key is the plugin package name, value is its options. */
+    plugins?: PluginsConfig;
 }
 
 export interface ResolvedCacheConfig {
@@ -160,6 +164,11 @@ export interface ResolvedConfig {
     configDir: string;
 }
 
+function normalizePlugins(plugins: PluginsConfig | undefined): PluginEntry[] {
+    if (!plugins) return [];
+    return Object.entries(plugins).map(([name, options]) => ({ plugin: name, options }));
+}
+
 /** Merge config file values with CLI flags. */
 export function mergeConfig(config: DslConfig, cliArgs: { watch: boolean; force: boolean }, configDir: string = process.cwd()): ResolvedConfig {
     const types = config.server?.types ?? {};
@@ -194,7 +203,7 @@ export function mergeConfig(config: DslConfig, cliArgs: { watch: boolean; force:
         watch: cliArgs.watch,
         force: cliArgs.force,
         prettier: config.prettier ?? false,
-        plugins: config.plugins ?? [],
+        plugins: normalizePlugins(config.plugins),
         configDir,
     };
 }

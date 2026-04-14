@@ -6,6 +6,9 @@ export default defineProject({
         globals: true,
         include: ['./tests/**/*.test.ts'],
         environment: 'node',
+        testTimeout: 50000,
+        hookTimeout: 30000,
+        fileParallelism: true,
     },
-    plugins: [swc.vite({ tsconfigFile: false })],
+    plugins: [swc.vite()],
 });

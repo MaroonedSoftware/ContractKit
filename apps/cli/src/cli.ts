@@ -16,18 +16,13 @@ import {
     decomposeCk,
     generateContract,
     collectTypeRefs,
-    generateOp,
     validateOp,
     validateRefs,
 } from '@maroonedsoftware/contractkit';
 import type { ContractCodegenContext, ContractRootNode, OpRootNode, CkRootNode } from '@maroonedsoftware/contractkit';
-import { loadConfig, mergeConfig, isHmacScheme } from './config.js';
+import { loadConfig, mergeConfig } from './config.js';
 import { loadCache, saveCache, computeHash, isFileChanged } from './cache.js';
 import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist } from './plugin.js';
-import { createOpenApiPlugin } from '@maroonedsoftware/contractkit-plugin-openapi';
-import { createMarkdownPlugin } from '@maroonedsoftware/contractkit-plugin-markdown';
-import { createBrunoPlugin } from '@maroonedsoftware/contractkit-plugin-bruno';
-import { createSdkPlugin } from '@maroonedsoftware/contractkit-plugin-sdk';
 import { resolveTemplate, includesFilename, commonDir, generateBarrelFiles, TEMPLATE_VAR_RE } from './path-utils.js';
 import type { ResolvedConfig } from './config.js';
 import type { FileHashMap } from './cache.js';
@@ -347,41 +342,21 @@ async function main() {
             results.push({ outPath, content });
         }
 
-        for (const { ast, outPath } of opRoots) {
+        for (const { ast } of opRoots) {
             validateOp(ast, diag);
-            const content = generateOp(ast, {
-                servicePathTemplate: config.server.routes.servicePathTemplate,
-                typeImportPathTemplate: config.server.routes.typeImportPathTemplate,
-                outPath,
-                modelOutPaths,
-                modelsWithInput,
-            });
-            results.push({ outPath, content });
         }
 
-        // ── Opt-in targets (built-in plugins) + user plugins ───────
-        // Pre-filter security schemes: HMAC schemes generate inline middleware (via codegen-operation)
-        // and are not valid OpenAPI/Bruno security scheme definitions.
-        const openApiSchemes = config.security?.schemes
-            ? Object.fromEntries(Object.entries(config.security.schemes).filter(([, v]) => !isHmacScheme(v)))
-            : undefined;
-
-        const builtInPlugins: LoadedPlugin[] = [];
-        if (config.sdk) builtInPlugins.push({ plugin: createSdkPlugin(config.sdk, config.rootDir), entry: { plugin: '@maroonedsoftware/contractkit-plugin-sdk' } });
-        if (config.docs?.openapi) builtInPlugins.push({ plugin: createOpenApiPlugin(config.docs.openapi, config.rootDir, openApiSchemes), entry: { plugin: '@maroonedsoftware/contractkit-plugin-openapi' } });
-        if (config.docs?.markdown) builtInPlugins.push({ plugin: createMarkdownPlugin(config.docs.markdown, config.rootDir), entry: { plugin: '@maroonedsoftware/contractkit-plugin-markdown' } });
-        if (config.docs?.bruno) {
-            const brunoAuth = config.security?.default
-                ? { defaultScheme: config.security.default, schemes: openApiSchemes }
-                : undefined;
-            builtInPlugins.push({ plugin: createBrunoPlugin(config.docs.bruno, config.rootDir, brunoAuth), entry: { plugin: '@maroonedsoftware/contractkit-plugin-bruno' } });
-        }
-        const allPlugins = [...builtInPlugins, ...plugins];
+        const allPlugins = [...plugins];
 
         for (const { plugin, entry } of allPlugins) {
             if (!plugin.generateTargets) continue;
 
-            const cacheKey = plugin.cacheKey;
+            // Incorporate entry.options into the cache key so changing plugin options
+            // invalidates the cache (relevant for user-configured plugins).
+            const optionsSuffix = entry.options && Object.keys(entry.options).length > 0
+                ? `:${JSON.stringify(entry.options)}`
+                : '';
+            const cacheKey = plugin.cacheKey ? `${plugin.cacheKey}${optionsSuffix}` : undefined;
             if (cacheKey && !config.force && cacheEnabled) {
                 const fingerprint = computePluginFingerprint(newCache, cacheKey);
                 if (cache[`__plugin_${cacheKey}__`] === fingerprint && pluginOutputsExist(cache, cacheKey)) {

@@ -56,6 +56,9 @@ importers:
       '@maroonedsoftware/contractkit-plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/contractkit-plugin-sdk
+      '@maroonedsoftware/contractkit-plugin-server':
+        specifier: workspace:*
+        version: link:../../packages/contractkit-plugin-server
       '@maroonedsoftware/openapi-to-ck':
         specifier: workspace:*
         version: link:../../packages/openapi-to-ck
@@ -207,7 +210,39 @@ importers:
         specifier: workspace:*
         version: link:../config-typescript
 
+  packages/contractkit-plugin-python-sdk:
+    dependencies:
+      '@maroonedsoftware/contractkit':
+        specifier: workspace:*
+        version: link:../contractkit
+    devDependencies:
+      '@repo/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/config-typescript':
+        specifier: workspace:*
+        version: link:../config-typescript
+      unplugin-swc:
+        specifier: ^1.5.9
+        version: 1.5.9(@swc/core@1.15.11)(rollup@4.59.0)
+      vitest:
+        specifier: ^4.1.2
+        version: 4.1.2(@types/node@25.5.0)(vite@7.3.1(@types/node@25.5.0)(yaml@2.8.3))
+
   packages/contractkit-plugin-sdk:
+    dependencies:
+      '@maroonedsoftware/contractkit':
+        specifier: workspace:*
+        version: link:../contractkit
+    devDependencies:
+      '@repo/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/config-typescript':
+        specifier: workspace:*
+        version: link:../config-typescript
+
+  packages/contractkit-plugin-server:
     dependencies:
       '@maroonedsoftware/contractkit':
         specifier: workspace:*

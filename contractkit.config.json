@@ -1,57 +1,57 @@
 {
-  "rootDir": "~/projects/homegrown_v2/",
-  "cache": true,
-  "prettier": true,
-  "server": {
-    "baseDir": "apps/api/",
-    "types": {
-      "output": "src/modules/{area}/types/{filename}.ts",
-      "include": ["contracts/types/**/*.ck"]
+    "rootDir": "~/projects/homegrown_v2/",
+    "cache": true,
+    "prettier": true,
+    "server": {
+        "baseDir": "apps/api/",
+        "types": {
+            "output": "src/modules/{area}/types/{filename}.ts",
+            "include": ["contracts/types/**/*.ck"]
+        },
+        "routes": {
+            "include": ["contracts/operations/**/*.ck"]
+        }
     },
-    "routes": {
-      "output": "src/routes/{filename}.router.ts",
-      "include": ["contracts/operations/**/*.ck"],
-      "servicePathTemplate": "#modules/{module}/{module}.service.js",
-      "typeImportPathTemplate": "#modules/{module}/types/index.js"
+    "plugins": {
+        "@maroonedsoftware/contractkit-plugin-server": {
+            "baseDir": "apps/api/",
+            "output": "src/routes/{filename}.router.ts",
+            "servicePathTemplate": "#modules/{module}/{module}.service.js",
+            "typeImportPathTemplate": "#modules/{module}/types/index.js"
+        },
+        "@maroonedsoftware/contractkit-plugin-sdk": {
+            "baseDir": "packages/sdk/",
+            "name": "homegrown",
+            "output": "src/{name}.sdk.ts",
+            "types": {
+                "output": "src/{area}/types/{filename}.ts",
+                "include": ["contracts/types/**/*.ck"]
+            },
+            "clients": {
+                "output": "src/{area}/{filename}.client.ts",
+                "include": ["contracts/operations/**/*.ck"]
+            }
+        },
+        "@maroonedsoftware/contractkit-plugin-openapi": {
+            "baseDir": "docs/api/",
+            "output": "openapi.yaml",
+            "info": {
+                "title": "Homegrown API",
+                "version": "1.0.0",
+                "description": "Homegrown API"
+            },
+            "servers": [
+                { "url": "https://api.joinhomegrown.com", "description": "Production" },
+                { "url": "https://localhost:3000", "description": "Local" }
+            ],
+            "security": [{ "bearerAuth": [] }],
+            "securitySchemes": {
+                "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+            }
+        },
+        "@maroonedsoftware/contractkit-plugin-markdown": {
+            "baseDir": "docs/",
+            "output": "api-reference.md"
+        }
     }
-  },
-  "sdk": {
-    "baseDir": "packages/sdk/",
-    "name": "homegrown",
-    "output": "src/{name}.sdk.ts",
-    "types": {
-      "output": "src/{area}/types/{filename}.ts",
-      "include": ["contracts/types/**/*.ck"]
-    },
-    "clients": {
-      "output": "src/{area}/{filename}.client.ts",
-      "include": ["contracts/operations/**/*.ck"]
-    }
-  },
-  "security": {
-    "default": "bearerAuth",
-    "schemes": {
-      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
-    }
-  },
-  "docs": {
-    "markdown": {
-      "baseDir": "docs/",
-      "output": "api-reference.md"
-    },
-    "openapi": {
-      "baseDir": "docs/api/",
-      "output": "openapi.yaml",
-      "info": {
-        "title": "Homegrown API",
-        "version": "1.0.0",
-        "description": "Homegrown API"
-      },
-      "servers": [
-        { "url": "https://api.joinhomegrown.com", "description": "Production" },
-        { "url": "https://localhost:3000", "description": "Local" }
-      ],
-      "security": [{ "bearerAuth": [] }]
-    }
-  }
 }

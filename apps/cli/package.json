@@ -23,6 +23,7 @@
         "@maroonedsoftware/contractkit-plugin-markdown": "workspace:*",
         "@maroonedsoftware/contractkit-plugin-bruno": "workspace:*",
         "@maroonedsoftware/contractkit-plugin-sdk": "workspace:*",
+        "@maroonedsoftware/contractkit-plugin-server": "workspace:*",
         "@maroonedsoftware/openapi-to-ck": "workspace:*",
         "glob": "^13.0.6"
     },
