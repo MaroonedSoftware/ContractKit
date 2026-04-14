@@ -19,10 +19,6 @@
     },
     "dependencies": {
         "@maroonedsoftware/contractkit": "workspace:*",
-        "@maroonedsoftware/contractkit-plugin-openapi": "workspace:*",
-        "@maroonedsoftware/contractkit-plugin-markdown": "workspace:*",
-        "@maroonedsoftware/contractkit-plugin-bruno": "workspace:*",
-        "@maroonedsoftware/contractkit-plugin-typescript": "workspace:*",
         "@maroonedsoftware/openapi-to-ck": "workspace:*",
         "glob": "^13.0.6"
     },

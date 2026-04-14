@@ -2,7 +2,7 @@
     "rootDir": "~/projects/homegrown_v2/",
     "cache": true,
     "prettier": true,
-    "include": ["contracts/types/**/*.ck", "contracts/operations/**/*.ck"],
+    "patterns": ["contracts/types/**/*.ck", "contracts/operations/**/*.ck"],
     "plugins": {
         "@maroonedsoftware/contractkit-plugin-typescript": {
             "server": {

@@ -2,88 +2,6 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { DEFAULT_CACHE_FILENAME } from './cache.js';
 import { homedir } from 'node:os';
-import type { OpenApiServerEntry, OpenApiSecurityScheme, OpenApiConfig } from '@maroonedsoftware/contractkit-plugin-openapi';
-export type { OpenApiServerEntry, OpenApiSecurityScheme, OpenApiConfig };
-
-export interface TypesConfig {
-    output?: string;
-    include?: string[];
-}
-
-export interface RoutesConfig {
-    output?: string;
-    include?: string[];
-    servicePathTemplate?: string;
-    typeImportPathTemplate?: string;
-}
-
-export interface SdkTypesConfig {
-    output?: string;
-    include?: string[];
-}
-
-export interface SdkClientsConfig {
-    output?: string;
-    include?: string[];
-    typeImportPathTemplate?: string;
-}
-
-export interface SdkConfig {
-    baseDir?: string;
-    name?: string;
-    output?: string;
-    types?: SdkTypesConfig;
-    clients?: SdkClientsConfig;
-}
-
-export interface ServerConfig {
-    baseDir?: string;
-    types?: TypesConfig;
-    routes?: RoutesConfig;
-}
-
-export interface HmacSecurityScheme {
-    type: 'hmac';
-    /** Request header carrying the signature (e.g. 'X-Signature'). */
-    header: string;
-    /** Name of the environment variable holding the HMAC secret. */
-    secretEnv: string;
-    /** HMAC algorithm passed to createHmac (e.g. 'sha256', 'sha512'). */
-    algorithm: string;
-    /** Output encoding for hmac.digest() ('hex' | 'base64' | 'base64url'). */
-    digest: 'hex' | 'base64' | 'base64url';
-}
-
-export type SecuritySchemeConfig = OpenApiSecurityScheme | HmacSecurityScheme;
-
-/** Type guard — narrows a SecuritySchemeConfig to HmacSecurityScheme. */
-export function isHmacScheme(scheme: SecuritySchemeConfig): scheme is HmacSecurityScheme {
-    return 'secretEnv' in scheme;
-}
-
-export interface SecurityConfig {
-    /** Global default security scheme name used when an operation has no explicit security declaration. */
-    default?: string;
-    /** Security scheme definitions. HMAC schemes generate inline middleware; OpenAPI schemes are emitted into components.securitySchemes. */
-    schemes?: Record<string, SecuritySchemeConfig>;
-}
-
-export interface MarkdownConfig {
-    baseDir?: string;
-    output?: string;
-}
-
-export interface BrunoConfig {
-    baseDir?: string;
-    output?: string;
-    collectionName?: string;
-}
-
-export interface DocsConfig {
-    openapi?: OpenApiConfig;
-    markdown?: MarkdownConfig;
-    bruno?: BrunoConfig;
-}
 
 export interface PluginEntry {
     /** npm package name or local path relative to contractkit.config.json */
@@ -98,14 +16,10 @@ export type PluginsConfig = Record<string, Record<string, unknown>>;
 export interface DslConfig {
     rootDir?: string;
     cache?: boolean | string;
-    server?: ServerConfig;
-    sdk?: SdkConfig;
-    docs?: DocsConfig;
+    /** Glob patterns for .ck files to compile, relative to rootDir. */
     patterns?: string[];
     /** Run prettier on generated TypeScript files after compilation. Default: false. */
     prettier?: boolean;
-    /** Security configuration: default scheme and scheme definitions. */
-    security?: SecurityConfig;
     /** Plugins to load: each key is the plugin package name, value is its options. */
     plugins?: PluginsConfig;
 }
@@ -153,10 +67,6 @@ export interface ResolvedConfig {
     patterns: string[];
     rootDir: string;
     cache: ResolvedCacheConfig;
-    server: Required<ServerConfig>;
-    sdk?: SdkConfig;
-    docs?: DocsConfig;
-    security?: SecurityConfig;
     watch: boolean;
     force: boolean;
     prettier: boolean;
@@ -171,17 +81,6 @@ function normalizePlugins(plugins: PluginsConfig | undefined): PluginEntry[] {
 
 /** Merge config file values with CLI flags. */
 export function mergeConfig(config: DslConfig, cliArgs: { watch: boolean; force: boolean }, configDir: string = process.cwd()): ResolvedConfig {
-    const types = config.server?.types ?? {};
-    const routes = config.server?.routes ?? {};
-    const sdk = config.sdk;
-    const patterns = [
-        ...(types.include ?? []),
-        ...(routes.include ?? []),
-        ...(sdk?.types?.include ?? []),
-        ...(sdk?.clients?.include ?? []),
-        ...(config.patterns ?? []),
-    ];
-
     const cache: ResolvedCacheConfig =
         typeof config.cache === 'string'
             ? { enabled: true, filename: config.cache }
@@ -193,13 +92,9 @@ export function mergeConfig(config: DslConfig, cliArgs: { watch: boolean; force:
     }
 
     return {
-        patterns,
+        patterns: config.patterns ?? [],
         rootDir: resolve(rootDir),
         cache,
-        server: { baseDir: config.server?.baseDir ?? '.', types, routes },
-        sdk,
-        docs: config.docs,
-        security: config.security,
         watch: cliArgs.watch,
         force: cliArgs.force,
         prettier: config.prettier ?? false,

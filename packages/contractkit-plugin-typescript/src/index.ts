@@ -107,7 +107,7 @@ function runServerGeneration(
     // ── Types / Zod output ──
     // When output.types is configured we generate type files ourselves and build a
     // local modelOutPaths map so the router generator can resolve import paths.
-    let serverModelOutPaths = inputs.modelOutPaths as Map<string, string>;
+    let serverModelOutPaths = new Map<string, string>();
 
     if (config.output?.types) {
         serverModelOutPaths = new Map();
@@ -169,7 +169,7 @@ function runSdkGeneration(
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const ckCommonRoot = commonDir(allFiles, rootDir);
 
-    let sdkModelOutPaths = inputs.modelOutPaths as Map<string, string>;
+    let sdkModelOutPaths = new Map<string, string>();
     const sdkTypePaths: string[] = [];
     const sdkClientInfos: { outPath: string; className: string; propertyName: string }[] = [];
 
@@ -290,13 +290,25 @@ function runZodGeneration(
     const zodBase = resolve(rootDir, config.baseDir ?? '.');
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
+    const modelsWithInput = inputs.modelsWithInput as Set<string>;
 
+    // Pre-pass: register all model → outPath before generating, so cross-file imports resolve.
+    const modelOutPaths = new Map<string, string>();
+    const entries: { ast: typeof inputs.contractRoots[number]; outPath: string }[] = [];
     for (const ast of inputs.contractRoots) {
         const outPath = computeContractOutPath(ast.file, zodBase, config.output, '.schema.ts', commonRoot, ast.meta);
+        entries.push({ ast, outPath });
+        for (const model of ast.models) {
+            modelOutPaths.set(model.name, outPath);
+            if (modelsWithInput.has(model.name)) modelOutPaths.set(`${model.name}Input`, outPath);
+        }
+    }
+
+    for (const { ast, outPath } of entries) {
         const content = generateContract(ast, {
-            modelOutPaths: inputs.modelOutPaths as Map<string, string>,
+            modelOutPaths,
             currentOutPath: outPath,
-            modelsWithInput: inputs.modelsWithInput as Set<string>,
+            modelsWithInput,
         });
         emitFile(outPath, content);
     }
@@ -313,13 +325,25 @@ function runTypesGeneration(
     const typesBase = resolve(rootDir, config.baseDir ?? '.');
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
+    const modelsWithInput = inputs.modelsWithInput as Set<string>;
 
+    // Pre-pass: register all model → outPath before generating.
+    const modelOutPaths = new Map<string, string>();
+    const entries: { ast: typeof inputs.contractRoots[number]; outPath: string }[] = [];
     for (const ast of inputs.contractRoots) {
         const outPath = computeContractOutPath(ast.file, typesBase, config.output, '.types.ts', commonRoot, ast.meta);
+        entries.push({ ast, outPath });
+        for (const model of ast.models) {
+            modelOutPaths.set(model.name, outPath);
+            if (modelsWithInput.has(model.name)) modelOutPaths.set(`${model.name}Input`, outPath);
+        }
+    }
+
+    for (const { ast, outPath } of entries) {
         const content = generatePlainTypes(ast, {
-            modelOutPaths: inputs.modelOutPaths as Map<string, string>,
+            modelOutPaths,
             currentOutPath: outPath,
-            modelsWithInput: inputs.modelsWithInput as Set<string>,
+            modelsWithInput,
         });
         emitFile(outPath, content);
     }

@@ -4,23 +4,15 @@ import type { DslConfig } from '../src/config.js';
 describe('mergeConfig', () => {
     const baseCli = { watch: false, force: false };
 
-    it('collects patterns from server types, routes, sdk, and top-level patterns', () => {
+    it('uses patterns from top-level patterns field', () => {
         const config: DslConfig = {
-            server: {
-                types: { include: ['types/**/*.dto'] },
-                routes: { include: ['ops/**/*.op'] },
-            },
-            sdk: {
-                types: { include: ['sdk-types/**/*.dto'] },
-                clients: { include: ['sdk-ops/**/*.op'] },
-            },
-            patterns: ['extra/**/*.dto'],
+            patterns: ['contracts/**/*.ck'],
         };
         const result = mergeConfig(config, baseCli);
-        expect(result.patterns).toEqual(['types/**/*.dto', 'ops/**/*.op', 'sdk-types/**/*.dto', 'sdk-ops/**/*.op', 'extra/**/*.dto']);
+        expect(result.patterns).toEqual(['contracts/**/*.ck']);
     });
 
-    it('returns empty patterns when config has no includes', () => {
+    it('returns empty patterns when config has no patterns', () => {
         const result = mergeConfig({}, baseCli);
         expect(result.patterns).toEqual([]);
     });
@@ -28,18 +20,6 @@ describe('mergeConfig', () => {
     it('resolves rootDir defaulting to cwd', () => {
         const result = mergeConfig({}, baseCli);
         expect(result.rootDir).toBeTruthy();
-    });
-
-    it('passes through server config with defaults', () => {
-        const config: DslConfig = {
-            server: {
-                baseDir: 'apps/api/',
-                routes: { servicePathTemplate: '#modules/{module}/{module}.service.js' },
-            },
-        };
-        const result = mergeConfig(config, baseCli);
-        expect(result.server.baseDir).toBe('apps/api/');
-        expect(result.server.routes.servicePathTemplate).toBe('#modules/{module}/{module}.service.js');
     });
 
     it('passes through force flag', () => {
@@ -50,20 +30,6 @@ describe('mergeConfig', () => {
     it('passes through watch flag', () => {
         const result = mergeConfig({}, { ...baseCli, watch: true });
         expect(result.watch).toBe(true);
-    });
-
-    it('passes through sdk config', () => {
-        const config: DslConfig = {
-            sdk: {
-                baseDir: 'packages/sdk/',
-                name: 'myapp',
-                output: 'src/{name}.sdk.ts',
-            },
-        };
-        const result = mergeConfig(config, baseCli);
-        expect(result.sdk?.baseDir).toBe('packages/sdk/');
-        expect(result.sdk?.name).toBe('myapp');
-        expect(result.sdk?.output).toBe('src/{name}.sdk.ts');
     });
 
     it('resolves cache config from boolean', () => {
@@ -96,5 +62,22 @@ describe('mergeConfig', () => {
     it('passes through prettier: false explicitly', () => {
         const result = mergeConfig({ prettier: false }, baseCli);
         expect(result.prettier).toBe(false);
+    });
+
+    it('normalizes plugins from record format', () => {
+        const config: DslConfig = {
+            plugins: {
+                '@maroonedsoftware/contractkit-plugin-typescript': { server: { baseDir: 'apps/api/' } },
+            },
+        };
+        const result = mergeConfig(config, baseCli);
+        expect(result.plugins).toHaveLength(1);
+        expect(result.plugins[0]!.plugin).toBe('@maroonedsoftware/contractkit-plugin-typescript');
+        expect(result.plugins[0]!.options).toEqual({ server: { baseDir: 'apps/api/' } });
+    });
+
+    it('returns empty plugins when none configured', () => {
+        const result = mergeConfig({}, baseCli);
+        expect(result.plugins).toEqual([]);
     });
 });

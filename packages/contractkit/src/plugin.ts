@@ -49,7 +49,6 @@ export interface ContractKitPlugin {
         inputs: {
             contractRoots: ContractRootNode[];
             opRoots: OpRootNode[];
-            modelOutPaths: ReadonlyMap<string, string>;
             modelsWithInput: ReadonlySet<string>;
         },
         ctx: PluginContext,
