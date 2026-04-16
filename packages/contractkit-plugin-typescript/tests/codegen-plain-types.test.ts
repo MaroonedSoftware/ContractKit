@@ -448,9 +448,9 @@ describe('generatePlainTypes', () => {
         });
 
         it('includes source location in JSDoc', () => {
-            const root = contractRoot([model('User', [field('name', scalarType('string'))], { loc: { file: 'user.dto', line: 5 } })]);
+            const root = contractRoot([model('User', [field('name', scalarType('string'))], { loc: { file: 'user.ck', line: 5 } })]);
             const output = generatePlainTypes(root);
-            expect(output).toContain('file://./user.dto#L5');
+            expect(output).toContain('file://./user.ck#L5');
         });
     });
 

@@ -277,7 +277,7 @@ function groupEndpoints(opRoots: OpRootNode[]): EndpointGroup[] {
 }
 
 /**
- * Returns the set of DTO model names reachable from public (non-internal) operations,
+ * Returns the set of contract model names reachable from public (non-internal) operations,
  * transitively through model dependencies. Returns null when there are no .op files,
  * meaning all models should be shown.
  */
@@ -294,8 +294,8 @@ function computePubliclyReachableModels(opRoots: OpRootNode[], contractRoots: Co
 
     // Build model → dependency map
     const modelDeps = new Map<string, Set<string>>();
-    for (const dtoRoot of contractRoots) {
-        for (const model of dtoRoot.models) {
+    for (const contractRoot of contractRoots) {
+        for (const model of contractRoot.models) {
             const deps = new Set<string>();
             if (model.base) deps.add(model.base);
             if (model.type) collectTypeRefs(model.type, deps);
@@ -323,9 +323,9 @@ function groupModels(contractRoots: ContractRootNode[], publicModels: Set<string
     const grouped = new Map<string, ModelNode[]>();
     const ungrouped: ModelNode[] = [];
 
-    for (const dtoRoot of contractRoots) {
-        const area = dtoRoot.meta?.area;
-        for (const model of dtoRoot.models) {
+    for (const contractRoot of contractRoots) {
+        const area = contractRoot.meta?.area;
+        for (const model of contractRoot.models) {
             if (publicModels !== null && !publicModels.has(model.name)) continue;
             if (area) {
                 const list = grouped.get(area) ?? [];

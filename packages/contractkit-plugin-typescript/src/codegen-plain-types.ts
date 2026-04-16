@@ -14,7 +14,7 @@ import { renderTsType, renderInputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from 
 // ─── Public entry point ────────────────────────────────────────────────────
 
 /**
- * Generate plain TypeScript interfaces/types from a DTO AST.
+ * Generate plain TypeScript interfaces/types from a contract AST.
  * Unlike `generateContract()` which produces Zod schemas, this emits
  * vanilla TypeScript `interface` and `type` declarations suitable
  * for SDK consumers that don't need runtime validation.

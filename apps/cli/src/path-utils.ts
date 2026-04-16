@@ -27,9 +27,9 @@ export function commonDir(files: string[], rootDir: string): string {
     return first.slice(0, depth).join('/') || '/';
 }
 
-export function generateBarrelFiles(dtoPaths: string[]): { outPath: string; content: string }[] {
+export function generateBarrelFiles(contractPaths: string[]): { outPath: string; content: string }[] {
     const byDir = new Map<string, string[]>();
-    for (const outPath of dtoPaths) {
+    for (const outPath of contractPaths) {
         const dir = dirname(outPath);
         const group = byDir.get(dir) ?? [];
         group.push(outPath);

@@ -6,11 +6,11 @@ describe('DiagnosticCollector', () => {
     describe('error()', () => {
         it('records an error diagnostic', () => {
             const diag = new DiagnosticCollector();
-            diag.error('file.dto', 3, 'bad syntax');
+            diag.error('file.ck', 3, 'bad syntax');
             const all = diag.getAll();
             expect(all).toHaveLength(1);
             expect(all[0]).toEqual({
-                file: 'file.dto',
+                file: 'file.ck',
                 line: 3,
                 message: 'bad syntax',
                 severity: 'error',
@@ -21,7 +21,7 @@ describe('DiagnosticCollector', () => {
     describe('warn()', () => {
         it('records a warning diagnostic', () => {
             const diag = new DiagnosticCollector();
-            diag.warn('file.dto', 5, 'unused field');
+            diag.warn('file.ck', 5, 'unused field');
             const all = diag.getAll();
             expect(all).toHaveLength(1);
             expect(all[0]!.severity).toBe('warning');
@@ -83,8 +83,8 @@ describe('DiagnosticCollector', () => {
         it('writes errors and warnings to stderr', () => {
             const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
             const diag = new DiagnosticCollector();
-            diag.error('file.dto', 3, 'bad');
-            diag.warn('file.dto', 5, 'hmm');
+            diag.error('file.ck', 3, 'bad');
+            diag.warn('file.ck', 5, 'hmm');
             diag.report();
 
             expect(spy).toHaveBeenCalled();

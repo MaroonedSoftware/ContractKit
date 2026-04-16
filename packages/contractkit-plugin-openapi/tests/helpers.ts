@@ -27,7 +27,7 @@ import type {
 
 // ─── AST Builder Helpers ────────────────────────────────────────────────────
 
-export function loc(line = 1, file = 'test.dto'): SourceLocation {
+export function loc(line = 1, file = 'test.ck'): SourceLocation {
     return { file, line };
 }
 
@@ -93,7 +93,7 @@ export function model(name: string, fields: FieldNode[], overrides?: Partial<Mod
     };
 }
 
-export function contractRoot(models: ModelNode[], file = 'test.dto'): ContractRootNode {
+export function contractRoot(models: ModelNode[], file = 'test.ck'): ContractRootNode {
     return { kind: 'contractRoot', meta: {}, models, file };
 }
 

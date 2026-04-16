@@ -35,7 +35,7 @@ export function modeToWrapper(mode: ObjectMode): string {
 export interface ContractCodegenContext {
     /** Map from model name → absolute output file path */
     modelOutPaths: Map<string, string>;
-    /** Absolute output file path for the current DTO file */
+    /** Absolute output file path for the current contract file */
     currentOutPath: string;
     /** Set of model names that have Input variants (models with visibility modifiers) */
     modelsWithInput?: Set<string>;

@@ -4,8 +4,8 @@
  */
 import type { CkRootNode, ContractRootNode, OpRootNode } from './ast.js';
 
-export function decomposeCk(ck: CkRootNode): { dto: ContractRootNode; op: OpRootNode } {
-    const dto: ContractRootNode = {
+export function decomposeCk(ck: CkRootNode): { contract: ContractRootNode; op: OpRootNode } {
+    const contract: ContractRootNode = {
         kind: 'contractRoot',
         meta: { ...ck.meta },
         services: { ...ck.services },
@@ -20,5 +20,5 @@ export function decomposeCk(ck: CkRootNode): { dto: ContractRootNode; op: OpRoot
         routes: ck.routes,
         file: ck.file,
     };
-    return { dto, op };
+    return { contract, op };
 }

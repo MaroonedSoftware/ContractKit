@@ -70,7 +70,7 @@ export function getCompletions(params: TextDocumentPositionParams, document: Tex
     const context = getTopLevelContext(lines, line);
 
     if (context === 'contract') {
-        return getDtoCompletions(textBefore, lines, line, index);
+        return getContractCompletions(textBefore, lines, line, index);
     }
     if (context === 'operation') {
         return getOpCompletions(textBefore, lines, line, index);
@@ -89,7 +89,7 @@ export function getCompletions(params: TextDocumentPositionParams, document: Tex
     return getTopLevelCompletions(textBefore);
 }
 
-function getDtoCompletions(textBefore: string, lines: string[], line: number, index: WorkspaceIndex): CompletionItem[] {
+function getContractCompletions(textBefore: string, lines: string[], line: number, index: WorkspaceIndex): CompletionItem[] {
     // After a colon in a field — offer types
     if (/:\s*(readonly\s+|writeonly\s+)?$/.test(textBefore) || /:\s*(readonly\s+|writeonly\s+)?\w*$/.test(textBefore)) {
         return [

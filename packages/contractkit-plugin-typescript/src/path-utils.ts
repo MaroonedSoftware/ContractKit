@@ -116,9 +116,9 @@ export function computeSdkTypeOutPath(
     return join(baseOutDir, typeOutput, relDir, defaultOutName);
 }
 
-export function generateBarrelFiles(dtoPaths: string[]): { outPath: string; content: string }[] {
+export function generateBarrelFiles(contractPaths: string[]): { outPath: string; content: string }[] {
     const byDir = new Map<string, string[]>();
-    for (const outPath of dtoPaths) {
+    for (const outPath of contractPaths) {
         const dir = dirname(outPath);
         const group = byDir.get(dir) ?? [];
         group.push(outPath);
@@ -137,7 +137,7 @@ export function generateBarrelFiles(dtoPaths: string[]): { outPath: string; cont
 
 export function computePubliclyReachableTypes(
     opAsts: OpRootNode[],
-    dtoAsts: ContractRootNode[],
+    contractAsts: ContractRootNode[],
     modelsWithInput: Set<string>,
 ): Set<string> | null {
     if (opAsts.length === 0) return null;
@@ -146,8 +146,8 @@ export function computePubliclyReachableTypes(
         for (const name of collectPublicTypeNames(opAst, modelsWithInput)) reachable.add(name);
     }
     const modelDeps = new Map<string, Set<string>>();
-    for (const dtoAst of dtoAsts) {
-        for (const model of dtoAst.models) {
+    for (const contractAst of contractAsts) {
+        for (const model of contractAst.models) {
             const deps = new Set<string>();
             if (model.base) deps.add(model.base);
             if (model.type) collectTypeRefs(model.type, deps);

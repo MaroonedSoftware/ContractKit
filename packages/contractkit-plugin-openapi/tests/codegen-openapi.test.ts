@@ -474,9 +474,9 @@ describe('generateOpenApi', () => {
             expect(output).toContain('/orders');
         });
 
-        it('merges schemas from multiple dto files', () => {
-            const dto1 = contractRoot([model('User', [field('id', scalarType('uuid'))])], 'user.dto');
-            const dto2 = contractRoot([model('Order', [field('id', scalarType('uuid'))])], 'order.dto');
+        it('merges schemas from multiple contract files', () => {
+            const dto1 = contractRoot([model('User', [field('id', scalarType('uuid'))])], 'user.ck');
+            const dto2 = contractRoot([model('Order', [field('id', scalarType('uuid'))])], 'order.ck');
             const output = generateOpenApi({
                 contractRoots: [dto1, dto2],
                 opRoots: [],

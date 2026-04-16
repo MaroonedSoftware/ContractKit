@@ -650,19 +650,19 @@ describe('generateContract', () => {
 
     describe('source line comments', () => {
         it('includes source location comment above schema', () => {
-            const root = contractRoot([model('User', [field('name', scalarType('string'))], { loc: { file: 'user.dto', line: 5 } })]);
+            const root = contractRoot([model('User', [field('name', scalarType('string'))], { loc: { file: 'user.ck', line: 5 } })]);
             const output = generateContract(root);
-            expect(output).toContain('file://./user.dto#L5');
+            expect(output).toContain('file://./user.ck#L5');
         });
 
         it('includes source location for three-schema models', () => {
             const root = contractRoot([
                 model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))], {
-                    loc: { file: 'user.dto', line: 1 },
+                    loc: { file: 'user.ck', line: 1 },
                 }),
             ]);
             const output = generateContract(root);
-            expect(output).toContain('file://./user.dto#L1');
+            expect(output).toContain('file://./user.ck#L1');
         });
     });
 

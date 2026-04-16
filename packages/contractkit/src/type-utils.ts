@@ -6,7 +6,7 @@ import { resolveModifiers } from './ast.js';
 /**
  * Returns the set of type names directly referenced by public (non-internal)
  * operations in the root. Does not include transitive dependencies — callers
- * should expand these through the DTO model graph if needed.
+ * should expand these through the contract model graph if needed.
  */
 export function collectPublicTypeNames(root: OpRootNode, modelsWithInput?: Set<string>): Set<string> {
     return new Set(collectTypes(root, modelsWithInput));

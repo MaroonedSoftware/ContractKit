@@ -1,6 +1,6 @@
 /**
- * Shared type-building utilities used by both DTO and OP semantic actions.
- * Extracted from visitor-dto.ts and visitor-op.ts to eliminate duplication.
+ * Shared type-building utilities used by both contract and operation semantic actions.
+ * Extracted from visitor-contract.ts and visitor-op.ts to eliminate duplication.
  */
 import type { ContractTypeNode, ScalarTypeNode, UnionTypeNode } from './ast.js';
 import { SCALAR_NAMES } from './ast.js';

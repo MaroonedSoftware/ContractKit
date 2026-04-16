@@ -164,7 +164,7 @@ async function main() {
         const newCache: FileHashMap = {};
 
         // ── Parse all .ck files ────────────────────────────────────────
-        const allDtos: ContractRootNode[] = [];
+        const allContracts: ContractRootNode[] = [];
         const allOps: OpRootNode[] = [];
 
         for (const filePath of files) {
@@ -191,15 +191,15 @@ async function main() {
                 }
             }
 
-            const { dto, op } = decomposeCk(ckAst);
-            if (dto.models.length > 0) allDtos.push(dto);
+            const { contract, op } = decomposeCk(ckAst);
+            if (contract.models.length > 0) allContracts.push(contract);
             if (op.routes.length > 0) allOps.push(op);
         }
 
         // ── Compute cross-file semantics ───────────────────────────────
         // modelsWithInput: which model names need an Input variant (have readonly/writeonly
         // fields, or transitively reference models that do). Used by all code generators.
-        const modelsWithInput = computeModelsWithInput(allDtos.flatMap(r => r.models));
+        const modelsWithInput = computeModelsWithInput(allContracts.flatMap(r => r.models));
 
         // ── Dependency fingerprint ─────────────────────────────────────
         const depsFingerprint = computeHash([...modelsWithInput].sort().join(','));
@@ -214,7 +214,7 @@ async function main() {
         }
 
         // ── Cross-file validation ──────────────────────────────────────
-        validateRefs(allDtos, allOps, diag);
+        validateRefs(allContracts, allOps, diag);
 
         for (const op of allOps) {
             validateOp(op, diag);
@@ -248,7 +248,7 @@ async function main() {
             try {
                 await plugin.generateTargets(
                     {
-                        contractRoots: allDtos,
+                        contractRoots: allContracts,
                         opRoots: allOps,
                         modelsWithInput,
                     },

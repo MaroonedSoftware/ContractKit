@@ -40,7 +40,7 @@ describe('generateMarkdown', () => {
             expect(output).toContain('## Endpoints');
         });
 
-        it('includes Models section when dtos exist', () => {
+        it('includes Models section when contracts exist', () => {
             const dto = contractRoot([model('User', [field('id', scalarType('uuid'))])]);
             const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
             expect(output).toContain('## Models');
@@ -51,7 +51,7 @@ describe('generateMarkdown', () => {
             expect(output).not.toContain('## Endpoints');
         });
 
-        it('omits Models section when no dtos', () => {
+        it('omits Models section when no contracts', () => {
             const output = generateMarkdown({ contractRoots: [], opRoots: [] });
             expect(output).not.toContain('## Models');
         });
@@ -102,7 +102,7 @@ describe('generateMarkdown', () => {
         });
 
         it('groups models by area in collapsible TOC section', () => {
-            const dto = contractRoot([model('LedgerAccount', [field('id', scalarType('uuid'))])], 'ledger.dto');
+            const dto = contractRoot([model('LedgerAccount', [field('id', scalarType('uuid'))])], 'ledger.ck');
             (dto as any).meta = { area: 'ledger' };
             const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
             expect(output).toContain('<summary><strong>Ledger</strong> (1)</summary>');
@@ -140,7 +140,7 @@ describe('generateMarkdown', () => {
         });
 
         it('renders area heading for models', () => {
-            const dto = contractRoot([model('LedgerAccount', [field('id', scalarType('uuid'))])], 'ledger.dto');
+            const dto = contractRoot([model('LedgerAccount', [field('id', scalarType('uuid'))])], 'ledger.ck');
             (dto as any).meta = { area: 'ledger' };
             const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
             expect(output).toContain('### Ledger');
@@ -653,7 +653,7 @@ describe('generateMarkdown', () => {
             expect(output).toContain('**`GET`** `/orders`');
         });
 
-        it('merges models from multiple dto files', () => {
+        it('merges models from multiple contract files', () => {
             const dto1 = contractRoot([model('User', [field('id', scalarType('uuid'))])]);
             const dto2 = contractRoot([model('Order', [field('id', scalarType('uuid'))])]);
             const output = generateMarkdown({ contractRoots: [dto1, dto2], opRoots: [] });
@@ -885,7 +885,7 @@ describe('model filtering by public reachability', () => {
     it('excludes transitively-internal-only models even if named by another internal op', () => {
         const dto = contractRoot(
             [model('InternalPayload', [field('data', scalarType('string'))]), model('InternalChild', [field('x', scalarType('number'))])],
-            'webhooks.dto',
+            'webhooks.ck',
         );
         const op = opRoot([
             opRoute(

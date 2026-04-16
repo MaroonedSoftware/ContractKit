@@ -89,7 +89,7 @@ function collectPublicTypeRefs(opRoots: OpRootNode[]): Set<string> {
     return refs;
 }
 
-/** BFS-expand seed type names through the DTO model graph. */
+/** BFS-expand seed type names through the contract model graph. */
 function computeReachableSchemas(seeds: Set<string>, modelMap: Map<string, ModelNode>): Set<string> {
     const reachable = new Set<string>(seeds);
     const frontier = [...seeds];
@@ -141,12 +141,12 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
         doc.security = config.security;
     }
 
-    // Build component schemas from all DTO models
+    // Build component schemas from all contract models
     const allSchemas: Record<string, unknown> = {};
     const modelMap = new Map<string, ModelNode>();
 
-    for (const dtoRoot of contractRoots) {
-        for (const model of dtoRoot.models) {
+    for (const contractRoot of contractRoots) {
+        for (const model of contractRoot.models) {
             modelMap.set(model.name, model);
             allSchemas[model.name] = modelToSchema(model);
         }

@@ -6,9 +6,9 @@ import { SIMPLE_USER_CONTRACT, VISIBILITY_CONTRACT, INHERITANCE_CONTRACT, SIMPLE
 function compileContractSource(source: string) {
     const diag = new DiagnosticCollector();
     const ck = parseCk(source, 'test.ck', diag);
-    const { dto } = decomposeCk(ck);
-    const output = generateContract(dto);
-    return { root: dto, output, diag };
+    const { contract } = decomposeCk(ck);
+    const output = generateContract(contract);
+    return { root: contract, output, diag };
 }
 
 function compileOpSource(source: string, file = 'users.ck') {
@@ -20,7 +20,7 @@ function compileOpSource(source: string, file = 'users.ck') {
 }
 
 describe('Contract pipeline (source -> parse -> codegen)', () => {
-    it('compiles a simple DTO to valid Zod schema code', () => {
+    it('compiles a simple contract to valid Zod schema code', () => {
         const { output, diag } = compileContractSource(SIMPLE_USER_CONTRACT);
         expect(diag.hasErrors()).toBe(false);
         expect(output).toContain("import { z } from 'zod';");
@@ -31,7 +31,7 @@ describe('Contract pipeline (source -> parse -> codegen)', () => {
         expect(output).toContain(`active: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).default(true)`);
     });
 
-    it('compiles a DTO with visibility to three-schema pattern', () => {
+    it('compiles a contract with visibility to three-schema pattern', () => {
         const { output, diag } = compileContractSource(VISIBILITY_CONTRACT);
         expect(diag.hasErrors()).toBe(false);
         expect(output).toContain('const UserBase = z.strictObject({');
@@ -47,14 +47,14 @@ describe('Contract pipeline (source -> parse -> codegen)', () => {
         expect(writeSection).not.toContain('id:');
     });
 
-    it('compiles a DTO with inheritance', () => {
+    it('compiles a contract with inheritance', () => {
         const { output, diag } = compileContractSource(INHERITANCE_CONTRACT);
         expect(diag.hasErrors()).toBe(false);
         expect(output).toContain('User.extend({');
         expect(output).toContain('z.enum(["admin", "superadmin"])');
     });
 
-    it('compiles a DTO with all type kinds', () => {
+    it('compiles a contract with all type kinds', () => {
         const source = `\
 contract Kitchen: {
     tags: array(string)
@@ -195,7 +195,7 @@ describe('param type warnings', () => {
 });
 
 describe('error handling pipeline', () => {
-    it('reports diagnostics for invalid DTO source', () => {
+    it('reports diagnostics for invalid contract source', () => {
         const { diag } = compileContractSource('Bad name: string');
         expect(diag.hasErrors()).toBe(true);
     });
@@ -207,11 +207,11 @@ describe('error handling pipeline', () => {
 });
 
 describe('cross-file type reference validation', () => {
-    it('warns when a DTO references an undefined model', () => {
+    it('warns when a contract references an undefined model', () => {
         const diag = new DiagnosticCollector();
         const ck = parseCk('contract Order: { customer: NonExistentModel }', 'order.ck', diag);
-        const { dto } = decomposeCk(ck);
-        validateRefs([dto], [], diag);
+        const { contract } = decomposeCk(ck);
+        validateRefs([contract], [], diag);
         const warnings = diag.getAll().filter(d => d.severity === 'warning');
         expect(warnings.some(w => w.message.includes('NonExistentModel'))).toBe(true);
     });
@@ -220,9 +220,9 @@ describe('cross-file type reference validation', () => {
         const diag = new DiagnosticCollector();
         const ck1 = parseCk('contract User: { name: string }', 'user.ck', diag);
         const ck2 = parseCk('contract Order: { customer: User }', 'order.ck', diag);
-        const { dto: dto1 } = decomposeCk(ck1);
-        const { dto: dto2 } = decomposeCk(ck2);
-        validateRefs([dto1, dto2], [], diag);
+        const { contract: contract1 } = decomposeCk(ck1);
+        const { contract: contract2 } = decomposeCk(ck2);
+        validateRefs([contract1, contract2], [], diag);
         const warnings = diag.getAll().filter(d => d.severity === 'warning' && d.message.includes('User'));
         expect(warnings).toHaveLength(0);
     });
@@ -230,8 +230,8 @@ describe('cross-file type reference validation', () => {
     it('warns when base model is undefined', () => {
         const diag = new DiagnosticCollector();
         const ck = parseCk('contract Admin: MissingBase & { role: string }', 'admin.ck', diag);
-        const { dto } = decomposeCk(ck);
-        validateRefs([dto], [], diag);
+        const { contract } = decomposeCk(ck);
+        validateRefs([contract], [], diag);
         const warnings = diag.getAll().filter(d => d.severity === 'warning');
         expect(warnings.some(w => w.message.includes('MissingBase'))).toBe(true);
     });

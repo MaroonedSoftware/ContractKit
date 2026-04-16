@@ -178,20 +178,20 @@ function runSdkGeneration(
         sdkModelOutPaths = new Map<string, string>();
         const publicTypes = computePubliclyReachableTypes(inputs.opRoots, inputs.contractRoots, modelsWithInput);
 
-        const sdkDtoEntries: { ast: typeof inputs.contractRoots[number]; typeOutPath: string }[] = [];
+        const sdkContractEntries: { ast: typeof inputs.contractRoots[number]; typeOutPath: string }[] = [];
         for (const ast of inputs.contractRoots) {
             const typeOutPath = computeSdkTypeOutPath(ast.file, sdkBase, config.output.types, ckCommonRoot, ast.meta);
             if (!typeOutPath) continue;
             if (publicTypes !== null && !ast.models.some(m => publicTypes.has(m.name))) continue;
             sdkTypePaths.push(typeOutPath);
-            sdkDtoEntries.push({ ast, typeOutPath });
+            sdkContractEntries.push({ ast, typeOutPath });
             for (const model of ast.models) {
                 sdkModelOutPaths.set(model.name, typeOutPath);
                 if (modelsWithInput.has(model.name)) sdkModelOutPaths.set(`${model.name}Input`, typeOutPath);
             }
         }
 
-        for (const { ast, typeOutPath } of sdkDtoEntries) {
+        for (const { ast, typeOutPath } of sdkContractEntries) {
             let content: string;
             if (config.zod) {
                 content = generateContract(ast, {
