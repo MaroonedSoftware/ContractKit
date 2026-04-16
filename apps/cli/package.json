@@ -1,5 +1,5 @@
 {
-    "name": "contractkit",
+    "name": "@maroonedsoftware/contractkit-cli",
     "version": "0.1.0",
     "description": "Compiler for .ck files",
     "type": "module",

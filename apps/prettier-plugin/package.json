@@ -1,5 +1,5 @@
 {
-    "name": "prettier-plugin-contractkit",
+    "name": "@maroonedsoftware/prettier-plugin-contractkit",
     "version": "0.1.0",
     "type": "module",
     "main": "./dist/index.js",
