@@ -1,9 +1,4 @@
-import type {
-    ContractRootNode,
-    ModelNode,
-    FieldNode,
-    ContractTypeNode,
-} from '@maroonedsoftware/contractkit';
+import type { ContractRootNode, ModelNode, FieldNode, ContractTypeNode } from '@maroonedsoftware/contractkit';
 import { computeModelsWithInput, topoSortModels, collectExternalRefs, collectExternalInputRefs } from '@maroonedsoftware/contractkit';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -26,9 +21,7 @@ export function generatePydanticModels(root: ContractRootNode, opts: ModelCodege
     const localModelsWithInput = computeModelsWithInput(root.models, externalModelsWithInput);
     const allModelsWithInput = new Set([...localModelsWithInput, ...externalModelsWithInput]);
 
-    const externalInputRefs = allModelsWithInput.size > 0
-        ? collectExternalInputRefs(root, allModelsWithInput)
-        : [];
+    const externalInputRefs = allModelsWithInput.size > 0 ? collectExternalInputRefs(root, allModelsWithInput) : [];
     const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs])].sort();
 
     // Track needed imports
@@ -87,7 +80,10 @@ class ImportTracker {
 
     add(module: string, name: string): void {
         let s = this.groups.get(module);
-        if (!s) { s = new Set(); this.groups.set(module, s); }
+        if (!s) {
+            s = new Set();
+            this.groups.set(module, s);
+        }
         s.add(name);
     }
 
@@ -120,14 +116,26 @@ function scanTypeImports(type: ContractTypeNode, imports: ImportTracker): void {
     switch (type.kind) {
         case 'scalar':
             switch (type.name) {
-                case 'date': imports.add('datetime', 'date'); break;
-                case 'time': imports.add('datetime', 'time'); break;
-                case 'datetime': imports.add('datetime', 'datetime'); break;
-                case 'duration': imports.add('datetime', 'timedelta'); break;
-                case 'uuid': imports.add('uuid', 'UUID'); break;
+                case 'date':
+                    imports.add('datetime', 'date');
+                    break;
+                case 'time':
+                    imports.add('datetime', 'time');
+                    break;
+                case 'datetime':
+                    imports.add('datetime', 'datetime');
+                    break;
+                case 'duration':
+                    imports.add('datetime', 'timedelta');
+                    break;
+                case 'uuid':
+                    imports.add('uuid', 'UUID');
+                    break;
                 case 'unknown':
                 case 'json':
-                case 'object': imports.add('typing', 'Any'); break;
+                case 'object':
+                    imports.add('typing', 'Any');
+                    break;
             }
             break;
         case 'enum':
@@ -196,22 +204,36 @@ function renderScalar(name: string): string {
     switch (name) {
         case 'string':
         case 'email':
-        case 'url': return 'str';
-        case 'number': return 'float';
-        case 'int': return 'int';
-        case 'bigint': return 'int';
-        case 'boolean': return 'bool';
-        case 'date': return 'date';
-        case 'time': return 'time';
-        case 'datetime': return 'datetime';
-        case 'duration': return 'timedelta';
-        case 'uuid': return 'UUID';
-        case 'null': return 'None';
-        case 'binary': return 'bytes';
+        case 'url':
+            return 'str';
+        case 'number':
+            return 'float';
+        case 'int':
+            return 'int';
+        case 'bigint':
+            return 'int';
+        case 'boolean':
+            return 'bool';
+        case 'date':
+            return 'date';
+        case 'time':
+            return 'time';
+        case 'datetime':
+            return 'datetime';
+        case 'duration':
+            return 'timedelta';
+        case 'uuid':
+            return 'UUID';
+        case 'null':
+            return 'None';
+        case 'binary':
+            return 'bytes';
         case 'unknown':
         case 'json':
-        case 'object': return 'Any';
-        default: return 'Any';
+        case 'object':
+            return 'Any';
+        default:
+            return 'Any';
     }
 }
 
@@ -237,9 +259,7 @@ function generateModel(model: ModelNode, allModelsWithInput: Set<string>, import
         return generateTypeAlias(model, allModelsWithInput, imports);
     }
 
-    const needsInputSplit =
-        model.fields.some(f => f.visibility !== 'normal') ||
-        allModelsWithInput.has(model.name);
+    const needsInputSplit = model.fields.some(f => f.visibility !== 'normal') || allModelsWithInput.has(model.name);
 
     if (needsInputSplit) {
         return generateSplitModel(model, allModelsWithInput, imports);
@@ -247,7 +267,7 @@ function generateModel(model: ModelNode, allModelsWithInput: Set<string>, import
     return generateSimpleModel(model, allModelsWithInput, imports);
 }
 
-function generateTypeAlias(model: ModelNode, allModelsWithInput: Set<string>, imports: ImportTracker): string[] {
+function generateTypeAlias(model: ModelNode, allModelsWithInput: Set<string>, _: ImportTracker): string[] {
     const lines: string[] = [];
     if (model.description) lines.push(`# ${model.description}`);
     if (model.deprecated) lines.push('# @deprecated');
@@ -310,9 +330,7 @@ function generateSplitModel(model: ModelNode, allModelsWithInput: Set<string>, i
 
     // Input model — omit readonly fields
     const writeFields = model.fields.filter(f => f.visibility !== 'readonly');
-    const inputBase = model.base
-        ? (allModelsWithInput.has(model.base) ? `${model.base}Input` : model.base)
-        : 'BaseModel';
+    const inputBase = model.base ? (allModelsWithInput.has(model.base) ? `${model.base}Input` : model.base) : 'BaseModel';
     lines.push(`class ${model.name}Input(${inputBase}):`);
     const writeNeedsConfig = writeFields.some(f => toPythonFieldName(f.name) !== f.name);
     if (writeNeedsConfig) {
@@ -330,12 +348,7 @@ function generateSplitModel(model: ModelNode, allModelsWithInput: Set<string>, i
     return lines;
 }
 
-function renderFields(
-    fields: FieldNode[],
-    allModelsWithInput: Set<string>,
-    imports: ImportTracker,
-    forInput: boolean,
-): string[] {
+function renderFields(fields: FieldNode[], allModelsWithInput: Set<string>, imports: ImportTracker, forInput: boolean): string[] {
     const lines: string[] = [];
     for (const f of fields) {
         lines.push(...renderField(f, allModelsWithInput, imports, forInput));
@@ -343,12 +356,7 @@ function renderFields(
     return lines;
 }
 
-function renderField(
-    field: FieldNode,
-    allModelsWithInput: Set<string>,
-    imports: ImportTracker,
-    forInput: boolean,
-): string[] {
+function renderField(field: FieldNode, allModelsWithInput: Set<string>, imports: ImportTracker, forInput: boolean): string[] {
     const lines: string[] = [];
     const pyName = toPythonFieldName(field.name);
     const needsAlias = pyName !== field.name;
@@ -364,9 +372,7 @@ function renderField(
         fieldAnnotations.push(`alias=${JSON.stringify(field.name)}`);
     }
     if (field.default !== undefined) {
-        const def = typeof field.default === 'string'
-            ? JSON.stringify(field.default)
-            : String(field.default);
+        const def = typeof field.default === 'string' ? JSON.stringify(field.default) : String(field.default);
         fieldAnnotations.push(`default=${def}`);
     }
 
@@ -399,7 +405,11 @@ function renderField(
 
 /** Derive a Python module name from a .ck file path, e.g. "ledger.categories.ck" → "_models_ledger_categories" */
 export function deriveModelsModuleName(file: string): string {
-    const base = file.split('/').pop()?.replace(/\.(op\.)?ck$/, '') ?? 'models';
+    const base =
+        file
+            .split('/')
+            .pop()
+            ?.replace(/\.(op\.)?ck$/, '') ?? 'models';
     const clean = base.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     return `_models_${clean}`;
 }

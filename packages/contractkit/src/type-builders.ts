@@ -19,7 +19,7 @@ export type TypeArg = TypeArgKeyValue | TypeArgString | TypeArgNumber | TypeArgB
 
 /** Resolve a simple type name to a ContractTypeNode (scalar or model ref). */
 export function resolveSimpleType(name: string): ContractTypeNode {
-    if (SCALAR_NAMES.has(name as any)) {
+    if (SCALAR_NAMES.has(name)) {
         return { kind: 'scalar', name: name as ScalarTypeNode['name'] };
     }
     return { kind: 'ref', name };

@@ -25,24 +25,19 @@ export async function loadPlugins(entries: PluginEntry[], configDir: string): Pr
         try {
             mod = await import(modulePath);
         } catch (err) {
-            throw new Error(`Failed to load plugin "${specifier}": ${(err as Error).message}`);
+            throw new Error(`Failed to load plugin "${specifier}": ${(err as Error).message}`, { cause: err });
         }
-        const raw = (mod as any).default ?? (mod as any).plugin ?? mod;
-        if (!raw || typeof raw !== 'object' || typeof (raw as any).name !== 'string') {
-            throw new Error(
-                `Plugin "${specifier}" must export a ContractKitPlugin object with a "name" field.`,
-            );
+        const raw =
+            (mod as { default?: ContractKitPlugin; plugin?: ContractKitPlugin }).default ?? (mod as { plugin?: ContractKitPlugin }).plugin ?? mod;
+        if (!raw || typeof raw !== 'object' || typeof (raw as { name?: string }).name !== 'string') {
+            throw new Error(`Plugin "${specifier}" must export a ContractKitPlugin object with a "name" field.`);
         }
         loaded.push({ plugin: raw as ContractKitPlugin, entry });
     }
     return loaded;
 }
 
-export function makePluginContext(
-    entry: PluginEntry,
-    config: ResolvedConfig,
-    emitFile?: (outPath: string, content: string) => void,
-): PluginContext {
+export function makePluginContext(entry: PluginEntry, config: ResolvedConfig, emitFile?: (outPath: string, content: string) => void): PluginContext {
     return {
         rootDir: config.rootDir,
         options: entry.options ?? {},

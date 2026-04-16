@@ -1,4 +1,4 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, OpParamNode, ContractTypeNode, ParamSource, FieldNode } from '@maroonedsoftware/contractkit';
+import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
 import { resolveModifiers } from '@maroonedsoftware/contractkit';
 import { renderTsType, renderInputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
@@ -244,7 +244,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
 
 // ─── URL building ─────────────────────────────────────────────────────────
 
-function buildUrlExpression(path: string, params?: ParamSource): string {
+function buildUrlExpression(path: string, _?: ParamSource): string {
     // Replace {paramName} with ${encodeURIComponent(paramName)}
     return path.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (_match, name) => {
         return `\${encodeURIComponent(${name})}`;

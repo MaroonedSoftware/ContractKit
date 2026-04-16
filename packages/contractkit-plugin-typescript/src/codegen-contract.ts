@@ -11,10 +11,8 @@ import type {
     EnumTypeNode,
     LiteralTypeNode,
     UnionTypeNode,
-    ModelRefTypeNode,
     InlineObjectTypeNode,
     IntersectionTypeNode,
-    LazyTypeNode,
     ObjectMode,
 } from '@maroonedsoftware/contractkit';
 import { collectTypeRefs } from '@maroonedsoftware/contractkit';

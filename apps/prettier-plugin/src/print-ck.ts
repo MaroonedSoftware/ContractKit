@@ -1,6 +1,6 @@
 import type { CkRootNode } from '@maroonedsoftware/contractkit';
 import { printModelDecl } from './print-contract.js';
-import { printRoute, printSecurity, groupComments, type CommentBlock } from './print-operation.js';
+import { printRoute, printSecurity, type CommentBlock } from './print-operation.js';
 import { INDENT } from './indent.js';
 
 export const DEFAULT_PRINT_WIDTH = 80;

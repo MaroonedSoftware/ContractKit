@@ -1,4 +1,4 @@
-import { resolve, join, relative, dirname } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 
 export const TEMPLATE_VAR_RE = /\{\w+\}/;
 
@@ -45,4 +45,3 @@ export function generateBarrelFiles(contractPaths: string[]): { outPath: string;
     }
     return results;
 }
-

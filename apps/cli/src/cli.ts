@@ -8,21 +8,12 @@ import { default as importOpenApiPlugin } from '@maroonedsoftware/openapi-to-ck/
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { glob } from 'glob';
-import {
-    DiagnosticCollector,
-    parseCk,
-    decomposeCk,
-    validateOp,
-    validateRefs,
-    computeModelsWithInput,
-} from '@maroonedsoftware/contractkit';
-import type { ContractRootNode, OpRootNode, CkRootNode } from '@maroonedsoftware/contractkit';
+import { DiagnosticCollector, parseCk, decomposeCk, validateOp, validateRefs, computeModelsWithInput } from '@maroonedsoftware/contractkit';
+import type { ContractRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
 import { loadConfig, mergeConfig } from './config.js';
 import { loadCache, saveCache, computeHash } from './cache.js';
 import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist } from './plugin.js';
-import type { ResolvedConfig } from './config.js';
 import type { FileHashMap } from './cache.js';
-import type { LoadedPlugin } from './plugin.js';
 
 // ─── Arg parsing ───────────────────────────────────────────────────────────
 
@@ -182,12 +173,18 @@ async function main() {
             for (const { plugin, entry } of plugins) {
                 const ctx = makePluginContext(entry, config);
                 if (plugin.validate) {
-                    try { await plugin.validate(ckAst, ctx); }
-                    catch (err) { diag.error(filePath, 0, `[plugin:${plugin.name}] ${(err as Error).message}`); }
+                    try {
+                        await plugin.validate(ckAst, ctx);
+                    } catch (err) {
+                        diag.error(filePath, 0, `[plugin:${plugin.name}] ${(err as Error).message}`);
+                    }
                 }
                 if (plugin.transform) {
-                    try { ckAst = await plugin.transform(ckAst, ctx); }
-                    catch (err) { diag.error(filePath, 0, `[plugin:${plugin.name}] ${(err as Error).message}`); }
+                    try {
+                        ckAst = await plugin.transform(ckAst, ctx);
+                    } catch (err) {
+                        diag.error(filePath, 0, `[plugin:${plugin.name}] ${(err as Error).message}`);
+                    }
                 }
             }
 
@@ -226,9 +223,7 @@ async function main() {
         for (const { plugin, entry } of plugins) {
             if (!plugin.generateTargets) continue;
 
-            const optionsSuffix = entry.options && Object.keys(entry.options).length > 0
-                ? `:${JSON.stringify(entry.options)}`
-                : '';
+            const optionsSuffix = entry.options && Object.keys(entry.options).length > 0 ? `:${JSON.stringify(entry.options)}` : '';
             const cacheKey = plugin.cacheKey ? `${plugin.cacheKey}${optionsSuffix}` : undefined;
             if (cacheKey && !config.force && cacheEnabled && !depsChanged) {
                 const fingerprint = computePluginFingerprint(newCache, cacheKey);

@@ -1,4 +1,13 @@
-import type { ContractRootNode, OpRootNode, ContractTypeNode, FieldNode, ModelNode, OpRouteNode, OpOperationNode, ParamSource } from '@maroonedsoftware/contractkit';
+import type {
+    ContractRootNode,
+    OpRootNode,
+    ContractTypeNode,
+    FieldNode,
+    ModelNode,
+    OpRouteNode,
+    OpOperationNode,
+    ParamSource,
+} from '@maroonedsoftware/contractkit';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
 
 export interface OpenApiServerEntry {
@@ -661,7 +670,7 @@ function isPlainObject(value: unknown): boolean {
 function yamlString(s: string): string {
     // Use plain style if safe, otherwise single-quoted
     if (s === '') return "''";
-    if (/^[\w./\-]+$/.test(s) && !/^(true|false|null|yes|no|on|off)$/i.test(s) && !/^\d/.test(s)) {
+    if (/^[\w./-]+$/.test(s) && !/^(true|false|null|yes|no|on|off)$/i.test(s) && !/^\d/.test(s)) {
         return s;
     }
     // Single-quote, escaping internal single quotes by doubling
@@ -670,7 +679,7 @@ function yamlString(s: string): string {
 
 function yamlKey(key: string): string {
     // Keys with special chars need quoting
-    if (/^[\w\-]+$/.test(key) && !/^(true|false|null|yes|no|on|off)$/i.test(key)) {
+    if (/^[\w-]+$/.test(key) && !/^(true|false|null|yes|no|on|off)$/i.test(key)) {
         return key;
     }
     return `'${key.replace(/'/g, "''")}'`;

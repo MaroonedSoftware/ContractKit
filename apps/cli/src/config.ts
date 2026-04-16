@@ -42,7 +42,7 @@ export function loadConfig(configPath?: string, startDir: string = process.cwd()
             const text = readFileSync(resolved, 'utf-8');
             return { config: JSON.parse(text) as DslConfig, configDir: dirname(resolved) };
         } catch (err) {
-            throw new Error(`Failed to load config from ${resolved}: ${(err as Error).message}`);
+            throw new Error(`Failed to load config from ${resolved}: ${(err as Error).message}`, { cause: err });
         }
     }
 

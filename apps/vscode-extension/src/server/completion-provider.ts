@@ -60,7 +60,7 @@ export function getCompletions(params: TextDocumentPositionParams, document: Tex
     const lines = text.split('\n');
     const line = params.position.line;
     const char = params.position.character;
-    const uri = document.uri;
+    //const uri = document.uri;
 
     if (line >= lines.length) return [];
     const lineText = lines[line]!;
@@ -399,7 +399,9 @@ function isInsideTypeConstraints(lines: string[], currentLine: number, textBefor
             } else {
                 // Found unmatched opening paren; check if preceded by a type name
                 const before = fullText.slice(0, i).trim();
-                return /\b(string|number|int|bigint|boolean|date|datetime|duration|email|url|uuid|array|tuple|record|enum|literal|lazy)$/.test(before);
+                return /\b(string|number|int|bigint|boolean|date|datetime|duration|email|url|uuid|array|tuple|record|enum|literal|lazy)$/.test(
+                    before,
+                );
             }
         }
     }

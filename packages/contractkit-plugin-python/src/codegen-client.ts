@@ -1,10 +1,4 @@
-import type {
-    OpRootNode,
-    OpRouteNode,
-    OpOperationNode,
-    ContractTypeNode,
-    ParamSource,
-} from '@maroonedsoftware/contractkit';
+import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
 import { resolveModifiers } from '@maroonedsoftware/contractkit';
 import { renderPyType, toPythonFieldName } from './codegen-models.js';
 
@@ -69,7 +63,10 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         const modulePath = opts.modelModulePaths?.get(name);
         if (modulePath) {
             let s = modelImportsByModule.get(modulePath);
-            if (!s) { s = new Set(); modelImportsByModule.set(modulePath, s); }
+            if (!s) {
+                s = new Set();
+                modelImportsByModule.set(modulePath, s);
+            }
             s.add(name);
         }
     }
@@ -177,9 +174,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
         fetchKwargs.push('extra_headers=custom_headers');
     }
 
-    const kwargsStr = fetchKwargs.length > 1
-        ? fetchKwargs.join(', ')
-        : fetchKwargs[0] ?? '';
+    const kwargsStr = fetchKwargs.length > 1 ? fetchKwargs.join(', ') : (fetchKwargs[0] ?? '');
 
     lines.push(`        result = await self._fetch(${urlExpr}, ${kwargsStr})`);
 
@@ -264,11 +259,11 @@ function renderParamSourceType(source: ParamSource, modelsWithInput?: Set<string
         return typeName;
     }
     if (source.kind === 'params') {
-        const fields = source.nodes.map(p => {
-            const pyName = toPythonFieldName(p.name);
-            return `"${pyName}": ${renderPyType(p.type, modelsWithInput, forInput)}`;
-        });
-        return `dict`;  // simplified — inline dicts are hard to type concisely in Python signatures
+        // const fields = source.nodes.map(p => {
+        //     const pyName = toPythonFieldName(p.name);
+        //     return `"${pyName}": ${renderPyType(p.type, modelsWithInput, forInput)}`;
+        // });
+        return `dict`; // simplified — inline dicts are hard to type concisely in Python signatures
     }
     return renderPyType(source.node, modelsWithInput, forInput);
 }
@@ -343,11 +338,23 @@ function collectTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWithInp
     switch (type.kind) {
         case 'scalar':
             switch (type.name) {
-                case 'date': out.add('__date__'); break;
-                case 'time': out.add('__time__'); break;
-                case 'datetime': out.add('__datetime__'); break;
-                case 'uuid': out.add('__uuid__'); break;
-                case 'unknown': case 'json': case 'object': out.add('__any__'); break;
+                case 'date':
+                    out.add('__date__');
+                    break;
+                case 'time':
+                    out.add('__time__');
+                    break;
+                case 'datetime':
+                    out.add('__datetime__');
+                    break;
+                case 'uuid':
+                    out.add('__uuid__');
+                    break;
+                case 'unknown':
+                case 'json':
+                case 'object':
+                    out.add('__any__');
+                    break;
             }
             break;
         case 'ref':
@@ -385,10 +392,11 @@ function collectTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWithInp
 // ─── Naming helpers ───────────────────────────────────────────────────────
 
 function deriveBaseName(file: string): string {
-    const base = file
-        .split('/')
-        .pop()
-        ?.replace(/\.(op\.)?ck$/, '') ?? 'Resource';
+    const base =
+        file
+            .split('/')
+            .pop()
+            ?.replace(/\.(op\.)?ck$/, '') ?? 'Resource';
     return base
         .split('.')
         .map(s => s.charAt(0).toUpperCase() + s.slice(1))
@@ -400,7 +408,11 @@ export function deriveClientClassName(file: string): string {
 }
 
 export function deriveClientModuleName(file: string): string {
-    const base = file.split('/').pop()?.replace(/\.(op\.)?ck$/, '') ?? 'client';
+    const base =
+        file
+            .split('/')
+            .pop()
+            ?.replace(/\.(op\.)?ck$/, '') ?? 'client';
     const clean = base.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     return `_client_${clean}`;
 }

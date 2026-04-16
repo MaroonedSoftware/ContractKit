@@ -1,4 +1,14 @@
-import type { ContractRootNode, OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, FieldNode, ModelNode, ParamSource, HttpMethod } from '@maroonedsoftware/contractkit';
+import type {
+    ContractRootNode,
+    OpRootNode,
+    OpRouteNode,
+    OpOperationNode,
+    ContractTypeNode,
+    FieldNode,
+    ModelNode,
+    ParamSource,
+    HttpMethod,
+} from '@maroonedsoftware/contractkit';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE, collectPublicTypeNames, collectTypeRefs } from '@maroonedsoftware/contractkit';
 
 // ─── Local TypeScript type rendering ─────────────────────────────────────
@@ -782,16 +792,6 @@ function flattenParamSource(source: ParamSource, modelIndex: Map<string, ModelNo
         return result;
     }
     return [];
-}
-
-function renderTypeWithLink(type: ContractTypeNode): string {
-    if (type.kind === 'ref') {
-        return `[${type.name}](#${anchor(type.name)})`;
-    }
-    if (type.kind === 'array' && type.item.kind === 'ref') {
-        return `[${type.item.name}](#${anchor(type.item.name)})[]`;
-    }
-    return renderTsType(type);
 }
 
 /** Wrap lines in a collapsible <details> block (collapsed by default). */

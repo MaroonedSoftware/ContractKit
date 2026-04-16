@@ -1,4 +1,13 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, ParamSource, ContractTypeNode, ContractRootNode, ModelNode, FieldNode } from '@maroonedsoftware/contractkit';
+import type {
+    OpRootNode,
+    OpRouteNode,
+    OpOperationNode,
+    ParamSource,
+    ContractTypeNode,
+    ContractRootNode,
+    ModelNode,
+    FieldNode,
+} from '@maroonedsoftware/contractkit';
 import { resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
 import { basename } from 'path';
 
@@ -9,10 +18,10 @@ export interface OpenCollectionFile {
 
 /** Subset of a security scheme sufficient for Bruno auth generation (non-HMAC). */
 export interface BrunoSecurityScheme {
-    type: string;      // "http" | "apiKey" | "oauth2" | "openIdConnect"
-    scheme?: string;   // "bearer" | "basic" (when type === "http")
-    name?: string;     // header/query param name (when type === "apiKey")
-    in?: string;       // "header" | "query" (when type === "apiKey")
+    type: string; // "http" | "apiKey" | "oauth2" | "openIdConnect"
+    scheme?: string; // "bearer" | "basic" (when type === "http")
+    name?: string; // header/query param name (when type === "apiKey")
+    in?: string; // "header" | "query" (when type === "apiKey")
 }
 
 export interface BrunoAuthOptions {
@@ -105,7 +114,15 @@ function generateFolderFile(name: string, seq: number): string {
     return [`info:`, `  name: ${yamlString(name)}`, `  type: folder`, `  seq: ${seq}`, ``].join('\n');
 }
 
-function generateRequestFile(route: OpRouteNode, op: OpOperationNode, name: string, seq: number, modelMap: Map<string, ModelNode>, root?: OpRootNode, defaultScheme?: BrunoSecurityScheme): string {
+function generateRequestFile(
+    route: OpRouteNode,
+    op: OpOperationNode,
+    name: string,
+    seq: number,
+    modelMap: Map<string, ModelNode>,
+    root?: OpRootNode,
+    defaultScheme?: BrunoSecurityScheme,
+): string {
     const lines: string[] = [];
 
     lines.push(`info:`);
@@ -186,29 +203,14 @@ function generateRequestFile(route: OpRouteNode, op: OpOperationNode, name: stri
 function renderAuthBlock(scheme: BrunoSecurityScheme, indent: string): string[] {
     const i = indent;
     if (scheme.type === 'http' && scheme.scheme === 'bearer') {
-        return [
-            `${i}auth:`,
-            `${i}  type: bearer`,
-            `${i}  token: "{{token}}"`,
-        ];
+        return [`${i}auth:`, `${i}  type: bearer`, `${i}  token: "{{token}}"`];
     }
     if (scheme.type === 'http' && scheme.scheme === 'basic') {
-        return [
-            `${i}auth:`,
-            `${i}  type: basic`,
-            `${i}  username: "{{username}}"`,
-            `${i}  password: "{{password}}"`,
-        ];
+        return [`${i}auth:`, `${i}  type: basic`, `${i}  username: "{{username}}"`, `${i}  password: "{{password}}"`];
     }
     if (scheme.type === 'apiKey' && scheme.in === 'header') {
         const headerName = scheme.name ?? 'X-Api-Key';
-        return [
-            `${i}auth:`,
-            `${i}  type: apikey`,
-            `${i}  key: ${headerName}`,
-            `${i}  value: "{{apiKey}}"`,
-            `${i}  placement: header`,
-        ];
+        return [`${i}auth:`, `${i}  type: apikey`, `${i}  key: ${headerName}`, `${i}  value: "{{apiKey}}"`, `${i}  placement: header`];
     }
     return [];
 }
@@ -235,7 +237,7 @@ function buildModelMap(contractRoots: ContractRootNode[]): Map<string, ModelNode
 
 /** Resolve all fields for a model, including inherited base fields (base-first). */
 function resolveModelFields(model: ModelNode, modelMap: Map<string, ModelNode>): FieldNode[] {
-    const baseFields = model.base ? (resolveModelFields(modelMap.get(model.base) ?? { fields: [] } as unknown as ModelNode, modelMap)) : [];
+    const baseFields = model.base ? resolveModelFields(modelMap.get(model.base) ?? ({ fields: [] } as unknown as ModelNode), modelMap) : [];
     return [...baseFields, ...model.fields];
 }
 
@@ -443,7 +445,7 @@ function deriveFolderName(file: string): string {
  * (flow indicators, colons, braces, etc.).
  */
 function yamlString(value: string): string {
-    if (/[:{}\[\],&*#?|<>=!%@`"']/.test(value) || /^\s|\s$/.test(value)) {
+    if (/[:{}[\],&*#?|<>=!%@`"']/.test(value) || /^\s|\s$/.test(value)) {
         return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
     }
     return value;

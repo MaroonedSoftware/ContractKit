@@ -10,7 +10,7 @@ export function printType(type: ContractTypeNode): string {
             if (type.format !== undefined) {
                 // Print unquoted when format contains only safe chars; quote otherwise
                 const fmt = type.format;
-                constraints.push(/^[a-zA-Z0-9\-.:\/]+$/.test(fmt) ? fmt : `"${fmt}"`);
+                constraints.push(/^[a-zA-Z0-9\-.:/]+$/.test(fmt) ? fmt : `"${fmt}"`);
             }
             if (type.min !== undefined) constraints.push(`min=${type.min}`);
             if (type.max !== undefined) constraints.push(`max=${type.max}`);

@@ -39,7 +39,8 @@ function getLine(node: { source: { sourceString: string; startIdx: number } }): 
 export function createSemantics(grammar: Grammar) {
     const semantics = grammar.createSemantics();
 
-    semantics.addOperation<any>('toAst(file,diag)', {
+    /** eslint-disable @typescript-eslint/no-explicit-any */
+    semantics.addOperation('toAst(file,diag)', {
         // ─── Top-level ────────────────────────────────────────────────
 
         Root(preambleOpt, decls, _end) {

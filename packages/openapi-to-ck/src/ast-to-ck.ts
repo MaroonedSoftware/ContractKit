@@ -7,7 +7,6 @@ import type {
     OpOperationNode,
     OpRequestNode,
     OpResponseNode,
-    OpParamNode,
     ParamSource,
     SecurityNode,
     SecurityFields,
