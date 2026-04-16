@@ -195,7 +195,7 @@ importers:
         specifier: workspace:*
         version: link:../config-typescript
 
-  packages/contractkit-plugin-python-sdk:
+  packages/contractkit-plugin-python:
     dependencies:
       '@maroonedsoftware/contractkit':
         specifier: workspace:*
