@@ -308,6 +308,8 @@ function paramExampleValue(type: ContractTypeNode | undefined, defaultValue?: st
             return '"00:00:00"';
         case 'datetime':
             return '"2024-01-01T00:00:00Z"';
+        case 'duration':
+            return '"PT1H"';
         default:
             return '""';
     }
@@ -340,6 +342,8 @@ function typeToExampleValue(type: ContractTypeNode, modelMap: Map<string, ModelN
                     return '00:00:00';
                 case 'datetime':
                     return '2024-01-01T00:00:00Z';
+                case 'duration':
+                    return 'PT1H';
                 case 'null':
                     return null;
                 default:

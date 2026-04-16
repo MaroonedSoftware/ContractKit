@@ -195,6 +195,16 @@ describe('generateOpenCollection', () => {
         expect(yml!.content).toContain('value: "2024-01-01"');
     });
 
+    it('uses ISO 8601 duration example value for duration path params', () => {
+        const root = opRoot(
+            [opRoute('/jobs/{timeout}', [opOperation('get')], paramNodes([opParam('timeout', scalarType('duration'))]))],
+            'jobs.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'jobs/get-jobs-timeout.yml');
+        expect(yml!.content).toContain('value: "PT1H"');
+    });
+
     it('uses first enum value as example for enum path params', () => {
         const root = opRoot(
             [opRoute('/items/{status}', [opOperation('get')], paramNodes([opParam('status', enumType('active', 'archived'))]))],
@@ -385,6 +395,17 @@ describe('generateOpenCollection', () => {
         expect(yml!.content).toContain('"name": ""');
         expect(yml!.content).toContain('"email": "user@example.com"');
         expect(yml!.content).toContain('"age": 0');
+    });
+
+    it('uses ISO 8601 duration example value in body skeleton', () => {
+        const bodyType = inlineObjectType([field('timeout', scalarType('duration'))]);
+        const root = opRoot(
+            [opRoute('/jobs', [opOperation('post', { request: opRequest(bodyType) })])],
+            'jobs.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'jobs/post-jobs.yml');
+        expect(yml!.content).toContain('"timeout": "PT1H"');
     });
 
     it('excludes readonly fields from inline object body skeleton', () => {

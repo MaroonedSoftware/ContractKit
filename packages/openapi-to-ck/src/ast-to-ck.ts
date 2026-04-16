@@ -202,16 +202,16 @@ export function serializeType(type: ContractTypeNode): string {
 
 function serializeScalar(type: {
     name: string;
-    min?: number | bigint;
-    max?: number | bigint;
+    min?: number | bigint | string;
+    max?: number | bigint | string;
     len?: number;
     regex?: string;
     format?: string;
 }): string {
     const args: string[] = [];
     if (type.len !== undefined) args.push(`length=${type.len}`);
-    if (type.min !== undefined) args.push(`min=${type.min}`);
-    if (type.max !== undefined) args.push(`max=${type.max}`);
+    if (type.min !== undefined) args.push(typeof type.min === 'string' ? `min="${type.min}"` : `min=${type.min}`);
+    if (type.max !== undefined) args.push(typeof type.max === 'string' ? `max="${type.max}"` : `max=${type.max}`);
     if (type.regex !== undefined) args.push(`regex=${type.regex}`);
     if (type.format !== undefined) args.push(`format=${type.format}`);
 

@@ -14,6 +14,7 @@ export const SCALAR_NAMES: ReadonlySet<string> = new Set<ScalarTypeNode['name']>
     'date',
     'time',
     'datetime',
+    'duration',
     'email',
     'url',
     'uuid',
@@ -50,6 +51,7 @@ export interface ScalarTypeNode {
         | 'date'
         | 'time'
         | 'datetime'
+        | 'duration'
         | 'email'
         | 'url'
         | 'uuid'
@@ -58,8 +60,8 @@ export interface ScalarTypeNode {
         | 'object'
         | 'binary'
         | 'json';
-    min?: number | bigint;
-    max?: number | bigint;
+    min?: number | bigint | string;
+    max?: number | bigint | string;
     len?: number;
     regex?: string;
     format?: string;

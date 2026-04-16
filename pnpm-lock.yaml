@@ -44,18 +44,6 @@ importers:
       '@maroonedsoftware/contractkit':
         specifier: workspace:*
         version: link:../../packages/contractkit
-      '@maroonedsoftware/contractkit-plugin-bruno':
-        specifier: workspace:*
-        version: link:../../packages/contractkit-plugin-bruno
-      '@maroonedsoftware/contractkit-plugin-markdown':
-        specifier: workspace:*
-        version: link:../../packages/contractkit-plugin-markdown
-      '@maroonedsoftware/contractkit-plugin-openapi':
-        specifier: workspace:*
-        version: link:../../packages/contractkit-plugin-openapi
-      '@maroonedsoftware/contractkit-plugin-typescript':
-        specifier: workspace:*
-        version: link:../../packages/contractkit-plugin-typescript
       '@maroonedsoftware/openapi-to-ck':
         specifier: workspace:*
         version: link:../../packages/openapi-to-ck

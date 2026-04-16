@@ -18,6 +18,7 @@ const BUILTIN_TYPE_DOCS: Record<string, string> = {
     date: 'Date — Luxon `DateTime` custom validator',
     time: 'Time — Luxon `DateTime` custom validator',
     datetime: 'ISO 8601 datetime — Luxon `DateTime` custom validator',
+    duration: 'ISO 8601 duration — Luxon `Duration` custom validator (e.g. `PT1H30M`, `P1D`)',
     email: 'Email address — Zod `z.email()`',
     url: 'URL string — Zod `z.url()`',
     uuid: 'UUID string — Zod `z.uuid()`',

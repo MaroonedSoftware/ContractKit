@@ -108,6 +108,7 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
 
 export function generateContract(root: ContractRootNode, context?: ContractCodegenContext): string {
     const needsDateTime = rootNeedsDateTime(root);
+    const needsDuration = rootNeedsScalar(root, 'duration');
     const needsBinary = rootNeedsScalar(root, 'binary');
     const needsDatetime = rootNeedsScalar(root, 'datetime');
     const needsJson = rootNeedsScalar(root, 'json');
@@ -124,7 +125,9 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs])].sort();
 
     lines.push(`import { z } from 'zod';`);
-    if (needsDateTime) lines.push(`import { DateTime } from 'luxon';`);
+    if (needsDateTime && needsDuration) lines.push(`import { DateTime, Duration } from 'luxon';`);
+    else if (needsDateTime) lines.push(`import { DateTime } from 'luxon';`);
+    else if (needsDuration) lines.push(`import { Duration } from 'luxon';`);
     for (const ref of allExternalRefs) {
         const importPath = resolveImportPath(ref, context);
         lines.push(`import { ${ref} } from '${importPath}';`);
@@ -436,6 +439,17 @@ function renderScalar(s: ScalarTypeNode): string {
         }
         case 'datetime':
             return '_ZodDatetime';
+        case 'duration': {
+            const validParts = [`val instanceof Duration && val.isValid`];
+            if (s.min !== undefined) validParts.push(`val.toMillis() >= Duration.fromISO('${s.min}').toMillis()`);
+            if (s.max !== undefined) validParts.push(`val.toMillis() <= Duration.fromISO('${s.max}').toMillis()`);
+            const validation = validParts.join(' && ');
+            let message = 'Must be an ISO 8601 duration';
+            if (s.min !== undefined && s.max !== undefined) message += ` between ${s.min} and ${s.max}`;
+            else if (s.min !== undefined) message += ` of at least ${s.min}`;
+            else if (s.max !== undefined) message += ` of at most ${s.max}`;
+            return `z.preprocess((val) => typeof val === 'string' ? Duration.fromISO(val) : val, z.custom<Duration>((val) => ${validation}, { message: '${message}' }))`;
+        }
         case 'email':
             return 'z.email()';
         case 'url':

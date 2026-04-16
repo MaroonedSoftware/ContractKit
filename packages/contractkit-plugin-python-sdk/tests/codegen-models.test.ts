@@ -18,6 +18,7 @@ describe('renderPyType', () => {
         expect(renderPyType(scalarType('date'))).toBe('date');
         expect(renderPyType(scalarType('time'))).toBe('time');
         expect(renderPyType(scalarType('datetime'))).toBe('datetime');
+        expect(renderPyType(scalarType('duration'))).toBe('timedelta');
         expect(renderPyType(scalarType('uuid'))).toBe('UUID');
         expect(renderPyType(scalarType('email'))).toBe('str');
         expect(renderPyType(scalarType('url'))).toBe('str');
@@ -236,6 +237,13 @@ describe('generatePydanticModels', () => {
         ]);
         const output = generatePydanticModels(root);
         expect(output).toContain('from datetime import date, datetime, time');
+    });
+
+    it('generates timedelta import for duration fields', () => {
+        const root = contractRoot([model('Task', [field('timeout', scalarType('duration'))])]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('from datetime import timedelta');
+        expect(output).toContain('timeout: timedelta');
     });
 
     it('includes deprecation comment', () => {

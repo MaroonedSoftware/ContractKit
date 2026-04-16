@@ -590,6 +590,12 @@ describe('generateMarkdown', () => {
             expect(output).toContain('| `email` | `string` | Yes |');
         });
 
+        it('renders duration field as string type', () => {
+            const dto = contractRoot([model('Task', [field('timeout', scalarType('duration'))])]);
+            const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
+            expect(output).toContain('| `timeout` | `string` | Yes |');
+        });
+
         it('marks optional fields as not required', () => {
             const dto = contractRoot([model('User', [field('bio', scalarType('string'), { optional: true })])]);
             const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });

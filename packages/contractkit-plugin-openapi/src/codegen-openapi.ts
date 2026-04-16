@@ -345,6 +345,10 @@ function scalarToSchema(type: import('@maroonedsoftware/contractkit').ScalarType
             s.type = 'string';
             s.format = 'date-time';
             break;
+        case 'duration':
+            s.type = 'string';
+            s.format = 'duration';
+            break;
         case 'email':
             s.type = 'string';
             s.format = 'email';

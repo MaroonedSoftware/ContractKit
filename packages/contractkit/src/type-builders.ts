@@ -122,8 +122,8 @@ function buildScalarWithModifiers(name: ScalarTypeNode['name'], args: TypeArg[])
             continue;
         }
         if (!('key' in a)) continue;
-        if (a.key === 'min') scalar.min = name === 'bigint' ? BigInt(a.value) : Number(a.value);
-        if (a.key === 'max') scalar.max = name === 'bigint' ? BigInt(a.value) : Number(a.value);
+        if (a.key === 'min') scalar.min = name === 'bigint' ? BigInt(a.value) : name === 'duration' ? String(a.value) : Number(a.value);
+        if (a.key === 'max') scalar.max = name === 'bigint' ? BigInt(a.value) : name === 'duration' ? String(a.value) : Number(a.value);
         if (a.key === 'len' || a.key === 'length') scalar.len = Number(a.value);
         if (a.key === 'regex') scalar.regex = String(a.value);
         if (a.key === 'format') scalar.format = String(a.value);

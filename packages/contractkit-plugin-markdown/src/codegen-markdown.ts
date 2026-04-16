@@ -51,6 +51,7 @@ function renderTsScalar(name: string): string {
             return 'boolean';
         case 'date':
         case 'datetime':
+        case 'duration':
             return 'string';
         case 'null':
             return 'null';

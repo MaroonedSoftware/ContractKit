@@ -117,6 +117,30 @@ describe('renderType', () => {
             expect(result).toBe('_ZodDatetime');
         });
 
+        it('renders Duration preprocess coercion for duration', () => {
+            expect(renderType(scalarType('duration'))).toBe(
+                `z.preprocess((val) => typeof val === 'string' ? Duration.fromISO(val) : val, z.custom<Duration>((val) => val instanceof Duration && val.isValid, { message: 'Must be an ISO 8601 duration' }))`,
+            );
+        });
+
+        it('renders duration with min constraint', () => {
+            expect(renderType(scalarType('duration', { min: 'PT1M' }))).toBe(
+                `z.preprocess((val) => typeof val === 'string' ? Duration.fromISO(val) : val, z.custom<Duration>((val) => val instanceof Duration && val.isValid && val.toMillis() >= Duration.fromISO('PT1M').toMillis(), { message: 'Must be an ISO 8601 duration of at least PT1M' }))`,
+            );
+        });
+
+        it('renders duration with max constraint', () => {
+            expect(renderType(scalarType('duration', { max: 'PT1H' }))).toBe(
+                `z.preprocess((val) => typeof val === 'string' ? Duration.fromISO(val) : val, z.custom<Duration>((val) => val instanceof Duration && val.isValid && val.toMillis() <= Duration.fromISO('PT1H').toMillis(), { message: 'Must be an ISO 8601 duration of at most PT1H' }))`,
+            );
+        });
+
+        it('renders duration with min and max constraints', () => {
+            expect(renderType(scalarType('duration', { min: 'PT1M', max: 'PT1H' }))).toBe(
+                `z.preprocess((val) => typeof val === 'string' ? Duration.fromISO(val) : val, z.custom<Duration>((val) => val instanceof Duration && val.isValid && val.toMillis() >= Duration.fromISO('PT1M').toMillis() && val.toMillis() <= Duration.fromISO('PT1H').toMillis(), { message: 'Must be an ISO 8601 duration between PT1M and PT1H' }))`,
+            );
+        });
+
         it('renders z.email()', () => {
             expect(renderType(scalarType('email'))).toBe('z.email()');
         });
@@ -236,6 +260,19 @@ describe('generateContract', () => {
             const root = contractRoot([model('M', [field('f', scalarType('string'))])]);
             const output = generateContract(root);
             expect(output).not.toContain('luxon');
+        });
+
+        it('includes Duration import for duration fields', () => {
+            const root = contractRoot([model('M', [field('d', scalarType('duration'))])]);
+            const output = generateContract(root);
+            expect(output).toContain("import { Duration } from 'luxon';");
+            expect(output).not.toContain('DateTime');
+        });
+
+        it('includes both DateTime and Duration when both are used', () => {
+            const root = contractRoot([model('M', [field('d', scalarType('datetime')), field('t', scalarType('duration'))])]);
+            const output = generateContract(root);
+            expect(output).toContain("import { DateTime, Duration } from 'luxon';");
         });
 
         it('detects DateTime in nested array types', () => {

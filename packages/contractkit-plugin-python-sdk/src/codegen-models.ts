@@ -123,6 +123,7 @@ function scanTypeImports(type: ContractTypeNode, imports: ImportTracker): void {
                 case 'date': imports.add('datetime', 'date'); break;
                 case 'time': imports.add('datetime', 'time'); break;
                 case 'datetime': imports.add('datetime', 'datetime'); break;
+                case 'duration': imports.add('datetime', 'timedelta'); break;
                 case 'uuid': imports.add('uuid', 'UUID'); break;
                 case 'unknown':
                 case 'json':
@@ -203,6 +204,7 @@ function renderScalar(name: string): string {
         case 'date': return 'date';
         case 'time': return 'time';
         case 'datetime': return 'datetime';
+        case 'duration': return 'timedelta';
         case 'uuid': return 'UUID';
         case 'null': return 'None';
         case 'binary': return 'bytes';
