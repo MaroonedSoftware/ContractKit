@@ -52,3 +52,5 @@ yarn-error.log*
 logs/security/
 
 *.vsix
+
+.npmrc
