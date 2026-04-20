@@ -2,7 +2,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { convertOpenApiToCk } from './convert.js';
 import type { Warning } from './types.js';
-import type { ContractKitPlugin, CommandContext } from '@maroonedsoftware/contractkit';
+import type { ContractKitPlugin, CommandContext } from '@contractkit/core';
 
 interface ImportArgs {
     specPath: string;

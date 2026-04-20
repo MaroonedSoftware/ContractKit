@@ -3,13 +3,13 @@
 // ─── Built-in command plugins ─────────────────────────────────────────────
 // Each plugin may expose a `command` hook — the CLI dispatches subcommands
 // to the first plugin whose command.name matches argv[2].
-import { default as importOpenApiPlugin } from '@maroonedsoftware/openapi-to-ck/plugin';
+import { default as importOpenApiPlugin } from '@contractkit/openapi-to-ck/plugin';
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { glob } from 'glob';
-import { DiagnosticCollector, parseCk, decomposeCk, validateOp, validateRefs, computeModelsWithInput } from '@maroonedsoftware/contractkit';
-import type { ContractRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
+import { DiagnosticCollector, parseCk, decomposeCk, validateOp, validateRefs, computeModelsWithInput } from '@contractkit/core';
+import type { ContractRootNode, OpRootNode } from '@contractkit/core';
 import { loadConfig, mergeConfig } from './config.js';
 import { loadCache, saveCache, computeHash } from './cache.js';
 import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist } from './plugin.js';

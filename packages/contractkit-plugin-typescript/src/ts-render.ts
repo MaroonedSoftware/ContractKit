@@ -1,4 +1,4 @@
-import type { ContractTypeNode, FieldNode } from '@maroonedsoftware/contractkit';
+import type { ContractTypeNode, FieldNode } from '@contractkit/core';
 
 export const JSON_VALUE_TYPE_DECL = 'export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };';
 

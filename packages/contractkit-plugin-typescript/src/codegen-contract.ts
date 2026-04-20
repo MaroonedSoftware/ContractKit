@@ -14,8 +14,8 @@ import type {
     InlineObjectTypeNode,
     IntersectionTypeNode,
     ObjectMode,
-} from '@maroonedsoftware/contractkit';
-import { collectTypeRefs } from '@maroonedsoftware/contractkit';
+} from '@contractkit/core';
+import { collectTypeRefs } from '@contractkit/core';
 
 export function modeToWrapper(mode: ObjectMode): string {
     switch (mode) {

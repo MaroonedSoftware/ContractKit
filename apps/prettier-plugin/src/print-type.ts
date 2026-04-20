@@ -1,4 +1,4 @@
-import type { ContractTypeNode, FieldNode, InlineObjectTypeNode } from '@maroonedsoftware/contractkit';
+import type { ContractTypeNode, FieldNode, InlineObjectTypeNode } from '@contractkit/core';
 import { INDENT } from './indent.js';
 
 // ─── Type expression printer ────────────────────────────────────────────────

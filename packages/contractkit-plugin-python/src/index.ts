@@ -1,5 +1,5 @@
 import { resolve, join } from 'node:path';
-import type { ContractKitPlugin } from '@maroonedsoftware/contractkit';
+import type { ContractKitPlugin } from '@contractkit/core';
 import { generatePydanticModels, deriveModelsModuleName } from './codegen-models.js';
 import {
     generatePythonClient,

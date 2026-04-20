@@ -1,5 +1,5 @@
-import type { ContractRootNode, ModelNode, FieldNode, ContractTypeNode } from '@maroonedsoftware/contractkit';
-import { computeModelsWithInput, topoSortModels, collectExternalRefs, collectExternalInputRefs } from '@maroonedsoftware/contractkit';
+import type { ContractRootNode, ModelNode, FieldNode, ContractTypeNode } from '@contractkit/core';
+import { computeModelsWithInput, topoSortModels, collectExternalRefs, collectExternalInputRefs } from '@contractkit/core';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 

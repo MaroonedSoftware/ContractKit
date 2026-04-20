@@ -1,11 +1,11 @@
-# @maroonedsoftware/contractkit-plugin-bruno
+# @contractkit/contractkit-plugin-bruno
 
 ContractKit plugin that generates a [Bruno](https://www.usebruno.com/) REST API collection from `.ck` operation files. The output is a ready-to-open OpenCollection directory.
 
 ## Installation
 
 ```bash
-pnpm add @maroonedsoftware/contractkit-plugin-bruno
+pnpm add @contractkit/contractkit-plugin-bruno
 ```
 
 ## Configuration
@@ -13,7 +13,7 @@ pnpm add @maroonedsoftware/contractkit-plugin-bruno
 ```json
 {
   "plugins": {
-    "@maroonedsoftware/contractkit-plugin-bruno": {
+    "@contractkit/contractkit-plugin-bruno": {
       "output": "bruno-collection",
       "collectionName": "Acme API",
       "auth": {
@@ -64,7 +64,7 @@ The output directory is fully replaced on each run — stale request files from 
 ## Programmatic use
 
 ```typescript
-import { createBrunoPlugin } from '@maroonedsoftware/contractkit-plugin-bruno';
+import { createBrunoPlugin } from '@contractkit/contractkit-plugin-bruno';
 
 const plugin = createBrunoPlugin({
   output: 'bruno-collection',

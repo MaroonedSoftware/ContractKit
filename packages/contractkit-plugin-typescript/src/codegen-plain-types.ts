@@ -1,5 +1,5 @@
 import { relative, dirname } from 'node:path';
-import type { ContractRootNode, ModelNode, FieldNode } from '@maroonedsoftware/contractkit';
+import type { ContractRootNode, ModelNode, FieldNode } from '@contractkit/core';
 import type { ContractCodegenContext } from './codegen-contract.js';
 import {
     collectExternalRefs,

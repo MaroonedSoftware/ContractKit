@@ -1,5 +1,5 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
-import { resolveModifiers } from '@maroonedsoftware/contractkit';
+import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource } from '@contractkit/core';
+import { resolveModifiers } from '@contractkit/core';
 import { renderPyType, toPythonFieldName } from './codegen-models.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────

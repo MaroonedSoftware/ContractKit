@@ -1,11 +1,11 @@
-# @maroonedsoftware/contractkit-plugin-openapi
+# @contractkit/contractkit-plugin-openapi
 
 ContractKit plugin that generates an OpenAPI 3.0 YAML specification from `.ck` contract and operation files.
 
 ## Installation
 
 ```bash
-pnpm add @maroonedsoftware/contractkit-plugin-openapi
+pnpm add @contractkit/contractkit-plugin-openapi
 ```
 
 ## Configuration
@@ -13,7 +13,7 @@ pnpm add @maroonedsoftware/contractkit-plugin-openapi
 ```json
 {
   "plugins": {
-    "@maroonedsoftware/contractkit-plugin-openapi": {
+    "@contractkit/contractkit-plugin-openapi": {
       "output": "openapi.yaml",
       "info": {
         "title": "Acme API",
@@ -68,7 +68,7 @@ Operation visibility modifiers (`internal`, `public`) are reflected in the gener
 ## Programmatic use
 
 ```typescript
-import { createOpenApiPlugin } from '@maroonedsoftware/contractkit-plugin-openapi';
+import { createOpenApiPlugin } from '@contractkit/contractkit-plugin-openapi';
 
 const plugin = createOpenApiPlugin({
   output: 'dist/openapi.yaml',

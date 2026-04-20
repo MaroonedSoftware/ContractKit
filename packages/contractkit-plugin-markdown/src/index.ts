@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { generateMarkdown } from './codegen-markdown.js';
-import type { ContractKitPlugin } from '@maroonedsoftware/contractkit';
+import type { ContractKitPlugin } from '@contractkit/core';
 
 export interface MarkdownPluginConfig {
     baseDir?: string;

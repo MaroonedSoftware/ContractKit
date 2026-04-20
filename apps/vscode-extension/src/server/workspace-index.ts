@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { parseCk, DiagnosticCollector } from '@maroonedsoftware/contractkit';
-import type { ModelNode, OpRouteNode } from '@maroonedsoftware/contractkit';
+import { parseCk, DiagnosticCollector } from '@contractkit/core';
+import type { ModelNode, OpRouteNode } from '@contractkit/core';
 
 export interface ModelEntry {
     uri: string;

@@ -8,8 +8,8 @@ import type {
     ModelNode,
     ParamSource,
     HttpMethod,
-} from '@maroonedsoftware/contractkit';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, collectPublicTypeNames, collectTypeRefs } from '@maroonedsoftware/contractkit';
+} from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, collectPublicTypeNames, collectTypeRefs } from '@contractkit/core';
 
 // ─── Local TypeScript type rendering ─────────────────────────────────────
 

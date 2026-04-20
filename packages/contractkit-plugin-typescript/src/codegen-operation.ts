@@ -1,5 +1,5 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource, ObjectMode } from '@maroonedsoftware/contractkit';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
+import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource, ObjectMode } from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@contractkit/core';
 import {
     renderType,
     renderInputType,

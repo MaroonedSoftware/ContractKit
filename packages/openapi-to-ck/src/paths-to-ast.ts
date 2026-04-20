@@ -8,7 +8,7 @@ import type {
     ModelNode,
     SourceLocation,
     SecurityNode,
-} from '@maroonedsoftware/contractkit';
+} from '@contractkit/core';
 import type {
     NormalizedDocument,
     NormalizedPathItem,

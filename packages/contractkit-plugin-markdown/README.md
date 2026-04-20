@@ -1,11 +1,11 @@
-# @maroonedsoftware/contractkit-plugin-markdown
+# @contractkit/contractkit-plugin-markdown
 
 ContractKit plugin that generates a Markdown API reference from `.ck` contract and operation files.
 
 ## Installation
 
 ```bash
-pnpm add @maroonedsoftware/contractkit-plugin-markdown
+pnpm add @contractkit/contractkit-plugin-markdown
 ```
 
 ## Configuration
@@ -13,7 +13,7 @@ pnpm add @maroonedsoftware/contractkit-plugin-markdown
 ```json
 {
   "plugins": {
-    "@maroonedsoftware/contractkit-plugin-markdown": {
+    "@contractkit/contractkit-plugin-markdown": {
       "output": "docs/api-reference.md"
     }
   }
@@ -38,7 +38,7 @@ The plugin writes a single Markdown file documenting all contracts and operation
 ## Programmatic use
 
 ```typescript
-import { createMarkdownPlugin } from '@maroonedsoftware/contractkit-plugin-markdown';
+import { createMarkdownPlugin } from '@contractkit/contractkit-plugin-markdown';
 
 const plugin = createMarkdownPlugin({
   output: 'docs/api-reference.md',

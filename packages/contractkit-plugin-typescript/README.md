@@ -1,11 +1,11 @@
-# @maroonedsoftware/contractkit-plugin-typescript
+# @contractkit/contractkit-plugin-typescript
 
 ContractKit plugin that generates TypeScript output from `.ck` contract files. Covers all server-side and client-side TypeScript needs: Koa routers, SDK clients, Zod schemas, and plain TypeScript interfaces.
 
 ## Installation
 
 ```bash
-pnpm add @maroonedsoftware/contractkit-plugin-typescript
+pnpm add @contractkit/contractkit-plugin-typescript
 ```
 
 ## Configuration
@@ -15,7 +15,7 @@ Add the plugin to `contractkit.config.json`. Each sub-config is independent — 
 ```json
 {
   "plugins": {
-    "@maroonedsoftware/contractkit-plugin-typescript": {
+    "@contractkit/contractkit-plugin-typescript": {
       "server": {
         "baseDir": "apps/api/",
         "zod": true,
@@ -142,7 +142,7 @@ A shared `sdk-options.ts` file is emitted alongside the clients. It exports:
 ## Programmatic use
 
 ```typescript
-import { createTypescriptPlugin } from '@maroonedsoftware/contractkit-plugin-typescript';
+import { createTypescriptPlugin } from '@contractkit/contractkit-plugin-typescript';
 
 const plugin = createTypescriptPlugin({
   server: {
