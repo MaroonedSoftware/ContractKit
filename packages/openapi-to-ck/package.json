@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/openapi-to-ck",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Convert OpenAPI specs (2.0/3.0/3.1) to Contract Kit .ck files",
     "type": "module",
     "main": "./dist/index.js",
