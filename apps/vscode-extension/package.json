@@ -1,5 +1,5 @@
 {
-    "name": "@maroonedsoftware/contractkit-vscode",
+    "name": "@contractkit/vscode-extension",
     "displayName": "ContractKit",
     "description": "Language support for .ck contract definition files",
     "version": "0.1.0",
@@ -79,7 +79,7 @@
         "vscode:uninstall": "cursor --uninstall-extension contractkit-vscode-0.1.0.vsix"
     },
     "dependencies": {
-        "@maroonedsoftware/contractkit": "workspace:*",
+        "@contractkit/core": "workspace:*",
         "vscode-languageclient": "^9.0.1",
         "vscode-languageserver": "^9.0.1",
         "vscode-languageserver-textdocument": "^1.0.12"
