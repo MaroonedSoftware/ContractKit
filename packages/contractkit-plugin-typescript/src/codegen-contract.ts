@@ -107,6 +107,7 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
 export function generateContract(root: ContractRootNode, context?: ContractCodegenContext): string {
     const needsDateTime = rootNeedsDateTime(root);
     const needsDuration = rootNeedsScalar(root, 'duration');
+    const needsInterval = rootNeedsScalar(root, 'interval');
     const needsBinary = rootNeedsScalar(root, 'binary');
     const needsDatetime = rootNeedsScalar(root, 'datetime');
     const needsJson = rootNeedsScalar(root, 'json');
@@ -123,9 +124,11 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs])].sort();
 
     lines.push(`import { z } from 'zod';`);
-    if (needsDateTime && needsDuration) lines.push(`import { DateTime, Duration } from 'luxon';`);
-    else if (needsDateTime) lines.push(`import { DateTime } from 'luxon';`);
-    else if (needsDuration) lines.push(`import { Duration } from 'luxon';`);
+    const luxonImports: string[] = [];
+    if (needsDateTime) luxonImports.push('DateTime');
+    if (needsDuration) luxonImports.push('Duration');
+    if (needsInterval) luxonImports.push('Interval');
+    if (luxonImports.length > 0) lines.push(`import { ${luxonImports.join(', ')} } from 'luxon';`);
     for (const ref of allExternalRefs) {
         const importPath = resolveImportPath(ref, context);
         lines.push(`import { ${ref} } from '${importPath}';`);
@@ -139,13 +142,18 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
             `const _ZodDatetime = z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }));`,
         );
     }
+    if (needsInterval) {
+        lines.push(
+            `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' }));`,
+        );
+    }
     if (needsJson) {
         lines.push(`type _JsonValue = string | number | boolean | null | _JsonValue[] | { [key: string]: _JsonValue };`);
         lines.push(
             `const _ZodJson: z.ZodType<_JsonValue> = z.lazy(() => z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(_ZodJson), z.record(z.string(), _ZodJson)]));`,
         );
     }
-    if (needsBinary || needsDatetime || needsJson) lines.push('');
+    if (needsBinary || needsDatetime || needsInterval || needsJson) lines.push('');
 
     const modelsWithWriteonly = new Set(root.models.filter(m => m.fields.some(f => f.visibility === 'writeonly')).map(m => m.name));
 
@@ -437,6 +445,8 @@ function renderScalar(s: ScalarTypeNode): string {
         }
         case 'datetime':
             return '_ZodDatetime';
+        case 'interval':
+            return '_ZodInterval';
         case 'duration': {
             const validParts = [`val instanceof Duration && val.isValid`];
             if (s.min !== undefined) validParts.push(`val.toMillis() >= Duration.fromISO('${s.min}').toMillis()`);

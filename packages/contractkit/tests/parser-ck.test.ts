@@ -149,7 +149,10 @@ contract M: {
                 'bigint',
                 'boolean',
                 'date',
+                'time',
                 'datetime',
+                'duration',
+                'interval',
                 'email',
                 'url',
                 'uuid',
@@ -157,6 +160,7 @@ contract M: {
                 'null',
                 'object',
                 'binary',
+                'json',
             ];
             for (const name of scalars) {
                 const { root } = parse(`contract M: { f: ${name} }`);

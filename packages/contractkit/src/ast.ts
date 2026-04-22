@@ -15,6 +15,7 @@ export const SCALAR_NAMES: ReadonlySet<string> = new Set<ScalarTypeNode['name']>
     'time',
     'datetime',
     'duration',
+    'interval',
     'email',
     'url',
     'uuid',
@@ -52,6 +53,7 @@ export interface ScalarTypeNode {
         | 'time'
         | 'datetime'
         | 'duration'
+        | 'interval'
         | 'email'
         | 'url'
         | 'uuid'

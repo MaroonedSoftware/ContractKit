@@ -141,6 +141,10 @@ describe('renderType', () => {
             );
         });
 
+        it('renders Interval preprocess coercion for interval', () => {
+            expect(renderType(scalarType('interval'))).toBe(`_ZodInterval`);
+        });
+
         it('renders z.email()', () => {
             expect(renderType(scalarType('email'))).toBe('z.email()');
         });
@@ -273,6 +277,28 @@ describe('generateContract', () => {
             const root = contractRoot([model('M', [field('d', scalarType('datetime')), field('t', scalarType('duration'))])]);
             const output = generateContract(root);
             expect(output).toContain("import { DateTime, Duration } from 'luxon';");
+        });
+
+        it('includes Interval import for interval fields', () => {
+            const root = contractRoot([model('M', [field('i', scalarType('interval'))])]);
+            const output = generateContract(root);
+            expect(output).toContain("import { Interval } from 'luxon';");
+            expect(output).not.toContain('DateTime');
+            expect(output).not.toContain('Duration');
+        });
+
+        it('includes Interval alongside DateTime and Duration when all are used', () => {
+            const root = contractRoot([model('M', [field('d', scalarType('datetime')), field('t', scalarType('duration')), field('i', scalarType('interval'))])]);
+            const output = generateContract(root);
+            expect(output).toContain("import { DateTime, Duration, Interval } from 'luxon';");
+        });
+
+        it('emits _ZodInterval helper when interval field present', () => {
+            const root = contractRoot([model('M', [field('i', scalarType('interval'))])]);
+            const output = generateContract(root);
+            expect(output).toContain(
+                `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' }));`,
+            );
         });
 
         it('detects DateTime in nested array types', () => {
