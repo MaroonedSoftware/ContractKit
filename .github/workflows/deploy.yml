@@ -31,7 +31,7 @@ jobs:
             - name: Creating .npmrc
               run: |
                   echo "//npm.pkg.github.com/:_authToken=$NPM_TOKEN" > .npmrc
-                  echo "@contractkit:registry=https://npm.pkg.github.com" >> .npmrc
+                  echo "@maroonedsoftware:registry=https://npm.pkg.github.com" >> .npmrc
                   echo "always-auth=true" >> .npmrc
               env:
                   NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,8 +1,8 @@
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath } from 'node:url';
 import { Connection, Diagnostic as LspDiagnostic } from 'vscode-languageserver';
-import { parseCk, DiagnosticCollector } from '@contractkit/core';
-import type { CkRootNode } from '@contractkit/core';
+import { parseCk, DiagnosticCollector } from '@maroonedsoftware/contractkit';
+import type { CkRootNode } from '@maroonedsoftware/contractkit';
 import { toLspDiagnostics } from './diagnostics-adapter.js';
 
 export type ParsedDocument = { ast: CkRootNode; version: number };

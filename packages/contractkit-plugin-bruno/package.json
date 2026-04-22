@@ -1,5 +1,5 @@
 {
-    "name": "@contractkit/contractkit-plugin-bruno",
+    "name": "@maroonedsoftware/contractkit-plugin-bruno",
     "version": "0.2.0",
     "description": "ContractKit built-in plugin: Bruno REST collection generation",
     "type": "module",
@@ -18,7 +18,7 @@
         "test:ci": "vitest run --coverage"
     },
     "dependencies": {
-        "@contractkit/core": "workspace:*"
+        "@maroonedsoftware/contractkit": "workspace:*"
     },
     "devDependencies": {
         "@repo/config-eslint": "workspace:*",

@@ -10,7 +10,7 @@ import { pathsToRoutes } from './paths-to-ast.js';
 import { splitByTag, mergeIntoSingle } from './tag-splitter.js';
 import { astToCk } from './ast-to-ck.js';
 import type { NormalizedSchema } from './types.js';
-import type { ModelNode } from '@contractkit/core';
+import type { ModelNode } from '@maroonedsoftware/contractkit';
 
 /**
  * Convert an OpenAPI spec (2.0, 3.0, or 3.1) to Contract Kit .ck source files.

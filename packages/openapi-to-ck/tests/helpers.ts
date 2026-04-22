@@ -24,7 +24,7 @@ import type {
     ParamSource,
     RouteModifier,
     SecurityNode,
-} from '@contractkit/core';
+} from '@maroonedsoftware/contractkit';
 
 // ─── AST Builder Helpers ────────────────────────────────────────────────────
 

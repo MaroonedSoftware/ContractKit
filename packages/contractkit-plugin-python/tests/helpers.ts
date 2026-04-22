@@ -24,7 +24,7 @@ export type {
     HttpMethod,
     ParamSource,
     RouteModifier,
-} from '@contractkit/core';
+} from '@maroonedsoftware/contractkit';
 
 import type {
     ContractRootNode,
@@ -51,7 +51,7 @@ import type {
     HttpMethod,
     ParamSource,
     RouteModifier,
-} from '@contractkit/core';
+} from '@maroonedsoftware/contractkit';
 
 // ─── AST Builder Helpers ────────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@
     "prettier": true,
     "patterns": ["contracts/types/**/*.ck", "contracts/operations/**/*.ck"],
     "plugins": {
-        "@contractkit/contractkit-plugin-typescript": {
+        "@maroonedsoftware/contractkit-plugin-typescript": {
             "server": {
                 "baseDir": "apps/api/",
                 "zod": true,
@@ -25,7 +25,7 @@
                 }
             }
         },
-        "@contractkit/contractkit-plugin-openapi": {
+        "@maroonedsoftware/contractkit-plugin-openapi": {
             "baseDir": "docs/api/",
             "output": "openapi.yaml",
             "info": {
@@ -42,7 +42,7 @@
                 "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
             }
         },
-        "@contractkit/contractkit-plugin-markdown": {
+        "@maroonedsoftware/contractkit-plugin-markdown": {
             "baseDir": "docs/",
             "output": "api-reference.md"
         }

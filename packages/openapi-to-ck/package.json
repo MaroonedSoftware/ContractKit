@@ -1,5 +1,5 @@
 {
-    "name": "@contractkit/openapi-to-ck",
+    "name": "@maroonedsoftware/openapi-to-ck",
     "version": "0.2.0",
     "description": "Convert OpenAPI specs (2.0/3.0/3.1) to Contract Kit .ck files",
     "type": "module",
@@ -19,7 +19,7 @@
         "test:ci": "vitest run --coverage"
     },
     "dependencies": {
-        "@contractkit/core": "workspace:*",
+        "@maroonedsoftware/contractkit": "workspace:*",
         "@scalar/openapi-parser": "^0.10.0",
         "yaml": "^2.7.0"
     },

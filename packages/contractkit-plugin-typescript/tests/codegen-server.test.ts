@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createTypescriptPlugin } from '../src/index.js';
-import type { PluginContext } from '@contractkit/core';
+import type { PluginContext } from '@maroonedsoftware/contractkit';
 import {
     opRoot,
     opRoute,

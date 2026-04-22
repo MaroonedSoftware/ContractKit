@@ -1,5 +1,5 @@
 {
-    "name": "@contractkit/core",
+    "name": "@maroonedsoftware/contractkit",
     "version": "0.2.0",
     "description": "Core DSL compiler library: grammar-driven parser, codegen, and validation",
     "type": "module",

@@ -7,8 +7,8 @@ import type {
     ContractRootNode,
     ModelNode,
     FieldNode,
-} from '@contractkit/core';
-import { resolveSecurity, SECURITY_NONE } from '@contractkit/core';
+} from '@maroonedsoftware/contractkit';
+import { resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
 import { basename } from 'path';
 
 export interface OpenCollectionFile {

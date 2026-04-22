@@ -7,7 +7,7 @@ import {
     deriveClientPropertyName,
     hasPublicOperations,
 } from '../src/codegen-sdk.js';
-import { collectPublicTypeNames } from '@contractkit/core';
+import { collectPublicTypeNames } from '@maroonedsoftware/contractkit';
 import { renderTsType, renderInputTsType } from '../src/ts-render.js';
 import {
     opRoot,

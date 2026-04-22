@@ -12,7 +12,7 @@ import type {
     SecurityFields,
     ObjectMode,
     RouteModifier,
-} from '@contractkit/core';
+} from '@maroonedsoftware/contractkit';
 
 const INDENT = '    '; // 4 spaces
 

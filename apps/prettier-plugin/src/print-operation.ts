@@ -7,8 +7,8 @@ import type {
     SecurityFields,
     ContractTypeNode,
     ObjectMode,
-} from '@contractkit/core';
-import { SECURITY_NONE } from '@contractkit/core';
+} from '@maroonedsoftware/contractkit';
+import { SECURITY_NONE } from '@maroonedsoftware/contractkit';
 import { printType, formatDefault } from './print-type.js';
 import { INDENT } from './indent.js';
 

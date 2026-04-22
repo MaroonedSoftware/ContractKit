@@ -7,8 +7,8 @@ import type {
     OpRouteNode,
     OpOperationNode,
     ParamSource,
-} from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@contractkit/core';
+} from '@maroonedsoftware/contractkit';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
 
 export interface OpenApiServerEntry {
     url: string;
@@ -315,7 +315,7 @@ function typeToSchema(type: ContractTypeNode): Record<string, unknown> {
     }
 }
 
-function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode): Record<string, unknown> {
+function scalarToSchema(type: import('@maroonedsoftware/contractkit').ScalarTypeNode): Record<string, unknown> {
     const s: Record<string, unknown> = {};
 
     switch (type.name) {
@@ -391,7 +391,7 @@ function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode): Recor
     return s;
 }
 
-function arrayToSchema(type: import('@contractkit/core').ArrayTypeNode): Record<string, unknown> {
+function arrayToSchema(type: import('@maroonedsoftware/contractkit').ArrayTypeNode): Record<string, unknown> {
     const s: Record<string, unknown> = { type: 'array', items: typeToSchema(type.item) };
     if (type.min !== undefined) s.minItems = type.min;
     if (type.max !== undefined) s.maxItems = type.max;

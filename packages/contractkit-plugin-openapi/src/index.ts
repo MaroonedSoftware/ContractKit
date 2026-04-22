@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { generateOpenApi } from './codegen-openapi.js';
-import type { ContractKitPlugin } from '@contractkit/core';
+import type { ContractKitPlugin } from '@maroonedsoftware/contractkit';
 import type { OpenApiConfig, OpenApiSecurityScheme } from './codegen-openapi.js';
 export type { OpenApiServerEntry, OpenApiConfig, OpenApiSecurityScheme } from './codegen-openapi.js';
 

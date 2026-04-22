@@ -1,4 +1,4 @@
-import type { CkRootNode } from '@contractkit/core';
+import type { CkRootNode } from '@maroonedsoftware/contractkit';
 import { printModelDecl } from './print-contract.js';
 import { printRoute, printSecurity, type CommentBlock } from './print-operation.js';
 import { INDENT } from './indent.js';

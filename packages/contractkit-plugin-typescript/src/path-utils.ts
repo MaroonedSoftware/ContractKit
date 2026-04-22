@@ -1,6 +1,6 @@
 import { resolve, join, relative, dirname } from 'node:path';
-import type { ContractRootNode, OpRootNode } from '@contractkit/core';
-import { collectTypeRefs, collectPublicTypeNames } from '@contractkit/core';
+import type { ContractRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
+import { collectTypeRefs, collectPublicTypeNames } from '@maroonedsoftware/contractkit';
 
 export const TEMPLATE_VAR_RE = /\{\w+\}/;
 

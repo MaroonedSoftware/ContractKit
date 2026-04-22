@@ -1,5 +1,5 @@
 {
-    "name": "@contractkit/cli",
+    "name": "@maroonedsoftware/contractkit-cli",
     "version": "0.2.0",
     "description": "Compiler for .ck files",
     "type": "module",
@@ -18,8 +18,8 @@
         "start": "node dist/cli.js"
     },
     "dependencies": {
-        "@contractkit/core": "workspace:*",
-        "@contractkit/openapi-to-ck": "workspace:*",
+        "@maroonedsoftware/contractkit": "workspace:*",
+        "@maroonedsoftware/openapi-to-ck": "workspace:*",
         "glob": "^13.0.6"
     },
     "peerDependencies": {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { splitByTag, mergeIntoSingle } from '../src/tag-splitter.js';
 import { model, field, scalarType, refType, arrayType, opRoute, opOperation, opResponse } from './helpers.js';
-import type { OpRouteNode } from '@contractkit/core';
+import type { OpRouteNode } from '@maroonedsoftware/contractkit';
 
 describe('splitByTag', () => {
     it('splits routes into separate files by tag', () => {

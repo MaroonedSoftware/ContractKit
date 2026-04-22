@@ -1,5 +1,5 @@
 import { Diagnostic as LspDiagnostic, DiagnosticSeverity, Range } from 'vscode-languageserver';
-import type { Diagnostic } from '@contractkit/core';
+import type { Diagnostic } from '@maroonedsoftware/contractkit';
 
 export function toLspDiagnostics(diagnostics: Diagnostic[]): LspDiagnostic[] {
     return diagnostics.map(d => {

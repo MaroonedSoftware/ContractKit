@@ -14,7 +14,7 @@ A domain-specific language for defining API contracts in `.ck` files. The compil
 
 ```
 packages/
-  contractkit/                    # Core compiler library (@contractkit/core)
+  contractkit/                    # Core compiler library (@maroonedsoftware/contractkit)
   openapi-to-ck/                  # Converts OpenAPI YAML → .ck files
   contractkit-plugin-typescript/  # TypeScript codegen: Koa routers, SDK clients, Zod schemas, plain types
   contractkit-plugin-openapi/     # OpenAPI 3.0 YAML generation
@@ -39,13 +39,13 @@ contracts/             # Example / test .ck contract files
 pnpm test
 
 # Core compiler only
-pnpm --filter @contractkit/core test
+pnpm --filter @maroonedsoftware/contractkit test
 
 # TypeScript plugin only
-pnpm --filter @contractkit/contractkit-plugin-typescript test
+pnpm --filter @maroonedsoftware/contractkit-plugin-typescript test
 
 # Specific test file
-pnpm --filter @contractkit/core exec vitest run tests/parser-ck.test.ts
+pnpm --filter @maroonedsoftware/contractkit exec vitest run tests/parser-ck.test.ts
 ```
 
 ## Key source files
@@ -116,10 +116,10 @@ TypeScript plugin tests live in `packages/contractkit-plugin-typescript/tests/`:
 
 Plugins are configured in `contractkit.config.json` under `"plugins"`. Each key is the npm package name and its value is passed as `ctx.options` to the plugin.
 
-The `@contractkit/contractkit-plugin-typescript` plugin handles all TypeScript output via sub-configs:
+The `@maroonedsoftware/contractkit-plugin-typescript` plugin handles all TypeScript output via sub-configs:
 
 ```json
-"@contractkit/contractkit-plugin-typescript": {
+"@maroonedsoftware/contractkit-plugin-typescript": {
     "server": {
         "baseDir": "apps/api/",
         "zod": true,

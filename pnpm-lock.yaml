@@ -41,10 +41,10 @@ importers:
 
   apps/cli:
     dependencies:
-      '@contractkit/core':
+      '@maroonedsoftware/contractkit':
         specifier: workspace:*
         version: link:../../packages/contractkit
-      '@contractkit/openapi-to-ck':
+      '@maroonedsoftware/openapi-to-ck':
         specifier: workspace:*
         version: link:../../packages/openapi-to-ck
       glob:
@@ -63,7 +63,7 @@ importers:
 
   apps/prettier-plugin:
     dependencies:
-      '@contractkit/core':
+      '@maroonedsoftware/contractkit':
         specifier: workspace:*
         version: link:../../packages/contractkit
     devDependencies:
@@ -79,7 +79,7 @@ importers:
 
   apps/vscode-extension:
     dependencies:
-      '@contractkit/core':
+      '@maroonedsoftware/contractkit':
         specifier: workspace:*
         version: link:../../packages/contractkit
       vscode-languageclient:
@@ -158,7 +158,7 @@ importers:
 
   packages/contractkit-plugin-bruno:
     dependencies:
-      '@contractkit/core':
+      '@maroonedsoftware/contractkit':
         specifier: workspace:*
         version: link:../contractkit
     devDependencies:
@@ -171,7 +171,7 @@ importers:
 
   packages/contractkit-plugin-markdown:
     dependencies:
-      '@contractkit/core':
+      '@maroonedsoftware/contractkit':
         specifier: workspace:*
         version: link:../contractkit
     devDependencies:
@@ -184,7 +184,7 @@ importers:
 
   packages/contractkit-plugin-openapi:
     dependencies:
-      '@contractkit/core':
+      '@maroonedsoftware/contractkit':
         specifier: workspace:*
         version: link:../contractkit
     devDependencies:
@@ -197,7 +197,7 @@ importers:
 
   packages/contractkit-plugin-python:
     dependencies:
-      '@contractkit/core':
+      '@maroonedsoftware/contractkit':
         specifier: workspace:*
         version: link:../contractkit
     devDependencies:
@@ -216,7 +216,7 @@ importers:
 
   packages/contractkit-plugin-typescript:
     dependencies:
-      '@contractkit/core':
+      '@maroonedsoftware/contractkit':
         specifier: workspace:*
         version: link:../contractkit
     devDependencies:
@@ -229,7 +229,7 @@ importers:
 
   packages/openapi-to-ck:
     dependencies:
-      '@contractkit/core':
+      '@maroonedsoftware/contractkit':
         specifier: workspace:*
         version: link:../contractkit
       '@scalar/openapi-parser':

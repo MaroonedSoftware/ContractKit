@@ -1,5 +1,5 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource } from '@contractkit/core';
-import { resolveModifiers } from '@contractkit/core';
+import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
+import { resolveModifiers } from '@maroonedsoftware/contractkit';
 import { renderTsType, renderInputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { basename, dirname, relative } from 'path';
