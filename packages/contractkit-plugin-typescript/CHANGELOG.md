@@ -1,5 +1,11 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.4.0
+
+### Minor Changes
+
+- 3d90443: Update ZodInterval transformation to include ISO string conversion in contract generation and corresponding test case.
+
 ## 0.3.0
 
 ### Minor Changes
