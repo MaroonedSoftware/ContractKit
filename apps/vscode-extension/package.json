@@ -1,5 +1,5 @@
 {
-    "name": "@maroonedsoftware/contractkit-vscode-extension",
+    "name": "contractkit-vscode-extension",
     "displayName": "ContractKit",
     "description": "Language support for .ck contract definition files",
     "version": "0.3.0",
