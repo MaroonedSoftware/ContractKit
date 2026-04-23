@@ -144,7 +144,7 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     }
     if (needsInterval) {
         lines.push(
-            `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' }));`,
+            `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' })).transform(val => val.toISO()!);`,
         );
     }
     if (needsJson) {

@@ -297,7 +297,7 @@ describe('generateContract', () => {
             const root = contractRoot([model('M', [field('i', scalarType('interval'))])]);
             const output = generateContract(root);
             expect(output).toContain(
-                `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' }));`,
+                `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' })).transform(val => val.toISO()!);`,
             );
         });
 
