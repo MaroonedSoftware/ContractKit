@@ -1,5 +1,16 @@
 # @contractkit/contractkit-plugin-python
 
+## 0.4.0
+
+### Minor Changes
+
+- 181dadb: Refactor request handling to support multiple content types in operations. Updated OpRequestNode to accept an array of bodies, modified related functions and tests to accommodate multi-MIME requests, and enhanced validation for nested structures in URL-encoded bodies. Improved code generation across various plugins to handle new request structure.
+
+### Patch Changes
+
+- Updated dependencies [181dadb]
+    - @maroonedsoftware/contractkit@0.5.0
+
 ## 0.3.0
 
 ### Minor Changes
