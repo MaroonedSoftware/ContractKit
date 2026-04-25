@@ -363,6 +363,8 @@ function typeToExampleValue(type: ContractTypeNode, modelMap: Map<string, ModelN
             return {};
         case 'union':
             return type.members.length > 0 ? typeToExampleValue(type.members[0]!, modelMap) : null;
+        case 'discriminatedUnion':
+            return type.members.length > 0 ? typeToExampleValue(type.members[0]!, modelMap) : null;
         case 'intersection':
             return {};
         case 'ref': {

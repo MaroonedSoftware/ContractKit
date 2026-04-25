@@ -63,6 +63,7 @@ function collectInputTypeNodeRefs(type: ContractTypeNode, out: Set<string>, mode
             break;
         case 'intersection':
         case 'union':
+        case 'discriminatedUnion':
             type.members.forEach(m => collectInputTypeNodeRefs(m, out, modelsWithInput));
             break;
         case 'inlineObject':
@@ -105,6 +106,9 @@ function collectTypeNodeRefs(type: ContractTypeNode, out: Set<string>): void {
         case 'union':
             type.members.forEach(t => collectTypeNodeRefs(t, out));
             break;
+        case 'discriminatedUnion':
+            type.members.forEach(t => collectTypeNodeRefs(t, out));
+            break;
         case 'intersection':
             type.members.forEach(t => collectTypeNodeRefs(t, out));
             break;
@@ -133,6 +137,9 @@ export function collectTypeRefs(type: ContractTypeNode, out: Set<string>): void 
             collectTypeRefs(type.value, out);
             break;
         case 'union':
+            type.members.forEach(t => collectTypeRefs(t, out));
+            break;
+        case 'discriminatedUnion':
             type.members.forEach(t => collectTypeRefs(t, out));
             break;
         case 'intersection':
@@ -248,6 +255,9 @@ function collectInputTypeRefsForExport(type: ContractTypeNode, out: Set<string>,
             collectInputTypeRefsForExport(type.value, out, modelsWithInput);
             break;
         case 'union':
+            type.members.forEach(m => collectInputTypeRefsForExport(m, out, modelsWithInput));
+            break;
+        case 'discriminatedUnion':
             type.members.forEach(m => collectInputTypeRefsForExport(m, out, modelsWithInput));
             break;
         case 'intersection':

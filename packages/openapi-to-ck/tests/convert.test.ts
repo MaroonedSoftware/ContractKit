@@ -163,10 +163,10 @@ describe('convertOpenApiToCk', () => {
                     info: { title: 'Test', version: '1.0' },
                     components: {
                         schemas: {
-                            WithDiscriminator: {
+                            WithXml: {
                                 type: 'object',
-                                discriminator: { propertyName: 'type' },
-                                properties: { type: { type: 'string' } },
+                                xml: { name: 'thing' },
+                                properties: { id: { type: 'string' } },
                             },
                         },
                     },
@@ -176,7 +176,42 @@ describe('convertOpenApiToCk', () => {
                 onWarning: w => warnings.push(w.message),
             });
 
-            expect(warnings.some(w => w.includes('discriminator'))).toBe(true);
+            expect(warnings.some(w => w.includes('xml'))).toBe(true);
+        });
+
+        it('lowers oneOf with discriminator to a discriminatedUnion', async () => {
+            const warnings: string[] = [];
+            const result = await convertOpenApiToCk({
+                input: {
+                    openapi: '3.1.0',
+                    info: { title: 'Test', version: '1.0' },
+                    components: {
+                        schemas: {
+                            Card: {
+                                type: 'object',
+                                properties: { kind: { type: 'string', enum: ['card'] }, last4: { type: 'string' } },
+                                required: ['kind', 'last4'],
+                            },
+                            Bank: {
+                                type: 'object',
+                                properties: { kind: { type: 'string', enum: ['bank'] }, accountId: { type: 'string' } },
+                                required: ['kind', 'accountId'],
+                            },
+                            PaymentMethod: {
+                                oneOf: [{ $ref: '#/components/schemas/Card' }, { $ref: '#/components/schemas/Bank' }],
+                                discriminator: { propertyName: 'kind' },
+                            },
+                        },
+                    },
+                    paths: {},
+                },
+                split: 'single',
+                onWarning: w => warnings.push(w.message),
+            });
+
+            const content = result.files.get('api.ck')!;
+            expect(content).toContain('discriminated(by=kind');
+            expect(warnings.some(w => w.includes('discriminator'))).toBe(false);
         });
     });
 });

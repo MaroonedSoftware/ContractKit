@@ -164,6 +164,7 @@ function collectTypeRefs(type: ContractTypeNode, refs: Set<string>): void {
             collectTypeRefs(type.value, refs);
             break;
         case 'union':
+        case 'discriminatedUnion':
         case 'intersection':
             for (const member of type.members) collectTypeRefs(member, refs);
             break;

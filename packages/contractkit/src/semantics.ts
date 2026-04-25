@@ -366,7 +366,7 @@ export function createSemantics(grammar: Grammar) {
 
         // ─── Type Expressions ────────────────────────────────────────
 
-        TypeExpression(firstNode, _pipes, restNodes) {
+        TypeExpression(_leadPipeOpt, firstNode, _pipes, restNodes) {
             const file = this.args.file;
             const first = firstNode.toAst(file, this.args.diag) as ContractTypeNode;
             const rest: ContractTypeNode[] = [];

@@ -773,7 +773,7 @@
             "name": "support.type.builtin.ck"
         },
         "compound-type": {
-            "match": "\\b(array|tuple|record|enum|literal|lazy)\\b",
+            "match": "\\b(array|tuple|record|enum|literal|lazy|discriminated)\\b",
             "name": "support.type.compound.ck"
         },
         "model-reference": {

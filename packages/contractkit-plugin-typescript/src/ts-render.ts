@@ -14,7 +14,8 @@ export function renderTsType(type: ContractTypeNode): string {
             return renderTsScalar(type.name);
         case 'array': {
             const inner = renderTsType(type.item);
-            const needsParens = type.item.kind === 'union' || type.item.kind === 'intersection' || type.item.kind === 'enum';
+            const needsParens =
+                type.item.kind === 'union' || type.item.kind === 'discriminatedUnion' || type.item.kind === 'intersection' || type.item.kind === 'enum';
             return needsParens ? `(${inner})[]` : `${inner}[]`;
         }
         case 'tuple':
@@ -26,6 +27,8 @@ export function renderTsType(type: ContractTypeNode): string {
         case 'literal':
             return typeof type.value === 'string' ? `'${type.value}'` : String(type.value);
         case 'union':
+            return type.members.map(renderTsType).join(' | ');
+        case 'discriminatedUnion':
             return type.members.map(renderTsType).join(' | ');
         case 'intersection':
             return type.members.map(renderTsType).join(' & ');
@@ -94,12 +97,15 @@ export function renderInputTsType(type: ContractTypeNode, modelsWithInput?: Set<
             return modelsWithInput.has(type.name) ? `${type.name}Input` : type.name;
         case 'array': {
             const inner = renderInputTsType(type.item, modelsWithInput);
-            const needsParens = type.item.kind === 'union' || type.item.kind === 'intersection' || type.item.kind === 'enum';
+            const needsParens =
+                type.item.kind === 'union' || type.item.kind === 'discriminatedUnion' || type.item.kind === 'intersection' || type.item.kind === 'enum';
             return needsParens ? `(${inner})[]` : `${inner}[]`;
         }
         case 'intersection':
             return type.members.map(m => renderInputTsType(m, modelsWithInput)).join(' & ');
         case 'union':
+            return type.members.map(m => renderInputTsType(m, modelsWithInput)).join(' | ');
+        case 'discriminatedUnion':
             return type.members.map(m => renderInputTsType(m, modelsWithInput)).join(' | ');
         case 'inlineObject':
             return `{ ${type.fields.map(f => `${quoteKey(f.name)}${f.optional ? '?' : ''}: ${renderInputTsType(f.type, modelsWithInput)}`).join('; ')} }`;

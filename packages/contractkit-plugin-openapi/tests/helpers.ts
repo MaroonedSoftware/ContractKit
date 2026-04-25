@@ -10,6 +10,7 @@ import type {
     EnumTypeNode,
     LiteralTypeNode,
     UnionTypeNode,
+    DiscriminatedUnionTypeNode,
     ModelRefTypeNode,
     InlineObjectTypeNode,
     LazyTypeNode,
@@ -57,6 +58,10 @@ export function literalType(value: string | number | boolean): LiteralTypeNode {
 
 export function unionType(...members: ContractTypeNode[]): UnionTypeNode {
     return { kind: 'union', members };
+}
+
+export function discriminatedUnionType(discriminator: string, ...members: ContractTypeNode[]): DiscriminatedUnionTypeNode {
+    return { kind: 'discriminatedUnion', discriminator, members };
 }
 
 export function refType(name: string): ModelRefTypeNode {

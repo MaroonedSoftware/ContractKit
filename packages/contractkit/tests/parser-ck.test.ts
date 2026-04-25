@@ -12,6 +12,7 @@ import type {
     EnumTypeNode,
     LiteralTypeNode,
     UnionTypeNode,
+    DiscriminatedUnionTypeNode,
     IntersectionTypeNode,
     ModelRefTypeNode,
     InlineObjectTypeNode,
@@ -294,6 +295,29 @@ contract M: {
             expect(type.kind).toBe('lazy');
             expect(type.inner).toMatchObject({ kind: 'ref', name: 'TreeNode' });
         });
+
+        it('parses discriminated union type', () => {
+            const { root } = parse('contract M: { method: discriminated(by=kind, Card | Bank | Wire) }');
+            const type = root.models[0]!.fields[0]!.type as DiscriminatedUnionTypeNode;
+            expect(type.kind).toBe('discriminatedUnion');
+            expect(type.discriminator).toBe('kind');
+            expect(type.members).toHaveLength(3);
+            expect((type.members[0] as ModelRefTypeNode).name).toBe('Card');
+            expect((type.members[1] as ModelRefTypeNode).name).toBe('Bank');
+            expect((type.members[2] as ModelRefTypeNode).name).toBe('Wire');
+        });
+
+        it('parses leading-pipe union (multi-line readability)', () => {
+            const { root } = parse(`
+                contract AuthRequest:
+                    | ClientCredentials
+                    | Password
+                    | RefreshToken
+            `);
+            const type = root.models[0]!.type as UnionTypeNode;
+            expect(type.kind).toBe('union');
+            expect(type.members).toHaveLength(3);
+        });
     });
 
     // ─── Inline objects ──────────────────────────────────────────────
@@ -397,6 +421,15 @@ contract M: {
             const { root, diag } = parse('contract OfferStatus: enum(active, accepted, declined) # The status of the offer');
             expect(diag.hasErrors()).toBe(false);
             expect(root.models[0]!.description).toBe('The status of the offer');
+        });
+
+        it('parses type alias with discriminated union', () => {
+            const { root, diag } = parse('contract PaymentMethod: discriminated(by=kind, Card | Bank | Wire)');
+            expect(diag.hasErrors()).toBe(false);
+            const type = root.models[0]!.type as DiscriminatedUnionTypeNode;
+            expect(type.kind).toBe('discriminatedUnion');
+            expect(type.discriminator).toBe('kind');
+            expect(type.members).toHaveLength(3);
         });
     });
 

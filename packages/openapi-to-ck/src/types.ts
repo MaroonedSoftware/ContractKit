@@ -57,7 +57,7 @@ export interface NormalizedSchema {
     maximum?: number;
     minItems?: number;
     maxItems?: number;
-    discriminator?: unknown;
+    discriminator?: { propertyName?: string; mapping?: Record<string, string> };
     xml?: unknown;
     externalDocs?: unknown;
     not?: unknown;

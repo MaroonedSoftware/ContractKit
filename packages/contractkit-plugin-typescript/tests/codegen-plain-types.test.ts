@@ -9,6 +9,7 @@ import {
     enumType,
     literalType,
     unionType,
+    discriminatedUnionType,
     refType,
     lazyType,
     inlineObjectType,
@@ -156,6 +157,12 @@ describe('generatePlainTypes', () => {
             const root = contractRoot([model('M', [field('value', unionType(scalarType('string'), scalarType('number')))])]);
             const output = generatePlainTypes(root);
             expect(output).toContain('value: string | number;');
+        });
+
+        it('renders discriminated union as a plain TS union (TS narrows on the discriminator)', () => {
+            const root = contractRoot([model('M', [field('method', discriminatedUnionType('kind', refType('Card'), refType('Bank')))])]);
+            const output = generatePlainTypes(root);
+            expect(output).toContain('method: Card | Bank;');
         });
 
         it('renders model reference as type name', () => {

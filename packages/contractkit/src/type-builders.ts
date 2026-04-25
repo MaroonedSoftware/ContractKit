@@ -40,6 +40,8 @@ export function buildCompoundType(name: string, args: TypeArg[]): ContractTypeNo
             return buildLiteralType(args);
         case 'lazy':
             return buildLazyType(args);
+        case 'discriminated':
+            return buildDiscriminatedUnionType(args);
         default: {
             if (SCALAR_NAMES.has(name)) {
                 return buildScalarWithModifiers(name as ScalarTypeNode['name'], args);
@@ -102,6 +104,29 @@ function buildLazyType(args: TypeArg[]): ContractTypeNode {
     const typeArg = args.find((a): a is TypeArgType => 'type' in a && a.type === 'type');
     const inner: ContractTypeNode = typeArg?.value ?? { kind: 'scalar', name: 'unknown' };
     return { kind: 'lazy', inner };
+}
+
+function buildDiscriminatedUnionType(args: TypeArg[]): ContractTypeNode {
+    let discriminator = '';
+    for (const a of args) {
+        if ('key' in a && a.key === 'by') {
+            discriminator = String(a.value);
+        }
+    }
+
+    const typeArgs = args.filter((a): a is TypeArgType => 'type' in a && a.type === 'type');
+    const members: ContractTypeNode[] = [];
+    for (const ta of typeArgs) {
+        // A single TypeExpression like `A | B | C` arrives as one TypeArgType with a union node.
+        // Flatten it so members ends up as the leaf types.
+        if (ta.value.kind === 'union') {
+            members.push(...ta.value.members);
+        } else {
+            members.push(ta.value);
+        }
+    }
+
+    return { kind: 'discriminatedUnion', discriminator, members };
 }
 
 function buildScalarWithModifiers(name: ScalarTypeNode['name'], args: TypeArg[]): ScalarTypeNode {

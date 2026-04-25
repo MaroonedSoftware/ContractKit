@@ -377,6 +377,9 @@ function collectTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWithInp
         case 'union':
             type.members.forEach(m => collectTypeRefs(m, out, modelsWithInput, forInput));
             break;
+        case 'discriminatedUnion':
+            type.members.forEach(m => collectTypeRefs(m, out, modelsWithInput, forInput));
+            break;
         case 'intersection':
             out.add('__any__');
             break;

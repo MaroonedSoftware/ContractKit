@@ -8,6 +8,7 @@ import {
     enumType,
     literalType,
     unionType,
+    discriminatedUnionType,
     refType,
     lazyType,
     inlineObjectType,
@@ -216,6 +217,11 @@ describe('renderType', () => {
 
         it('renders union type', () => {
             expect(renderType(unionType(scalarType('string'), scalarType('number')))).toBe('z.union([z.string(), z.coerce.number()])');
+        });
+
+        it('renders discriminated union as z.discriminatedUnion', () => {
+            const result = renderType(discriminatedUnionType('kind', refType('Card'), refType('Bank'), refType('Wire')));
+            expect(result).toBe('z.discriminatedUnion("kind", [Card, Bank, Wire])');
         });
 
         it('renders model reference as bare name', () => {

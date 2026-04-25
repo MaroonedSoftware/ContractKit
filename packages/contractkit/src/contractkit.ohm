@@ -76,7 +76,7 @@ Contract {
 
   // ─── Type Expressions ───────────────────────────────────────────
 
-  TypeExpression = IntersectionExpr ("|" IntersectionExpr)*
+  TypeExpression = "|"? IntersectionExpr ("|" IntersectionExpr)*
 
   IntersectionExpr = SingleType ("&" SingleType)*
 

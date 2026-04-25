@@ -6,6 +6,7 @@ import {
     enumType,
     refType,
     unionType,
+    discriminatedUnionType,
     inlineObjectType,
     literalType,
     recordType,
@@ -280,6 +281,25 @@ describe('generateOpenApi', () => {
             });
             expect(output).toContain("description: 'A user object'");
             expect(output).toContain("description: 'The user name'");
+        });
+
+        it('emits oneOf with a discriminator block for discriminated unions', () => {
+            const card = model('Card', [field('kind', literalType('card')), field('last4', scalarType('string'))]);
+            const bank = model('Bank', [field('kind', literalType('bank')), field('accountId', scalarType('string'))]);
+            const method = model('PaymentMethod', [], { type: discriminatedUnionType('kind', refType('Card'), refType('Bank')) });
+            const root = contractRoot([card, bank, method]);
+            const op = opRoot([opRoute('/methods', [opOperation('get', { responses: [opResponse(200, 'PaymentMethod', 'application/json')] })])]);
+            const output = generateOpenApi({
+                contractRoots: [root],
+                opRoots: [op],
+                config: {},
+            });
+            expect(output).toContain('PaymentMethod:');
+            expect(output).toContain('oneOf:');
+            expect(output).toContain('discriminator:');
+            expect(output).toContain('propertyName: kind');
+            expect(output).toContain("card: '#/components/schemas/Card'");
+            expect(output).toContain("bank: '#/components/schemas/Bank'");
         });
     });
 

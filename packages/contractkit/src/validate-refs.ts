@@ -1,4 +1,4 @@
-import type { ContractRootNode, OpRootNode, ContractTypeNode } from './ast.js';
+import type { ContractRootNode, OpRootNode, ContractTypeNode, ModelNode, FieldNode } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
 
 /**
@@ -9,9 +9,11 @@ export function validateRefs(contractRoots: ContractRootNode[], opRoots: OpRootN
     // Phase 1: Collect all defined model names from ALL contract files (not just changed ones)
     // so that cached/unchanged files don't cause false "not defined" warnings.
     const modelNames = new Set<string>();
+    const modelMap = new Map<string, ModelNode>();
     for (const root of allContractRoots ?? contractRoots) {
         for (const model of root.models) {
             modelNames.add(model.name);
+            modelMap.set(model.name, model);
         }
     }
 
@@ -23,9 +25,11 @@ export function validateRefs(contractRoots: ContractRootNode[], opRoots: OpRootN
             }
             if (model.type) {
                 checkTypeRefs(model.type, model.loc.file, model.loc.line, modelNames, diag);
+                checkDiscriminatedUnions(model.type, model.loc.file, model.loc.line, modelMap, diag);
             }
             for (const field of model.fields) {
                 checkTypeRefs(field.type, field.loc.file, field.loc.line, modelNames, diag);
+                checkDiscriminatedUnions(field.type, field.loc.file, field.loc.line, modelMap, diag);
             }
         }
     }
@@ -37,10 +41,12 @@ export function validateRefs(contractRoots: ContractRootNode[], opRoots: OpRootN
             for (const op of route.operations) {
                 if (op.request?.bodyType) {
                     checkTypeRefs(op.request.bodyType, root.file, op.loc.line, modelNames, diag);
+                    checkDiscriminatedUnions(op.request.bodyType, root.file, op.loc.line, modelMap, diag);
                 }
                 for (const resp of op.responses) {
                     if (resp.bodyType) {
                         checkTypeRefs(resp.bodyType, root.file, op.loc.line, modelNames, diag);
+                        checkDiscriminatedUnions(resp.bodyType, root.file, op.loc.line, modelMap, diag);
                     }
                 }
                 checkParamSourceRefs(op.query, root.file, op.loc.line, modelNames, diag);
@@ -70,6 +76,9 @@ function checkTypeRefs(type: ContractTypeNode, file: string, line: number, model
         case 'union':
             type.members.forEach(t => checkTypeRefs(t, file, line, models, diag));
             break;
+        case 'discriminatedUnion':
+            type.members.forEach(t => checkTypeRefs(t, file, line, models, diag));
+            break;
         case 'intersection':
             type.members.forEach(t => checkTypeRefs(t, file, line, models, diag));
             break;
@@ -80,6 +89,96 @@ function checkTypeRefs(type: ContractTypeNode, file: string, line: number, model
             type.fields.forEach(f => checkTypeRefs(f.type, file, f.loc.line, models, diag));
             break;
     }
+}
+
+/**
+ * Validate discriminated unions: every member must be a model ref or inline object,
+ * and every member must contain a literal-typed field matching the discriminator.
+ */
+function checkDiscriminatedUnions(type: ContractTypeNode, file: string, line: number, models: Map<string, ModelNode>, diag: DiagnosticCollector): void {
+    switch (type.kind) {
+        case 'discriminatedUnion': {
+            if (!type.discriminator) {
+                diag.warn(file, line, `discriminated() requires a "by=<field>" discriminator key`);
+            }
+            if (type.members.length < 2) {
+                diag.warn(file, line, `discriminated() requires at least 2 union members`);
+            }
+            for (const member of type.members) {
+                const fields = resolveMemberFields(member, models);
+                if (fields === null) {
+                    diag.warn(file, line, `discriminated union member must be a model ref or inline object (got ${describeKind(member)})`);
+                    continue;
+                }
+                const field = fields.find(f => f.name === type.discriminator);
+                if (!field) {
+                    diag.warn(
+                        file,
+                        line,
+                        `discriminated union member ${describeMember(member)} is missing discriminator field "${type.discriminator}"`,
+                    );
+                    continue;
+                }
+                if (field.type.kind !== 'literal' && field.type.kind !== 'enum') {
+                    diag.warn(
+                        file,
+                        line,
+                        `discriminated union member ${describeMember(member)} field "${type.discriminator}" must be a literal or enum (got ${describeKind(field.type)})`,
+                    );
+                }
+            }
+            // Recurse into nested types as well.
+            type.members.forEach(m => checkDiscriminatedUnions(m, file, line, models, diag));
+            break;
+        }
+        case 'array':
+            checkDiscriminatedUnions(type.item, file, line, models, diag);
+            break;
+        case 'tuple':
+            type.items.forEach(t => checkDiscriminatedUnions(t, file, line, models, diag));
+            break;
+        case 'record':
+            checkDiscriminatedUnions(type.key, file, line, models, diag);
+            checkDiscriminatedUnions(type.value, file, line, models, diag);
+            break;
+        case 'union':
+        case 'intersection':
+            type.members.forEach(t => checkDiscriminatedUnions(t, file, line, models, diag));
+            break;
+        case 'lazy':
+            checkDiscriminatedUnions(type.inner, file, line, models, diag);
+            break;
+        case 'inlineObject':
+            type.fields.forEach(f => checkDiscriminatedUnions(f.type, file, f.loc.line, models, diag));
+            break;
+    }
+}
+
+/** Resolve a discriminated-union member to its field list, following ref→model and base inheritance. */
+function resolveMemberFields(member: ContractTypeNode, models: Map<string, ModelNode>): FieldNode[] | null {
+    if (member.kind === 'inlineObject') return member.fields;
+    if (member.kind === 'ref') {
+        const model = models.get(member.name);
+        if (!model) return null;
+        // For aliased models, peer through to the aliased type.
+        if (model.type) return resolveMemberFields(model.type, models);
+        const fields = [...model.fields];
+        if (model.base) {
+            const baseFields = resolveMemberFields({ kind: 'ref', name: model.base }, models);
+            if (baseFields) fields.push(...baseFields);
+        }
+        return fields;
+    }
+    return null;
+}
+
+function describeMember(member: ContractTypeNode): string {
+    if (member.kind === 'ref') return `"${member.name}"`;
+    return `(${describeKind(member)})`;
+}
+
+function describeKind(type: ContractTypeNode): string {
+    return type.kind;
 }
 
 function checkParamSourceRefs(

@@ -139,11 +139,17 @@ export function schemaToTypeNode(schema: NormalizedSchema, ctx: SchemaContext): 
         return { kind: 'enum', values: schema.enum.map(String) };
     }
 
-    // oneOf / anyOf → union
+    // oneOf / anyOf → union (or discriminatedUnion when discriminator.propertyName is set)
     if (schema.oneOf && schema.oneOf.length > 0) {
+        if (schema.discriminator?.propertyName) {
+            return toDiscriminatedUnion(schema.oneOf, schema.discriminator.propertyName, ctx);
+        }
         return toUnion(schema.oneOf, ctx);
     }
     if (schema.anyOf && schema.anyOf.length > 0) {
+        if (schema.discriminator?.propertyName) {
+            return toDiscriminatedUnion(schema.anyOf, schema.discriminator.propertyName, ctx);
+        }
         return toUnion(schema.anyOf, ctx);
     }
 
@@ -360,8 +366,13 @@ function toUnion(schemas: NormalizedSchema[], ctx: SchemaContext): ContractTypeN
     return { kind: 'union', members };
 }
 
+function toDiscriminatedUnion(schemas: NormalizedSchema[], discriminator: string, ctx: SchemaContext): ContractTypeNode {
+    const members = schemas.map(s => schemaToTypeNode(s, ctx));
+    if (members.length === 1) return members[0]!;
+    return { kind: 'discriminatedUnion', discriminator, members };
+}
+
 function warnUnsupported(schema: NormalizedSchema, ctx: SchemaContext): void {
-    if (schema.discriminator) ctx.warnings.warn(ctx.path, 'discriminator is not supported, skipping');
     if (schema.xml) ctx.warnings.warn(ctx.path, 'xml metadata is not supported, skipping');
     if (schema.externalDocs) ctx.warnings.info(ctx.path, 'externalDocs is not supported, skipping');
     if (schema.not) ctx.warnings.warn(ctx.path, 'not keyword is not supported, skipping');

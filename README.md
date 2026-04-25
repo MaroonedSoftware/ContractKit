@@ -365,6 +365,7 @@ Compound types take arguments in parentheses. Arguments may be type expressions,
 | `literal(42)`             | `z.literal(42)`                             |
 | `literal(true)`           | `z.literal(true)`                           |
 | `lazy(T)`                 | `z.lazy(() => T)`                           |
+| `discriminated(by=k, A \| B \| C)` | `z.discriminatedUnion("k", [A, B, C])`  |
 
 ---
 
@@ -405,6 +406,53 @@ contract Response: {
 
 - `A | B` compiles to `z.union([A, B])`
 - `A & B` compiles to `A.and(B)` — or `.extend()` when one side is an inline object and the other is a model reference
+
+A leading `|` is permitted so multi-line unions read cleanly:
+
+```
+contract AuthenticationRequest:
+    | ClientCredentialsAuthenticationRequest
+    | PasswordAuthenticationRequest
+    | RefreshTokenAuthenticationRequest
+    | LinkAuthenticationRequest
+    | OtpAuthenticationRequest
+    | FidoAuthenticationRequest
+```
+
+---
+
+### Discriminated Unions
+
+When every member of a union carries a shared literal field, wrap it in
+`discriminated(by=<field>, ...)` to emit a faster, narrower runtime check
+and a richer OpenAPI schema:
+
+```
+contract CardPayment: { kind: literal("card"), last4: string(len=4) }
+contract BankPayment: { kind: literal("bank"), accountId: string }
+contract WirePayment: { kind: literal("wire"), swift: string }
+
+contract PaymentMethod:
+    discriminated(by=kind, CardPayment | BankPayment | WirePayment)
+```
+
+What you get:
+
+| Output            | Result                                                                |
+| ----------------- | --------------------------------------------------------------------- |
+| **Zod**           | `z.discriminatedUnion("kind", [CardPayment, BankPayment, WirePayment])` |
+| **TypeScript**    | `CardPayment \| BankPayment \| WirePayment` (TS narrows on `kind`)     |
+| **OpenAPI**       | `oneOf` with a `discriminator: { propertyName, mapping }` block        |
+| **Python (SDK)**  | `Annotated[Union[...], Field(discriminator="kind")]` (Pydantic v2)     |
+
+The compiler validates discriminated unions at parse time:
+
+- Every member must be a model reference or inline object
+- Every member must contain a field matching the discriminator name
+- That field must be a `literal(...)` or `enum(...)` type
+- At least two members are required
+
+Failing any check produces a warning that points to the offending member.
 
 ---
 

@@ -188,6 +188,8 @@ export function serializeType(type: ContractTypeNode): string {
             return serializeLiteral(type);
         case 'union':
             return type.members.map(serializeType).join(' | ');
+        case 'discriminatedUnion':
+            return `discriminated(by=${type.discriminator}, ${type.members.map(serializeType).join(' | ')})`;
         case 'intersection':
             return type.members.map(serializeType).join(' & ');
         case 'ref':

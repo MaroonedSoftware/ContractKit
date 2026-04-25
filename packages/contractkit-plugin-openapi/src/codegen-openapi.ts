@@ -53,6 +53,7 @@ function collectRefsFromType(type: ContractTypeNode, out: Set<string>): void {
             collectRefsFromType(type.value, out);
             break;
         case 'union':
+        case 'discriminatedUnion':
         case 'intersection':
             for (const member of type.members) collectRefsFromType(member, out);
             break;
@@ -157,7 +158,11 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
     for (const contractRoot of contractRoots) {
         for (const model of contractRoot.models) {
             modelMap.set(model.name, model);
-            allSchemas[model.name] = modelToSchema(model);
+        }
+    }
+    for (const contractRoot of contractRoots) {
+        for (const model of contractRoot.models) {
+            allSchemas[model.name] = modelToSchema(model, modelMap);
         }
     }
 
@@ -220,10 +225,10 @@ function convertPath(path: string): string {
 
 // ─── Schema conversion ───────────────────────────────────────────────────
 
-function modelToSchema(model: ModelNode): Record<string, unknown> {
+function modelToSchema(model: ModelNode, modelMap?: Map<string, ModelNode>): Record<string, unknown> {
     // Type alias (no fields)
     if (model.type) {
-        const schema = typeToSchema(model.type);
+        const schema = typeToSchema(model.type, modelMap);
         if (model.description) schema.description = model.description;
         return schema;
     }
@@ -232,7 +237,7 @@ function modelToSchema(model: ModelNode): Record<string, unknown> {
     const required: string[] = [];
 
     for (const field of model.fields) {
-        const prop = fieldToSchema(field);
+        const prop = fieldToSchema(field, modelMap);
         properties[field.name] = prop;
         if (!field.optional) {
             required.push(field.name);
@@ -264,8 +269,8 @@ function modelToSchema(model: ModelNode): Record<string, unknown> {
     return schema;
 }
 
-function fieldToSchema(field: FieldNode): Record<string, unknown> {
-    let schema = typeToSchema(field.type);
+function fieldToSchema(field: FieldNode, modelMap?: Map<string, ModelNode>): Record<string, unknown> {
+    let schema = typeToSchema(field.type, modelMap);
 
     if (field.nullable) {
         schema = wrapNullable(schema);
@@ -288,31 +293,63 @@ function fieldToSchema(field: FieldNode): Record<string, unknown> {
     return schema;
 }
 
-function typeToSchema(type: ContractTypeNode): Record<string, unknown> {
+function typeToSchema(type: ContractTypeNode, modelMap?: Map<string, ModelNode>): Record<string, unknown> {
     switch (type.kind) {
         case 'scalar':
             return scalarToSchema(type);
         case 'array':
-            return arrayToSchema(type);
+            return arrayToSchema(type, modelMap);
         case 'tuple':
-            return { type: 'array', prefixItems: type.items.map(i => typeToSchema(i)) };
+            return { type: 'array', prefixItems: type.items.map(i => typeToSchema(i, modelMap)) };
         case 'record':
-            return { type: 'object', additionalProperties: typeToSchema(type.value) };
+            return { type: 'object', additionalProperties: typeToSchema(type.value, modelMap) };
         case 'enum':
             return { type: 'string', enum: type.values };
         case 'literal':
             return { const: type.value };
         case 'union':
-            return { oneOf: type.members.map(m => typeToSchema(m)) };
+            return { oneOf: type.members.map(m => typeToSchema(m, modelMap)) };
+        case 'discriminatedUnion': {
+            const oneOf = type.members.map(m => typeToSchema(m, modelMap));
+            const mapping: Record<string, string> = {};
+            for (const member of type.members) {
+                if (member.kind !== 'ref') continue;
+                const literalValues = resolveDiscriminatorLiterals(member.name, type.discriminator, modelMap);
+                if (literalValues.length === 0) continue;
+                for (const v of literalValues) {
+                    mapping[v] = `#/components/schemas/${member.name}`;
+                }
+            }
+            const result: Record<string, unknown> = {
+                oneOf,
+                discriminator: { propertyName: type.discriminator },
+            };
+            if (Object.keys(mapping).length > 0) {
+                (result.discriminator as Record<string, unknown>).mapping = mapping;
+            }
+            return result;
+        }
         case 'intersection':
-            return { allOf: type.members.map(m => typeToSchema(m)) };
+            return { allOf: type.members.map(m => typeToSchema(m, modelMap)) };
         case 'ref':
             return { $ref: `#/components/schemas/${type.name}` };
         case 'inlineObject':
-            return inlineObjectToSchema(type.fields);
+            return inlineObjectToSchema(type.fields, modelMap);
         case 'lazy':
-            return typeToSchema(type.inner);
+            return typeToSchema(type.inner, modelMap);
     }
+}
+
+/** Resolve literal values of a model's discriminator field. Returns [] if not resolvable. */
+function resolveDiscriminatorLiterals(modelName: string, discriminator: string, modelMap?: Map<string, ModelNode>): string[] {
+    if (!modelMap) return [];
+    const model = modelMap.get(modelName);
+    if (!model) return [];
+    const field = model.fields.find(f => f.name === discriminator);
+    if (!field) return [];
+    if (field.type.kind === 'literal') return [String(field.type.value)];
+    if (field.type.kind === 'enum') return field.type.values;
+    return [];
 }
 
 function scalarToSchema(type: import('@maroonedsoftware/contractkit').ScalarTypeNode): Record<string, unknown> {
@@ -391,19 +428,19 @@ function scalarToSchema(type: import('@maroonedsoftware/contractkit').ScalarType
     return s;
 }
 
-function arrayToSchema(type: import('@maroonedsoftware/contractkit').ArrayTypeNode): Record<string, unknown> {
-    const s: Record<string, unknown> = { type: 'array', items: typeToSchema(type.item) };
+function arrayToSchema(type: import('@maroonedsoftware/contractkit').ArrayTypeNode, modelMap?: Map<string, ModelNode>): Record<string, unknown> {
+    const s: Record<string, unknown> = { type: 'array', items: typeToSchema(type.item, modelMap) };
     if (type.min !== undefined) s.minItems = type.min;
     if (type.max !== undefined) s.maxItems = type.max;
     return s;
 }
 
-function inlineObjectToSchema(fields: FieldNode[]): Record<string, unknown> {
+function inlineObjectToSchema(fields: FieldNode[], modelMap?: Map<string, ModelNode>): Record<string, unknown> {
     const properties: Record<string, unknown> = {};
     const required: string[] = [];
 
     for (const field of fields) {
-        properties[field.name] = fieldToSchema(field);
+        properties[field.name] = fieldToSchema(field, modelMap);
         if (!field.optional) {
             required.push(field.name);
         }

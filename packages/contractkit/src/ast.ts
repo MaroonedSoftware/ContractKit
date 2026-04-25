@@ -36,6 +36,7 @@ export type ContractTypeNode =
     | EnumTypeNode
     | LiteralTypeNode
     | UnionTypeNode
+    | DiscriminatedUnionTypeNode
     | IntersectionTypeNode
     | ModelRefTypeNode
     | InlineObjectTypeNode
@@ -99,6 +100,12 @@ export interface LiteralTypeNode {
 
 export interface UnionTypeNode {
     kind: 'union';
+    members: ContractTypeNode[];
+}
+
+export interface DiscriminatedUnionTypeNode {
+    kind: 'discriminatedUnion';
+    discriminator: string;
     members: ContractTypeNode[];
 }
 

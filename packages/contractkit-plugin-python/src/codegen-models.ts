@@ -144,6 +144,11 @@ function scanTypeImports(type: ContractTypeNode, imports: ImportTracker): void {
         case 'union':
             type.members.forEach(m => scanTypeImports(m, imports));
             break;
+        case 'discriminatedUnion':
+            imports.add('typing', 'Annotated');
+            imports.add('pydantic', 'Field');
+            type.members.forEach(m => scanTypeImports(m, imports));
+            break;
         case 'intersection':
             imports.add('typing', 'Any');
             break;
@@ -185,6 +190,10 @@ export function renderPyType(type: ContractTypeNode, modelsWithInput?: Set<strin
             return `dict[${renderPyType(type.key, modelsWithInput, forInput)}, ${renderPyType(type.value, modelsWithInput, forInput)}]`;
         case 'union':
             return type.members.map(m => renderPyType(m, modelsWithInput, forInput)).join(' | ');
+        case 'discriminatedUnion': {
+            const inner = type.members.map(m => renderPyType(m, modelsWithInput, forInput)).join(' | ');
+            return `Annotated[${inner}, Field(discriminator=${JSON.stringify(type.discriminator)})]`;
+        }
         case 'intersection':
             return 'dict[str, Any]';
         case 'ref': {

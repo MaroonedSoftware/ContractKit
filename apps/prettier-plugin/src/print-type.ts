@@ -34,6 +34,8 @@ export function printType(type: ContractTypeNode): string {
             return typeof type.value === 'string' ? `literal("${type.value}")` : `literal(${type.value})`;
         case 'union':
             return type.members.map(printType).join(' | ');
+        case 'discriminatedUnion':
+            return `discriminated(by=${type.discriminator}, ${type.members.map(printType).join(' | ')})`;
         case 'intersection':
             return type.members.map(printType).join(' & ');
         case 'ref':

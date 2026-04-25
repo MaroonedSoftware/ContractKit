@@ -19,7 +19,8 @@ function renderTsType(type: ContractTypeNode): string {
             return renderTsScalar(type.name);
         case 'array': {
             const inner = renderTsType(type.item);
-            const needsParens = type.item.kind === 'union' || type.item.kind === 'intersection' || type.item.kind === 'enum';
+            const needsParens =
+                type.item.kind === 'union' || type.item.kind === 'discriminatedUnion' || type.item.kind === 'intersection' || type.item.kind === 'enum';
             return needsParens ? `(${inner})[]` : `${inner}[]`;
         }
         case 'tuple':
@@ -31,6 +32,8 @@ function renderTsType(type: ContractTypeNode): string {
         case 'literal':
             return typeof type.value === 'string' ? `'${type.value}'` : String(type.value);
         case 'union':
+            return type.members.map(renderTsType).join(' | ');
+        case 'discriminatedUnion':
             return type.members.map(renderTsType).join(' | ');
         case 'intersection':
             return type.members.map(renderTsType).join(' & ');

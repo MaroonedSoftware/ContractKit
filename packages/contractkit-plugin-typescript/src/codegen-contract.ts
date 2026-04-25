@@ -11,6 +11,7 @@ import type {
     EnumTypeNode,
     LiteralTypeNode,
     UnionTypeNode,
+    DiscriminatedUnionTypeNode,
     InlineObjectTypeNode,
     IntersectionTypeNode,
     ObjectMode,
@@ -391,6 +392,8 @@ export function renderType(type: ContractTypeNode, parseCaseTransform?: 'snake' 
             return renderLiteral(type);
         case 'union':
             return renderUnion(type, parseCaseTransform, defaultMode);
+        case 'discriminatedUnion':
+            return renderDiscriminatedUnion(type, parseCaseTransform, defaultMode);
         case 'intersection':
             return renderIntersection(type, parseCaseTransform, defaultMode);
         case 'ref':
@@ -508,6 +511,10 @@ function renderUnion(u: UnionTypeNode, parseCaseTransform?: 'snake' | 'pascal', 
     return `z.union([${u.members.map(m => renderType(m, parseCaseTransform, defaultMode)).join(', ')}])`;
 }
 
+function renderDiscriminatedUnion(u: DiscriminatedUnionTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
+    return `z.discriminatedUnion("${escapeString(u.discriminator)}", [${u.members.map(m => renderType(m, parseCaseTransform, defaultMode)).join(', ')}])`;
+}
+
 function renderIntersection(i: IntersectionTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
     const [first, ...rest] = i.members;
     // When the pattern is ref & { inlineObject(s) }, use .extend() to produce a
@@ -605,6 +612,8 @@ export function renderInputType(type: ContractTypeNode, modelsWithInput?: Set<st
             return `z.record(${renderInputType(type.key, modelsWithInput, defaultMode)}, ${renderInputType(type.value, modelsWithInput, defaultMode)})`;
         case 'union':
             return `z.union([${type.members.map(m => renderInputType(m, modelsWithInput, defaultMode)).join(', ')}])`;
+        case 'discriminatedUnion':
+            return `z.discriminatedUnion("${escapeString(type.discriminator)}", [${type.members.map(m => renderInputType(m, modelsWithInput, defaultMode)).join(', ')}])`;
         case 'intersection': {
             const [first, ...rest] = type.members;
             if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'inlineObject')) {
@@ -746,6 +755,8 @@ export function typeNeedsScalar(type: ContractTypeNode, name: string): boolean {
             return typeNeedsScalar(type.key, name) || typeNeedsScalar(type.value, name);
         case 'union':
             return type.members.some(m => typeNeedsScalar(m, name));
+        case 'discriminatedUnion':
+            return type.members.some(m => typeNeedsScalar(m, name));
         case 'intersection':
             return type.members.some(m => typeNeedsScalar(m, name));
         case 'lazy':
@@ -768,6 +779,8 @@ export function typeNeedsDateTime(type: ContractTypeNode): boolean {
         case 'array':
             return typeNeedsDateTime(type.item);
         case 'union':
+            return type.members.some(typeNeedsDateTime);
+        case 'discriminatedUnion':
             return type.members.some(typeNeedsDateTime);
         case 'intersection':
             return type.members.some(typeNeedsDateTime);
@@ -841,6 +854,9 @@ function collectInputTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWi
             collectInputTypeRefs(type.value, out, modelsWithInput);
             break;
         case 'union':
+            type.members.forEach(m => collectInputTypeRefs(m, out, modelsWithInput));
+            break;
+        case 'discriminatedUnion':
             type.members.forEach(m => collectInputTypeRefs(m, out, modelsWithInput));
             break;
         case 'intersection':
