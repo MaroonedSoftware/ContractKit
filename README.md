@@ -24,146 +24,160 @@ The compiler searches upward from the current directory for `contractkit.config.
 
 ## Configuration File
 
-Create `contractkit.config.json` in your project root:
+Create `contractkit.config.json` in your project root. The CLI itself only handles file discovery, caching, and prettier formatting — all code generation happens in **plugins** declared under `"plugins"`.
 
 ```json
 {
-  "rootDir": ".",
-  "cache": true,
-  "prettier": true,
-  "security": {
-    "default": "bearer",
-    "schemes": {
-      "bearer": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT"
-      },
-      "webhookAuth": {
-        "type": "hmac",
-        "header": "X-Signature",
-        "secretEnv": "WEBHOOK_SECRET",
-        "algorithm": "sha256",
-        "digest": "hex"
-      }
+    "rootDir": ".",
+    "cache": true,
+    "prettier": true,
+    "patterns": ["contracts/types/**/*.ck", "contracts/operations/**/*.ck"],
+    "plugins": {
+        "@maroonedsoftware/contractkit-plugin-typescript": {
+            "server": {
+                "baseDir": "apps/api/",
+                "zod": true,
+                "output": {
+                    "routes": "src/routes/{filename}.router.ts",
+                    "types": "src/modules/{area}/types/{filename}.ts"
+                },
+                "servicePathTemplate": "#modules/{module}/{module}.service.js"
+            },
+            "sdk": {
+                "baseDir": "packages/sdk/",
+                "name": "myapp",
+                "output": {
+                    "sdk": "src/{name}.sdk.ts",
+                    "types": "src/{area}/types/{filename}.ts",
+                    "clients": "src/{area}/{filename}.client.ts"
+                }
+            }
+        },
+        "@maroonedsoftware/contractkit-plugin-openapi": {
+            "baseDir": "docs/api/",
+            "output": "openapi.yaml",
+            "info": { "title": "My API", "version": "1.0.0" },
+            "servers": [{ "url": "https://api.example.com" }],
+            "security": [{ "bearerAuth": [] }],
+            "securitySchemes": {
+                "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+            }
+        },
+        "@maroonedsoftware/contractkit-plugin-markdown": {
+            "baseDir": "docs/",
+            "output": "api-reference.md"
+        }
     }
-  },
-  "server": {
-    "baseDir": "apps/api/",
-    "types": {
-      "include": ["contracts/types/**/*.ck"],
-      "output": "src/types"
-    },
-    "routes": {
-      "include": ["contracts/operations/**/*.ck"],
-      "output": "src/routes",
-      "servicePathTemplate": "#modules/{module}/{module}.service.js",
-      "typeImportPathTemplate": "#types/{kebab}.js"
-    }
-  },
-  "sdk": {
-    "baseDir": "packages/sdk/",
-    "name": "myapp",
-    "output": "src/{name}.sdk.ts",
-    "types": {
-      "include": ["contracts/types/**/*.ck"],
-      "output": "src/types"
-    },
-    "clients": {
-      "include": ["contracts/operations/**/*.ck"],
-      "output": "src/clients",
-      "typeImportPathTemplate": "#sdk/types/{kebab}.js"
-    }
-  },
-  "docs": {
-    "openapi": {
-      "output": "openapi.yaml",
-      "info": {
-        "title": "My API",
-        "version": "1.0.0"
-      },
-      "servers": [{ "url": "https://api.example.com" }]
-    },
-    "markdown": {
-      "output": "api-reference.md"
-    }
-  }
 }
 ```
 
-### Config Reference
+### Top-level fields
 
 | Field      | Type                | Description                                                                                       |
 | ---------- | ------------------- | ------------------------------------------------------------------------------------------------- |
-| `rootDir`  | `string`            | Base directory for resolving relative paths. Default: `.`                                         |
+| `rootDir`  | `string`            | Base directory for resolving relative paths. Supports `~` for `$HOME`. Default: `.`               |
 | `cache`    | `boolean \| string` | Enable incremental compilation cache. Pass a string for a custom cache filename. Default: `false` |
 | `prettier` | `boolean`           | Format generated TypeScript files with your local prettier. Default: `false`                      |
-| `patterns` | `string[]`          | Additional glob patterns to include                                                               |
-| `security` | `object`            | Global security scheme definitions and default                                                    |
-| `server`   | `object`            | Server-side codegen configuration                                                                 |
-| `sdk`      | `object`            | SDK/client codegen configuration (opt-in)                                                         |
-| `docs`     | `object`            | Documentation generation configuration (opt-in)                                                  |
+| `patterns` | `string[]`          | Glob patterns for `.ck` files to compile, relative to `rootDir`                                   |
+| `plugins`  | `object`            | Map of plugin package name → options. See plugins below.                                          |
 
-#### `security`
+### Built-in plugins
 
-| Field                        | Type     | Description                                                                     |
-| ---------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `default`                    | `string` | Default scheme applied when an operation has no explicit `security` declaration |
-| `schemes`                    | `object` | Map of scheme name → scheme definition                                          |
-| `schemes[name].type`         | `string` | `"http"`, `"apiKey"`, `"oauth2"`, `"openIdConnect"`, or `"hmac"`               |
-| `schemes[name].scheme`       | `string` | (http only) `"bearer"`, `"basic"`, etc.                                         |
-| `schemes[name].bearerFormat` | `string` | (http/bearer only) e.g. `"JWT"`                                                 |
-| `schemes[name].header`       | `string` | (hmac only) Request header carrying the signature                               |
-| `schemes[name].secretEnv`    | `string` | (hmac only) Environment variable name holding the HMAC secret                  |
-| `schemes[name].algorithm`    | `string` | (hmac only) HMAC algorithm: `"sha256"` or `"sha512"`                            |
-| `schemes[name].digest`       | `string` | (hmac only) Output encoding: `"hex"`, `"base64"`, or `"base64url"`             |
+Each plugin is its own npm package and is loaded by listing it under `"plugins"`. The value of each entry is passed to the plugin as `ctx.options`.
 
-HMAC schemes generate `requireSignature('schemeName')` middleware in the router. OpenAPI-type schemes are emitted into the generated spec's `components.securitySchemes`.
+| Package                                           | Generates                                                        |
+| ------------------------------------------------- | ---------------------------------------------------------------- |
+| `@maroonedsoftware/contractkit-plugin-typescript` | Koa routers, TypeScript SDK clients, Zod schemas, plain TS types |
+| `@maroonedsoftware/contractkit-plugin-openapi`    | OpenAPI 3.0 YAML                                                 |
+| `@maroonedsoftware/contractkit-plugin-markdown`   | Markdown API reference                                           |
+| `@maroonedsoftware/contractkit-plugin-bruno`      | Bruno REST collection                                            |
+| `@maroonedsoftware/contractkit-plugin-python`     | Python SDK client (Pydantic v2 + httpx)                          |
 
-#### `server`
+#### `contractkit-plugin-typescript`
 
-| Field                           | Type       | Description                                                         |
-| ------------------------------- | ---------- | ------------------------------------------------------------------- |
-| `baseDir`                       | `string`   | Base directory for resolving server-side globs                      |
-| `types.include`                 | `string[]` | Glob patterns for type `.ck` files                                  |
-| `types.output`                  | `string`   | Output directory for generated Zod schemas                          |
-| `routes.include`                | `string[]` | Glob patterns for operation `.ck` files                             |
-| `routes.output`                 | `string`   | Output directory for generated Koa routers                          |
-| `routes.servicePathTemplate`    | `string`   | Template for service import paths (`{module}`, `{name}`, `{kebab}`) |
-| `routes.typeImportPathTemplate` | `string`   | Template for type import paths                                      |
+Has up to four optional sub-configs. Each is independent — include only the ones you need.
 
-#### `sdk`
+##### `server`
 
-| Field                            | Type       | Description                                                 |
-| -------------------------------- | ---------- | ----------------------------------------------------------- |
-| `baseDir`                        | `string`   | Base directory for the SDK package                          |
-| `name`                           | `string`   | SDK class name prefix                                       |
-| `output`                         | `string`   | Path for the aggregator entry file. Template vars: `{name}` |
-| `types.include`                  | `string[]` | Glob patterns for type `.ck` files                          |
-| `types.output`                   | `string`   | Output directory for plain TypeScript types (no Zod)        |
-| `clients.include`                | `string[]` | Glob patterns for operation `.ck` files                     |
-| `clients.output`                 | `string`   | Output directory for client classes                         |
-| `clients.typeImportPathTemplate` | `string`   | Template for type imports within the SDK                    |
+Generates Koa router files from `operation` declarations. Optionally also emits Zod schemas or plain TypeScript types from `contract` declarations (used for typing route handlers).
 
-#### `docs.openapi`
+| Field                 | Type      | Description                                                                                         |
+| --------------------- | --------- | --------------------------------------------------------------------------------------------------- |
+| `baseDir`             | `string`  | Directory (relative to `rootDir`) where server files are written                                    |
+| `zod`                 | `boolean` | When true, `output.types` emits Zod schemas. When false/omitted, emits plain TypeScript interfaces. |
+| `output.routes`       | `string`  | Path template for Koa router files. Default: `{filename}.router.ts`                                 |
+| `output.types`        | `string`  | Path template for type/schema files                                                                 |
+| `servicePathTemplate` | `string`  | Import path template for service implementations. Supports `{module}`.                              |
 
-| Field              | Type     | Description                                   |
-| ------------------ | -------- | --------------------------------------------- |
-| `baseDir`          | `string` | Base directory for the output file            |
-| `output`           | `string` | Output filename. Default: `openapi.yaml`      |
-| `info.title`       | `string` | API title                                     |
-| `info.version`     | `string` | API version                                   |
-| `info.description` | `string` | API description                               |
-| `servers`          | `array`  | List of `{ url, description }` server entries |
+##### `sdk`
 
-Only types referenced by public (non-`internal`) operations are included in the generated schema.
+Generates a typed TypeScript HTTP client. Each operation file becomes a client class; an aggregator class plus a shared `sdk-options.ts` runtime helper file are emitted automatically. Operations marked `internal` are excluded from the SDK.
 
-#### `docs.markdown`
+| Field            | Type      | Description                                                                                         |
+| ---------------- | --------- | --------------------------------------------------------------------------------------------------- |
+| `baseDir`        | `string`  | Directory (relative to `rootDir`) where SDK files are written                                       |
+| `name`           | `string`  | Used for the aggregator SDK class name (e.g. `"myapp"` → `MyappSdk`)                                |
+| `zod`            | `boolean` | When true, `output.types` emits Zod schemas. When false/omitted, emits plain TypeScript interfaces. |
+| `output.sdk`     | `string`  | Path template for the SDK aggregator file. Supports `{name}`. Default: `sdk.ts`                     |
+| `output.types`   | `string`  | Path template for SDK type files                                                                    |
+| `output.clients` | `string`  | Path template for client class files                                                                |
+
+##### `zod` and `types`
+
+Standalone generators that emit one Zod (or plain TS) file per `.ck` source file. Use these when you don't need a router or SDK — just schemas/types.
+
+| Field     | Type     | Description                                                                                            |
+| --------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `baseDir` | `string` | Directory (relative to `rootDir`) where files are written                                              |
+| `output`  | `string` | Path template. Default: `{filename}.schema.ts` (zod) or `{filename}.types.ts` (types) alongside source |
+
+All path templates support `{filename}`, `{dir}`, `{area}`, and (for `output.sdk`) `{name}`. `{area}` resolves to the `area` value declared in the source file's `options { keys: { area: ... } }` block.
+
+#### `contractkit-plugin-openapi`
+
+| Field             | Type     | Description                                                            |
+| ----------------- | -------- | ---------------------------------------------------------------------- |
+| `baseDir`         | `string` | Directory for the output file                                          |
+| `output`          | `string` | Output filename. Default: `openapi.yaml`                               |
+| `info`            | `object` | OpenAPI `info` block (`title`, `version`, `description`)               |
+| `servers`         | `array`  | List of `{ url, description }` server entries                          |
+| `security`        | `array`  | Global OpenAPI security requirement                                    |
+| `securitySchemes` | `object` | Map of scheme name → OpenAPI security scheme (e.g. `{ type, scheme }`) |
+
+Only types referenced by public (non-`internal`) operations are included.
+
+#### `contractkit-plugin-markdown`
 
 | Field     | Type     | Description                                  |
 | --------- | -------- | -------------------------------------------- |
-| `baseDir` | `string` | Base directory for the output file           |
+| `baseDir` | `string` | Directory for the output file                |
 | `output`  | `string` | Output filename. Default: `api-reference.md` |
+
+Internal operations and unreachable types are excluded.
+
+#### `contractkit-plugin-bruno`
+
+| Field            | Type     | Description                                                                                       |
+| ---------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `baseDir`        | `string` | Directory for the output collection                                                               |
+| `output`         | `string` | Output directory name. Default: `bruno-collection`                                                |
+| `collectionName` | `string` | Bruno collection name. Default: the rootDir basename                                              |
+| `auth`           | `object` | `{ defaultScheme, schemes }` — schemes use the same shape as OpenAPI security schemes plus `hmac` |
+
+Regenerates the output directory cleanly on each run.
+
+#### `contractkit-plugin-python`
+
+| Field         | Type     | Description                                                   |
+| ------------- | -------- | ------------------------------------------------------------- |
+| `baseDir`     | `string` | Output directory relative to `rootDir`. Default: `python-sdk` |
+| `packageName` | `string` | Used in the aggregator class name. Default: `Sdk`             |
+
+Emits one Pydantic v2 module per contract file and one httpx client per operation file. Method names follow the same priority as the TS SDK (`sdk:` → `name:` → derived from HTTP verb + path), converted to `snake_case`.
+
+### Writing your own plugin
+
+Plugins implement the `ContractKitPlugin` interface from `@maroonedsoftware/contractkit`. Hooks: `transform` (mutate AST per file), `validate` (throw to fail compilation), `generateTargets` (emit output files), and `command` (register a CLI subcommand). See `packages/contractkit/src/plugin.ts`.
 
 ---
 
@@ -271,6 +285,7 @@ contract deprecated LegacyUser: {
 ```
 
 Effect:
+
 - Emits `/** @deprecated */` JSDoc on the generated schema and TypeScript type
 - Sets `deprecated: true` in the OpenAPI schema object
 - Adds a deprecation notice in generated markdown docs
@@ -286,11 +301,11 @@ contract mode(strip) UserInput: {
 }
 ```
 
-| Mode     | Zod Method        | Behavior                             |
-| -------- | ----------------- | ------------------------------------ |
-| `strict` | `z.strictObject`  | Rejects unknown keys (default)       |
-| `strip`  | `z.object`        | Silently removes unknown keys        |
-| `loose`  | `z.looseObject`   | Passes unknown keys through          |
+| Mode     | Zod Method       | Behavior                       |
+| -------- | ---------------- | ------------------------------ |
+| `strict` | `z.strictObject` | Rejects unknown keys (default) |
+| `strip`  | `z.object`       | Silently removes unknown keys  |
+| `loose`  | `z.looseObject`  | Passes unknown keys through    |
 
 #### `format(input=camel|snake|pascal)` and `format(output=camel|snake|pascal)`
 
@@ -329,24 +344,25 @@ contract deprecated format(input=camel) mode(strip) OldWebhookPayload: {
 
 ### Scalar Types
 
-| Type       | Zod Output                    | Notes                              |
-| ---------- | ----------------------------- | ---------------------------------- |
-| `string`   | `z.string()`                  |                                    |
-| `number`   | `z.coerce.number()`           |                                    |
-| `int`      | `z.coerce.number().int()`     |                                    |
-| `bigint`   | `z.coerce.bigint()`           |                                    |
-| `boolean`  | `z.coerce.boolean()`          |                                    |
-| `date`     | `z.string().date()`           | ISO 8601 date string               |
-| `time`     | `z.string().time()`           | ISO 8601 time string               |
-| `datetime` | Luxon `DateTime`              | Full ISO 8601 datetime             |
-| `email`    | `z.string().email()`          |                                    |
-| `url`      | `z.string().url()`            |                                    |
-| `uuid`     | `z.string().uuid()`           |                                    |
-| `unknown`  | `z.unknown()`                 |                                    |
-| `null`     | `z.null()`                    | Typically used in union: `T \| null` |
-| `object`   | `z.object({})`                | Untyped/passthrough object         |
-| `binary`   | `z.custom<Buffer>(...)`       | Node.js Buffer validation          |
-| `json`     | Recursive `_ZodJson`          | Any JSON-serializable value        |
+| Type       | Zod Output                | Notes                                                                           |
+| ---------- | ------------------------- | ------------------------------------------------------------------------------- |
+| `string`   | `z.string()`              |                                                                                 |
+| `number`   | `z.coerce.number()`       |                                                                                 |
+| `int`      | `z.coerce.number().int()` |                                                                                 |
+| `bigint`   | `z.coerce.bigint()`       |                                                                                 |
+| `boolean`  | `z.coerce.boolean()`      |                                                                                 |
+| `date`     | `z.string().date()`       | ISO 8601 date string                                                            |
+| `time`     | `z.string().time()`       | ISO 8601 time string                                                            |
+| `datetime` | Luxon `DateTime`          | Full ISO 8601 datetime                                                          |
+| `interval` | Luxon `Interval`          | ISO 8601 interval (e.g. `2024-01-01/2024-12-31`); serialized back to ISO string |
+| `email`    | `z.string().email()`      |                                                                                 |
+| `url`      | `z.string().url()`        |                                                                                 |
+| `uuid`     | `z.string().uuid()`       |                                                                                 |
+| `unknown`  | `z.unknown()`             |                                                                                 |
+| `null`     | `z.null()`                | Typically used in union: `T \| null`                                            |
+| `object`   | `z.object({})`            | Untyped/passthrough object                                                      |
+| `binary`   | `z.custom<Buffer>(...)`   | Node.js Buffer validation                                                       |
+| `json`     | Recursive `_ZodJson`      | Any JSON-serializable value                                                     |
 
 ---
 
@@ -354,18 +370,18 @@ contract deprecated format(input=camel) mode(strip) OldWebhookPayload: {
 
 Compound types take arguments in parentheses. Arguments may be type expressions, key=value constraint pairs, or literals.
 
-| Syntax                    | Zod Output                                  |
-| ------------------------- | ------------------------------------------- |
-| `array(T)`                | `z.array(T)`                                |
-| `array(T, min=1, max=10)` | `z.array(T).min(1).max(10)`                 |
-| `tuple(A, B, C)`          | `z.tuple([A, B, C])`                        |
-| `record(K, V)`            | `z.record(K, V)`                            |
-| `enum(a, b, c)`           | `z.enum(["a", "b", "c"])`                   |
-| `literal("val")`          | `z.literal("val")`                          |
-| `literal(42)`             | `z.literal(42)`                             |
-| `literal(true)`           | `z.literal(true)`                           |
-| `lazy(T)`                 | `z.lazy(() => T)`                           |
-| `discriminated(by=k, A \| B \| C)` | `z.discriminatedUnion("k", [A, B, C])`  |
+| Syntax                             | Zod Output                             |
+| ---------------------------------- | -------------------------------------- |
+| `array(T)`                         | `z.array(T)`                           |
+| `array(T, min=1, max=10)`          | `z.array(T).min(1).max(10)`            |
+| `tuple(A, B, C)`                   | `z.tuple([A, B, C])`                   |
+| `record(K, V)`                     | `z.record(K, V)`                       |
+| `enum(a, b, c)`                    | `z.enum(["a", "b", "c"])`              |
+| `literal("val")`                   | `z.literal("val")`                     |
+| `literal(42)`                      | `z.literal(42)`                        |
+| `literal(true)`                    | `z.literal(true)`                      |
+| `lazy(T)`                          | `z.lazy(() => T)`                      |
+| `discriminated(by=k, A \| B \| C)` | `z.discriminatedUnion("k", [A, B, C])` |
 
 ---
 
@@ -383,13 +399,13 @@ contract Validated: {
 }
 ```
 
-| Constraint        | Applies To             | Description                      |
-| ----------------- | ---------------------- | -------------------------------- |
-| `min=N`           | string, number, array  | Minimum length / value / count   |
-| `max=N`           | string, number, array  | Maximum length / value / count   |
-| `length=N`        | string                 | Exact string length              |
-| `regex=/pattern/` | string                 | Regex pattern validation         |
-| `format=name`     | string                 | Named format hint (passthrough)  |
+| Constraint        | Applies To            | Description                     |
+| ----------------- | --------------------- | ------------------------------- |
+| `min=N`           | string, number, array | Minimum length / value / count  |
+| `max=N`           | string, number, array | Maximum length / value / count  |
+| `length=N`        | string                | Exact string length             |
+| `regex=/pattern/` | string                | Regex pattern validation        |
+| `format=name`     | string                | Named format hint (passthrough) |
 
 ---
 
@@ -438,12 +454,12 @@ contract PaymentMethod:
 
 What you get:
 
-| Output            | Result                                                                |
-| ----------------- | --------------------------------------------------------------------- |
-| **Zod**           | `z.discriminatedUnion("kind", [CardPayment, BankPayment, WirePayment])` |
-| **TypeScript**    | `CardPayment \| BankPayment \| WirePayment` (TS narrows on `kind`)     |
-| **OpenAPI**       | `oneOf` with a `discriminator: { propertyName, mapping }` block        |
-| **Python (SDK)**  | `Annotated[Union[...], Field(discriminator="kind")]` (Pydantic v2)     |
+| Output           | Result                                                                  |
+| ---------------- | ----------------------------------------------------------------------- |
+| **Zod**          | `z.discriminatedUnion("kind", [CardPayment, BankPayment, WirePayment])` |
+| **TypeScript**   | `CardPayment \| BankPayment \| WirePayment` (TS narrows on `kind`)      |
+| **OpenAPI**      | `oneOf` with a `discriminator: { propertyName, mapping }` block         |
+| **Python (SDK)** | `Annotated[Union[...], Field(discriminator="kind")]` (Pydantic v2)      |
 
 The compiler validates discriminated unions at parse time:
 
@@ -513,6 +529,7 @@ apiKey: writeonly deprecated string   # order doesn't matter
 Effect: emits `/** @deprecated */` in generated TypeScript, sets `deprecated: true` in OpenAPI property schema.
 
 When a model contains `readonly` or `writeonly` fields, the compiler generates three schemas:
+
 - `ModelBase` — all fields (internal, used for `.extend()`)
 - `Model` — read schema (omits `writeonly` fields)
 - `ModelInput` — write schema (omits `readonly` fields)
@@ -603,10 +620,10 @@ operation(internal) /admin/users: { ... }
 operation(deprecated) /v1/users: { ... }
 ```
 
-| Modifier     | Effect                                                                                                        |
-| ------------ | ------------------------------------------------------------------------------------------------------------- |
-| `internal`   | Excluded from SDK generation, markdown docs, and OpenAPI output. Server router code is still generated.       |
-| `deprecated` | Adds `@deprecated` JSDoc and `deprecated: true` in OpenAPI output for all operations on this route.           |
+| Modifier     | Effect                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------- |
+| `internal`   | Excluded from SDK generation, markdown docs, and OpenAPI output. Server router code is still generated. |
+| `deprecated` | Adds `@deprecated` JSDoc and `deprecated: true` in OpenAPI output for all operations on this route.     |
 
 Route-level modifiers cascade to all operations. Individual operations can override using the same modifier syntax on the HTTP method verb (see below).
 
@@ -945,9 +962,7 @@ The `signature` value must match an HMAC scheme name in the config. The generate
 
 ## SDK Generation
 
-When `sdk` is configured, the compiler generates a typed HTTP client package alongside the server code.
-
-Each operation `.ck` file produces a client class. An aggregator class and barrel exports are generated automatically. Operations marked `internal` are excluded from the SDK. Only types reachable from public operations are included in the SDK types package.
+The TypeScript SDK is produced by the `sdk` sub-config of `@maroonedsoftware/contractkit-plugin-typescript`. Each operation `.ck` file becomes a client class; an aggregator class, barrel exports, and a shared `sdk-options.ts` runtime helper are emitted automatically.
 
 ```typescript
 import { MyappSdk } from '@myapp/sdk';
@@ -956,17 +971,15 @@ const sdk = new MyappSdk({ baseUrl: 'https://api.example.com' });
 const users = await sdk.users.list({ query: { page: 1 } });
 ```
 
+A Python SDK with the same operation coverage is available via `@maroonedsoftware/contractkit-plugin-python`.
+
 ---
 
 ## Documentation Generation
 
-### OpenAPI
+OpenAPI 3.0 YAML and Markdown reference are produced by the `@maroonedsoftware/contractkit-plugin-openapi` and `@maroonedsoftware/contractkit-plugin-markdown` plugins respectively. In both, operations marked `internal` and any types unreachable from public operations are excluded.
 
-When `docs.openapi` is configured, an OpenAPI 3.0 YAML file is generated from all public operations. Only types reachable from public operations are included in the schema components.
-
-### Markdown
-
-When `docs.markdown` is configured, a Markdown API reference is generated. Internal operations and unreachable types are excluded.
+A Bruno REST collection can be generated via `@maroonedsoftware/contractkit-plugin-bruno`.
 
 ---
 
@@ -990,7 +1003,7 @@ The `prettier-plugin-contractkit` package formats `.ck` files themselves. Add it
 
 ```json
 {
-  "plugins": ["prettier-plugin-contractkit"]
+    "plugins": ["prettier-plugin-contractkit"]
 }
 ```
 
@@ -1023,33 +1036,26 @@ pnpm run vscode:install
 ```
 contractkit/
   apps/
-    vscode-extension/        # VS Code / Cursor language support
-      src/
-        server/              # Language server (LSP)
-        client/              # VS Code client extension
-      syntaxes/              # TextMate grammar for .ck files
-      tests/
-    prettier-plugin/         # Prettier plugin for .ck files
-      src/
-        print-ck.ts          # .ck file formatter
-        print-op.ts          # Route/operation printing helpers
-        print-dto.ts         # Model/contract printing helpers
-        print-type.ts        # Type expression and field printing
-      tests/
-  contracts/                 # Example contract files
+    cli/                              # contractkit binary — discovery, config, plugin orchestration
+    vscode-extension/                 # VS Code / Cursor language support (LSP + TM grammar)
+    prettier-plugin/                  # Prettier plugin for formatting .ck files
+  contracts/                          # Example contract files
   packages/
-    contractkit/             # Core parser, AST, and code generators
+    contractkit/                      # Core: parser, AST, semantics, plugin interface
       src/
-        contractkit.ohm       # Ohm PEG grammar (source of truth)
-        semantics.ts           # Parse tree → AST
-        parser.ts              # parseCk() entry point
-        ast.ts                 # AST type definitions
-        codegen-contract.ts    # Zod schema generation
-        codegen-operation.ts   # Koa router generation
-        codegen-sdk.ts         # SDK client generation
-        codegen-openapi.ts     # OpenAPI YAML generation
-        codegen-markdown.ts    # Markdown docs generation
-        codegen-plain-types.ts # Plain TypeScript interface generation
-        validate-operation.ts  # Path parameter validation
-      tests/
+        contractkit.ohm               # Ohm PEG grammar (source of truth)
+        semantics.ts                  # Parse tree → AST
+        parser.ts                     # parseCk() entry point
+        ast.ts                        # AST type definitions
+        type-utils.ts                 # Type ref collection, topo sort, input-model graph
+        validate-operation.ts         # Path parameter and operation validation
+        plugin.ts                     # ContractKitPlugin / PluginContext interfaces
+    contractkit-plugin-typescript/    # Koa routers, TS SDK, Zod schemas, plain TS types
+    contractkit-plugin-openapi/       # OpenAPI 3.0 YAML
+    contractkit-plugin-markdown/      # Markdown API reference
+    contractkit-plugin-bruno/         # Bruno REST collection
+    contractkit-plugin-python/        # Python SDK (Pydantic v2 + httpx)
+    openapi-to-ck/                    # OpenAPI YAML → .ck file converter
+    config-typescript/                # Shared tsconfig base
+    config-eslint/                    # Shared ESLint config
 ```
