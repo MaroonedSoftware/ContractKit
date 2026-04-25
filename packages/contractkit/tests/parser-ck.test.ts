@@ -691,8 +691,9 @@ operation /users: {
     }
 }`);
             const req = root.routes[0]!.operations[0]!.request;
-            expect(req!.contentType).toBe('application/json');
-            expect(req!.bodyType).toEqual({ kind: 'ref', name: 'CreateUserInput' });
+            expect(req!.bodies).toHaveLength(1);
+            expect(req!.bodies[0]!.contentType).toBe('application/json');
+            expect(req!.bodies[0]!.bodyType).toEqual({ kind: 'ref', name: 'CreateUserInput' });
         });
 
         it('parses multipart request', () => {
@@ -704,7 +705,46 @@ operation /uploads: {
         }
     }
 }`);
-            expect(root.routes[0]!.operations[0]!.request!.contentType).toBe('multipart/form-data');
+            const req = root.routes[0]!.operations[0]!.request;
+            expect(req!.bodies).toHaveLength(1);
+            expect(req!.bodies[0]!.contentType).toBe('multipart/form-data');
+        });
+
+        it('parses multi-MIME request preserving source order', () => {
+            const { root } = parse(`\
+operation /auth/token: {
+    post: {
+        request: {
+            application/json: AuthRequest
+            application/x-www-form-urlencoded: AuthRequest
+        }
+    }
+}`);
+            const req = root.routes[0]!.operations[0]!.request;
+            expect(req!.bodies).toHaveLength(2);
+            expect(req!.bodies.map(b => b.contentType)).toEqual([
+                'application/json',
+                'application/x-www-form-urlencoded',
+            ]);
+            expect(req!.bodies[0]!.bodyType).toEqual({ kind: 'ref', name: 'AuthRequest' });
+            expect(req!.bodies[1]!.bodyType).toEqual({ kind: 'ref', name: 'AuthRequest' });
+        });
+
+        it('warns and dedupes when the same content type is declared twice', () => {
+            const { root, diag } = parse(`\
+operation /foo: {
+    post: {
+        request: {
+            application/json: A
+            application/json: B
+        }
+    }
+}`);
+            const req = root.routes[0]!.operations[0]!.request;
+            expect(req!.bodies).toHaveLength(1);
+            expect(req!.bodies[0]!.bodyType).toEqual({ kind: 'ref', name: 'A' });
+            const warnings = diag.getAll().filter(e => /Duplicate request content type/.test(e.message));
+            expect(warnings).toHaveLength(1);
         });
     });
 

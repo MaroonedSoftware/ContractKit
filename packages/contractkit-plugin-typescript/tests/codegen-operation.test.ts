@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { generateOp } from '../src/codegen-operation.js';
 import { SECURITY_NONE } from '@maroonedsoftware/contractkit';
-import { scalarType, arrayType, refType, inlineObjectType, field, opParam, opRequest, opResponse, opOperation, opRoute, opRoot } from './helpers.js';
+import { scalarType, arrayType, refType, inlineObjectType, field, opParam, opRequest, opMultiRequest, opResponse, opOperation, opRoute, opRoot } from './helpers.js';
 
 describe('generateOperation', () => {
     // ─── Router name derivation ─────────────────────────────────────
@@ -126,6 +126,60 @@ describe('generateOperation', () => {
             const root = opRoot([opRoute('/users', [opOperation('post', { request: opRequest('CreateUser') })])]);
             const output = generateOp(root);
             expect(output).toContain('service.create(');
+        });
+    });
+
+    // ─── Multi-MIME request bodies ─────────────────────────────────
+
+    describe('multi-MIME request bodies', () => {
+        it('emits union of body parser tokens', () => {
+            const root = opRoot([
+                opRoute('/auth/token', [
+                    opOperation('post', {
+                        request: opMultiRequest([
+                            ['application/json', 'AuthRequest'],
+                            ['application/x-www-form-urlencoded', 'AuthRequest'],
+                        ]),
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain("bodyParserMiddleware(['json', 'urlencoded'])");
+        });
+
+        it('collapses to a single parseAndValidate when body shapes are structurally equal', () => {
+            const root = opRoot([
+                opRoute('/auth/token', [
+                    opOperation('post', {
+                        request: opMultiRequest([
+                            ['application/json', 'AuthRequest'],
+                            ['application/x-www-form-urlencoded', 'AuthRequest'],
+                        ]),
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain('const body = await parseAndValidate(ctx.body, AuthRequest)');
+            expect(output).not.toContain('switch (ctx.request.type)');
+        });
+
+        it('emits switch on ctx.request.type when body shapes differ', () => {
+            const root = opRoot([
+                opRoute('/uploads', [
+                    opOperation('post', {
+                        request: opMultiRequest([
+                            ['application/json', 'UploadMeta'],
+                            ['multipart/form-data', 'UploadFile'],
+                        ]),
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain('switch (ctx.request.type)');
+            expect(output).toContain("case 'application/json':");
+            expect(output).toContain("case 'multipart/form-data':");
+            expect(output).toContain('body = ctx.body as MultipartBody;');
+            expect(output).toContain('body = await parseAndValidate(ctx.body, UploadMeta)');
         });
     });
 

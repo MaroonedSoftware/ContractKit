@@ -113,9 +113,12 @@ export function paramType(node: ContractTypeNode): ParamSource {
     return { kind: 'type', node };
 }
 
-export function opRequest(bodyType: string | ContractTypeNode, contentType: OpRequestNode['contentType'] = 'application/json'): OpRequestNode {
+export function opRequest(
+    bodyType: string | ContractTypeNode,
+    contentType: 'application/json' | 'multipart/form-data' | 'application/x-www-form-urlencoded' = 'application/json',
+): OpRequestNode {
     const bt: ContractTypeNode = typeof bodyType === 'string' ? refType(bodyType) : bodyType;
-    return { contentType, bodyType: bt };
+    return { bodies: [{ contentType, bodyType: bt }] };
 }
 
 export function opResponse(statusCode: number, bodyType?: string | ContractTypeNode, contentType?: 'application/json'): OpResponseNode {

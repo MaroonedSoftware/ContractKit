@@ -236,20 +236,23 @@ function requestBodyToNode(
     const content = reqBody.content;
     if (!content) return undefined;
 
-    // Pick the first content type
-    const [contentType, mediaType] = Object.entries(content)[0] ?? [];
-    if (!contentType || !mediaType?.schema) return undefined;
+    const supported = new Set<string>(['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data']);
+    const bodies: OpRequestNode['bodies'] = [];
 
-    const { typeNode, model } = extractInlineModel(mediaType.schema, `${toPascalCase(operationName)}Request`, schemaCtx);
-
-    if (model) {
-        ctx.extractedModels.push(model);
+    for (const [contentType, mediaType] of Object.entries(content)) {
+        if (!supported.has(contentType) || !mediaType?.schema) continue;
+        const { typeNode, model } = extractInlineModel(mediaType.schema, `${toPascalCase(operationName)}Request`, schemaCtx);
+        if (model) {
+            ctx.extractedModels.push(model);
+        }
+        bodies.push({
+            contentType: contentType as OpRequestNode['bodies'][number]['contentType'],
+            bodyType: typeNode,
+        });
     }
 
-    return {
-        contentType: contentType as OpRequestNode['contentType'],
-        bodyType: typeNode,
-    };
+    if (bodies.length === 0) return undefined;
+    return { bodies };
 }
 
 // ─── Responses ────────────────────────────────────────────────────────────

@@ -364,7 +364,9 @@ function serializeParamSource(lines: string[], keyword: string, source: ParamSou
 function serializeRequest(lines: string[], request: OpRequestNode, depth: number): void {
     const indent = INDENT.repeat(depth);
     lines.push(`${indent}request: {`);
-    lines.push(`${INDENT.repeat(depth + 1)}${request.contentType}: ${serializeType(request.bodyType)}`);
+    for (const body of request.bodies) {
+        lines.push(`${INDENT.repeat(depth + 1)}${body.contentType}: ${serializeType(body.bodyType)}`);
+    }
     lines.push(`${indent}}`);
 }
 

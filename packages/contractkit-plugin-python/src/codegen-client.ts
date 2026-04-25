@@ -147,8 +147,9 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
 
     // Query params
     const hasQuery = !!op.query;
-    const hasBody = !!op.request;
-    const isMultipart = op.request?.contentType === 'multipart/form-data';
+    const primaryBody = op.request?.bodies[0];
+    const hasBody = !!primaryBody;
+    const isMultipart = primaryBody?.contentType === 'multipart/form-data';
     const hasCustomHeaders = !!op.headers;
 
     // Build kwargs for _fetch
@@ -227,13 +228,15 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
         }
     }
 
-    // Body
-    if (op.request) {
-        if (op.request.contentType === 'multipart/form-data') {
+    // Body — use the first declared MIME's body type as the parameter type.
+    // Multi-MIME support in Python collapses to a single signature using the primary body.
+    const primaryBody = op.request?.bodies[0];
+    if (primaryBody) {
+        if (primaryBody.contentType === 'multipart/form-data') {
             params.push({ name: 'body', type: 'bytes', optional: false, isModel: false });
         } else {
-            const bodyType = renderInputPyType(op.request.bodyType, modelsWithInput);
-            const isModel = isModelRef(op.request.bodyType, modelsWithInput);
+            const bodyType = renderInputPyType(primaryBody.bodyType, modelsWithInput);
+            const isModel = isModelRef(primaryBody.bodyType, modelsWithInput);
             params.push({ name: 'body', type: bodyType, optional: false, isModel });
         }
     }
@@ -305,7 +308,9 @@ function collectReferencedModels(root: OpRootNode, modelsWithInput?: Set<string>
             if (resolveModifiers(route, op).includes('internal')) continue;
 
             if (route.params) collectParamSourceRefs(route.params, refs, modelsWithInput);
-            if (op.request?.bodyType) collectTypeRefs(op.request.bodyType, refs, modelsWithInput, true);
+            if (op.request) {
+                for (const body of op.request.bodies) collectTypeRefs(body.bodyType, refs, modelsWithInput, true);
+            }
             for (const resp of op.responses) {
                 if (resp.bodyType) collectTypeRefs(resp.bodyType, refs, modelsWithInput, false);
             }

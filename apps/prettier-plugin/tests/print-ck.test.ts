@@ -323,3 +323,42 @@ describe('printCk — query and headers optional, nullable, default', () => {
         expect(printCk(ast)).toContain('            X-Version?: string = v1');
     });
 });
+
+// ─── Request blocks ──────────────────────────────────────────────────────────
+
+describe('printCk — request blocks', () => {
+    it('prints a single content-type request', () => {
+        const ast = makeRoot([
+            makeRoute('/users', [
+                makeOp('post', {
+                    request: { bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'CreateUser' } }] },
+                }),
+            ]),
+        ]);
+        const out = printCk(ast);
+        expect(out).toContain('        request: {');
+        expect(out).toContain('            application/json: CreateUser');
+    });
+
+    it('prints multiple content-types preserving source order', () => {
+        const ast = makeRoot([
+            makeRoute('/auth/token', [
+                makeOp('post', {
+                    request: {
+                        bodies: [
+                            { contentType: 'application/json', bodyType: { kind: 'ref', name: 'AuthRequest' } },
+                            { contentType: 'application/x-www-form-urlencoded', bodyType: { kind: 'ref', name: 'AuthRequest' } },
+                        ],
+                    },
+                }),
+            ]),
+        ]);
+        const out = printCk(ast);
+        expect(out).toContain('            application/json: AuthRequest');
+        expect(out).toContain('            application/x-www-form-urlencoded: AuthRequest');
+        // Order check
+        const i1 = out.indexOf('application/json:');
+        const i2 = out.indexOf('application/x-www-form-urlencoded:');
+        expect(i1).toBeLessThan(i2);
+    });
+});

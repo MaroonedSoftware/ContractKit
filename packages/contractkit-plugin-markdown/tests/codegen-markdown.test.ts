@@ -414,7 +414,7 @@ describe('generateMarkdown', () => {
                 field('name', scalarType('string'), { description: 'The user name' }),
                 field('email', scalarType('email'), { description: 'The user email' }),
             ]);
-            const op = opRoot([opRoute('/users', [opOperation('post', { request: { contentType: 'application/json', bodyType } })])]);
+            const op = opRoot([opRoute('/users', [opOperation('post', { request: { bodies: [{ contentType: 'application/json', bodyType }] } })])]);
             const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
             expect(output).toContain('| `name` | `string` | Yes | The user name |');
             expect(output).toContain('| `email` | `string` | Yes | The user email |');
@@ -425,7 +425,7 @@ describe('generateMarkdown', () => {
                 field('id', scalarType('uuid'), { visibility: 'readonly' }),
                 field('name', scalarType('string'), { description: 'The user name' }),
             ]);
-            const op = opRoot([opRoute('/users', [opOperation('post', { request: { contentType: 'application/json', bodyType } })])]);
+            const op = opRoot([opRoute('/users', [opOperation('post', { request: { bodies: [{ contentType: 'application/json', bodyType }] } })])]);
             const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
             expect(output).toContain('| `name`');
             expect(output).not.toContain('| `id`');
@@ -719,7 +719,7 @@ describe('generateMarkdown', () => {
 
         it('wraps inline object request body fields in collapsed details', () => {
             const bodyType = inlineObjectType([field('name', scalarType('string')), field('email', scalarType('email'))]);
-            const op = opRoot([opRoute('/users', [opOperation('post', { request: { contentType: 'application/json', bodyType } })])]);
+            const op = opRoot([opRoute('/users', [opOperation('post', { request: { bodies: [{ contentType: 'application/json', bodyType }] } })])]);
             const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
             expect(output).toContain('<summary>Attributes (2)</summary>');
         });

@@ -123,7 +123,9 @@ function collectRouteRefs(route: OpRouteNode, refs: Set<string>): void {
     for (const op of route.operations) {
         if (op.query) collectParamSourceRefs(op.query, refs);
         if (op.headers) collectParamSourceRefs(op.headers, refs);
-        if (op.request) collectTypeRefs(op.request.bodyType, refs);
+        if (op.request) {
+            for (const body of op.request.bodies) collectTypeRefs(body.bodyType, refs);
+        }
         for (const resp of op.responses) {
             if (resp.bodyType) collectTypeRefs(resp.bodyType, refs);
         }

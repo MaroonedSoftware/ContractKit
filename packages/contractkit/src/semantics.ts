@@ -9,6 +9,8 @@ import type {
     OpOperationNode,
     OpParamNode,
     OpRequestNode,
+    OpRequestBodyNode,
+    RequestContentType,
     OpResponseNode,
     ContractTypeNode,
     FieldNode,
@@ -23,6 +25,18 @@ import type {
 import { SECURITY_NONE } from './ast.js';
 import { buildCompoundType, resolveSimpleType, extractNullability, typeNodeToParamSource, OBJECT_MODES, type TypeArg } from './type-builders.js';
 import type { DiagnosticCollector } from './diagnostics.js';
+
+/**
+ * Normalize a parsed `type/subtype` string into a supported request content type, or undefined
+ * if it doesn't match a recognized MIME (case-insensitive).
+ */
+function normalizeRequestContentType(raw: string): RequestContentType | undefined {
+    const lower = raw.toLowerCase();
+    if (lower === 'application/json') return 'application/json';
+    if (lower === 'application/x-www-form-urlencoded') return 'application/x-www-form-urlencoded';
+    if (lower === 'multipart/form-data') return 'multipart/form-data';
+    return undefined;
+}
 
 /**
  * Get the line number (1-based) from an Ohm Node.
@@ -815,10 +829,28 @@ export function createSemantics(grammar: Grammar) {
 
         // ─── Request & Response ───────────────────────────────────────
 
-        RequestBlock(_requestKw, _colon, _lb, ctLineNode, _rb) {
-            const ctLine = ctLineNode.toAst(this.args.file, this.args.diag) as { contentType: string; bodyType: ContractTypeNode };
-            const ct = ctLine.contentType.toLowerCase().includes('multipart') ? ('multipart/form-data' as const) : ('application/json' as const);
-            return { _type: 'request', value: { contentType: ct, bodyType: ctLine.bodyType } as OpRequestNode };
+        RequestBlock(_requestKw, _colon, _lb, items, _rb) {
+            const file = this.args.file as string;
+            const diag = this.args.diag as DiagnosticCollector | undefined;
+            const bodies: OpRequestBodyNode[] = [];
+            const seen = new Map<string, number>();
+            for (let i = 0; i < items.numChildren; i++) {
+                const child = items.child(i);
+                if (child.ctorName === 'comment') continue;
+                const raw = child.toAst(file, diag) as { contentType: string; bodyType: ContractTypeNode };
+                const ct = normalizeRequestContentType(raw.contentType);
+                if (!ct) {
+                    diag?.warn(file, getLine(child), `Unknown request content type '${raw.contentType}' — supported: application/json, application/x-www-form-urlencoded, multipart/form-data`);
+                    continue;
+                }
+                if (seen.has(ct)) {
+                    diag?.warn(file, getLine(child), `Duplicate request content type '${ct}'`);
+                    continue;
+                }
+                seen.set(ct, i);
+                bodies.push({ contentType: ct, bodyType: raw.bodyType });
+            }
+            return { _type: 'request', value: { bodies } as OpRequestNode };
         },
 
         ResponseBlock(_responseKw, _colon, _lb, items, _rb) {

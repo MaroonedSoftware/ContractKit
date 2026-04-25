@@ -21,9 +21,11 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[]
         collectParamSourceRefs(route.params, types);
         collectParamSourceInputRefs(route.params, types, modelsWithInput);
         for (const op of publicOps) {
-            if (op.request?.bodyType) {
-                collectTypeNodeRefs(op.request.bodyType, types);
-                collectInputTypeNodeRefs(op.request.bodyType, types, modelsWithInput);
+            if (op.request) {
+                for (const body of op.request.bodies) {
+                    collectTypeNodeRefs(body.bodyType, types);
+                    collectInputTypeNodeRefs(body.bodyType, types, modelsWithInput);
+                }
             }
             for (const resp of op.responses) {
                 if (resp.bodyType) collectTypeNodeRefs(resp.bodyType, types);

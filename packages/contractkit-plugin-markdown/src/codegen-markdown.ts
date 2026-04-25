@@ -493,22 +493,22 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
         lines.push('');
     }
 
-    // Request body
-    if (op.request) {
-        lines.push(`${subH} Request body (\`${op.request.contentType}\`)`);
-        lines.push('');
+    // Request body — render one section per accepted content type
+    if (op.request && op.request.bodies.length > 0) {
+        for (const body of op.request.bodies) {
+            lines.push(`${subH} Request body (\`${body.contentType}\`)`);
+            lines.push('');
 
-        if (op.request.bodyType.kind === 'inlineObject') {
-            // Inline objects have no model to reference — expand into field table
-            const writableFields = op.request.bodyType.fields.filter(f => f.visibility !== 'readonly');
-            if (writableFields.length > 0) {
-                lines.push(...wrapCollapsible(`Attributes (${writableFields.length})`, renderFieldsTable(writableFields, { excludeReadonly: true })));
+            if (body.bodyType.kind === 'inlineObject') {
+                const writableFields = body.bodyType.fields.filter(f => f.visibility !== 'readonly');
+                if (writableFields.length > 0) {
+                    lines.push(...wrapCollapsible(`Attributes (${writableFields.length})`, renderFieldsTable(writableFields, { excludeReadonly: true })));
+                    lines.push('');
+                }
+            } else {
+                lines.push(typeProseLink(body.bodyType, 'Accepts'));
                 lines.push('');
             }
-        } else {
-            // Named / compound type — reference it; the Models section has the full definition
-            lines.push(typeProseLink(op.request.bodyType, 'Accepts'));
-            lines.push('');
         }
     }
 

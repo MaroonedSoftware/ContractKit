@@ -208,9 +208,15 @@ export interface OpParamNode {
 /** Either inline param declarations, a single type reference name, or a ContractTypeNode. */
 export type ParamSource = { kind: 'params'; nodes: OpParamNode[] } | { kind: 'ref'; name: string } | { kind: 'type'; node: ContractTypeNode };
 
-export interface OpRequestNode {
-    contentType: 'application/json' | 'multipart/form-data';
+export type RequestContentType = 'application/json' | 'multipart/form-data' | 'application/x-www-form-urlencoded';
+
+export interface OpRequestBodyNode {
+    contentType: RequestContentType;
     bodyType: ContractTypeNode;
+}
+
+export interface OpRequestNode {
+    bodies: OpRequestBodyNode[];
 }
 
 export interface OpResponseNode {

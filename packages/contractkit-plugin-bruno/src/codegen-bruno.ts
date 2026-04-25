@@ -177,14 +177,26 @@ function generateRequestFile(
         }
     }
 
-    // Body
-    if (op.request) {
+    // Body — Bruno supports a single body per request, so prefer JSON, then form-urlencoded, then multipart.
+    if (op.request && op.request.bodies.length > 0) {
+        const preferredOrder: Array<typeof op.request.bodies[number]['contentType']> = [
+            'application/json',
+            'application/x-www-form-urlencoded',
+            'multipart/form-data',
+        ];
+        const primary = preferredOrder
+            .map(ct => op.request!.bodies.find(b => b.contentType === ct))
+            .find(b => b !== undefined) ?? op.request.bodies[0]!;
+
         lines.push(`  body:`);
-        if (op.request.contentType === 'multipart/form-data') {
+        if (primary.contentType === 'multipart/form-data') {
             lines.push(`    type: multipart-form`);
             lines.push(`    data: []`);
+        } else if (primary.contentType === 'application/x-www-form-urlencoded') {
+            lines.push(`    type: form-urlencoded`);
+            lines.push(`    data: []`);
         } else {
-            const json = JSON.stringify(typeToExampleValue(op.request.bodyType, modelMap), null, 2);
+            const json = JSON.stringify(typeToExampleValue(primary.bodyType, modelMap), null, 2);
             lines.push(`    type: json`);
             lines.push(`    data: |`);
             for (const jsonLine of json.split('\n')) {

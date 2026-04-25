@@ -15,6 +15,7 @@ import {
     opOperation,
     opParam,
     opRequest,
+    opMultiRequest,
     opResponse,
     scalarType,
     refType,
@@ -140,6 +141,69 @@ describe('generateSdk', () => {
             expect(out).toContain('async createUser(body: CreateUserInput): Promise<User>');
             expect(out).toContain("'Content-Type': 'application/json'");
             expect(out).toContain('JSON.stringify(body, bigIntReplacer)');
+        });
+    });
+
+    describe('multi-MIME request bodies', () => {
+        it('emits an optional contentType option when bodies are structurally equal', () => {
+            const root = opRoot([
+                opRoute('/auth/token', [
+                    opOperation('post', {
+                        sdk: 'requestToken',
+                        request: opMultiRequest([
+                            ['application/json', 'AuthRequestInput'],
+                            ['application/x-www-form-urlencoded', 'AuthRequestInput'],
+                        ]),
+                        responses: [opResponse(201, 'AuthToken', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain(
+                "options?: { contentType?: 'application/json' | 'application/x-www-form-urlencoded' }",
+            );
+            expect(out).toContain("const __contentType = options?.contentType ?? 'application/json'");
+            expect(out).toContain('new URLSearchParams(body as Record<string, string>).toString()');
+            expect(out).toContain('JSON.stringify(body, bigIntReplacer)');
+        });
+
+        it('detects FormData at runtime when JSON and multipart both accepted', () => {
+            const root = opRoot([
+                opRoute('/uploads', [
+                    opOperation('post', {
+                        sdk: 'upload',
+                        request: opMultiRequest([
+                            ['application/json', 'UploadMetaInput'],
+                            ['multipart/form-data', 'UploadFileInput'],
+                        ]),
+                        responses: [opResponse(201)],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('body: UploadMetaInput | FormData');
+            expect(out).toContain('const __isFormData = body instanceof FormData');
+        });
+
+        it('requires contentType arg when bodies differ and neither is multipart', () => {
+            const root = opRoot([
+                opRoute('/foo', [
+                    opOperation('post', {
+                        sdk: 'foo',
+                        request: opMultiRequest([
+                            ['application/json', 'AInput'],
+                            ['application/x-www-form-urlencoded', 'BInput'],
+                        ]),
+                        responses: [opResponse(201)],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('body: AInput | BInput');
+            expect(out).toContain(
+                "options: { contentType: 'application/json' | 'application/x-www-form-urlencoded' }",
+            );
+            expect(out).toContain('const __contentType = options.contentType');
         });
     });
 
@@ -756,7 +820,7 @@ describe('generateSdk — json type', () => {
         const root = opRoot([
             opRoute('/data', [
                 opOperation('post', {
-                    request: { bodyType: scalarType('json'), contentType: 'application/json' },
+                    request: { bodies: [{ bodyType: scalarType('json'), contentType: 'application/json' }] },
                     responses: [opResponse(201)],
                 }),
             ]),

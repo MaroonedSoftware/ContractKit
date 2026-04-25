@@ -86,7 +86,9 @@ function collectPublicTypeRefs(opRoots: OpRootNode[]): Set<string> {
         for (const route of opRoot.routes) {
             for (const op of route.operations) {
                 if (resolveModifiers(route, op).includes('internal')) continue;
-                if (op.request) collectRefsFromType(op.request.bodyType, refs);
+                if (op.request) {
+                    for (const body of op.request.bodies) collectRefsFromType(body.bodyType, refs);
+                }
                 for (const resp of op.responses) {
                     if (resp.bodyType) collectRefsFromType(resp.bodyType, refs);
                 }
@@ -497,15 +499,12 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode): Record<string,
     }
 
     // Request body
-    if (op.request) {
-        operation.requestBody = {
-            required: true,
-            content: {
-                [op.request.contentType]: {
-                    schema: typeToSchema(op.request.bodyType),
-                },
-            },
-        };
+    if (op.request && op.request.bodies.length > 0) {
+        const content: Record<string, { schema: ReturnType<typeof typeToSchema> }> = {};
+        for (const body of op.request.bodies) {
+            content[body.contentType] = { schema: typeToSchema(body.bodyType) };
+        }
+        operation.requestBody = { required: true, content };
     }
 
     // Effective security (operation-level wins; falls back to route-level)

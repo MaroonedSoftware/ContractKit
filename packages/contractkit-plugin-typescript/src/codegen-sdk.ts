@@ -1,8 +1,58 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
+import type { OpRootNode, OpRouteNode, OpOperationNode, OpRequestBodyNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
 import { resolveModifiers } from '@maroonedsoftware/contractkit';
 import { renderTsType, renderInputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
+import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { basename, dirname, relative } from 'path';
+
+// ─── Body strategy ────────────────────────────────────────────────────────
+
+type BodyStrategy =
+    | { kind: 'none' }
+    | { kind: 'single'; body: OpRequestBodyNode }
+    | { kind: 'multi-equal'; bodies: OpRequestBodyNode[] }
+    | { kind: 'multi-formdata-detect'; bodies: OpRequestBodyNode[] }
+    | { kind: 'multi-required-arg'; bodies: OpRequestBodyNode[] };
+
+/** Serialize expression for a single MIME, given the source body var (e.g. 'body'). */
+function jsonOrFormSerialize(varName: string, contentType: string): string {
+    if (contentType === 'application/x-www-form-urlencoded') {
+        return `new URLSearchParams(${varName} as Record<string, string>).toString()`;
+    }
+    if (contentType === 'multipart/form-data') {
+        return `(${varName} as FormData)`;
+    }
+    return `JSON.stringify(${varName}, bigIntReplacer)`;
+}
+
+/**
+ * Build a runtime expression that picks the right serialization based on a contentType variable.
+ * Used by the SDK when the caller passes (or defaults to) a content-type at call time.
+ */
+function renderSerializeExpr(varName: string, bodies: OpRequestBodyNode[], ctVar: string): string {
+    // Build a chained ternary, last MIME is the fallback
+    const arms = bodies.slice(0, -1);
+    const last = bodies[bodies.length - 1]!;
+    let expr = jsonOrFormSerialize(varName, last.contentType);
+    for (let i = arms.length - 1; i >= 0; i--) {
+        const arm = arms[i]!;
+        expr = `${ctVar} === '${arm.contentType}' ? ${jsonOrFormSerialize(varName, arm.contentType)} : ${expr}`;
+    }
+    return expr;
+}
+
+function classifyBodyStrategy(op: OpOperationNode): BodyStrategy {
+    const bodies = op.request?.bodies ?? [];
+    if (bodies.length === 0) return { kind: 'none' };
+    if (bodies.length === 1) return { kind: 'single', body: bodies[0]! };
+    if (bodies.every(b => bodyTypesStructurallyEqual(b.bodyType, bodies[0]!.bodyType))) {
+        return { kind: 'multi-equal', bodies };
+    }
+    if (bodies.some(b => b.contentType === 'multipart/form-data')) {
+        return { kind: 'multi-formdata-detect', bodies };
+    }
+    return { kind: 'multi-required-arg', bodies };
+}
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -189,9 +239,24 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
     }
 
     // Build fetch options
-    const hasBody = !!op.request;
-    const isMultipart = op.request?.contentType === 'multipart/form-data';
+    const strategy = classifyBodyStrategy(op);
+    const hasBody = strategy.kind !== 'none';
     const hasOpHeaders = !!op.headers;
+
+    // Pre-emit serialization preludes for multi-MIME strategies
+    if (strategy.kind === 'multi-equal') {
+        const defaultCt = strategy.bodies[0]!.contentType;
+        lines.push(`        const __contentType = options?.contentType ?? '${defaultCt}';`);
+        lines.push(`        const __serialized = ${renderSerializeExpr('body', strategy.bodies, '__contentType')};`);
+    } else if (strategy.kind === 'multi-formdata-detect') {
+        lines.push(`        const __isFormData = body instanceof FormData;`);
+        const nonMultipart = strategy.bodies.find(b => b.contentType !== 'multipart/form-data')!;
+        lines.push(`        const __contentType: string = __isFormData ? 'multipart/form-data' : '${nonMultipart.contentType}';`);
+        lines.push(`        const __serialized: BodyInit = __isFormData ? (body as FormData) : ${jsonOrFormSerialize('body', nonMultipart.contentType)};`);
+    } else if (strategy.kind === 'multi-required-arg') {
+        lines.push(`        const __contentType = options.contentType;`);
+        lines.push(`        const __serialized = ${renderSerializeExpr('body', strategy.bodies, '__contentType')};`);
+    }
 
     const fetchArgs: string[] = [];
 
@@ -203,19 +268,29 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
 
     fetchArgs.push(`method: '${httpMethod}'`);
 
-    if (hasBody) {
-        if (isMultipart) {
+    if (strategy.kind === 'single') {
+        const body = strategy.body;
+        if (body.contentType === 'multipart/form-data') {
             fetchArgs.push('body: body');
+        } else if (body.contentType === 'application/x-www-form-urlencoded') {
+            fetchArgs.push(`headers: { 'Content-Type': 'application/x-www-form-urlencoded' }`);
+            fetchArgs.push('body: new URLSearchParams(body as Record<string, string>).toString()');
         } else {
             fetchArgs.push(`headers: { 'Content-Type': 'application/json' }`);
             fetchArgs.push('body: JSON.stringify(body, bigIntReplacer)');
         }
+    } else if (hasBody) {
+        // multi-equal | multi-formdata-detect | multi-required-arg — share a __contentType / __serialized prelude
+        fetchArgs.push(`headers: { 'Content-Type': __contentType }`);
+        fetchArgs.push('body: __serialized');
     }
 
     if (hasOpHeaders) {
-        if (hasBody && !isMultipart) {
-            const lastIdx = fetchArgs.findIndex(a => a.startsWith('headers:'));
-            fetchArgs[lastIdx] = `headers: { 'Content-Type': 'application/json', ...customHeaders }`;
+        const lastHeaderIdx = fetchArgs.findIndex(a => a.startsWith('headers:'));
+        if (lastHeaderIdx !== -1) {
+            const existing = fetchArgs[lastHeaderIdx]!;
+            const inner = existing.slice('headers: '.length).replace(/^\{\s*|\s*\}$/g, '');
+            fetchArgs[lastHeaderIdx] = `headers: { ${inner}, ...customHeaders }`;
         } else {
             fetchArgs.push('headers: customHeaders');
         }
@@ -277,12 +352,32 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     }
 
     // Body (request-side — use Input variants)
-    if (op.request) {
-        if (op.request.contentType === 'multipart/form-data') {
+    const strategy = classifyBodyStrategy(op);
+    if (strategy.kind === 'single') {
+        const body = strategy.body;
+        if (body.contentType === 'multipart/form-data') {
             params.push({ name: 'body', type: 'FormData', optional: false });
         } else {
-            params.push({ name: 'body', type: renderInputTsType(op.request.bodyType, modelsWithInput), optional: false });
+            params.push({ name: 'body', type: renderInputTsType(body.bodyType, modelsWithInput), optional: false });
         }
+    } else if (strategy.kind === 'multi-equal') {
+        const bodies = strategy.bodies;
+        const bodyType = renderInputTsType(bodies[0]!.bodyType, modelsWithInput);
+        params.push({ name: 'body', type: bodyType, optional: false });
+        const ctUnion = bodies.map(b => `'${b.contentType}'`).join(' | ');
+        params.push({ name: 'options', type: `{ contentType?: ${ctUnion} }`, optional: true });
+    } else if (strategy.kind === 'multi-formdata-detect') {
+        const types = strategy.bodies
+            .map(b => (b.contentType === 'multipart/form-data' ? 'FormData' : renderInputTsType(b.bodyType, modelsWithInput)))
+            .join(' | ');
+        params.push({ name: 'body', type: types, optional: false });
+    } else if (strategy.kind === 'multi-required-arg') {
+        const types = strategy.bodies
+            .map(b => (b.contentType === 'multipart/form-data' ? 'FormData' : renderInputTsType(b.bodyType, modelsWithInput)))
+            .join(' | ');
+        params.push({ name: 'body', type: types, optional: false });
+        const ctUnion = strategy.bodies.map(b => `'${b.contentType}'`).join(' | ');
+        params.push({ name: 'options', type: `{ contentType: ${ctUnion} }`, optional: false });
     }
 
     // Query (request-side — use Input variants)
@@ -386,9 +481,11 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[]
         collectParamSourceRefs(route.params, types);
         collectParamSourceInputRefs(route.params, types, modelsWithInput);
         for (const op of publicOps) {
-            if (op.request?.bodyType) {
-                collectTypeNodeRefs(op.request.bodyType, types);
-                collectInputTypeNodeRefs(op.request.bodyType, types, modelsWithInput);
+            if (op.request) {
+                for (const body of op.request.bodies) {
+                    collectTypeNodeRefs(body.bodyType, types);
+                    collectInputTypeNodeRefs(body.bodyType, types, modelsWithInput);
+                }
             }
             for (const resp of op.responses) {
                 if (resp.bodyType) collectTypeNodeRefs(resp.bodyType, types);
@@ -468,7 +565,7 @@ function sdkNeedsBigIntReplacer(root: OpRootNode): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (resolveModifiers(route, op).includes('internal')) continue;
-            if (op.request && op.request.contentType !== 'multipart/form-data') return true;
+            if (op.request && op.request.bodies.some(b => b.contentType === 'application/json')) return true;
         }
     }
     return false;
@@ -494,7 +591,7 @@ function sdkNeedsJson(root: OpRootNode): boolean {
                 return typeNeedsScalar(src.node, 'json');
             };
             if (
-                (op.request?.bodyType && typeNeedsScalar(op.request.bodyType, 'json')) ||
+                !!op.request?.bodies.some(b => typeNeedsScalar(b.bodyType, 'json')) ||
                 op.responses.some(r => r.bodyType && typeNeedsScalar(r.bodyType, 'json')) ||
                 check(op.query) ||
                 check(op.headers) ||

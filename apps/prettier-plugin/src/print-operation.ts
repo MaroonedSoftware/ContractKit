@@ -122,7 +122,9 @@ function printOperation(op: OpOperationNode): string[] {
     if (op.headers !== undefined) lines.push(...printQueryOrHeaders('headers', op.headers, op.headersMode));
     if (op.request) {
         lines.push(`${I2}request: {`);
-        lines.push(...printContentTypeLine(op.request.contentType, op.request.bodyType, I3));
+        for (const body of op.request.bodies) {
+            lines.push(...printContentTypeLine(body.contentType, body.bodyType, I3));
+        }
         lines.push(`${I2}}`);
     }
     if (op.responses.length > 0) {

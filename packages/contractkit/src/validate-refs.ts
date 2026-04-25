@@ -39,9 +39,11 @@ export function validateRefs(contractRoots: ContractRootNode[], opRoots: OpRootN
         for (const route of root.routes) {
             checkParamSourceRefs(route.params, root.file, route.loc.line, modelNames, diag);
             for (const op of route.operations) {
-                if (op.request?.bodyType) {
-                    checkTypeRefs(op.request.bodyType, root.file, op.loc.line, modelNames, diag);
-                    checkDiscriminatedUnions(op.request.bodyType, root.file, op.loc.line, modelMap, diag);
+                if (op.request) {
+                    for (const body of op.request.bodies) {
+                        checkTypeRefs(body.bodyType, root.file, op.loc.line, modelNames, diag);
+                        checkDiscriminatedUnions(body.bodyType, root.file, op.loc.line, modelMap, diag);
+                    }
                 }
                 for (const resp of op.responses) {
                     if (resp.bodyType) {

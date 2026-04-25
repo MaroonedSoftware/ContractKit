@@ -115,7 +115,14 @@ export function opParam(name: string, type: ContractTypeNode, overrides?: Partia
 }
 
 export function opRequest(bodyType: ContractTypeNode, contentType: string = 'application/json'): OpRequestNode {
-    return { contentType: contentType as OpRequestNode['contentType'], bodyType };
+    return {
+        bodies: [
+            {
+                contentType: contentType as OpRequestNode['bodies'][number]['contentType'],
+                bodyType,
+            },
+        ],
+    };
 }
 
 export function opResponse(statusCode: number, bodyType?: ContractTypeNode, contentType?: 'application/json'): OpResponseNode {

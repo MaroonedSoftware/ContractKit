@@ -11,6 +11,94 @@ import {
 } from './codegen-contract.js';
 import { basename, dirname, relative } from 'path';
 
+// ─── Content-type helpers ──────────────────────────────────────────────────
+
+/** Map a request MIME type to the koa-bodyparser parser token used in middleware. */
+function bodyParserToken(contentType: string): string {
+    switch (contentType) {
+        case 'application/json':
+            return 'json';
+        case 'application/x-www-form-urlencoded':
+            return 'urlencoded';
+        case 'multipart/form-data':
+            return 'multipart';
+        default:
+            return 'json';
+    }
+}
+
+/**
+ * Deep structural equality on ContractTypeNode, ignoring source locations on inline fields.
+ * Used to decide whether multiple declared request MIMEs can share a single validate path.
+ */
+export function bodyTypesStructurallyEqual(a: ContractTypeNode, b: ContractTypeNode): boolean {
+    if (a.kind !== b.kind) return false;
+    switch (a.kind) {
+        case 'scalar': {
+            const bb = b as typeof a;
+            return a.name === bb.name && a.min === bb.min && a.max === bb.max && a.len === bb.len && a.regex === bb.regex && a.format === bb.format;
+        }
+        case 'array': {
+            const bb = b as typeof a;
+            return a.min === bb.min && a.max === bb.max && bodyTypesStructurallyEqual(a.item, bb.item);
+        }
+        case 'tuple': {
+            const bb = b as typeof a;
+            return a.items.length === bb.items.length && a.items.every((x, i) => bodyTypesStructurallyEqual(x, bb.items[i]!));
+        }
+        case 'record': {
+            const bb = b as typeof a;
+            return bodyTypesStructurallyEqual(a.key, bb.key) && bodyTypesStructurallyEqual(a.value, bb.value);
+        }
+        case 'enum': {
+            const bb = b as typeof a;
+            return a.values.length === bb.values.length && a.values.every((v, i) => v === bb.values[i]);
+        }
+        case 'literal': {
+            const bb = b as typeof a;
+            return a.value === bb.value;
+        }
+        case 'union':
+        case 'intersection': {
+            const bb = b as typeof a;
+            return a.members.length === bb.members.length && a.members.every((m, i) => bodyTypesStructurallyEqual(m, bb.members[i]!));
+        }
+        case 'discriminatedUnion': {
+            const bb = b as typeof a;
+            return (
+                a.discriminator === bb.discriminator &&
+                a.members.length === bb.members.length &&
+                a.members.every((m, i) => bodyTypesStructurallyEqual(m, bb.members[i]!))
+            );
+        }
+        case 'ref': {
+            const bb = b as typeof a;
+            return a.name === bb.name && !!a.lazy === !!bb.lazy;
+        }
+        case 'lazy': {
+            const bb = b as typeof a;
+            return bodyTypesStructurallyEqual(a.inner, bb.inner);
+        }
+        case 'inlineObject': {
+            const bb = b as typeof a;
+            if (a.mode !== bb.mode) return false;
+            if (a.fields.length !== bb.fields.length) return false;
+            return a.fields.every((f, i) => {
+                const g = bb.fields[i]!;
+                return (
+                    f.name === g.name &&
+                    f.optional === g.optional &&
+                    f.nullable === g.nullable &&
+                    f.visibility === g.visibility &&
+                    f.default === g.default &&
+                    !!f.deprecated === !!g.deprecated &&
+                    bodyTypesStructurallyEqual(f.type, g.type)
+                );
+            });
+        }
+    }
+}
+
 // ─── Public entry point ────────────────────────────────────────────────────
 
 export interface OpCodegenOptions {
@@ -129,8 +217,9 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
 
     const method = op.method;
     const path = route.path.replace(/\{(\w+)\}/g, ':$1');
-    const hasBody = !!op.request;
-    const isMultipart = op.request?.contentType === 'multipart/form-data';
+    const bodies = op.request?.bodies ?? [];
+    const hasBody = bodies.length > 0;
+    const isSingleMultipart = bodies.length === 1 && bodies[0]!.contentType === 'multipart/form-data';
 
     // Middleware list
     const middlewares: string[] = [];
@@ -139,7 +228,9 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
         middlewares.push(`requireSecurity({ ${roles} })`);
     }
     if (hasBody) {
-        middlewares.push(isMultipart ? `bodyParserMiddleware(['multipart'])` : `bodyParserMiddleware(['json'])`);
+        const parserTokens = Array.from(new Set(bodies.map(b => bodyParserToken(b.contentType))));
+        const tokensExpr = parserTokens.map(t => `'${t}'`).join(', ');
+        middlewares.push(`bodyParserMiddleware([${tokensExpr}])`);
     }
     if (op.signature) {
         middlewares.push(`requireSignature('${op.signature}')`);
@@ -155,11 +246,35 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
 
     // Body validation (request-side — use Input variants)
     if (hasBody && op.request) {
-        if (isMultipart) {
+        if (isSingleMultipart) {
             lines.push(`    const multipartBody = ctx.body as MultipartBody;`);
             lines.push('');
+        } else if (bodies.length === 1) {
+            lines.push(`    const body = await parseAndValidate(ctx.body, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
+            lines.push('');
+        } else if (bodies.every(b => bodyTypesStructurallyEqual(b.bodyType, bodies[0]!.bodyType))) {
+            // All declared MIMEs share the same body shape — single validation suffices
+            lines.push(`    const body = await parseAndValidate(ctx.body, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
+            lines.push('');
         } else {
-            lines.push(`    const body = await parseAndValidate(ctx.body, ${renderInputType(op.request.bodyType, modelsWithInput)});`);
+            // Different body types per MIME — dispatch on Content-Type
+            const annotation = bodies
+                .map(b =>
+                    b.contentType === 'multipart/form-data' ? 'MultipartBody' : `z.infer<typeof ${renderInputType(b.bodyType, modelsWithInput)}>`,
+                )
+                .join(' | ');
+            lines.push(`    let body!: ${annotation};`);
+            lines.push(`    switch (ctx.request.type) {`);
+            for (const b of bodies) {
+                lines.push(`        case '${b.contentType}':`);
+                if (b.contentType === 'multipart/form-data') {
+                    lines.push(`            body = ctx.body as MultipartBody;`);
+                } else {
+                    lines.push(`            body = await parseAndValidate(ctx.body, ${renderInputType(b.bodyType, modelsWithInput)});`);
+                }
+                lines.push(`            break;`);
+            }
+            lines.push(`    }`);
             lines.push('');
         }
     }
@@ -240,8 +355,10 @@ function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
         }
     }
     // Body
-    if (op.request) {
-        args.push(op.request.contentType === 'multipart/form-data' ? 'multipartBody' : 'body');
+    if (op.request && op.request.bodies.length > 0) {
+        const bodies = op.request.bodies;
+        const isSingleMultipart = bodies.length === 1 && bodies[0]!.contentType === 'multipart/form-data';
+        args.push(isSingleMultipart ? 'multipartBody' : 'body');
     }
     // Query
     if (op.query) args.push('query');
@@ -372,9 +489,11 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[]
         collectParamSourceRefs(route.params, types);
         collectParamSourceInputRefs(route.params, types, modelsWithInput);
         for (const op of route.operations) {
-            if (op.request?.bodyType) {
-                collectTypeNodeRefs(op.request.bodyType, types);
-                collectInputTypeNodeRefs(op.request.bodyType, types, modelsWithInput);
+            if (op.request) {
+                for (const body of op.request.bodies) {
+                    collectTypeNodeRefs(body.bodyType, types);
+                    collectInputTypeNodeRefs(body.bodyType, types, modelsWithInput);
+                }
             }
             for (const resp of op.responses) {
                 if (resp.bodyType) collectTypeNodeRefs(resp.bodyType, types);
@@ -492,7 +611,7 @@ function opNeedsDateTime(root: OpRootNode): boolean {
             paramSourceNeedsDateTime(route.params) ||
             route.operations.some(
                 op =>
-                    (op.request?.bodyType && typeNeedsDateTime(op.request.bodyType)) ||
+                    !!op.request?.bodies.some(b => typeNeedsDateTime(b.bodyType)) ||
                     op.responses.some(r => r.bodyType && typeNeedsDateTime(r.bodyType)) ||
                     paramSourceNeedsDateTime(op.query) ||
                     paramSourceNeedsDateTime(op.headers),
@@ -513,7 +632,7 @@ function opNeedsScalar(root: OpRootNode, name: string): boolean {
             paramSourceNeedsScalar(route.params, name) ||
             route.operations.some(
                 op =>
-                    (op.request?.bodyType && typeNeedsScalar(op.request.bodyType, name)) ||
+                    !!op.request?.bodies.some(b => typeNeedsScalar(b.bodyType, name)) ||
                     op.responses.some(r => r.bodyType && typeNeedsScalar(r.bodyType, name)) ||
                     paramSourceNeedsScalar(op.query, name) ||
                     paramSourceNeedsScalar(op.headers, name),
