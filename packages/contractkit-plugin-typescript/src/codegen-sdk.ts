@@ -1,6 +1,6 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpRequestBodyNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
 import { resolveModifiers } from '@maroonedsoftware/contractkit';
-import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import { renderInputTsType, renderOutputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { basename, dirname, relative } from 'path';
@@ -254,7 +254,9 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
         lines.push(`        const __isFormData = body instanceof FormData;`);
         const nonMultipart = strategy.bodies.find(b => b.contentType !== 'multipart/form-data')!;
         lines.push(`        const __contentType: string = __isFormData ? 'multipart/form-data' : '${nonMultipart.contentType}';`);
-        lines.push(`        const __serialized: BodyInit = __isFormData ? (body as FormData) : ${jsonOrFormSerialize('body', nonMultipart.contentType)};`);
+        lines.push(
+            `        const __serialized: BodyInit = __isFormData ? (body as FormData) : ${jsonOrFormSerialize('body', nonMultipart.contentType)};`,
+        );
     } else if (strategy.kind === 'multi-required-arg') {
         lines.push(`        const __contentType = options.contentType;`);
         lines.push(`        const __serialized = ${renderSerializeExpr('body', strategy.bodies, '__contentType')};`);
