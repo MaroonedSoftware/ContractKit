@@ -421,6 +421,25 @@ function collectInputTypeNodeRefs(type: ContractTypeNode, out: Set<string>, mode
         case 'array':
             collectInputTypeNodeRefs(type.item, out, modelsWithInput);
             break;
+        case 'tuple':
+            type.items.forEach(t => collectInputTypeNodeRefs(t, out, modelsWithInput));
+            break;
+        case 'record':
+            collectInputTypeNodeRefs(type.key, out, modelsWithInput);
+            collectInputTypeNodeRefs(type.value, out, modelsWithInput);
+            break;
+        case 'union':
+            type.members.forEach(t => collectInputTypeNodeRefs(t, out, modelsWithInput));
+            break;
+        case 'intersection':
+            type.members.forEach(t => collectInputTypeNodeRefs(t, out, modelsWithInput));
+            break;
+        case 'lazy':
+            collectInputTypeNodeRefs(type.inner, out, modelsWithInput);
+            break;
+        case 'inlineObject':
+            type.fields.forEach(f => collectInputTypeNodeRefs(f.type, out, modelsWithInput));
+            break;
     }
 }
 

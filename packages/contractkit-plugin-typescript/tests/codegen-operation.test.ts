@@ -232,6 +232,31 @@ describe('generateOperation', () => {
             expect(output).toContain('limit: z.coerce.number().int()');
         });
 
+        it('imports Input variant for refs inside an intersection query', () => {
+            const root = opRoot([
+                opRoute('/audit/log', [
+                    opOperation('get', {
+                        query: {
+                            kind: 'intersection',
+                            members: [
+                                { kind: 'ref', name: 'Pagination' },
+                                {
+                                    kind: 'inlineObject',
+                                    fields: [field('schemaName', scalarType('string'), { optional: true })],
+                                },
+                            ],
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        } as any,
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root, { modelsWithInput: new Set(['Pagination']) });
+            expect(output).toContain('PaginationInput.extend({');
+            expect(output).toContain('PaginationInput');
+            // The import line must include PaginationInput, not just Pagination
+            expect(output).toMatch(/import \{[^}]*\bPaginationInput\b[^}]*\} from /);
+        });
+
         it('wraps ContractTypeNode intersection query with array fields using z.preprocess', () => {
             const root = opRoot([
                 opRoute('/offers', [
