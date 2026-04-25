@@ -1,5 +1,11 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.10.0
+
+### Minor Changes
+
+- ddb6a28: Refactor type generation in codegen-contract to use z.input for developer-facing types when outputCase is set. Updated tests to reflect this change in type handling for improved clarity in serialization logic.
+
 ## 0.9.0
 
 ### Minor Changes
