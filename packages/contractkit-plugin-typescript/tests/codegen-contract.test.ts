@@ -861,7 +861,9 @@ describe('generateContract', () => {
             expect(output).toContain('.transform(data => ({');
             expect(output).toContain('first_name: data.firstName');
             expect(output).toContain('last_name: data.lastName');
-            expect(output).toContain('export type User = z.output<typeof User>');
+            // Type uses z.input so the developer-facing shape stays camelCase;
+            // the snake_case transform is for serialization to the wire.
+            expect(output).toContain('export type User = z.input<typeof User>');
         });
 
         it('input=pascal, output=snake: parses PascalCase, outputs snake_case', () => {

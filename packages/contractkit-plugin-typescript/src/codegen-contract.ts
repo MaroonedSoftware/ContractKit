@@ -262,7 +262,11 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
             lines.push(`    ${quoteKey(outputKey)}: data.${inputKey},`);
         }
         lines.push(`}));`);
-        lines.push(`export type ${model.name} = z.output<typeof ${model.name}>;`);
+        // When only outputCase is set, the developer-facing type is the schema's
+        // pre-transform shape (camelCase). With inputCase, the post-transform
+        // shape is what consumers work with.
+        const typeSource = hasOutputTransform && !hasInputTransform ? 'input' : 'output';
+        lines.push(`export type ${model.name} = z.${typeSource}<typeof ${model.name}>;`);
         return lines;
     }
 
