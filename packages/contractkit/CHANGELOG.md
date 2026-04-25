@@ -1,5 +1,11 @@
 # @contractkit/core
 
+## 0.6.0
+
+### Minor Changes
+
+- d3ea773: Enhance model handling by introducing Output variants for response types in code generation. Updated functions to compute and collect models with Output variants, ensuring compatibility with serialization logic. Added tests to verify correct generation of Output types based on model configurations.
+
 ## 0.5.0
 
 ### Minor Changes
