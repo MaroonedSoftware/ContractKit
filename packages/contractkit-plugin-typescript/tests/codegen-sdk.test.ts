@@ -163,7 +163,7 @@ describe('generateSdk', () => {
                 "options?: { contentType?: 'application/json' | 'application/x-www-form-urlencoded' }",
             );
             expect(out).toContain("const __contentType = options?.contentType ?? 'application/json'");
-            expect(out).toContain('new URLSearchParams(body as Record<string, string>).toString()');
+            expect(out).toContain('new URLSearchParams(body as unknown as Record<string, string>).toString()');
             expect(out).toContain('JSON.stringify(body, bigIntReplacer)');
         });
 

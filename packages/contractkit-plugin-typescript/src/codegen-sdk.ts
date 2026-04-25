@@ -17,7 +17,7 @@ type BodyStrategy =
 /** Serialize expression for a single MIME, given the source body var (e.g. 'body'). */
 function jsonOrFormSerialize(varName: string, contentType: string): string {
     if (contentType === 'application/x-www-form-urlencoded') {
-        return `new URLSearchParams(${varName} as Record<string, string>).toString()`;
+        return `new URLSearchParams(${varName} as unknown as Record<string, string>).toString()`;
     }
     if (contentType === 'multipart/form-data') {
         return `(${varName} as FormData)`;
@@ -274,7 +274,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
             fetchArgs.push('body: body');
         } else if (body.contentType === 'application/x-www-form-urlencoded') {
             fetchArgs.push(`headers: { 'Content-Type': 'application/x-www-form-urlencoded' }`);
-            fetchArgs.push('body: new URLSearchParams(body as Record<string, string>).toString()');
+            fetchArgs.push('body: new URLSearchParams(body as unknown as Record<string, string>).toString()');
         } else {
             fetchArgs.push(`headers: { 'Content-Type': 'application/json' }`);
             fetchArgs.push('body: JSON.stringify(body, bigIntReplacer)');
