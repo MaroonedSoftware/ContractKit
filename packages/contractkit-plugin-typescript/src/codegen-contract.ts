@@ -157,9 +157,10 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     if (needsBinary || needsDatetime || needsInterval || needsJson) lines.push('');
 
     const modelsWithWriteonly = new Set(root.models.filter(m => m.fields.some(f => f.visibility === 'writeonly')).map(m => m.name));
+    const modelMap = new Map(root.models.map(m => [m.name, m]));
 
     for (const model of topoSortModels(root.models)) {
-        lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelsWithWriteonly));
+        lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelsWithWriteonly, modelMap));
         lines.push('');
     }
 
@@ -168,20 +169,59 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
 
 // ─── Model ─────────────────────────────────────────────────────────────────
 
-function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>, modelsWithWriteonly?: Set<string>): string[] {
+/**
+ * If any ancestor in the base chain has a format(input=)/format(output=) transform,
+ * the parent schema compiles to a `ZodPipe` (object().transform()) which has no `.extend()`.
+ * To keep extension working, inline the parent's fields into the child and inherit format/mode
+ * so the child re-applies the transform on the merged shape. Returns the model unchanged when
+ * no ancestor has format, preserving the existing `.extend()`-based output.
+ */
+function flattenFormatChain(model: ModelNode, modelMap: Map<string, ModelNode>): ModelNode {
+    if (!model.base) return model;
+    const parent = modelMap.get(model.base);
+    if (!parent) return model;
+    const flatParent = flattenFormatChain(parent, modelMap);
+    const parentHasFormat =
+        (flatParent.inputCase !== undefined && flatParent.inputCase !== 'camel') ||
+        (flatParent.outputCase !== undefined && flatParent.outputCase !== 'camel');
+    if (!parentHasFormat) return model;
+
+    const merged = new Map<string, FieldNode>();
+    for (const f of flatParent.fields) merged.set(f.name, f);
+    for (const f of model.fields) merged.set(f.name, f);
+
+    return {
+        ...model,
+        base: undefined,
+        fields: [...merged.values()],
+        inputCase: model.inputCase ?? flatParent.inputCase,
+        outputCase: model.outputCase ?? flatParent.outputCase,
+        mode: model.mode ?? flatParent.mode,
+    };
+}
+
+function generateModel(
+    model: ModelNode,
+    outPath?: string,
+    modelsWithInput?: Set<string>,
+    modelsWithWriteonly?: Set<string>,
+    modelMap?: Map<string, ModelNode>,
+): string[] {
     // Type alias: Name : typeExpression
     if (model.type) {
         return generateTypeAlias(model, outPath, modelsWithInput);
     }
 
+    const effective = modelMap ? flattenFormatChain(model, modelMap) : model;
+
     // A model needs Input/read split if it has visibility-modified fields OR if it
     // transitively references models that have Input variants (captured in modelsWithInput).
-    const needsInputSplit = model.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(model.name) ?? false);
+    const needsInputSplit = effective.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(effective.name) ?? false);
 
     if (needsInputSplit) {
-        return generateThreeSchemaModel(model, outPath, modelsWithInput, modelsWithWriteonly);
+        return generateThreeSchemaModel(effective, outPath, modelsWithInput, modelsWithWriteonly);
     }
-    return generateSimpleModel(model, outPath);
+    return generateSimpleModel(effective, outPath);
 }
 
 function generateTypeAlias(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {

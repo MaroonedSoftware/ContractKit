@@ -897,5 +897,26 @@ describe('generateContract', () => {
             expect(output).toContain('z.looseObject({');
             expect(output).not.toContain('z.strictObject(');
         });
+
+        it('child extending a format(input=snake) base inlines parent fields and inherits the transform', () => {
+            // The parent compiles to z.object().transform() — a ZodPipe that has no .extend().
+            // The child must flatten the chain so it can build its own object and re-apply the transform,
+            // instead of emitting `Parent.extend({...})` (which fails to type-check).
+            const root = contractRoot([
+                model('Base', [field('grantType', scalarType('string')), field('clientId', scalarType('uuid'), { optional: true })], { inputCase: 'snake' }),
+                model('Child', [field('grantType', literalType('client_credentials')), field('clientId', scalarType('uuid')), field('clientSecret', scalarType('string'))], {
+                    base: 'Base',
+                }),
+            ]);
+            const output = generateContract(root);
+            // Child must NOT use Base.extend (Base is a ZodPipe).
+            expect(output).not.toContain('Base.extend');
+            // Child generates as a transformed object with snake_case input keys for both inherited and own fields.
+            expect(output).toMatch(/export const Child = z\.strictObject\(\{[\s\S]*grant_type:[\s\S]*client_id:[\s\S]*client_secret:[\s\S]*\}\)\.transform/);
+            expect(output).toContain('grantType: data.grant_type');
+            expect(output).toContain('clientId: data.client_id');
+            expect(output).toContain('clientSecret: data.client_secret');
+            expect(output).toContain('export type Child = z.output<typeof Child>');
+        });
     });
 });
