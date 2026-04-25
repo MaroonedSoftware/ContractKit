@@ -1,5 +1,16 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.6.0
+
+### Minor Changes
+
+- ada5f84: Implement discriminated unions in ContractKit with validation and code generation support. Update README and tests to reflect new functionality, including parsing, rendering, and OpenAPI generation for discriminated unions.
+
+### Patch Changes
+
+- Updated dependencies [ada5f84]
+    - @maroonedsoftware/contractkit@0.4.0
+
 ## 0.5.0
 
 ### Minor Changes
