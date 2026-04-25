@@ -1,5 +1,16 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.11.0
+
+### Minor Changes
+
+- d3ea773: Enhance model handling by introducing Output variants for response types in code generation. Updated functions to compute and collect models with Output variants, ensuring compatibility with serialization logic. Added tests to verify correct generation of Output types based on model configurations.
+
+### Patch Changes
+
+- Updated dependencies [d3ea773]
+    - @maroonedsoftware/contractkit@0.6.0
+
 ## 0.10.0
 
 ### Minor Changes

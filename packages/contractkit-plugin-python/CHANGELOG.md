@@ -1,5 +1,12 @@
 # @contractkit/contractkit-plugin-python
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [d3ea773]
+    - @maroonedsoftware/contractkit@0.6.0
+
 ## 0.4.0
 
 ### Minor Changes
