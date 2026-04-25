@@ -20,7 +20,7 @@ packages/
   contractkit-plugin-openapi/     # OpenAPI 3.0 YAML generation
   contractkit-plugin-markdown/    # Markdown API reference generation
   contractkit-plugin-bruno/       # Bruno collection generation
-  contractkit-plugin-python-sdk/  # Python SDK generation
+  contractkit-plugin-python/      # Python SDK generation (Pydantic v2 + httpx)
   config-typescript/              # Shared tsconfig base
   config-eslint/                  # Shared ESLint config
 
@@ -52,27 +52,27 @@ pnpm --filter @maroonedsoftware/contractkit exec vitest run tests/parser-ck.test
 
 ### Core compiler (`packages/contractkit/src/`)
 
-| File                    | Role                                                    |
-| ----------------------- | ------------------------------------------------------- |
-| `contractkit.ohm`       | PEG grammar — source of truth for the language          |
-| `semantics.ts`          | Ohm parse tree → typed AST                              |
-| `parser.ts`             | `parseCk(source, file, diag)` entry point               |
-| `ast.ts`                | All AST node types                                      |
+| File                    | Role                                                                                     |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| `contractkit.ohm`       | PEG grammar — source of truth for the language                                           |
+| `semantics.ts`          | Ohm parse tree → typed AST                                                               |
+| `parser.ts`             | `parseCk(source, file, diag)` entry point                                                |
+| `ast.ts`                | All AST node types                                                                       |
 | `type-utils.ts`         | Generic model/graph utilities — type ref collection, topo sort, `computeModelsWithInput` |
-| `validate-operation.ts` | Validates op AST against config constraints             |
-| `plugin.ts`             | `ContractKitPlugin` and `PluginContext` interface types |
+| `validate-operation.ts` | Validates op AST against config constraints                                              |
+| `plugin.ts`             | `ContractKitPlugin` and `PluginContext` interface types                                  |
 
 ### TypeScript plugin (`packages/contractkit-plugin-typescript/src/`)
 
-| File                     | Role                                                             |
-| ------------------------ | ---------------------------------------------------------------- |
-| `index.ts`               | Combined plugin — server, SDK, Zod, and plain-types generation   |
-| `codegen-contract.ts`    | Generates Zod schemas from `contract` declarations               |
-| `codegen-operation.ts`   | Generates Koa routers from `operation` declarations              |
-| `codegen-sdk.ts`         | TypeScript SDK client codegen                                    |
-| `codegen-plain-types.ts` | Plain TypeScript interface/type codegen (no Zod runtime)         |
+| File                     | Role                                                                        |
+| ------------------------ | --------------------------------------------------------------------------- |
+| `index.ts`               | Combined plugin — server, SDK, Zod, and plain-types generation              |
+| `codegen-contract.ts`    | Generates Zod schemas from `contract` declarations                          |
+| `codegen-operation.ts`   | Generates Koa routers from `operation` declarations                         |
+| `codegen-sdk.ts`         | TypeScript SDK client codegen                                               |
+| `codegen-plain-types.ts` | Plain TypeScript interface/type codegen (no Zod runtime)                    |
 | `ts-render.ts`           | TypeScript type rendering — `renderTsType`, `renderInputTsType`, `quoteKey` |
-| `path-utils.ts`          | Output path template resolution shared across all sub-generators |
+| `path-utils.ts`          | Output path template resolution shared across all sub-generators            |
 
 ### CLI (`apps/cli/src/`)
 
@@ -94,23 +94,24 @@ pnpm --filter @maroonedsoftware/contractkit exec vitest run tests/parser-ck.test
 
 Core parser tests live in `packages/contractkit/tests/`:
 
-| File                | What it tests                                                          |
-| ------------------- | ---------------------------------------------------------------------- |
-| `parser-ck.test.ts` | Full grammar coverage — contracts, operations, options block, combined |
-| `diagnostics.test.ts` | Error/warning collection                                             |
-| `helpers.ts`        | AST builder helpers                                                    |
+| File                             | What it tests                                                          |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| `parser-ck.test.ts`              | Full grammar coverage — contracts, operations, options block, combined |
+| `diagnostics.test.ts`            | Error/warning collection                                               |
+| `validate-discriminated.test.ts` | Discriminated-union validation (member shape, discriminator field)     |
+| `helpers.ts`                     | AST builder helpers                                                    |
 
 TypeScript plugin tests live in `packages/contractkit-plugin-typescript/tests/`:
 
-| File                          | What it tests                                      |
-| ----------------------------- | -------------------------------------------------- |
-| `codegen-contract.test.ts`    | Zod schema generation from `contract` declarations |
+| File                          | What it tests                                       |
+| ----------------------------- | --------------------------------------------------- |
+| `codegen-contract.test.ts`    | Zod schema generation from `contract` declarations  |
 | `codegen-operation.test.ts`   | Koa router generation from `operation` declarations |
-| `codegen-sdk.test.ts`         | SDK client generation                              |
-| `codegen-plain-types.test.ts` | Plain TypeScript interface generation              |
-| `codegen-server.test.ts`      | Koa router generation via the plugin               |
-| `pipeline.test.ts`            | End-to-end parse → codegen flow                    |
-| `helpers.ts`                  | AST builder helpers                                |
+| `codegen-sdk.test.ts`         | SDK client generation                               |
+| `codegen-plain-types.test.ts` | Plain TypeScript interface generation               |
+| `codegen-server.test.ts`      | Koa router generation via the plugin                |
+| `pipeline.test.ts`            | End-to-end parse → codegen flow                     |
+| `helpers.ts`                  | AST builder helpers                                 |
 
 ## Plugin system
 
@@ -226,6 +227,16 @@ Models with visibility modifiers generate up to three schemas:
 
 `format(input=)` generates a `.transform()` that remaps keys from the incoming casing to camelCase internally. `format(output=)` remaps from camelCase to the output casing. Both can be combined.
 
+### Discriminated unions
+
+`discriminated(by=<field>, A | B | C)` compiles to `z.discriminatedUnion("field", [...])` in Zod, an `Annotated[Union[...], Field(discriminator=...)]` in Python, and `oneOf` + `discriminator.mapping` in OpenAPI. Validated at parse time in `validate-discriminated.ts` — every member must be a model ref or inline object containing the discriminator as a `literal()`/`enum()` field, and at least two members are required. Failures emit warnings, not errors.
+
+### Scalar types worth knowing
+
+- `datetime` → Luxon `DateTime`
+- `interval` → Luxon `Interval`; `_ZodInterval` parses an ISO 8601 interval string and `.transform()`s back to ISO on output
+- `bigint` → `z.coerce.bigint()`; SDK generates bigint-aware JSON helpers in `sdk-options.ts`
+
 ## Grammar conventions (contractkit.ohm)
 
 - **PascalCase rules** — syntactic (Ohm auto-skips whitespace)
@@ -241,6 +252,7 @@ When changing the grammar, also update:
 5. `parser-ck.test.ts` — add a parser test
 6. All affected codegen files and their tests
 7. `README.md` — update language reference / examples if the surface syntax changed
+8. `CLAUDE.md` - update as needed
 
 ## VS Code extension
 
