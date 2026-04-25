@@ -33,6 +33,7 @@ function inputs(opRoots = [opRoot([opRoute('/users', [opOperation('get')])], '/p
         opRoots,
         modelOutPaths: new Map<string, string>(),
         modelsWithInput: new Set<string>(),
+        modelsWithOutput: new Set<string>(),
     };
 }
 

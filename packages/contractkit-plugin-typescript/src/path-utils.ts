@@ -139,11 +139,12 @@ export function computePubliclyReachableTypes(
     opAsts: OpRootNode[],
     contractAsts: ContractRootNode[],
     modelsWithInput: Set<string>,
+    modelsWithOutput: Set<string> = new Set(),
 ): Set<string> | null {
     if (opAsts.length === 0) return null;
     const reachable = new Set<string>();
     for (const opAst of opAsts) {
-        for (const name of collectPublicTypeNames(opAst, modelsWithInput)) reachable.add(name);
+        for (const name of collectPublicTypeNames(opAst, modelsWithInput, modelsWithOutput)) reachable.add(name);
     }
     const modelDeps = new Map<string, Set<string>>();
     for (const contractAst of contractAsts) {
@@ -158,12 +159,16 @@ export function computePubliclyReachableTypes(
     const frontier = [...reachable];
     while (frontier.length > 0) {
         const name = frontier.pop()!;
-        const baseName = name.endsWith('Input') ? name.slice(0, -5) : name;
+        const baseName = name.endsWith('Input') ? name.slice(0, -5) : name.endsWith('Output') ? name.slice(0, -6) : name;
         for (const dep of modelDeps.get(baseName) ?? []) {
             if (!reachable.has(dep)) { reachable.add(dep); frontier.push(dep); }
             if (modelsWithInput.has(dep)) {
                 const inputDep = `${dep}Input`;
                 if (!reachable.has(inputDep)) { reachable.add(inputDep); frontier.push(inputDep); }
+            }
+            if (modelsWithOutput.has(dep)) {
+                const outputDep = `${dep}Output`;
+                if (!reachable.has(outputDep)) { reachable.add(outputDep); frontier.push(outputDep); }
             }
         }
     }

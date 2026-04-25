@@ -333,6 +333,36 @@ describe('generateSdk', () => {
         });
     });
 
+    describe('format(output=...) response', () => {
+        it('return type uses Output variant when response model has output transform', () => {
+            const root = opRoot([
+                opRoute('/auth/token', [
+                    opOperation('post', {
+                        sdk: 'requestToken',
+                        responses: [opResponse(200, 'AuthToken', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root, { modelsWithOutput: new Set(['AuthToken']) });
+            expect(out).toContain('Promise<AuthTokenOutput>');
+            // The Output variant gets imported alongside the base.
+            expect(out).toMatch(/import type \{[^}]*AuthTokenOutput/);
+        });
+
+        it('return type uses Output variant for arrays', () => {
+            const root = opRoot([
+                opRoute('/auth/tokens', [
+                    opOperation('get', {
+                        sdk: 'listTokens',
+                        responses: [opResponse(200, arrayType(refType('AuthToken')), 'application/json')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root, { modelsWithOutput: new Set(['AuthToken']) });
+            expect(out).toContain('Promise<AuthTokenOutput[]>');
+        });
+    });
+
     describe('inline object response', () => {
         it('renders inline TS type', () => {
             const root = opRoot([

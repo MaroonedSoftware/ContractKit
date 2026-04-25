@@ -1,6 +1,6 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpRequestBodyNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
 import { resolveModifiers } from '@maroonedsoftware/contractkit';
-import { renderTsType, renderInputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { basename, dirname, relative } from 'path';
@@ -65,6 +65,8 @@ export interface SdkCodegenOptions {
     sdkOptionsPath?: string;
     /** Set of model names that have Input variants (models with visibility modifiers) */
     modelsWithInput?: Set<string>;
+    /** Set of model names that have Output variants (models with format(output=...)) */
+    modelsWithOutput?: Set<string>;
 }
 
 /** Returns true if at least one operation in the root is not internal. */
@@ -80,7 +82,7 @@ export function hasPublicOperations(root: OpRootNode): boolean {
 export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): string {
     const lines: string[] = [];
 
-    const types = collectTypes(root, options.modelsWithInput);
+    const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput);
     const clientClassName = deriveClientClassName(root.file);
 
     // Type-only imports
@@ -199,16 +201,16 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
     const lines: string[] = [];
     const methodName = deriveMethodName(op, route);
     const httpMethod = op.method.toUpperCase();
-    const { modelsWithInput } = options;
+    const { modelsWithInput, modelsWithOutput } = options;
 
     // Build method parameters (request-side — use Input variants)
     const params = buildMethodParams(route, op, modelsWithInput);
     const paramStr = params.map(p => `${p.name}${p.optional ? '?' : ''}: ${p.type}`).join(', ');
 
-    // Determine return type
+    // Determine return type — response side uses Output variants (post-transform wire shape)
     const primaryResponse = op.responses.find(r => r.bodyType) ?? op.responses[0];
     const isVoid = !primaryResponse?.bodyType;
-    const returnType = isVoid ? 'void' : renderTsType(primaryResponse!.bodyType!);
+    const returnType = isVoid ? 'void' : renderOutputTsType(primaryResponse!.bodyType!, modelsWithOutput);
 
     // JSDoc
     const desc = op.description ?? route.description;
@@ -472,7 +474,7 @@ export function deriveClientPropertyName(file: string): string {
 
 // ─── Type collection ──────────────────────────────────────────────────────
 
-function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[] {
+function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWithOutput?: Set<string>): string[] {
     const types = new Set<string>();
     for (const route of root.routes) {
         const publicOps = route.operations.filter(op => !resolveModifiers(route, op).includes('internal'));
@@ -488,7 +490,10 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[]
                 }
             }
             for (const resp of op.responses) {
-                if (resp.bodyType) collectTypeNodeRefs(resp.bodyType, types);
+                if (resp.bodyType) {
+                    collectTypeNodeRefs(resp.bodyType, types);
+                    collectOutputTypeNodeRefs(resp.bodyType, types, modelsWithOutput);
+                }
             }
             collectParamSourceRefs(op.query, types);
             collectParamSourceInputRefs(op.query, types, modelsWithInput);
@@ -497,6 +502,30 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[]
         }
     }
     return [...types].sort();
+}
+
+/** Collect Output variant refs for response-side ContractTypeNode types. */
+function collectOutputTypeNodeRefs(type: ContractTypeNode, out: Set<string>, modelsWithOutput?: Set<string>): void {
+    if (!modelsWithOutput) return;
+    switch (type.kind) {
+        case 'ref':
+            if (modelsWithOutput.has(type.name)) out.add(`${type.name}Output`);
+            break;
+        case 'array':
+            collectOutputTypeNodeRefs(type.item, out, modelsWithOutput);
+            break;
+        case 'intersection':
+        case 'union':
+        case 'discriminatedUnion':
+            type.members.forEach(m => collectOutputTypeNodeRefs(m, out, modelsWithOutput));
+            break;
+        case 'inlineObject':
+            type.fields.forEach(f => collectOutputTypeNodeRefs(f.type, out, modelsWithOutput));
+            break;
+        case 'lazy':
+            collectOutputTypeNodeRefs(type.inner, out, modelsWithOutput);
+            break;
+    }
 }
 
 /** Collect Input variant refs for request-side ParamSource types. */

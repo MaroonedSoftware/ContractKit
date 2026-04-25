@@ -101,6 +101,7 @@ function runServerGeneration(
 ): void {
     const serverBase = resolve(rootDir, config.baseDir ?? '.');
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
+    const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
 
@@ -123,12 +124,15 @@ function runServerGeneration(
                 if (modelsWithInput.has(model.name)) {
                     serverModelOutPaths.set(`${model.name}Input`, typeOutPath);
                 }
+                if (modelsWithOutput.has(model.name)) {
+                    serverModelOutPaths.set(`${model.name}Output`, typeOutPath);
+                }
             }
         }
 
         // Pass 2: emit type files.
         for (const { ast, typeOutPath } of typeEntries) {
-            const ctx = { modelOutPaths: serverModelOutPaths, currentOutPath: typeOutPath, modelsWithInput };
+            const ctx = { modelOutPaths: serverModelOutPaths, currentOutPath: typeOutPath, modelsWithInput, modelsWithOutput };
             const content = config.zod
                 ? generateContract(ast, ctx)
                 : generatePlainTypes(ast, ctx);
@@ -144,6 +148,7 @@ function runServerGeneration(
             outPath,
             modelOutPaths: serverModelOutPaths,
             modelsWithInput,
+            modelsWithOutput,
         });
         emitFile(outPath, content);
     }
@@ -166,6 +171,7 @@ function runSdkGeneration(
     const sdkOptionsPath = join(dirname(sdkEntryPath), 'sdk-options.ts');
 
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
+    const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const ckCommonRoot = commonDir(allFiles, rootDir);
 
@@ -176,7 +182,7 @@ function runSdkGeneration(
     // ── SDK types ──
     if (config.output?.types) {
         sdkModelOutPaths = new Map<string, string>();
-        const publicTypes = computePubliclyReachableTypes(inputs.opRoots, inputs.contractRoots, modelsWithInput);
+        const publicTypes = computePubliclyReachableTypes(inputs.opRoots, inputs.contractRoots, modelsWithInput, modelsWithOutput);
 
         const sdkContractEntries: { ast: typeof inputs.contractRoots[number]; typeOutPath: string }[] = [];
         for (const ast of inputs.contractRoots) {
@@ -188,6 +194,7 @@ function runSdkGeneration(
             for (const model of ast.models) {
                 sdkModelOutPaths.set(model.name, typeOutPath);
                 if (modelsWithInput.has(model.name)) sdkModelOutPaths.set(`${model.name}Input`, typeOutPath);
+                if (modelsWithOutput.has(model.name)) sdkModelOutPaths.set(`${model.name}Output`, typeOutPath);
             }
         }
 
@@ -198,6 +205,7 @@ function runSdkGeneration(
                     modelOutPaths: sdkModelOutPaths,
                     currentOutPath: typeOutPath,
                     modelsWithInput,
+                    modelsWithOutput,
                 });
             } else {
                 let rel = relative(dirname(typeOutPath), sdkOptionsPath).replace(/\.ts$/, '.js');
@@ -206,6 +214,7 @@ function runSdkGeneration(
                     modelOutPaths: sdkModelOutPaths,
                     currentOutPath: typeOutPath,
                     modelsWithInput,
+                    modelsWithOutput,
                     jsonValueImportPath: rel,
                 });
             }
@@ -229,6 +238,7 @@ function runSdkGeneration(
                 modelOutPaths: sdkModelOutPaths,
                 sdkOptionsPath,
                 modelsWithInput,
+                modelsWithOutput,
             }));
         }
     }
@@ -291,6 +301,7 @@ function runZodGeneration(
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
+    const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
 
     // Pre-pass: register all model → outPath before generating, so cross-file imports resolve.
     const modelOutPaths = new Map<string, string>();
@@ -301,6 +312,7 @@ function runZodGeneration(
         for (const model of ast.models) {
             modelOutPaths.set(model.name, outPath);
             if (modelsWithInput.has(model.name)) modelOutPaths.set(`${model.name}Input`, outPath);
+            if (modelsWithOutput.has(model.name)) modelOutPaths.set(`${model.name}Output`, outPath);
         }
     }
 
@@ -309,6 +321,7 @@ function runZodGeneration(
             modelOutPaths,
             currentOutPath: outPath,
             modelsWithInput,
+            modelsWithOutput,
         });
         emitFile(outPath, content);
     }
@@ -326,6 +339,7 @@ function runTypesGeneration(
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
+    const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
 
     // Pre-pass: register all model → outPath before generating.
     const modelOutPaths = new Map<string, string>();
@@ -336,6 +350,7 @@ function runTypesGeneration(
         for (const model of ast.models) {
             modelOutPaths.set(model.name, outPath);
             if (modelsWithInput.has(model.name)) modelOutPaths.set(`${model.name}Input`, outPath);
+            if (modelsWithOutput.has(model.name)) modelOutPaths.set(`${model.name}Output`, outPath);
         }
     }
 
@@ -344,6 +359,7 @@ function runTypesGeneration(
             modelOutPaths,
             currentOutPath: outPath,
             modelsWithInput,
+            modelsWithOutput,
         });
         emitFile(outPath, content);
     }

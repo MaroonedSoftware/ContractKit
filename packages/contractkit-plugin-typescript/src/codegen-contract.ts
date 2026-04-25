@@ -16,7 +16,7 @@ import type {
     IntersectionTypeNode,
     ObjectMode,
 } from '@maroonedsoftware/contractkit';
-import { collectTypeRefs } from '@maroonedsoftware/contractkit';
+import { collectTypeRefs, computeModelsWithOutput as ckComputeModelsWithOutput, collectExternalOutputRefs as ckCollectExternalOutputRefs } from '@maroonedsoftware/contractkit';
 
 export function modeToWrapper(mode: ObjectMode): string {
     switch (mode) {
@@ -38,6 +38,8 @@ export interface ContractCodegenContext {
     currentOutPath: string;
     /** Set of model names that have Input variants (models with visibility modifiers) */
     modelsWithInput?: Set<string>;
+    /** Set of model names that have Output variants (models with format(output=...)) */
+    modelsWithOutput?: Set<string>;
     /** If set, import JsonValue from this path instead of re-declaring it (avoids barrel re-export conflicts) */
     jsonValueImportPath?: string;
 }
@@ -120,9 +122,15 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     const localModelsWithInput = computeModelsWithInput(root.models, externalModelsWithInput);
     const allModelsWithInput = new Set([...localModelsWithInput, ...externalModelsWithInput]);
 
+    // Compute which models have Output variants (post-transform wire shape)
+    const externalModelsWithOutput = context?.modelsWithOutput ?? new Set<string>();
+    const localModelsWithOutput = ckComputeModelsWithOutput(root.models, externalModelsWithOutput);
+    const allModelsWithOutput = new Set([...localModelsWithOutput, ...externalModelsWithOutput]);
+
     // Collect additional external Input refs needed for Input schema fields
     const externalInputRefs = allModelsWithInput.size > 0 ? collectExternalInputRefs(root, allModelsWithInput) : [];
-    const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs])].sort();
+    const externalOutputRefs = allModelsWithOutput.size > 0 ? ckCollectExternalOutputRefs(root, allModelsWithOutput) : [];
+    const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs, ...externalOutputRefs])].sort();
 
     lines.push(`import { z } from 'zod';`);
     const luxonImports: string[] = [];
@@ -160,7 +168,7 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     const modelMap = new Map(root.models.map(m => [m.name, m]));
 
     for (const model of topoSortModels(root.models)) {
-        lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelsWithWriteonly, modelMap));
+        lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelsWithWriteonly, modelMap, allModelsWithOutput));
         lines.push('');
     }
 
@@ -206,10 +214,11 @@ function generateModel(
     modelsWithInput?: Set<string>,
     modelsWithWriteonly?: Set<string>,
     modelMap?: Map<string, ModelNode>,
+    modelsWithOutput?: Set<string>,
 ): string[] {
     // Type alias: Name : typeExpression
     if (model.type) {
-        return generateTypeAlias(model, outPath, modelsWithInput);
+        return generateTypeAlias(model, outPath, modelsWithInput, modelsWithOutput);
     }
 
     const effective = modelMap ? flattenFormatChain(model, modelMap) : model;
@@ -218,13 +227,19 @@ function generateModel(
     // transitively references models that have Input variants (captured in modelsWithInput).
     const needsInputSplit = effective.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(effective.name) ?? false);
 
-    if (needsInputSplit) {
-        return generateThreeSchemaModel(effective, outPath, modelsWithInput, modelsWithWriteonly);
+    const lines = needsInputSplit
+        ? generateThreeSchemaModel(effective, outPath, modelsWithInput, modelsWithWriteonly)
+        : generateSimpleModel(effective, outPath);
+
+    // Emit Output type alias when this model (transitively) has format(output=...)
+    if (modelsWithOutput?.has(effective.name)) {
+        lines.push(`export type ${effective.name}Output = z.output<typeof ${effective.name}>;`);
     }
-    return generateSimpleModel(effective, outPath);
+
+    return lines;
 }
 
-function generateTypeAlias(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
+function generateTypeAlias(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>, modelsWithOutput?: Set<string>): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
     lines.push(`export const ${model.name} = ${renderType(model.type!)};`);
@@ -232,6 +247,9 @@ function generateTypeAlias(model: ModelNode, outPath?: string, modelsWithInput?:
     if (modelsWithInput?.has(model.name)) {
         lines.push(`export const ${model.name}Input = ${renderInputType(model.type!, modelsWithInput)};`);
         lines.push(`export type ${model.name}Input = z.infer<typeof ${model.name}Input>;`);
+    }
+    if (modelsWithOutput?.has(model.name)) {
+        lines.push(`export type ${model.name}Output = z.output<typeof ${model.name}>;`);
     }
     return lines;
 }

@@ -8,11 +8,11 @@ import { resolveModifiers } from './ast.js';
  * operations in the root. Does not include transitive dependencies — callers
  * should expand these through the contract model graph if needed.
  */
-export function collectPublicTypeNames(root: OpRootNode, modelsWithInput?: Set<string>): Set<string> {
-    return new Set(collectTypes(root, modelsWithInput));
+export function collectPublicTypeNames(root: OpRootNode, modelsWithInput?: Set<string>, modelsWithOutput?: Set<string>): Set<string> {
+    return new Set(collectTypes(root, modelsWithInput, modelsWithOutput));
 }
 
-function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[] {
+function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWithOutput?: Set<string>): string[] {
     const types = new Set<string>();
     for (const route of root.routes) {
         const publicOps = route.operations.filter(op => !resolveModifiers(route, op).includes('internal'));
@@ -28,7 +28,10 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[]
                 }
             }
             for (const resp of op.responses) {
-                if (resp.bodyType) collectTypeNodeRefs(resp.bodyType, types);
+                if (resp.bodyType) {
+                    collectTypeNodeRefs(resp.bodyType, types);
+                    collectOutputTypeNodeRefs(resp.bodyType, types, modelsWithOutput);
+                }
             }
             collectParamSourceRefs(op.query, types);
             collectParamSourceInputRefs(op.query, types, modelsWithInput);
@@ -37,6 +40,30 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[]
         }
     }
     return [...types].sort();
+}
+
+/** Collect Output variant refs for response-side ContractTypeNode types. */
+function collectOutputTypeNodeRefs(type: ContractTypeNode, out: Set<string>, modelsWithOutput?: Set<string>): void {
+    if (!modelsWithOutput) return;
+    switch (type.kind) {
+        case 'ref':
+            if (modelsWithOutput.has(type.name)) out.add(`${type.name}Output`);
+            break;
+        case 'array':
+            collectOutputTypeNodeRefs(type.item, out, modelsWithOutput);
+            break;
+        case 'intersection':
+        case 'union':
+        case 'discriminatedUnion':
+            type.members.forEach(m => collectOutputTypeNodeRefs(m, out, modelsWithOutput));
+            break;
+        case 'inlineObject':
+            type.fields.forEach(f => collectOutputTypeNodeRefs(f.type, out, modelsWithOutput));
+            break;
+        case 'lazy':
+            collectOutputTypeNodeRefs(type.inner, out, modelsWithOutput);
+            break;
+    }
 }
 
 /** Collect Input variant refs for request-side ParamSource types. */
@@ -198,6 +225,47 @@ export function computeModelsWithInput(models: ModelNode[], externalModelsWithIn
     return result;
 }
 
+/**
+ * Compute which models need Output variants (post-transform wire shape),
+ * including transitive dependencies. A model needs an Output variant if it
+ * has `format(output=...)` set to a non-camel case, OR if any of its field
+ * types (recursively) reference a model that has an Output variant.
+ */
+export function computeModelsWithOutput(models: ModelNode[], externalModelsWithOutput: Set<string> = new Set()): Set<string> {
+    const result = new Set<string>();
+
+    // Initial pass: direct outputCase transforms
+    for (const model of models) {
+        if (model.outputCase && model.outputCase !== 'camel') {
+            result.add(model.name);
+        }
+    }
+
+    // Transitive closure
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const model of models) {
+            if (result.has(model.name)) continue;
+            const refs = new Set<string>();
+            for (const field of model.fields) {
+                collectTypeRefs(field.type, refs);
+            }
+            if (model.base) refs.add(model.base);
+            if (model.type) collectTypeRefs(model.type, refs);
+            for (const ref of refs) {
+                if (result.has(ref) || externalModelsWithOutput.has(ref)) {
+                    result.add(model.name);
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 export function collectExternalRefs(root: ContractRootNode): string[] {
     const localNames = new Set(root.models.map(m => m.name));
     const refs = new Set<string>();
@@ -212,6 +280,65 @@ export function collectExternalRefs(root: ContractRootNode): string[] {
 
     for (const name of localNames) refs.delete(name);
     return [...refs].sort();
+}
+
+/** Collect external Output variant refs needed for Output schema fields. */
+export function collectExternalOutputRefs(root: ContractRootNode, modelsWithOutput: Set<string>): string[] {
+    const localNames = new Set(root.models.map(m => m.name));
+    const refs = new Set<string>();
+
+    for (const model of root.models) {
+        if (!modelsWithOutput.has(model.name)) continue;
+        if (model.type) {
+            collectOutputTypeRefsForExport(model.type, refs, modelsWithOutput);
+            continue;
+        }
+        if (model.base && modelsWithOutput.has(model.base) && !localNames.has(model.base)) {
+            refs.add(`${model.base}Output`);
+        }
+        for (const field of model.fields) {
+            collectOutputTypeRefsForExport(field.type, refs, modelsWithOutput);
+        }
+    }
+
+    for (const name of localNames) {
+        refs.delete(`${name}Output`);
+    }
+
+    return [...refs].sort();
+}
+
+function collectOutputTypeRefsForExport(type: ContractTypeNode, out: Set<string>, modelsWithOutput: Set<string>): void {
+    switch (type.kind) {
+        case 'ref':
+            if (modelsWithOutput.has(type.name)) out.add(`${type.name}Output`);
+            break;
+        case 'array':
+            collectOutputTypeRefsForExport(type.item, out, modelsWithOutput);
+            break;
+        case 'tuple':
+            type.items.forEach(i => collectOutputTypeRefsForExport(i, out, modelsWithOutput));
+            break;
+        case 'record':
+            collectOutputTypeRefsForExport(type.key, out, modelsWithOutput);
+            collectOutputTypeRefsForExport(type.value, out, modelsWithOutput);
+            break;
+        case 'union':
+            type.members.forEach(m => collectOutputTypeRefsForExport(m, out, modelsWithOutput));
+            break;
+        case 'discriminatedUnion':
+            type.members.forEach(m => collectOutputTypeRefsForExport(m, out, modelsWithOutput));
+            break;
+        case 'intersection':
+            type.members.forEach(m => collectOutputTypeRefsForExport(m, out, modelsWithOutput));
+            break;
+        case 'lazy':
+            collectOutputTypeRefsForExport(type.inner, out, modelsWithOutput);
+            break;
+        case 'inlineObject':
+            type.fields.forEach(f => collectOutputTypeRefsForExport(f.type, out, modelsWithOutput));
+            break;
+    }
 }
 
 /** Collect external Input variant refs needed for Input schema fields. */

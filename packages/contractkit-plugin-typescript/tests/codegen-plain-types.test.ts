@@ -556,4 +556,51 @@ describe('field name quoting', () => {
         const output = generatePlainTypes(root);
         expect(output).toContain("'x-request-id'?: string;");
     });
+
+    // ─── Output variants (format(output=...)) ──────────────────────────────
+
+    describe('Output variants', () => {
+        it('emits a snake_case Output interface for a model with output=snake', () => {
+            const root = contractRoot([
+                model('AuthToken', [field('accessToken', scalarType('string')), field('refreshToken', scalarType('string'), { optional: true })], {
+                    outputCase: 'snake',
+                }),
+            ]);
+            const output = generatePlainTypes(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/tmp/auth.ts',
+                modelsWithOutput: new Set(['AuthToken']),
+            });
+            // Base interface stays camelCase (developer-facing).
+            expect(output).toContain('export interface AuthToken {');
+            expect(output).toContain('accessToken: string;');
+            // Output interface uses snake_case keys for the wire shape.
+            expect(output).toContain('export interface AuthTokenOutput {');
+            expect(output).toContain('access_token: string;');
+            expect(output).toContain('refresh_token?: string;');
+        });
+
+        it('substitutes nested model refs with their Output variants in transitive containers', () => {
+            const root = contractRoot([
+                model('AuthToken', [field('accessToken', scalarType('string'))], { outputCase: 'snake' }),
+                model('Wrapper', [field('token', refType('AuthToken')), field('issuedAt', scalarType('string'))]),
+            ]);
+            const output = generatePlainTypes(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/tmp/auth.ts',
+                modelsWithOutput: new Set(['AuthToken', 'Wrapper']),
+            });
+            // Wrapper itself doesn't have an outputCase, so its keys stay camelCase
+            // but AuthToken refs become AuthTokenOutput in the wire shape.
+            expect(output).toContain('export interface WrapperOutput {');
+            expect(output).toContain('token: AuthTokenOutput;');
+            expect(output).toContain('issuedAt: string;');
+        });
+
+        it('does not emit Output interface for models without outputCase', () => {
+            const root = contractRoot([model('User', [field('firstName', scalarType('string'))])]);
+            const output = generatePlainTypes(root);
+            expect(output).not.toContain('UserOutput');
+        });
+    });
 });

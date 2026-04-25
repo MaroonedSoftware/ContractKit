@@ -8,7 +8,7 @@ import { default as importOpenApiPlugin } from '@maroonedsoftware/openapi-to-ck/
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { glob } from 'glob';
-import { DiagnosticCollector, parseCk, decomposeCk, validateOp, validateRefs, computeModelsWithInput } from '@maroonedsoftware/contractkit';
+import { DiagnosticCollector, parseCk, decomposeCk, validateOp, validateRefs, computeModelsWithInput, computeModelsWithOutput } from '@maroonedsoftware/contractkit';
 import type { ContractRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
 import { loadConfig, mergeConfig } from './config.js';
 import { loadCache, saveCache, computeHash } from './cache.js';
@@ -197,9 +197,15 @@ async function main() {
         // modelsWithInput: which model names need an Input variant (have readonly/writeonly
         // fields, or transitively reference models that do). Used by all code generators.
         const modelsWithInput = computeModelsWithInput(allContracts.flatMap(r => r.models));
+        // modelsWithOutput: which model names need an Output variant (have format(output=...),
+        // or transitively reference models that do). Used by codegen for the post-transform
+        // wire shape on response bodies.
+        const modelsWithOutput = computeModelsWithOutput(allContracts.flatMap(r => r.models));
 
         // ── Dependency fingerprint ─────────────────────────────────────
-        const depsFingerprint = computeHash([...modelsWithInput].sort().join(','));
+        const depsFingerprint = computeHash(
+            [...modelsWithInput].sort().join(',') + '|' + [...modelsWithOutput].sort().join(','),
+        );
         const depsChanged = cacheEnabled && cache['__deps__'] !== depsFingerprint;
         newCache['__deps__'] = depsFingerprint;
 
@@ -246,6 +252,7 @@ async function main() {
                         contractRoots: allContracts,
                         opRoots: allOps,
                         modelsWithInput,
+                        modelsWithOutput,
                     },
                     ctx,
                 );

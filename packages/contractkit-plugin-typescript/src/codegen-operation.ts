@@ -109,11 +109,13 @@ export interface OpCodegenOptions {
     modelOutPaths?: Map<string, string>;
     /** Set of model names that have Input variants (models with visibility modifiers) */
     modelsWithInput?: Set<string>;
+    /** Set of model names that have Output variants (models with format(output=...)) */
+    modelsWithOutput?: Set<string>;
 }
 
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
     // Collect all referenced types across all routes
-    const types = collectTypes(root, options.modelsWithInput);
+    const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput);
     const services = collectServices(root);
     const routerName = deriveRouterName(root.file);
     const needsParseAndValidate = routeNeedsValidation(root);
@@ -284,7 +286,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     const serviceParts = inferService(op, route, file);
 
     if (primaryResponse?.bodyType) {
-        const { annotation, prelude } = formatTypeAnnotation(primaryResponse.bodyType!);
+        const { annotation, prelude } = formatTypeAnnotation(primaryResponse.bodyType!, options.modelsWithOutput);
         if (prelude) {
             lines.push(`    ${prelude}`);
         }
@@ -367,12 +369,15 @@ function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
     return args.join(', ');
 }
 
-function formatTypeAnnotation(bodyType: ContractTypeNode): { annotation: string; prelude?: string } {
+function formatTypeAnnotation(bodyType: ContractTypeNode, modelsWithOutput?: Set<string>): { annotation: string; prelude?: string } {
     if (bodyType.kind === 'array') {
-        const inner = formatTypeAnnotation(bodyType.item);
+        const inner = formatTypeAnnotation(bodyType.item, modelsWithOutput);
         return { annotation: `${inner.annotation}[]`, prelude: inner.prelude };
     }
-    if (bodyType.kind === 'ref') return { annotation: bodyType.name };
+    if (bodyType.kind === 'ref') {
+        const name = modelsWithOutput?.has(bodyType.name) ? `${bodyType.name}Output` : bodyType.name;
+        return { annotation: name };
+    }
     if (bodyType.kind === 'scalar') return { annotation: bodyType.name };
     // For complex types, extract schema into a variable so the result line stays readable
     const schema = renderType(bodyType);
@@ -483,7 +488,7 @@ function generateTypeImports(types: string[], opFile: string, options: OpCodegen
 
 // ─── Collection helpers ────────────────────────────────────────────────────
 
-function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[] {
+function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWithOutput?: Set<string>): string[] {
     const types = new Set<string>();
     for (const route of root.routes) {
         collectParamSourceRefs(route.params, types);
@@ -496,7 +501,10 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[]
                 }
             }
             for (const resp of op.responses) {
-                if (resp.bodyType) collectTypeNodeRefs(resp.bodyType, types);
+                if (resp.bodyType) {
+                    collectTypeNodeRefs(resp.bodyType, types);
+                    collectOutputTypeNodeRefs(resp.bodyType, types, modelsWithOutput);
+                }
             }
             collectParamSourceRefs(op.query, types);
             collectParamSourceInputRefs(op.query, types, modelsWithInput);
@@ -505,6 +513,41 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>): string[]
         }
     }
     return [...types].sort();
+}
+
+/** Collect Output variant refs for response-side ContractTypeNode types. */
+function collectOutputTypeNodeRefs(type: ContractTypeNode, out: Set<string>, modelsWithOutput?: Set<string>): void {
+    if (!modelsWithOutput) return;
+    switch (type.kind) {
+        case 'ref':
+            if (modelsWithOutput.has(type.name)) out.add(`${type.name}Output`);
+            break;
+        case 'array':
+            collectOutputTypeNodeRefs(type.item, out, modelsWithOutput);
+            break;
+        case 'tuple':
+            type.items.forEach(t => collectOutputTypeNodeRefs(t, out, modelsWithOutput));
+            break;
+        case 'record':
+            collectOutputTypeNodeRefs(type.key, out, modelsWithOutput);
+            collectOutputTypeNodeRefs(type.value, out, modelsWithOutput);
+            break;
+        case 'union':
+            type.members.forEach(t => collectOutputTypeNodeRefs(t, out, modelsWithOutput));
+            break;
+        case 'discriminatedUnion':
+            type.members.forEach(t => collectOutputTypeNodeRefs(t, out, modelsWithOutput));
+            break;
+        case 'intersection':
+            type.members.forEach(t => collectOutputTypeNodeRefs(t, out, modelsWithOutput));
+            break;
+        case 'lazy':
+            collectOutputTypeNodeRefs(type.inner, out, modelsWithOutput);
+            break;
+        case 'inlineObject':
+            type.fields.forEach(f => collectOutputTypeNodeRefs(f.type, out, modelsWithOutput));
+            break;
+    }
 }
 
 function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string>): void {

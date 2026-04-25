@@ -115,3 +115,35 @@ export function renderInputTsType(type: ContractTypeNode, modelsWithInput?: Set<
             return renderTsType(type);
     }
 }
+
+/**
+ * Like renderTsType, but substitutes model refs with their Output variant
+ * (post-transform wire shape) when the model has format(output=...) or
+ * transitively references one. Used for response-side types in routers
+ * and SDK return types.
+ */
+export function renderOutputTsType(type: ContractTypeNode, modelsWithOutput?: Set<string>): string {
+    if (!modelsWithOutput || modelsWithOutput.size === 0) return renderTsType(type);
+    switch (type.kind) {
+        case 'ref':
+            return modelsWithOutput.has(type.name) ? `${type.name}Output` : type.name;
+        case 'array': {
+            const inner = renderOutputTsType(type.item, modelsWithOutput);
+            const needsParens =
+                type.item.kind === 'union' || type.item.kind === 'discriminatedUnion' || type.item.kind === 'intersection' || type.item.kind === 'enum';
+            return needsParens ? `(${inner})[]` : `${inner}[]`;
+        }
+        case 'intersection':
+            return type.members.map(m => renderOutputTsType(m, modelsWithOutput)).join(' & ');
+        case 'union':
+            return type.members.map(m => renderOutputTsType(m, modelsWithOutput)).join(' | ');
+        case 'discriminatedUnion':
+            return type.members.map(m => renderOutputTsType(m, modelsWithOutput)).join(' | ');
+        case 'inlineObject':
+            return `{ ${type.fields.map(f => `${quoteKey(f.name)}${f.optional ? '?' : ''}: ${renderOutputTsType(f.type, modelsWithOutput)}`).join('; ')} }`;
+        case 'lazy':
+            return renderOutputTsType(type.inner, modelsWithOutput);
+        default:
+            return renderTsType(type);
+    }
+}

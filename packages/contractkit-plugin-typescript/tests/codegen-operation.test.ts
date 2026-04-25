@@ -467,6 +467,31 @@ describe('generateOperation', () => {
             const output = generateOp(root);
             expect(output).toContain('ctx.status = 200');
         });
+
+        it('uses Output variant for result type when response model has format(output=...)', () => {
+            const root = opRoot([
+                opRoute('/auth/token', [
+                    opOperation('post', {
+                        responses: [opResponse(200, 'AuthToken', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root, { modelsWithOutput: new Set(['AuthToken']) });
+            expect(output).toContain('result: AuthTokenOutput');
+            expect(output).toContain('AuthTokenOutput');
+        });
+
+        it('uses Output variant for array response when item model has format(output=...)', () => {
+            const root = opRoot([
+                opRoute('/auth/tokens', [
+                    opOperation('get', {
+                        responses: [opResponse(200, 'array(AuthToken)', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root, { modelsWithOutput: new Set(['AuthToken']) });
+            expect(output).toContain('result: AuthTokenOutput[]');
+        });
     });
 
     // ─── Service inference ────────────────────────────────────────

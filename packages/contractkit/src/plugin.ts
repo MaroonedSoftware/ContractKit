@@ -50,6 +50,7 @@ export interface ContractKitPlugin {
             contractRoots: ContractRootNode[];
             opRoots: OpRootNode[];
             modelsWithInput: ReadonlySet<string>;
+            modelsWithOutput: ReadonlySet<string>;
         },
         ctx: PluginContext,
     ) => Promise<void>;

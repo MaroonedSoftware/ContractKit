@@ -900,6 +900,27 @@ describe('generateContract', () => {
             expect(output).not.toContain('z.strictObject(');
         });
 
+        it('output=snake with modelsWithOutput emits a UserOutput alias for the wire shape', () => {
+            const root = contractRoot([
+                model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { outputCase: 'snake' }),
+            ]);
+            const output = generateContract(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/tmp/user.ts',
+                modelsWithOutput: new Set(['User']),
+            });
+            // Base type stays camelCase (developer-facing).
+            expect(output).toContain('export type User = z.input<typeof User>');
+            // Output alias gives the post-transform wire shape (snake_case).
+            expect(output).toContain('export type UserOutput = z.output<typeof User>');
+        });
+
+        it('models without outputCase do not emit Output alias', () => {
+            const root = contractRoot([model('User', [field('firstName', scalarType('string'))])]);
+            const output = generateContract(root);
+            expect(output).not.toContain('UserOutput');
+        });
+
         it('child extending a format(input=snake) base inlines parent fields and inherits the transform', () => {
             // The parent compiles to z.object().transform() — a ZodPipe that has no .extend().
             // The child must flatten the chain so it can build its own object and re-apply the transform,
