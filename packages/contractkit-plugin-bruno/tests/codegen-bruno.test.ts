@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { generateOpenCollection, sanitizePath } from '../src/codegen-bruno.js';
+import { generateOpenCollection, sanitizePath, MANIFEST_FILENAME, parseManifest } from '../src/codegen-bruno.js';
 import {
     opRoot,
     opRoute,
     opOperation,
     opParam,
+    opResponse,
     paramNodes,
     paramRef,
     paramType,
@@ -590,7 +591,9 @@ describe('generateOpenCollection', () => {
 
     it('handles empty roots array', () => {
         const files = generateOpenCollection([], { collectionName: 'Empty' });
-        expect(files).toHaveLength(2);
+        // opencollection.yml + environments/local.yml + manifest
+        expect(files).toHaveLength(3);
+        expect(files.some(f => f.relativePath === MANIFEST_FILENAME)).toBe(true);
     });
 
     it('derives folder name from file path with directory prefix', () => {
@@ -679,6 +682,251 @@ describe('generateOpenCollection', () => {
         const files = generateOpenCollection([root], { collectionName: 'API' });
         const yml = files.find(f => f.relativePath === 'public/get-public.yml');
         expect(yml!.content).not.toContain('auth:');
+    });
+
+    // ─── runtime.assertions (response status check) ─────────────────────────
+
+    it('emits a status-code assertion using the first declared 2xx response', () => {
+        const root = opRoot(
+            [opRoute('/users', [opOperation('post', { responses: [opResponse(201), opResponse(400)] })])],
+            'users.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'users/post-users.yml');
+        expect(yml!.content).toContain('runtime:');
+        expect(yml!.content).toContain('  assertions:');
+        expect(yml!.content).toContain('    - expression: res.status');
+        expect(yml!.content).toContain('      operator: eq');
+        expect(yml!.content).toContain('      value: "201"');
+    });
+
+    it('falls back to the first response when no 2xx is declared', () => {
+        const root = opRoot(
+            [opRoute('/users', [opOperation('get', { responses: [opResponse(404)] })])],
+            'users.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'users/get-users.yml');
+        expect(yml!.content).toContain('value: "404"');
+    });
+
+    it('does not emit a runtime block when the operation declares no responses', () => {
+        const root = opRoot([opRoute('/users', [opOperation('get')])], 'users.op');
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'users/get-users.yml');
+        expect(yml!.content).not.toContain('runtime:');
+    });
+
+    // ─── docs ──────────────────────────────────────────────────────────────
+
+    it('emits a docs block from the operation description', () => {
+        const root = opRoot(
+            [opRoute('/users', [opOperation('get', { description: 'Lists every user.' })])],
+            'users.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'users/get-users.yml');
+        expect(yml!.content).toContain('docs: |-');
+        expect(yml!.content).toContain('  Lists every user.');
+    });
+
+    it('combines route and operation descriptions into the docs block', () => {
+        const root = opRoot(
+            [
+                opRoute(
+                    '/users',
+                    [opOperation('get', { description: 'GET semantics.' })],
+                    undefined,
+                    undefined,
+                    { description: 'User-management endpoints.' },
+                ),
+            ],
+            'users.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'users/get-users.yml');
+        expect(yml!.content).toContain('  User-management endpoints.');
+        expect(yml!.content).toContain('  GET semantics.');
+    });
+
+    it('does not emit a docs block when no description is set', () => {
+        const root = opRoot([opRoute('/users', [opOperation('get')])], 'users.op');
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'users/get-users.yml');
+        expect(yml!.content).not.toContain('docs:');
+    });
+
+    // ─── disabled flag for optional params/headers ────────────────────────
+
+    it('marks optional query params with disabled: true', () => {
+        const root = opRoot(
+            [
+                opRoute('/users', [
+                    opOperation('get', {
+                        query: paramNodes([
+                            opParam('limit', scalarType('int'), { optional: true }),
+                            opParam('cursor', scalarType('string')),
+                        ]),
+                    }),
+                ]),
+            ],
+            'users.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'users/get-users.yml');
+        // limit (optional) is disabled; cursor (required) is not
+        const limitBlock = yml!.content.match(/- name: limit[\s\S]*?(?=- name:|headers:|body:|runtime:|docs:|$)/)?.[0] ?? '';
+        const cursorBlock = yml!.content.match(/- name: cursor[\s\S]*?(?=- name:|headers:|body:|runtime:|docs:|$)/)?.[0] ?? '';
+        expect(limitBlock).toContain('disabled: true');
+        expect(cursorBlock).not.toContain('disabled: true');
+    });
+
+    it('marks optional headers with disabled: true', () => {
+        const root = opRoot(
+            [
+                opRoute('/events', [
+                    opOperation('post', {
+                        headers: paramNodes([
+                            opParam('X-Idempotency-Key', scalarType('uuid'), { optional: true }),
+                            opParam('X-Trace-Id', scalarType('string')),
+                        ]),
+                    }),
+                ]),
+            ],
+            'events.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'events/post-events.yml');
+        const idemBlock = yml!.content.match(/- name: X-Idempotency-Key[\s\S]*?(?=- name:|body:|runtime:|docs:|$)/)?.[0] ?? '';
+        const traceBlock = yml!.content.match(/- name: X-Trace-Id[\s\S]*?(?=- name:|body:|runtime:|docs:|$)/)?.[0] ?? '';
+        expect(idemBlock).toContain('disabled: true');
+        expect(traceBlock).not.toContain('disabled: true');
+    });
+
+    it('does not mark path params as disabled even though they have no optional flag', () => {
+        const root = opRoot([opRoute('/users/{id}', [opOperation('get')])], 'users.op');
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'users/get-users-id.yml');
+        expect(yml!.content).not.toContain('disabled:');
+    });
+
+    it('marks optional fields from a ref-expanded query model as disabled', () => {
+        const queryModel = model('UserQuery', [
+            field('limit', scalarType('int'), { optional: true }),
+            field('search', scalarType('string')),
+        ]);
+        const root = opRoot(
+            [opRoute('/users', [opOperation('get', { query: paramRef('UserQuery') })])],
+            'users.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API', contractRoots: [contractRoot([queryModel])] });
+        const yml = files.find(f => f.relativePath === 'users/get-users.yml');
+        const limitBlock = yml!.content.match(/- name: limit[\s\S]*?(?=- name:|headers:|body:|runtime:|docs:|$)/)?.[0] ?? '';
+        const searchBlock = yml!.content.match(/- name: search[\s\S]*?(?=- name:|headers:|body:|runtime:|docs:|$)/)?.[0] ?? '';
+        expect(limitBlock).toContain('disabled: true');
+        expect(searchBlock).not.toContain('disabled: true');
+    });
+
+    // ─── Manifest ──────────────────────────────────────────────────────────
+
+    it('emits a manifest listing every generated file', () => {
+        const root = opRoot([opRoute('/users', [opOperation('get'), opOperation('post')])], 'users.op');
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const manifest = files.find(f => f.relativePath === MANIFEST_FILENAME);
+        expect(manifest).toBeDefined();
+        const tracked = parseManifest(manifest!.content);
+        expect(tracked).toContain('opencollection.yml');
+        expect(tracked).toContain('environments/local.yml');
+        expect(tracked).toContain('users/folder.yml');
+        expect(tracked).toContain('users/get-users.yml');
+        expect(tracked).toContain('users/post-users.yml');
+        expect(tracked).toContain(MANIFEST_FILENAME);
+    });
+
+    it('parseManifest returns [] for malformed input', () => {
+        expect(parseManifest('not json')).toEqual([]);
+        expect(parseManifest('{}')).toEqual([]);
+        expect(parseManifest('{"files": "nope"}')).toEqual([]);
+        expect(parseManifest('{"files": [1, 2, 3]}')).toEqual([]);
+    });
+
+    // ─── randomExamples ───────────────────────────────────────────────────
+
+    it('emits Bruno faker templates for compatible scalar params when randomExamples is true', () => {
+        const root = opRoot(
+            [
+                opRoute(
+                    '/users/{id}',
+                    [
+                        opOperation('get', {
+                            query: paramNodes([
+                                opParam('email', scalarType('email')),
+                                opParam('limit', scalarType('int')),
+                                opParam('active', scalarType('boolean')),
+                                opParam('since', scalarType('datetime')),
+                            ]),
+                        }),
+                    ],
+                    paramNodes([opParam('id', scalarType('uuid'))]),
+                ),
+            ],
+            'users.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API', randomExamples: true });
+        const yml = files.find(f => f.relativePath === 'users/get-users-id.yml');
+        expect(yml!.content).toContain('value: "{{$randomUUID}}"');
+        expect(yml!.content).toContain('value: "{{$randomEmail}}"');
+        expect(yml!.content).toContain('value: "{{$randomInt}}"');
+        expect(yml!.content).toContain('value: "{{$randomBoolean}}"');
+        expect(yml!.content).toContain('value: "{{$isoTimestamp}}"');
+    });
+
+    it('keeps deterministic placeholders when randomExamples is false', () => {
+        const root = opRoot(
+            [opRoute('/users/{id}', [opOperation('get')], paramNodes([opParam('id', scalarType('uuid'))]))],
+            'users.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API', randomExamples: false });
+        const yml = files.find(f => f.relativePath === 'users/get-users-id.yml');
+        expect(yml!.content).toContain('value: "00000000-0000-0000-0000-000000000000"');
+        expect(yml!.content).not.toContain('{{$randomUUID}}');
+    });
+
+    it('uses faker templates inside JSON body skeletons for string-valued scalars', () => {
+        const bodyType = inlineObjectType([
+            field('id', scalarType('uuid')),
+            field('email', scalarType('email')),
+            field('createdAt', scalarType('datetime')),
+            field('age', scalarType('int')),
+            field('active', scalarType('boolean')),
+        ]);
+        const root = opRoot(
+            [opRoute('/users', [opOperation('post', { request: opRequest(bodyType) })])],
+            'users.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API', randomExamples: true });
+        const yml = files.find(f => f.relativePath === 'users/post-users.yml');
+        expect(yml!.content).toContain('"id": "{{$randomUUID}}"');
+        expect(yml!.content).toContain('"email": "{{$randomEmail}}"');
+        expect(yml!.content).toContain('"createdAt": "{{$isoTimestamp}}"');
+        // Numbers and booleans stay deterministic so the JSON skeleton is valid.
+        expect(yml!.content).toContain('"age": 0');
+        expect(yml!.content).toContain('"active": true');
+    });
+
+    it('does not override field defaults when randomExamples is true', () => {
+        const bodyType = inlineObjectType([
+            field('status', enumType('pending', 'active'), { default: 'pending' }),
+            field('id', scalarType('uuid')),
+        ]);
+        const root = opRoot(
+            [opRoute('/items', [opOperation('post', { request: opRequest(bodyType) })])],
+            'items.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API', randomExamples: true });
+        const yml = files.find(f => f.relativePath === 'items/post-items.yml');
+        expect(yml!.content).toContain('"status": "pending"');
+        expect(yml!.content).toContain('"id": "{{$randomUUID}}"');
     });
 });
 

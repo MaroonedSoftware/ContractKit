@@ -2,6 +2,7 @@ import type {
     OpRootNode,
     OpRouteNode,
     OpOperationNode,
+    OpResponseNode,
     ParamSource,
     ContractTypeNode,
     ContractRootNode,
@@ -15,6 +16,9 @@ export interface OpenCollectionFile {
     relativePath: string;
     content: string;
 }
+
+/** Manifest filename — tracks which files this plugin previously generated so subsequent runs can clean up only those, leaving any user-added files alone. */
+export const MANIFEST_FILENAME = '.contractkit-bruno-manifest.json';
 
 /** Subset of a security scheme sufficient for Bruno auth generation (non-HMAC). */
 export interface BrunoSecurityScheme {
@@ -35,6 +39,12 @@ export interface OpenCollectionOptions {
     collectionName: string;
     contractRoots?: ContractRootNode[];
     auth?: BrunoAuthOptions;
+    /**
+     * When true, emit Bruno faker template strings (e.g. `{{$randomUUID}}`,
+     * `{{$randomEmail}}`) for compatible scalar types so each send produces
+     * fresh data. When false (default), use deterministic placeholders.
+     */
+    randomExamples?: boolean;
 }
 
 /**
@@ -48,9 +58,11 @@ export function generateOpenCollection(roots: OpRootNode[], options: OpenCollect
     const modelMap = buildModelMap(options.contractRoots ?? []);
     const authOpts = options.auth;
     const defaultScheme = authOpts?.defaultScheme ? authOpts.schemes?.[authOpts.defaultScheme] : undefined;
+    const randomExamples = options.randomExamples ?? false;
 
     files.push({ relativePath: 'opencollection.yml', content: generateCollectionRoot(options.collectionName, defaultScheme) });
     files.push({ relativePath: 'environments/local.yml', content: generateEnvFile(defaultScheme) });
+    // Manifest is appended at the end so it lists every generated path including itself.
 
     for (let rootIdx = 0; rootIdx < roots.length; rootIdx++) {
         const root = roots[rootIdx]!;
@@ -75,14 +87,33 @@ export function generateOpenCollection(roots: OpRootNode[], options: OpenCollect
                 const fileName = op.name ? `${slugifyName(op.name)}.yml` : `${op.method}-${sanitizePath(route.path)}.yml`;
                 files.push({
                     relativePath: `${requestDir}/${fileName}`,
-                    content: generateRequestFile(route, op, requestName, seq, modelMap, root, defaultScheme),
+                    content: generateRequestFile(route, op, requestName, seq, modelMap, root, defaultScheme, randomExamples),
                 });
                 seq++;
             }
         }
     }
 
+    const trackedPaths = [...files.map(f => f.relativePath), MANIFEST_FILENAME].sort();
+    files.push({
+        relativePath: MANIFEST_FILENAME,
+        content: JSON.stringify({ files: trackedPaths }, null, 2) + '\n',
+    });
+
     return files;
+}
+
+/** Parse a previously-written manifest. Returns the list of relative paths to clean up. Returns [] if missing or unreadable so a stale/garbled manifest never blocks regeneration. */
+export function parseManifest(content: string): string[] {
+    try {
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed?.files) && parsed.files.every((f: unknown) => typeof f === 'string')) {
+            return parsed.files as string[];
+        }
+    } catch {
+        // fall through
+    }
+    return [];
 }
 
 // ─── File generators ───────────────────────────────────────────────────────
@@ -122,6 +153,7 @@ function generateRequestFile(
     modelMap: Map<string, ModelNode>,
     root?: OpRootNode,
     defaultScheme?: BrunoSecurityScheme,
+    randomExamples = false,
 ): string {
     const lines: string[] = [];
 
@@ -134,14 +166,16 @@ function generateRequestFile(
     lines.push(`  method: ${op.method.toUpperCase()}`);
     lines.push(`  url: ${yamlString(`{{baseUrl}}${openCollectionPath(route.path)}`)}`);
 
-    // Params — flat array with type: "path" | "query"
-    const pathParams = extractPathParamNames(route.path).map(n => ({
+    // Params — flat array with type: "path" | "query". Optional query params are
+    // emitted with disabled: true so users opt in before sending.
+    const pathParams: Array<ParamEntry & { kind: 'path' | 'query' }> = extractPathParamNames(route.path).map(n => ({
         name: n,
-        value: paramExampleValue(findParamType(route.params, n, modelMap)),
+        type: findParamType(route.params, n, modelMap),
+        optional: false,
         kind: 'path' as const,
     }));
-    const queryParams = op.query
-        ? expandParamSource(op.query, modelMap).map(e => ({ name: e.name, value: paramExampleValue(e.type, e.default), kind: 'query' as const }))
+    const queryParams: Array<ParamEntry & { kind: 'path' | 'query' }> = op.query
+        ? expandParamSource(op.query, modelMap).map(e => ({ ...e, kind: 'query' as const }))
         : [];
     const allParams = [...pathParams, ...queryParams];
 
@@ -149,8 +183,9 @@ function generateRequestFile(
         lines.push(`  params:`);
         for (const p of allParams) {
             lines.push(`    - name: ${p.name}`);
-            lines.push(`      value: ${p.value}`);
+            lines.push(`      value: ${paramExampleValue(p.type, p.default, randomExamples)}`);
             lines.push(`      type: ${p.kind}`);
+            if (p.optional && p.kind === 'query') lines.push(`      disabled: true`);
         }
     }
 
@@ -161,7 +196,8 @@ function generateRequestFile(
             lines.push(`  headers:`);
             for (const h of headerEntries) {
                 lines.push(`    - name: ${h.name}`);
-                lines.push(`      value: ${paramExampleValue(h.type, h.default)}`);
+                lines.push(`      value: ${paramExampleValue(h.type, h.default, randomExamples)}`);
+                if (h.optional) lines.push(`      disabled: true`);
             }
         }
     }
@@ -196,7 +232,7 @@ function generateRequestFile(
             lines.push(`    type: form-urlencoded`);
             lines.push(`    data: []`);
         } else {
-            const json = JSON.stringify(typeToExampleValue(primary.bodyType, modelMap), null, 2);
+            const json = JSON.stringify(typeToExampleValue(primary.bodyType, modelMap, randomExamples), null, 2);
             lines.push(`    type: json`);
             lines.push(`    data: |`);
             for (const jsonLine of json.split('\n')) {
@@ -205,8 +241,45 @@ function generateRequestFile(
         }
     }
 
+    // runtime.assertions — auto-generate a status-code check from the declared response.
+    const expectedStatus = pickAssertionStatus(op.responses);
+    if (expectedStatus !== undefined) {
+        lines.push(``);
+        lines.push(`runtime:`);
+        lines.push(`  assertions:`);
+        lines.push(`    - expression: res.status`);
+        lines.push(`      operator: eq`);
+        // Always quote — the OpenCollection schema types `value` as a string,
+        // so we must keep "200" from being parsed as YAML number 200.
+        lines.push(`      value: "${expectedStatus}"`);
+    }
+
+    // docs — combine route- and operation-level descriptions as a markdown block.
+    const docs = buildRequestDocs(route, op);
+    if (docs) {
+        lines.push(``);
+        lines.push(`docs: |-`);
+        for (const docLine of docs.split('\n')) {
+            lines.push(`  ${docLine}`);
+        }
+    }
+
     lines.push(``);
     return lines.join('\n');
+}
+
+/** Pick the response whose status code we'll assert against. Prefers the first declared 2xx; otherwise falls back to the first declared response. Returns undefined if no responses are declared. */
+function pickAssertionStatus(responses: OpResponseNode[]): number | undefined {
+    const success = responses.find(r => r.statusCode >= 200 && r.statusCode < 300);
+    return success?.statusCode ?? responses[0]?.statusCode;
+}
+
+/** Build a markdown docs block from route- and operation-level descriptions. */
+function buildRequestDocs(route: OpRouteNode, op: OpOperationNode): string | undefined {
+    const parts: string[] = [];
+    if (route.description) parts.push(route.description.trim());
+    if (op.description) parts.push(op.description.trim());
+    return parts.length > 0 ? parts.join('\n\n') : undefined;
 }
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────
@@ -259,25 +332,28 @@ interface ParamEntry {
     name: string;
     type: ContractTypeNode | undefined;
     default?: string | number | boolean;
+    optional: boolean;
 }
 
 /** Expand a ParamSource into a flat list of named entries with their types. */
 function expandParamSource(source: ParamSource, modelMap: Map<string, ModelNode>): ParamEntry[] {
-    if (source.kind === 'params') return source.nodes.map(n => ({ name: n.name, type: n.type }));
+    if (source.kind === 'params') {
+        return source.nodes.map(n => ({ name: n.name, type: n.type, default: n.default, optional: n.optional }));
+    }
     if (source.kind === 'ref') {
         const model = modelMap.get(source.name);
         if (model) {
             return resolveModelFields(model, modelMap)
                 .filter(f => f.visibility !== 'readonly')
-                .map(f => ({ name: f.name, type: f.type, default: f.default }));
+                .map(f => ({ name: f.name, type: f.type, default: f.default, optional: f.optional }));
         }
         // Fallback: single placeholder entry
         const name = source.name.charAt(0).toLowerCase() + source.name.slice(1);
-        return [{ name, type: undefined }];
+        return [{ name, type: undefined, optional: false }];
     }
     // kind === 'type': if it's an inline object, expand its fields
     if (source.node.kind === 'inlineObject') {
-        return source.node.fields.map(f => ({ name: f.name, type: f.type, default: f.default }));
+        return source.node.fields.map(f => ({ name: f.name, type: f.type, default: f.default, optional: f.optional }));
     }
     return [];
 }
@@ -297,12 +373,16 @@ function findParamType(source: ParamSource | undefined, name: string, modelMap: 
 }
 
 /** Return a YAML-quoted example value string for a param, preferring a default value when provided. */
-function paramExampleValue(type: ContractTypeNode | undefined, defaultValue?: string | number | boolean): string {
+function paramExampleValue(type: ContractTypeNode | undefined, defaultValue?: string | number | boolean, randomExamples = false): string {
     if (defaultValue !== undefined) return `"${defaultValue}"`;
     if (!type) return '""';
     if (type.kind === 'enum') return type.values.length > 0 ? `"${type.values[0]}"` : '""';
     if (type.kind === 'literal') return `"${type.value}"`;
     if (type.kind !== 'scalar') return '""';
+    if (randomExamples) {
+        const random = randomScalarTemplate(type.name);
+        if (random !== undefined) return `"${random}"`;
+    }
     switch (type.name) {
         case 'uuid':
             return '"00000000-0000-0000-0000-000000000000"';
@@ -329,21 +409,51 @@ function paramExampleValue(type: ContractTypeNode | undefined, defaultValue?: st
     }
 }
 
+/** Bruno faker template for a scalar type, or undefined when no clean equivalent exists (date, time, duration, raw string). */
+function randomScalarTemplate(name: string): string | undefined {
+    switch (name) {
+        case 'uuid':
+            return '{{$randomUUID}}';
+        case 'email':
+            return '{{$randomEmail}}';
+        case 'url':
+            return '{{$randomUrl}}';
+        case 'number':
+        case 'int':
+        case 'bigint':
+            return '{{$randomInt}}';
+        case 'boolean':
+            return '{{$randomBoolean}}';
+        case 'datetime':
+            return '{{$isoTimestamp}}';
+        default:
+            return undefined;
+    }
+}
+
 // ─── Body helpers ──────────────────────────────────────────────────────────
 
-/** Recursively build an example JSON value from a ContractTypeNode. */
-function typeToExampleValue(type: ContractTypeNode, modelMap: Map<string, ModelNode>): unknown {
+/**
+ * Recursively build an example JSON value from a ContractTypeNode.
+ *
+ * When `randomExamples` is true we substitute Bruno faker templates only for
+ * scalars whose JSON representation is a string (uuid/email/url/datetime).
+ * Numbers and booleans stay deterministic — embedding `{{$randomInt}}` as a
+ * bare JSON number would require sentinel-stripping the surrounding quotes,
+ * and the body skeleton is meant as a starting point users edit anyway.
+ */
+function typeToExampleValue(type: ContractTypeNode, modelMap: Map<string, ModelNode>, randomExamples = false): unknown {
     switch (type.kind) {
         case 'scalar':
             switch (type.name) {
                 case 'string':
                     return '';
                 case 'email':
-                    return 'user@example.com';
+                    return randomExamples ? '{{$randomEmail}}' : 'user@example.com';
                 case 'url':
-                    return 'https://example.com';
+                    return randomExamples ? '{{$randomUrl}}' : 'https://example.com';
                 case 'uuid':
-                    return '00000000-0000-0000-0000-000000000000';
+                    return randomExamples ? '{{$randomUUID}}' : '00000000-0000-0000-0000-000000000000';
                 case 'number':
                 case 'int':
                 case 'bigint':
@@ -355,7 +465,7 @@ function typeToExampleValue(type: ContractTypeNode, modelMap: Map<string, ModelN
                 case 'time':
                     return '00:00:00';
                 case 'datetime':
-                    return '2024-01-01T00:00:00Z';
+                    return randomExamples ? '{{$isoTimestamp}}' : '2024-01-01T00:00:00Z';
                 case 'duration':
                     return 'PT1H';
                 case 'null':
@@ -368,40 +478,40 @@ function typeToExampleValue(type: ContractTypeNode, modelMap: Map<string, ModelN
         case 'literal':
             return type.value;
         case 'array':
-            return [typeToExampleValue(type.item, modelMap)];
+            return [typeToExampleValue(type.item, modelMap, randomExamples)];
         case 'tuple':
-            return type.items.map(t => typeToExampleValue(t, modelMap));
+            return type.items.map(t => typeToExampleValue(t, modelMap, randomExamples));
         case 'record':
             return {};
         case 'union':
-            return type.members.length > 0 ? typeToExampleValue(type.members[0]!, modelMap) : null;
+            return type.members.length > 0 ? typeToExampleValue(type.members[0]!, modelMap, randomExamples) : null;
         case 'discriminatedUnion':
-            return type.members.length > 0 ? typeToExampleValue(type.members[0]!, modelMap) : null;
+            return type.members.length > 0 ? typeToExampleValue(type.members[0]!, modelMap, randomExamples) : null;
         case 'intersection':
             return {};
         case 'ref': {
             const model = modelMap.get(type.name);
             if (!model) return {};
             // Type alias — recurse into the aliased type
-            if (model.type) return typeToExampleValue(model.type, modelMap);
-            return modelToExampleObject(model, modelMap);
+            if (model.type) return typeToExampleValue(model.type, modelMap, randomExamples);
+            return modelToExampleObject(model, modelMap, randomExamples);
         }
         case 'lazy':
-            return typeToExampleValue(type.inner, modelMap);
+            return typeToExampleValue(type.inner, modelMap, randomExamples);
         case 'inlineObject':
-            return fieldsToExampleObject(type.fields, modelMap);
+            return fieldsToExampleObject(type.fields, modelMap, randomExamples);
         default:
             return null;
     }
 }
 
 /** Build an example object from a ModelNode's fields (including inherited base fields). */
-function modelToExampleObject(model: ModelNode, modelMap: Map<string, ModelNode>): Record<string, unknown> {
-    return fieldsToExampleObject(resolveModelFields(model, modelMap), modelMap);
+function modelToExampleObject(model: ModelNode, modelMap: Map<string, ModelNode>, randomExamples = false): Record<string, unknown> {
+    return fieldsToExampleObject(resolveModelFields(model, modelMap), modelMap, randomExamples);
 }
 
 /** Build an example object from a list of FieldNodes. Excludes readonly; uses defaults when available, null for optional fields without one. */
-function fieldsToExampleObject(fields: FieldNode[], modelMap: Map<string, ModelNode>): Record<string, unknown> {
+function fieldsToExampleObject(fields: FieldNode[], modelMap: Map<string, ModelNode>, randomExamples = false): Record<string, unknown> {
     const obj: Record<string, unknown> = {};
     for (const field of fields) {
         if (field.visibility === 'readonly') continue;
@@ -410,7 +520,7 @@ function fieldsToExampleObject(fields: FieldNode[], modelMap: Map<string, ModelN
         } else if (field.optional) {
             obj[field.name] = null;
         } else {
-            obj[field.name] = typeToExampleValue(field.type, modelMap);
+            obj[field.name] = typeToExampleValue(field.type, modelMap, randomExamples);
         }
     }
     return obj;

@@ -97,8 +97,8 @@ export function contractRoot(models: ModelNode[], file = 'test.ck'): ContractRoo
     return { kind: 'contractRoot', meta: {}, models, file };
 }
 
-export function opParam(name: string, type: ContractTypeNode): OpParamNode {
-    return { name, type, loc: loc(1, 'test.op') };
+export function opParam(name: string, type: ContractTypeNode, overrides?: Partial<OpParamNode>): OpParamNode {
+    return { name, type, loc: loc(1, 'test.op'), ...overrides };
 }
 
 export function paramNodes(nodes: OpParamNode[]): ParamSource {
@@ -161,9 +161,10 @@ export function opRoute(
     operations: OpOperationNode[],
     params?: ParamSource | OpParamNode[] | string,
     modifiers?: RouteModifier[],
+    overrides?: Partial<OpRouteNode>,
 ): OpRouteNode {
     const normalizedParams = params !== undefined ? normalizeParamSource(params) : undefined;
-    return { path, params: normalizedParams, operations, modifiers, loc: loc(1, 'test.op') };
+    return { path, params: normalizedParams, operations, modifiers, loc: loc(1, 'test.op'), ...overrides };
 }
 
 export function opRoot(routes: OpRouteNode[], file = 'users.op', meta: Record<string, string> = {}): OpRootNode {

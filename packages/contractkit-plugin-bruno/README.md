@@ -37,6 +37,7 @@ pnpm add @contractkit/contractkit-plugin-bruno
 | `baseDir` | `string` | `rootDir` | Base directory for the output |
 | `output` | `string` | `"bruno-collection"` | Output directory name |
 | `collectionName` | `string` | basename of `rootDir` | Collection name shown in Bruno |
+| `randomExamples` | `boolean` | `true` | Use Bruno faker templates (`{{$randomUUID}}`, `{{$randomEmail}}`, etc.) for compatible scalar fields so each send produces fresh data. Set to `false` for stable, deterministic placeholders. |
 | `auth.defaultScheme` | `string` | — | Key from `auth.schemes` to apply by default |
 | `auth.schemes` | `object` | — | Map of scheme name → security scheme definition |
 

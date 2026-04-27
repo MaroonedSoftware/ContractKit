@@ -1,6 +1,6 @@
-import { resolve, basename } from 'node:path';
-import { existsSync, rmSync } from 'node:fs';
-import { generateOpenCollection } from './codegen-bruno.js';
+import { resolve, basename, dirname } from 'node:path';
+import { existsSync, readFileSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
+import { generateOpenCollection, MANIFEST_FILENAME, parseManifest } from './codegen-bruno.js';
 import type { BrunoSecurityScheme } from './codegen-bruno.js';
 import type { ContractKitPlugin } from '@maroonedsoftware/contractkit';
 
@@ -8,6 +8,12 @@ export interface BrunoPluginConfig {
     baseDir?: string;
     output?: string;
     collectionName?: string;
+    /**
+     * When true (default), example values use Bruno's faker templates
+     * (`{{$randomUUID}}`, `{{$randomEmail}}`, etc.) so each send produces
+     * fresh data. Set to false for deterministic placeholders.
+     */
+    randomExamples?: boolean;
 }
 
 export interface BrunoPluginOptions extends BrunoPluginConfig {
@@ -25,9 +31,14 @@ const plugin: ContractKitPlugin = {
         const outDir = resolve(base, config.output ?? 'bruno-collection');
         const collectionName = config.collectionName ?? basename(ctx.rootDir);
 
-        if (existsSync(outDir)) rmSync(outDir, { recursive: true, force: true });
+        cleanupTrackedFiles(outDir);
 
-        const files = generateOpenCollection(opRoots, { collectionName, contractRoots, auth });
+        const files = generateOpenCollection(opRoots, {
+            collectionName,
+            contractRoots,
+            auth,
+            randomExamples: config.randomExamples ?? true,
+        });
         for (const { relativePath, content } of files) {
             ctx.emitFile(resolve(outDir, relativePath), content);
         }
@@ -51,13 +62,62 @@ export function createBrunoPlugin(
             const outDir = resolve(base, config.output ?? 'bruno-collection');
             const collectionName = config.collectionName ?? basename(rootDir);
 
-            // Clean stale output directory before regenerating
-            if (existsSync(outDir)) rmSync(outDir, { recursive: true, force: true });
+            cleanupTrackedFiles(outDir);
 
-            const files = generateOpenCollection(opRoots, { collectionName, contractRoots, auth });
+            const files = generateOpenCollection(opRoots, {
+                collectionName,
+                contractRoots,
+                auth,
+                randomExamples: config.randomExamples ?? true,
+            });
             for (const { relativePath, content } of files) {
                 ctx.emitFile(resolve(outDir, relativePath), content);
             }
         },
     };
+}
+
+/**
+ * Delete files this plugin generated on the previous run, leaving anything
+ * the user added (custom .bru files, scripts, secrets, etc.) untouched.
+ *
+ * On first run — or after manual deletion of the manifest — nothing is
+ * removed; stale files from prior versions linger until manually cleaned.
+ */
+function cleanupTrackedFiles(outDir: string): void {
+    const manifestPath = resolve(outDir, MANIFEST_FILENAME);
+    if (!existsSync(manifestPath)) return;
+
+    let tracked: string[];
+    try {
+        tracked = parseManifest(readFileSync(manifestPath, 'utf-8'));
+    } catch {
+        return;
+    }
+
+    const removedDirs = new Set<string>();
+    for (const rel of tracked) {
+        const abs = resolve(outDir, rel);
+        if (existsSync(abs)) {
+            rmSync(abs, { force: true });
+            removedDirs.add(dirname(abs));
+        }
+    }
+
+    // Walk up from each affected directory and remove it if empty, stopping at outDir.
+    for (const dir of removedDirs) {
+        let current = dir;
+        while (current.startsWith(outDir) && current !== outDir) {
+            try {
+                if (readdirSync(current).length === 0) {
+                    rmdirSync(current);
+                    current = dirname(current);
+                } else {
+                    break;
+                }
+            } catch {
+                break;
+            }
+        }
+    }
 }
