@@ -294,12 +294,20 @@ When changing the grammar, also update:
 
 1. `semantics.ts` — add/update the corresponding action
 2. `ast.ts` — add/update the AST node type if needed
-3. `ck.tmLanguage.json` — update syntax highlighting regex
-4. `apps/prettier-plugin/src/print-*.ts` — update the formatter to round-trip the new syntax
+3. `apps/vscode-extension/syntaxes/ck.tmLanguage.json` — update the syntax-highlighting regex so the editor accepts the same characters as the parser. Re-run `pnpm run vscode:install` to reload locally.
+4. `apps/prettier-plugin/src/print-*.ts` — update the formatter to round-trip the new syntax. Add a round-trip test in `apps/prettier-plugin/tests/print-ck.test.ts`.
 5. `parser-ck.test.ts` — add a parser test
-6. All affected codegen files and their tests
-7. `README.md` — update language reference / examples if the surface syntax changed
-8. `CLAUDE.md` - update as needed
+6. **All codegen plugins** — every plugin that consumes the affected AST shape needs its codegen and tests updated. Check each one explicitly, not just the TypeScript plugin:
+   - `packages/contractkit-plugin-typescript` (server, SDK, Zod, plain types)
+   - `packages/contractkit-plugin-python` (Pydantic + httpx client)
+   - `packages/contractkit-plugin-openapi` (OpenAPI 3.0 YAML)
+   - `packages/contractkit-plugin-markdown` (API reference)
+   - `packages/contractkit-plugin-bruno` (Bruno collections)
+   - `packages/openapi-to-ck` (reverse direction — OpenAPI YAML → `.ck`)
+7. `apps/cli` — update if file discovery, config schema, or cache fingerprinting is affected.
+8. `README.md` — update language reference / examples if the surface syntax changed
+9. `CLAUDE.md` — update as needed
+10. Run `pnpm test` at the workspace root to confirm all 20 tasks pass before considering the change done.
 
 ## VS Code extension
 

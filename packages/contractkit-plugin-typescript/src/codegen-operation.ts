@@ -1,5 +1,5 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource, ObjectMode } from '@maroonedsoftware/contractkit';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType } from '@maroonedsoftware/contractkit';
 import {
     renderType,
     renderInputType,
@@ -16,13 +16,18 @@ import { basename, dirname, relative } from 'path';
 
 /** Map a request MIME type to the koa-bodyparser parser token used in middleware. */
 function bodyParserToken(contentType: string): string {
-    switch (contentType) {
-        case 'application/json':
-            return 'json';
-        case 'application/x-www-form-urlencoded':
+    switch (classifyContentType(contentType)) {
+        case 'urlencoded':
             return 'urlencoded';
-        case 'multipart/form-data':
+        case 'multipart':
             return 'multipart';
+        case 'text':
+            return 'text';
+        case 'binary':
+            // koa-bodyparser has no native binary token; fall back to text so the body is
+            // still readable as a string. Services handling binary uploads should switch to
+            // multipart/form-data.
+            return 'text';
         default:
             return 'json';
     }
@@ -332,7 +337,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     }
 
     if (primaryResponse?.bodyType && primaryResponse.contentType) {
-        lines.push(`    ctx.type = 'application/json';`);
+        lines.push(`    ctx.type = '${primaryResponse.contentType}';`);
         lines.push(`    ctx.body = ${hasRespHeaders ? 'result.body' : 'result'};`);
     }
 

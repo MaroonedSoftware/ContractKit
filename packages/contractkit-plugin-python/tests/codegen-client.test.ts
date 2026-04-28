@@ -210,6 +210,63 @@ describe('generatePythonClient', () => {
         expect(output).toContain('# @deprecated');
     });
 
+    it('forwards a vendor JSON content_type kwarg to _fetch', () => {
+        const root = opRoot([
+            opRoute('/users', [
+                opOperation('post', {
+                    sdk: 'createUser',
+                    request: opRequest('User', 'application/vnd.api+json'),
+                    responses: [opResponse(201, 'User', 'application/vnd.api+json')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('content_type="application/vnd.api+json"');
+    });
+
+    it('typed body and response as str/bytes for text and binary content types', () => {
+        const textRoot = opRoot([
+            opRoute('/notes', [
+                opOperation('post', {
+                    sdk: 'putNote',
+                    request: opRequest('Note', 'text/plain'),
+                    responses: [opResponse(200, 'Note', 'text/plain')],
+                }),
+            ]),
+        ]);
+        const textOut = generatePythonClient(textRoot);
+        expect(textOut).toContain('body: str');
+        expect(textOut).toContain('-> str:');
+        expect(textOut).toContain('body_kind="text"');
+        expect(textOut).toContain('response_kind="text"');
+
+        const binaryRoot = opRoot([
+            opRoute('/files', [
+                opOperation('get', {
+                    sdk: 'downloadFile',
+                    responses: [opResponse(200, 'File', 'application/octet-stream')],
+                }),
+            ]),
+        ]);
+        const binaryOut = generatePythonClient(binaryRoot);
+        expect(binaryOut).toContain('-> bytes:');
+        expect(binaryOut).toContain('response_kind="binary"');
+    });
+
+    it('omits content_type kwarg when the request is plain application/json', () => {
+        const root = opRoot([
+            opRoute('/users', [
+                opOperation('post', {
+                    sdk: 'createUser',
+                    request: opRequest('User'),
+                    responses: [opResponse(201, 'User')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).not.toContain('content_type=');
+    });
+
     it('uses model_dump for Input variant body when modelsWithInput is set', () => {
         const modelsWithInput = new Set(['Payment']);
         const root = opRoot([

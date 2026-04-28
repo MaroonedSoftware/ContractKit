@@ -10,7 +10,6 @@ import type {
     OpParamNode,
     OpRequestNode,
     OpRequestBodyNode,
-    RequestContentType,
     OpResponseNode,
     OpResponseHeaderNode,
     ContractTypeNode,
@@ -28,15 +27,12 @@ import { buildCompoundType, resolveSimpleType, extractNullability, typeNodeToPar
 import type { DiagnosticCollector } from './diagnostics.js';
 
 /**
- * Normalize a parsed `type/subtype` string into a supported request content type, or undefined
- * if it doesn't match a recognized MIME (case-insensitive).
+ * Normalize a parsed `type/subtype` string for storage in the AST. Mime types are
+ * case-insensitive per RFC 9110, so we lowercase to give codegen and diagnostics a stable
+ * comparison key. Anything matching the grammar's `mimeType` rule is accepted as-is.
  */
-function normalizeRequestContentType(raw: string): RequestContentType | undefined {
-    const lower = raw.toLowerCase();
-    if (lower === 'application/json') return 'application/json';
-    if (lower === 'application/x-www-form-urlencoded') return 'application/x-www-form-urlencoded';
-    if (lower === 'multipart/form-data') return 'multipart/form-data';
-    return undefined;
+function normalizeContentType(raw: string): string {
+    return raw.toLowerCase();
 }
 
 /**
@@ -937,11 +933,7 @@ export function createSemantics(grammar: Grammar) {
                 const child = items.child(i);
                 if (child.ctorName === 'comment') continue;
                 const raw = child.toAst(file, diag) as { contentType: string; bodyType: ContractTypeNode };
-                const ct = normalizeRequestContentType(raw.contentType);
-                if (!ct) {
-                    diag?.warn(file, getLine(child), `Unknown request content type '${raw.contentType}' — supported: application/json, application/x-www-form-urlencoded, multipart/form-data`);
-                    continue;
-                }
+                const ct = normalizeContentType(raw.contentType);
                 if (seen.has(ct)) {
                     diag?.warn(file, getLine(child), `Duplicate request content type '${ct}'`);
                     continue;
@@ -969,7 +961,7 @@ export function createSemantics(grammar: Grammar) {
             const file = this.args.file;
             const diag = this.args.diag;
             const statusCode = parseInt(codeNode.sourceString, 10);
-            let contentType: 'application/json' | undefined;
+            let contentType: string | undefined;
             let bodyType: ContractTypeNode | undefined;
             let headers: OpResponseHeaderNode[] | undefined;
             let headersOptOut: boolean | undefined;
@@ -999,7 +991,7 @@ export function createSemantics(grammar: Grammar) {
                         diag?.warn(file, getLine(itemNode), `Duplicate response body for status ${statusCode}`);
                         continue;
                     }
-                    contentType = 'application/json';
+                    contentType = normalizeContentType(item.contentType);
                     bodyType = item.bodyType;
                 }
             }
@@ -1017,8 +1009,8 @@ export function createSemantics(grammar: Grammar) {
             return child.toAst(this.args.file, this.args.diag);
         },
 
-        ContentTypeLine(part1Node, _slash, part2Node, _colon, typeExprNode) {
-            const contentType = part1Node.sourceString + '/' + part2Node.sourceString;
+        ContentTypeLine(mimeNode, _colon, typeExprNode) {
+            const contentType = mimeNode.sourceString;
             const bodyType = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
             return { contentType, bodyType };
         },

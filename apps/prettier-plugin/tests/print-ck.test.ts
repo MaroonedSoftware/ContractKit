@@ -341,6 +341,20 @@ describe('printCk — request blocks', () => {
         expect(out).toContain('            application/json: CreateUser');
     });
 
+    it('round-trips vendor JSON mime types like application/vnd.api+json', () => {
+        const ast = makeRoot([
+            makeRoute('/users', [
+                makeOp('post', {
+                    request: { bodies: [{ contentType: 'application/vnd.api+json', bodyType: { kind: 'ref', name: 'CreateUser' } }] },
+                    responses: [{ statusCode: 201, contentType: 'application/vnd.api+json', bodyType: { kind: 'ref', name: 'User' } }],
+                }),
+            ]),
+        ]);
+        const out = printCk(ast);
+        expect(out).toContain('            application/vnd.api+json: CreateUser');
+        expect(out).toContain('                application/vnd.api+json: User');
+    });
+
     it('prints multiple content-types preserving source order', () => {
         const ast = makeRoot([
             makeRoute('/auth/token', [

@@ -221,7 +221,11 @@ Contract {
                      | ResponseHeadersBlock
                      | ContentTypeLine
 
-  ContentTypeLine = identifier "/" identifier ":" TypeExpression
+  ContentTypeLine = mimeType ":" TypeExpression
+
+  mimeType = mimeChar+ "/" mimeChar+
+
+  mimeChar = alnum | "-" | "." | "+" | "_"
 
   ResponseHeadersBlock = headersKw ":" noneKw                                    -- none
                        | headersKw ":" "{" (comment | ResponseHeaderField)* "}"  -- fields

@@ -213,10 +213,15 @@ export interface OpParamNode {
 /** Either inline param declarations, a single type reference name, or a ContractTypeNode. */
 export type ParamSource = { kind: 'params'; nodes: OpParamNode[] } | { kind: 'ref'; name: string } | { kind: 'type'; node: ContractTypeNode };
 
-export type RequestContentType = 'application/json' | 'multipart/form-data' | 'application/x-www-form-urlencoded';
+/**
+ * Recognized request mime types that codegen has dedicated handling for. Other strings are
+ * still permitted (any RFC 6838-shaped `type/subtype`) and pass through unchanged; codegen
+ * falls back to a JSON-ish default for `+json` suffixes and a generic body for everything else.
+ */
+export type KnownRequestContentType = 'application/json' | 'multipart/form-data' | 'application/x-www-form-urlencoded';
 
 export interface OpRequestBodyNode {
-    contentType: RequestContentType;
+    contentType: string;
     bodyType: ContractTypeNode;
 }
 
@@ -234,7 +239,7 @@ export interface OpResponseHeaderNode {
 
 export interface OpResponseNode {
     statusCode: number;
-    contentType?: 'application/json';
+    contentType?: string;
     bodyType?: ContractTypeNode;
     /** Declared response headers for this status code. Undefined = none declared. */
     headers?: OpResponseHeaderNode[];

@@ -120,14 +120,14 @@ export function paramType(node: ContractTypeNode): ParamSource {
 
 export function opRequest(
     bodyType: string | ContractTypeNode,
-    contentType: 'application/json' | 'multipart/form-data' | 'application/x-www-form-urlencoded' = 'application/json',
+    contentType: string = 'application/json',
 ): OpRequestNode {
     const bt: ContractTypeNode = typeof bodyType === 'string' ? refType(bodyType) : bodyType;
     return { bodies: [{ contentType, bodyType: bt }] };
 }
 
 export function opMultiRequest(
-    entries: Array<[ 'application/json' | 'multipart/form-data' | 'application/x-www-form-urlencoded', string | ContractTypeNode ]>,
+    entries: Array<[string, string | ContractTypeNode]>,
 ): OpRequestNode {
     return {
         bodies: entries.map(([contentType, body]) => ({
@@ -137,7 +137,7 @@ export function opMultiRequest(
     };
 }
 
-export function opResponse(statusCode: number, bodyType?: string | ContractTypeNode, contentType?: 'application/json'): OpResponseNode {
+export function opResponse(statusCode: number, bodyType?: string | ContractTypeNode, contentType?: string): OpResponseNode {
     const bt: ContractTypeNode | undefined = bodyType === undefined ? undefined : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
     return { statusCode, contentType, bodyType: bt };
 }

@@ -144,6 +144,87 @@ describe('generateSdk', () => {
         });
     });
 
+    describe('vendor JSON content types', () => {
+        it('emits the literal +json mime on the Content-Type header and serializes as JSON', () => {
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('post', {
+                        sdk: 'createUser',
+                        request: opRequest('CreateUserInput', 'application/vnd.api+json'),
+                        responses: [opResponse(201, 'User', 'application/vnd.api+json')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain("'Content-Type': 'application/vnd.api+json'");
+            expect(out).toContain('JSON.stringify(body, bigIntReplacer)');
+            expect(out).toContain('return await parseJson<User>(result)');
+        });
+    });
+
+    describe('text and binary content types', () => {
+        it('returns string and reads result.text() for text/* responses', () => {
+            const root = opRoot([
+                opRoute('/notes', [
+                    opOperation('get', {
+                        sdk: 'getNote',
+                        responses: [opResponse(200, 'Note', 'text/plain')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('Promise<string>');
+            expect(out).toContain('return await result.text()');
+            expect(out).not.toContain('parseJson<Note>');
+        });
+
+        it('returns Blob and reads result.blob() for non-text non-JSON responses', () => {
+            const root = opRoot([
+                opRoute('/files', [
+                    opOperation('get', {
+                        sdk: 'downloadFile',
+                        responses: [opResponse(200, 'Blob', 'application/octet-stream')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('Promise<Blob>');
+            expect(out).toContain('return await result.blob()');
+        });
+
+        it('takes a string body and forwards it as-is for text/* requests', () => {
+            const root = opRoot([
+                opRoute('/notes', [
+                    opOperation('post', {
+                        sdk: 'putNote',
+                        request: opRequest('Note', 'text/plain'),
+                        responses: [opResponse(204)],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('body: string');
+            expect(out).toContain("'Content-Type': 'text/plain'");
+            expect(out).toContain('body: body');
+            expect(out).not.toContain('JSON.stringify(body');
+        });
+
+        it('takes a Blob/ArrayBuffer body for binary requests', () => {
+            const root = opRoot([
+                opRoute('/files', [
+                    opOperation('post', {
+                        sdk: 'uploadFile',
+                        request: opRequest('Blob', 'application/octet-stream'),
+                        responses: [opResponse(204)],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('body: Blob | ArrayBuffer | Uint8Array | string');
+            expect(out).toContain("'Content-Type': 'application/octet-stream'");
+        });
+    });
+
     describe('multi-MIME request bodies', () => {
         it('emits an optional contentType option when bodies are structurally equal', () => {
             const root = opRoot([

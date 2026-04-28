@@ -450,6 +450,31 @@ describe('generateOperation', () => {
             expect(output).toContain("ctx.type = 'application/json'");
         });
 
+        it("uses bodyParser 'text' token for text/* request mimes", () => {
+            const root = opRoot([
+                opRoute('/notes', [
+                    opOperation('post', {
+                        request: opRequest('Note', 'text/plain'),
+                        responses: [opResponse(204)],
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain("bodyParserMiddleware(['text'])");
+        });
+
+        it('emits the literal vendor JSON mime on ctx.type when declared', () => {
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        responses: [opResponse(200, 'User', 'application/vnd.api+json')],
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain("ctx.type = 'application/vnd.api+json'");
+        });
+
         it('formats array response type annotation', () => {
             const root = opRoot([
                 opRoute('/users', [

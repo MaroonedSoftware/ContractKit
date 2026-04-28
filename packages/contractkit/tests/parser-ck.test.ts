@@ -763,6 +763,39 @@ operation /auth/token: {
             expect(req!.bodies[1]!.bodyType).toEqual({ kind: 'ref', name: 'AuthRequest' });
         });
 
+        it('accepts mime types with non-identifier characters like + and vendor suffixes', () => {
+            const { root, diag } = parse(`\
+operation /foo: {
+    post: {
+        request: {
+            application/vnd.api+json: Body
+        }
+        response: {
+            200: {
+                application/vnd.api+json: Body
+            }
+        }
+    }
+}`);
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.request!.bodies[0]!.contentType).toBe('application/vnd.api+json');
+            expect(op.responses[0]!.contentType).toBe('application/vnd.api+json');
+            expect(diag.getAll()).toEqual([]);
+        });
+
+        it('lowercases content types for stable comparison', () => {
+            const { root } = parse(`\
+operation /foo: {
+    post: {
+        request: { Application/JSON: Body }
+        response: { 200: { Application/JSON: Body } }
+    }
+}`);
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.request!.bodies[0]!.contentType).toBe('application/json');
+            expect(op.responses[0]!.contentType).toBe('application/json');
+        });
+
         it('warns and dedupes when the same content type is declared twice', () => {
             const { root, diag } = parse(`\
 operation /foo: {

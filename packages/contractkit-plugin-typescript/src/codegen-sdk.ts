@@ -1,5 +1,5 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpRequestBodyNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
-import { resolveModifiers } from '@maroonedsoftware/contractkit';
+import { resolveModifiers, isJsonMime, classifyContentType } from '@maroonedsoftware/contractkit';
 import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
@@ -22,6 +22,7 @@ function jsonOrFormSerialize(varName: string, contentType: string): string {
     if (contentType === 'multipart/form-data') {
         return `(${varName} as FormData)`;
     }
+    // application/json + any `+json` structured suffix — JSON.stringify with bigint support.
     return `JSON.stringify(${varName}, bigIntReplacer)`;
 }
 
@@ -207,10 +208,18 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
     const params = buildMethodParams(route, op, modelsWithInput);
     const paramStr = params.map(p => `${p.name}${p.optional ? '?' : ''}: ${p.type}`).join(', ');
 
-    // Determine return type — response side uses Output variants (post-transform wire shape)
+    // Determine return type — response side uses Output variants (post-transform wire shape).
+    // For non-JSON responses the schema is ignored: text/* is read as string, binary as Blob.
     const primaryResponse = op.responses.find(r => r.bodyType) ?? op.responses[0];
     const isVoid = !primaryResponse?.bodyType;
-    const dataType = isVoid ? 'void' : renderOutputTsType(primaryResponse!.bodyType!, modelsWithOutput);
+    const respCategory = primaryResponse?.contentType ? classifyContentType(primaryResponse.contentType) : 'json';
+    const dataType = isVoid
+        ? 'void'
+        : respCategory === 'text'
+            ? 'string'
+            : respCategory === 'binary'
+                ? 'Blob'
+                : renderOutputTsType(primaryResponse!.bodyType!, modelsWithOutput);
     const respHeaders = primaryResponse?.headers ?? [];
     const hasRespHeaders = respHeaders.length > 0;
     const headersShape = hasRespHeaders
@@ -284,13 +293,19 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
 
     if (strategy.kind === 'single') {
         const body = strategy.body;
-        if (body.contentType === 'multipart/form-data') {
+        const cat = classifyContentType(body.contentType);
+        if (cat === 'multipart') {
+            // FormData supplies its own Content-Type with boundary; don't override it.
             fetchArgs.push('body: body');
-        } else if (body.contentType === 'application/x-www-form-urlencoded') {
-            fetchArgs.push(`headers: { 'Content-Type': 'application/x-www-form-urlencoded' }`);
+        } else if (cat === 'urlencoded') {
+            fetchArgs.push(`headers: { 'Content-Type': '${body.contentType}' }`);
             fetchArgs.push('body: new URLSearchParams(body as unknown as Record<string, string>).toString()');
+        } else if (cat === 'text' || cat === 'binary') {
+            // text/* and binary mimes pass the body through to fetch as-is — no schema serialization.
+            fetchArgs.push(`headers: { 'Content-Type': '${body.contentType}' }`);
+            fetchArgs.push('body: body');
         } else {
-            fetchArgs.push(`headers: { 'Content-Type': 'application/json' }`);
+            fetchArgs.push(`headers: { 'Content-Type': '${body.contentType}' }`);
             fetchArgs.push('body: JSON.stringify(body, bigIntReplacer)');
         }
     } else if (hasBody) {
@@ -322,6 +337,13 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
         lines.push(`        });`);
     }
 
+    const readBodyExpr =
+        respCategory === 'text'
+            ? `await result.text()`
+            : respCategory === 'binary'
+                ? `await result.blob()`
+                : `await parseJson<${dataType}>(result)`;
+
     if (hasRespHeaders) {
         const headerEntries = respHeaders
             .map(h => `${quoteKey(headerNameToProperty(h.name))}: result.headers.get('${h.name}') ?? undefined`)
@@ -329,11 +351,11 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
         if (isVoid) {
             lines.push(`        return { headers: { ${headerEntries} } };`);
         } else {
-            lines.push(`        const data = await parseJson<${dataType}>(result);`);
+            lines.push(`        const data = ${readBodyExpr};`);
             lines.push(`        return { data, headers: { ${headerEntries} } };`);
         }
     } else if (!isVoid) {
-        lines.push(`        return await parseJson<${dataType}>(result);`);
+        lines.push(`        return ${readBodyExpr};`);
     }
 
     lines.push('    }');
@@ -379,8 +401,13 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     const strategy = classifyBodyStrategy(op);
     if (strategy.kind === 'single') {
         const body = strategy.body;
-        if (body.contentType === 'multipart/form-data') {
+        const cat = classifyContentType(body.contentType);
+        if (cat === 'multipart') {
             params.push({ name: 'body', type: 'FormData', optional: false });
+        } else if (cat === 'text') {
+            params.push({ name: 'body', type: 'string', optional: false });
+        } else if (cat === 'binary') {
+            params.push({ name: 'body', type: 'Blob | ArrayBuffer | Uint8Array | string', optional: false });
         } else {
             params.push({ name: 'body', type: renderInputTsType(body.bodyType, modelsWithInput), optional: false });
         }
@@ -622,7 +649,7 @@ function sdkNeedsBigIntReplacer(root: OpRootNode): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (resolveModifiers(route, op).includes('internal')) continue;
-            if (op.request && op.request.bodies.some(b => b.contentType === 'application/json')) return true;
+            if (op.request && op.request.bodies.some(b => isJsonMime(b.contentType))) return true;
         }
     }
     return false;
@@ -633,7 +660,15 @@ function sdkNeedsBigIntReviver(root: OpRootNode): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (resolveModifiers(route, op).includes('internal')) continue;
-            if (op.responses.some(r => r.bodyType)) return true;
+            if (
+                op.responses.some(r => {
+                    if (!r.bodyType) return false;
+                    // Only JSON-shaped responses use parseJson — text/binary read raw.
+                    return !r.contentType || classifyContentType(r.contentType) === 'json';
+                })
+            ) {
+                return true;
+            }
         }
     }
     return false;

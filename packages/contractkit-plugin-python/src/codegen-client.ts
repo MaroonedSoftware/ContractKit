@@ -1,5 +1,5 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpResponseHeaderNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
-import { resolveModifiers } from '@maroonedsoftware/contractkit';
+import { resolveModifiers, classifyContentType } from '@maroonedsoftware/contractkit';
 import { renderPyType, toPythonFieldName } from './codegen-models.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -156,12 +156,19 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     });
     const paramStr = allParams.length > 0 ? `, ${allParams.join(', ')}` : '';
 
-    // Return type
+    // Return type — non-JSON responses ignore the schema and return raw bytes/str.
     const primaryResponse = op.responses.find(r => r.bodyType) ?? op.responses[0];
     const isVoid = !primaryResponse?.bodyType;
-    const dataType = isVoid ? 'None' : renderPyType(primaryResponse!.bodyType!, modelsWithInput);
-    const isModelReturn = !isVoid && isModelRef(primaryResponse!.bodyType!, modelsWithInput);
-    const isListModelReturn = !isVoid && isListModelRef(primaryResponse!.bodyType!, modelsWithInput);
+    const respCategory = primaryResponse?.contentType ? classifyContentType(primaryResponse.contentType) : 'json';
+    const dataType = isVoid
+        ? 'None'
+        : respCategory === 'text'
+            ? 'str'
+            : respCategory === 'binary'
+                ? 'bytes'
+                : renderPyType(primaryResponse!.bodyType!, modelsWithInput);
+    const isModelReturn = !isVoid && respCategory === 'json' && isModelRef(primaryResponse!.bodyType!, modelsWithInput);
+    const isListModelReturn = !isVoid && respCategory === 'json' && isListModelRef(primaryResponse!.bodyType!, modelsWithInput);
     const respHeaders = primaryResponse?.headers ?? [];
     const hasRespHeaders = respHeaders.length > 0;
     const headersTypeName = hasRespHeaders ? `${snakeToPascal(methodName)}Headers` : '';
@@ -193,15 +200,31 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     const fetchKwargs: string[] = [];
     fetchKwargs.push(`method="${httpMethod}"`);
 
+    const reqCategory = primaryBody?.contentType ? classifyContentType(primaryBody.contentType) : 'json';
     if (hasBody) {
         const bodyParam = params.find(p => p.name === 'body');
         if (isMultipart) {
+            fetchKwargs.push('body=body');
+        } else if (reqCategory === 'text' || reqCategory === 'binary') {
+            // Pass-through: caller supplies a str / bytes payload that goes on the wire as-is.
             fetchKwargs.push('body=body');
         } else if (bodyParam?.isModel) {
             fetchKwargs.push('body=body.model_dump(mode="json")');
         } else {
             fetchKwargs.push('body=body');
         }
+        // Forward the declared content-type so `_fetch` sets the correct Content-Type header
+        // (vendor JSON types like `application/vnd.api+json` still serialize as JSON but need
+        // their literal mime on the wire).
+        if (primaryBody.contentType !== 'application/json') {
+            fetchKwargs.push(`content_type=${JSON.stringify(primaryBody.contentType)}`);
+        }
+        if (reqCategory === 'text' || reqCategory === 'binary') {
+            fetchKwargs.push(`body_kind="${reqCategory}"`);
+        }
+    }
+    if (respCategory === 'text' || respCategory === 'binary') {
+        fetchKwargs.push(`response_kind="${respCategory}"`);
     }
 
     if (hasQuery) {
@@ -306,8 +329,11 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     // Multi-MIME support in Python collapses to a single signature using the primary body.
     const primaryBody = op.request?.bodies[0];
     if (primaryBody) {
-        if (primaryBody.contentType === 'multipart/form-data') {
+        const cat = classifyContentType(primaryBody.contentType);
+        if (cat === 'multipart' || cat === 'binary') {
             params.push({ name: 'body', type: 'bytes', optional: false, isModel: false });
+        } else if (cat === 'text') {
+            params.push({ name: 'body', type: 'str', optional: false, isModel: false });
         } else {
             const bodyType = renderInputPyType(primaryBody.bodyType, modelsWithInput);
             const isModel = isModelRef(primaryBody.bodyType, modelsWithInput);
@@ -566,6 +592,9 @@ class BaseClient:
         body: Any = None,
         params: dict | None = None,
         extra_headers: dict | None = None,
+        content_type: str | None = None,
+        body_kind: str = "json",
+        response_kind: str = "json",
     ) -> Any:
         result, _ = await self._fetch_with_headers(
             path,
@@ -573,6 +602,9 @@ class BaseClient:
             body=body,
             params=params,
             extra_headers=extra_headers,
+            content_type=content_type,
+            body_kind=body_kind,
+            response_kind=response_kind,
         )
         return result
 
@@ -584,17 +616,23 @@ class BaseClient:
         body: Any = None,
         params: dict | None = None,
         extra_headers: dict | None = None,
+        content_type: str | None = None,
+        body_kind: str = "json",
+        response_kind: str = "json",
     ) -> tuple[Any, dict[str, str]]:
         headers = {**self._headers, **(extra_headers or {})}
         if body is not None:
-            headers["Content-Type"] = "application/json"
-        response = await self._http.request(
-            method=method,
-            url=f"{self._base_url}{path}",
-            json=body,
-            params=params,
-            headers=headers,
-        )
+            headers["Content-Type"] = content_type or "application/json"
+        # body_kind controls how httpx serializes the request body:
+        #   "json"   — body is a JSON-serializable object, sent via httpx's json= kwarg
+        #   "text"/"binary" — body is a raw str/bytes payload, sent via content= unchanged
+        request_kwargs: dict[str, Any] = {"method": method, "url": f"{self._base_url}{path}", "params": params, "headers": headers}
+        if body is not None:
+            if body_kind == "json":
+                request_kwargs["json"] = body
+            else:
+                request_kwargs["content"] = body
+        response = await self._http.request(**request_kwargs)
         if not response.is_success:
             try:
                 error_body = response.json()
@@ -605,5 +643,9 @@ class BaseClient:
         response_headers = {k.lower(): v for k, v in response.headers.items()}
         if response.status_code == 204 or not response.content:
             return None, response_headers
+        if response_kind == "text":
+            return response.text, response_headers
+        if response_kind == "binary":
+            return response.content, response_headers
         return response.json(), response_headers
 `;
