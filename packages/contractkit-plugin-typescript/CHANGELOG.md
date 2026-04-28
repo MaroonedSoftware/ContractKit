@@ -1,5 +1,11 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.14.1
+
+### Patch Changes
+
+- 206120c: Fix double-anchoring in Zod regex codegen: patterns that already contain `^` or an unescaped trailing `$` are now emitted as-written instead of being wrapped a second time. Patterns without anchors continue to be auto-anchored to `^...$` for full-match semantics.
+
 ## 0.14.0
 
 ### Minor Changes
