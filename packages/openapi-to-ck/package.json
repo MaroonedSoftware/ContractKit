@@ -1,6 +1,6 @@
 {
     "name": "@maroonedsoftware/openapi-to-ck",
-    "version": "0.4.2",
+    "version": "0.5.0",
     "description": "Convert OpenAPI specs (2.0/3.0/3.1) to Contract Kit .ck files",
     "type": "module",
     "main": "./dist/index.js",
