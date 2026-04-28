@@ -9,7 +9,7 @@ import type {
     ModelNode,
     FieldNode,
 } from '@maroonedsoftware/contractkit';
-import { resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
+import { resolveSecurity, resolveModifiers, SECURITY_NONE } from '@maroonedsoftware/contractkit';
 import { basename } from 'path';
 
 export interface OpenCollectionFile {
@@ -45,6 +45,12 @@ export interface OpenCollectionOptions {
      * fresh data. When false (default), use deterministic placeholders.
      */
     randomExamples?: boolean;
+    /**
+     * Whether to generate request files for operations marked `internal`. Defaults to
+     * `true` — Bruno collections are typically used by the team that owns the API and
+     * benefit from full coverage. Set to `false` to omit internal ops.
+     */
+    includeInternal?: boolean;
 }
 
 /**
@@ -59,6 +65,7 @@ export function generateOpenCollection(roots: OpRootNode[], options: OpenCollect
     const authOpts = options.auth;
     const defaultScheme = authOpts?.defaultScheme ? authOpts.schemes?.[authOpts.defaultScheme] : undefined;
     const randomExamples = options.randomExamples ?? false;
+    const includeInternal = options.includeInternal ?? true;
 
     files.push({ relativePath: 'opencollection.yml', content: generateCollectionRoot(options.collectionName, defaultScheme) });
     files.push({ relativePath: 'environments/local.yml', content: generateEnvFile(defaultScheme) });
@@ -83,6 +90,7 @@ export function generateOpenCollection(roots: OpRootNode[], options: OpenCollect
         let seq = 1;
         for (const route of root.routes) {
             for (const op of route.operations) {
+                if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
                 const requestName = op.name ?? route.path;
                 const fileName = op.name ? `${slugifyName(op.name)}.yml` : `${op.method}-${sanitizePath(route.path)}.yml`;
                 files.push({

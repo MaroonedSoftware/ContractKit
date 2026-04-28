@@ -44,6 +44,24 @@ describe('generateOpenCollection', () => {
         expect(envFile!.content).not.toContain('secret:');
     });
 
+    it('emits requests for internal operations by default', () => {
+        const root = opRoot(
+            [opRoute('/secret', [opOperation('get', { name: 'Get Secret' })], undefined, ['internal'])],
+            'secret.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        expect(files.some(f => f.relativePath.endsWith('get-secret.yml'))).toBe(true);
+    });
+
+    it('skips internal operations when includeInternal is false', () => {
+        const root = opRoot(
+            [opRoute('/secret', [opOperation('get', { name: 'Get Secret' })], undefined, ['internal'])],
+            'secret.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API', includeInternal: false });
+        expect(files.some(f => f.relativePath.endsWith('get-secret.yml'))).toBe(false);
+    });
+
     it('creates one folder per op root file', () => {
         const usersRoot = opRoot([opRoute('/users', [opOperation('get')])], 'users.op');
         const paymentsRoot = opRoot([opRoute('/payments', [opOperation('get')])], 'payments.op');

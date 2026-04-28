@@ -144,6 +144,36 @@ describe('generateSdk', () => {
         });
     });
 
+    describe('includeInternal flag', () => {
+        it('omits internal operations from the SDK by default', () => {
+            const root = opRoot([
+                opRoute('/public', [opOperation('get', { sdk: 'getPublic', responses: [opResponse(200, 'User')] })]),
+                opRoute('/secret', [opOperation('get', { sdk: 'getSecret', responses: [opResponse(200, 'User')] })], undefined, ['internal']),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('async getPublic(');
+            expect(out).not.toContain('async getSecret(');
+        });
+
+        it('emits internal operations when includeInternal is true', () => {
+            const root = opRoot([
+                opRoute('/public', [opOperation('get', { sdk: 'getPublic', responses: [opResponse(200, 'User')] })]),
+                opRoute('/secret', [opOperation('get', { sdk: 'getSecret', responses: [opResponse(200, 'User')] })], undefined, ['internal']),
+            ]);
+            const out = generateSdk(root, { includeInternal: true });
+            expect(out).toContain('async getPublic(');
+            expect(out).toContain('async getSecret(');
+        });
+
+        it('hasPublicOperations reports true on an internal-only root when includeInternal is true', () => {
+            const root = opRoot([
+                opRoute('/secret', [opOperation('get', { responses: [opResponse(200, 'User')] })], undefined, ['internal']),
+            ]);
+            expect(hasPublicOperations(root)).toBe(false);
+            expect(hasPublicOperations(root, true)).toBe(true);
+        });
+    });
+
     describe('vendor JSON content types', () => {
         it('emits the literal +json mime on the Content-Type header and serializes as JSON', () => {
             const root = opRoot([

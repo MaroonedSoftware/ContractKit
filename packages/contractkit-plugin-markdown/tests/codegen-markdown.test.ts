@@ -805,6 +805,18 @@ describe('route modifiers', () => {
             expect(output).not.toContain('**`POST`** `/users`');
         });
 
+        it('includes internal operations when includeInternal is true', () => {
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { responses: [opResponse(200)] }),
+                    opOperation('post', { modifiers: ['internal'], responses: [opResponse(201)] }),
+                ]),
+            ]);
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op], includeInternal: true });
+            expect(output).toContain('**`GET`** `/users`');
+            expect(output).toContain('**`POST`** `/users`');
+        });
+
         it('excludes all operations when route is internal', () => {
             const op = opRoot([
                 opRoute(

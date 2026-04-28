@@ -450,6 +450,23 @@ describe('generateOperation', () => {
             expect(output).toContain("ctx.type = 'application/json'");
         });
 
+        it('emits handlers for internal operations by default', () => {
+            const root = opRoot([
+                opRoute('/secret', [opOperation('get', { responses: [opResponse(200, 'User')] })], undefined, ['internal']),
+            ]);
+            expect(generateOp(root)).toContain("'/secret'");
+        });
+
+        it('skips internal operations when includeInternal is false', () => {
+            const root = opRoot([
+                opRoute('/public', [opOperation('get', { responses: [opResponse(200, 'User')] })]),
+                opRoute('/secret', [opOperation('get', { responses: [opResponse(200, 'User')] })], undefined, ['internal']),
+            ]);
+            const out = generateOp(root, { includeInternal: false });
+            expect(out).toContain("'/public'");
+            expect(out).not.toContain("'/secret'");
+        });
+
         it("uses bodyParser 'text' token for text/* request mimes", () => {
             const root = opRoot([
                 opRoute('/notes', [

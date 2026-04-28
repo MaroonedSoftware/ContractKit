@@ -14,6 +14,12 @@ export interface BrunoPluginConfig {
      * fresh data. Set to false for deterministic placeholders.
      */
     randomExamples?: boolean;
+    /**
+     * Whether to generate request files for operations marked `internal`. Defaults to
+     * `true` — Bruno collections are typically used by the team that owns the API and
+     * benefit from full coverage. Set to `false` to omit internal ops.
+     */
+    includeInternal?: boolean;
 }
 
 export interface BrunoPluginOptions extends BrunoPluginConfig {
@@ -38,6 +44,7 @@ const plugin: ContractKitPlugin = {
             contractRoots,
             auth,
             randomExamples: config.randomExamples ?? true,
+            includeInternal: config.includeInternal,
         });
         for (const { relativePath, content } of files) {
             ctx.emitFile(resolve(outDir, relativePath), content);

@@ -68,13 +68,23 @@ export interface SdkCodegenOptions {
     modelsWithInput?: Set<string>;
     /** Set of model names that have Output variants (models with format(output=...)) */
     modelsWithOutput?: Set<string>;
+    /**
+     * Whether to emit SDK methods for operations marked `internal`. Defaults to `false` —
+     * internal ops are omitted from the SDK so consumers don't pick them up. Set to `true`
+     * to include them (e.g. for an internal-use SDK).
+     */
+    includeInternal?: boolean;
 }
 
-/** Returns true if at least one operation in the root is not internal. */
-export function hasPublicOperations(root: OpRootNode): boolean {
+/**
+ * Returns true if the root contains at least one operation eligible for SDK emission.
+ * With `includeInternal: false` (default) that means at least one non-internal op; with
+ * `includeInternal: true` any op qualifies.
+ */
+export function hasPublicOperations(root: OpRootNode, includeInternal = false): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
-            if (!resolveModifiers(route, op).includes('internal')) return true;
+            if (includeInternal || !resolveModifiers(route, op).includes('internal')) return true;
         }
     }
     return false;
@@ -82,8 +92,9 @@ export function hasPublicOperations(root: OpRootNode): boolean {
 
 export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): string {
     const lines: string[] = [];
+    const includeInternal = options.includeInternal ?? false;
 
-    const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput);
+    const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput, includeInternal);
     const clientClassName = deriveClientClassName(root.file);
 
     // Type-only imports
@@ -96,12 +107,12 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         let rel = relative(dirname(options.outPath), options.sdkOptionsPath);
         rel = rel.replace(/\.ts$/, '.js');
         if (!rel.startsWith('.')) rel = './' + rel;
-        const jsonImport = sdkNeedsJson(root) ? ', JsonValue' : '';
+        const jsonImport = sdkNeedsJson(root, includeInternal) ? ', JsonValue' : '';
         lines.push(`import type { SdkFetch${jsonImport} } from '${rel}';`);
         const valueImports: string[] = [];
-        if (sdkNeedsBigIntReplacer(root)) valueImports.push('bigIntReplacer');
-        if (sdkNeedsBigIntReviver(root)) valueImports.push('parseJson');
-        if (sdkNeedsQueryString(root)) valueImports.push('buildQueryString');
+        if (sdkNeedsBigIntReplacer(root, includeInternal)) valueImports.push('bigIntReplacer');
+        if (sdkNeedsBigIntReviver(root, includeInternal)) valueImports.push('parseJson');
+        if (sdkNeedsQueryString(root, includeInternal)) valueImports.push('buildQueryString');
         if (valueImports.length > 0) {
             lines.push(`import { ${valueImports.join(', ')} } from '${rel}';`);
         }
@@ -166,7 +177,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('}');
     }
 
-    if (sdkNeedsJson(root) && !(options.sdkOptionsPath && options.outPath)) {
+    if (sdkNeedsJson(root, includeInternal) && !(options.sdkOptionsPath && options.outPath)) {
         lines.push(JSON_VALUE_TYPE_DECL);
     }
 
@@ -183,7 +194,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     for (const route of root.routes) {
         for (const op of route.operations) {
             const mods = resolveModifiers(route, op);
-            if (mods.includes('internal')) continue;
+            if (!includeInternal && mods.includes('internal')) continue;
             lines.push('');
             if (mods.includes('deprecated')) lines.push('    /** @deprecated */');
             lines.push(...generateMethod(route, op, root.file, options));
@@ -523,10 +534,15 @@ export function deriveClientPropertyName(file: string): string {
 
 // ─── Type collection ──────────────────────────────────────────────────────
 
-function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWithOutput?: Set<string>): string[] {
+function collectTypes(
+    root: OpRootNode,
+    modelsWithInput?: Set<string>,
+    modelsWithOutput?: Set<string>,
+    includeInternal = false,
+): string[] {
     const types = new Set<string>();
     for (const route of root.routes) {
-        const publicOps = route.operations.filter(op => !resolveModifiers(route, op).includes('internal'));
+        const publicOps = route.operations.filter(op => includeInternal || !resolveModifiers(route, op).includes('internal'));
         if (publicOps.length === 0) continue;
         // Only collect path-param types if there are public ops on this route
         collectParamSourceRefs(route.params, types);
@@ -634,21 +650,22 @@ function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string
     }
 }
 
-/** True if any public operation serializes a JSON request body (uses bigIntReplacer). */
-function sdkNeedsQueryString(root: OpRootNode): boolean {
+/** True if any emitted operation has query params (drives the `buildQueryString` import). */
+function sdkNeedsQueryString(root: OpRootNode, includeInternal = false): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
-            if (resolveModifiers(route, op).includes('internal')) continue;
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             if (op.query) return true;
         }
     }
     return false;
 }
 
-function sdkNeedsBigIntReplacer(root: OpRootNode): boolean {
+/** True if any emitted operation serializes a JSON request body (uses bigIntReplacer). */
+function sdkNeedsBigIntReplacer(root: OpRootNode, includeInternal = false): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
-            if (resolveModifiers(route, op).includes('internal')) continue;
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             if (op.request && op.request.bodies.some(b => isJsonMime(b.contentType))) return true;
         }
     }
@@ -656,10 +673,10 @@ function sdkNeedsBigIntReplacer(root: OpRootNode): boolean {
 }
 
 /** True if any public operation parses a JSON response body (uses bigIntReviver). */
-function sdkNeedsBigIntReviver(root: OpRootNode): boolean {
+function sdkNeedsBigIntReviver(root: OpRootNode, includeInternal = false): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
-            if (resolveModifiers(route, op).includes('internal')) continue;
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             if (
                 op.responses.some(r => {
                     if (!r.bodyType) return false;
@@ -674,9 +691,10 @@ function sdkNeedsBigIntReviver(root: OpRootNode): boolean {
     return false;
 }
 
-function sdkNeedsJson(root: OpRootNode): boolean {
+function sdkNeedsJson(root: OpRootNode, includeInternal = false): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             const check = (src: ParamSource | undefined) => {
                 if (!src || src.kind === 'ref') return false;
                 if (src.kind === 'params') return src.nodes.some(p => typeNeedsScalar(p.type, 'json'));

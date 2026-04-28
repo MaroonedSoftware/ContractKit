@@ -5,6 +5,11 @@ import type { ContractKitPlugin } from '@maroonedsoftware/contractkit';
 export interface MarkdownPluginConfig {
     baseDir?: string;
     output?: string;
+    /**
+     * Whether to document operations marked `internal`. Defaults to `false` — internal ops
+     * are omitted from the rendered reference. Set to `true` for an internal-use doc.
+     */
+    includeInternal?: boolean;
 }
 
 // ─── Default export: loaded via plugins array, reads config from ctx.options ─
@@ -16,7 +21,7 @@ const plugin: ContractKitPlugin = {
         const config = ctx.options as MarkdownPluginConfig;
         const base = config.baseDir ? resolve(ctx.rootDir, config.baseDir) : ctx.rootDir;
         const outPath = resolve(base, config.output ?? 'api-reference.md');
-        ctx.emitFile(outPath, generateMarkdown({ contractRoots, opRoots }));
+        ctx.emitFile(outPath, generateMarkdown({ contractRoots, opRoots, includeInternal: config.includeInternal }));
     },
 };
 
@@ -31,7 +36,7 @@ export function createMarkdownPlugin(config: MarkdownPluginConfig, rootDir: stri
         async generateTargets({ contractRoots, opRoots }, ctx) {
             const base = config.baseDir ? resolve(rootDir, config.baseDir) : rootDir;
             const outPath = resolve(base, config.output ?? 'api-reference.md');
-            ctx.emitFile(outPath, generateMarkdown({ contractRoots, opRoots }));
+            ctx.emitFile(outPath, generateMarkdown({ contractRoots, opRoots, includeInternal: config.includeInternal }));
         },
     };
 }

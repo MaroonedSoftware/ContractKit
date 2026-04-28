@@ -63,7 +63,7 @@ pnpm add @contractkit/contractkit-plugin-openapi
 
 The plugin writes a single YAML file. All `contract` declarations become entries in `components/schemas`. All `operation` declarations become paths with their HTTP verbs, request bodies, parameters, and response schemas.
 
-Operation visibility modifiers (`internal`, `public`) are reflected in the generated spec — `internal` operations are tagged accordingly.
+Operations marked `internal` are omitted from the generated spec by default. Set `includeInternal: true` in the plugin config to include them (e.g. for an internal-use API spec).
 
 ## Programmatic use
 

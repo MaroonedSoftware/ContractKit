@@ -224,6 +224,20 @@ describe('generatePythonClient', () => {
         expect(output).toContain('content_type="application/vnd.api+json"');
     });
 
+    it('omits internal operations by default and includes them when includeInternal is true', () => {
+        const root = opRoot([
+            opRoute('/public', [opOperation('get', { sdk: 'getPublic', responses: [opResponse(200, 'User')] })]),
+            opRoute('/secret', [opOperation('get', { sdk: 'getSecret', responses: [opResponse(200, 'User')] })], undefined, ['internal']),
+        ]);
+        const defaultOut = generatePythonClient(root);
+        expect(defaultOut).toContain('async def get_public(');
+        expect(defaultOut).not.toContain('async def get_secret(');
+
+        const inclusiveOut = generatePythonClient(root, { includeInternal: true });
+        expect(inclusiveOut).toContain('async def get_public(');
+        expect(inclusiveOut).toContain('async def get_secret(');
+    });
+
     it('typed body and response as str/bytes for text and binary content types', () => {
         const textRoot = opRoot([
             opRoute('/notes', [

@@ -117,6 +117,12 @@ export interface OpCodegenOptions {
     modelsWithInput?: Set<string>;
     /** Set of model names that have Output variants (models with format(output=...)) */
     modelsWithOutput?: Set<string>;
+    /**
+     * Whether to emit handlers for operations marked `internal`. Defaults to `true` because
+     * the server still needs routes for internal endpoints; set to `false` to omit them
+     * from the generated router entirely.
+     */
+    includeInternal?: boolean;
 }
 
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
@@ -179,8 +185,10 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     lines.push(`export const ${routerName} = ServerKitRouter();`);
     lines.push('');
 
+    const includeInternal = options.includeInternal ?? true;
     for (const route of root.routes) {
         for (const op of route.operations) {
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             lines.push(...generateHandler(route, op, root, options));
             lines.push('');
         }

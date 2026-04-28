@@ -15,6 +15,12 @@ export interface PythonSdkPluginConfig {
     baseDir?: string;
     /** Python package name used in the aggregator class name (default: "Sdk") */
     packageName?: string;
+    /**
+     * Whether to emit client methods for operations marked `internal`. Defaults to `false` —
+     * internal ops are omitted so consumers don't pick them up. Set to `true` for an
+     * internal-use SDK that should expose them.
+     */
+    includeInternal?: boolean;
 }
 
 // ─── Default export: loaded via plugins array, reads config from ctx.options ─
@@ -71,7 +77,7 @@ export function createPythonSdkPlugin(config: PythonSdkPluginConfig, rootDir: st
             // ── Emit client files ──
             const clientInfos: { moduleName: string; className: string; propertyName: string }[] = [];
             for (const opRoot of opRoots) {
-                if (!hasPublicOperations(opRoot)) continue;
+                if (!hasPublicOperations(opRoot, config.includeInternal)) continue;
                 const moduleName = deriveClientModuleName(opRoot.file);
                 const outPath = join(outDir, `${moduleName}.py`);
                 clientInfos.push({
@@ -83,6 +89,7 @@ export function createPythonSdkPlugin(config: PythonSdkPluginConfig, rootDir: st
                     modelModulePaths,
                     currentModule: `.${moduleName}`,
                     modelsWithInput,
+                    includeInternal: config.includeInternal,
                 }));
             }
 

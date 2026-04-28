@@ -44,6 +44,11 @@ export interface ServerConfig {
     };
     /** Import path template for service implementations. Supports {module}. */
     servicePathTemplate?: string;
+    /**
+     * Whether to emit handlers for operations marked `internal`. Defaults to `true` —
+     * the server still needs routes for internal endpoints. Set to `false` to omit them.
+     */
+    includeInternal?: boolean;
 }
 
 export interface SdkConfig {
@@ -64,6 +69,12 @@ export interface SdkConfig {
         /** Path template for client class files. Supports {filename}, {dir}, {area}. */
         clients?: string;
     };
+    /**
+     * Whether to emit SDK methods for operations marked `internal`. Defaults to `false` —
+     * internal ops are omitted from the SDK so consumers don't pick them up. Set to `true`
+     * for an internal-use SDK that should expose them.
+     */
+    includeInternal?: boolean;
 }
 
 export interface ZodConfig {
@@ -149,6 +160,7 @@ function runServerGeneration(
             modelOutPaths: serverModelOutPaths,
             modelsWithInput,
             modelsWithOutput,
+            includeInternal: config.includeInternal,
         });
         emitFile(outPath, content);
     }
@@ -226,7 +238,7 @@ function runSdkGeneration(
     if (config.output?.clients) {
         for (const ast of inputs.opRoots) {
             const sdkOutPath = computeSdkOutPath(ast.file, sdkBase, config.output.clients, ckCommonRoot, ast.meta);
-            if (!sdkOutPath || !hasPublicOperations(ast)) continue;
+            if (!sdkOutPath || !hasPublicOperations(ast, config.includeInternal)) continue;
             sdkClientInfos.push({
                 outPath: sdkOutPath,
                 className: deriveClientClassName(ast.file),
@@ -239,6 +251,7 @@ function runSdkGeneration(
                 sdkOptionsPath,
                 modelsWithInput,
                 modelsWithOutput,
+                includeInternal: config.includeInternal,
             }));
         }
     }

@@ -560,6 +560,18 @@ describe('route modifiers', () => {
             expect(output).not.toContain('post:');
         });
 
+        it('includes internal operations when config.includeInternal is true', () => {
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { responses: [opResponse(200)] }),
+                    opOperation('post', { modifiers: ['internal'], responses: [opResponse(201)] }),
+                ]),
+            ]);
+            const output = generateOpenApi({ contractRoots: [], opRoots: [op], config: { includeInternal: true } });
+            expect(output).toContain('get:');
+            expect(output).toContain('post:');
+        });
+
         it('excludes all operations when route is internal', () => {
             const op = opRoot([
                 opRoute(

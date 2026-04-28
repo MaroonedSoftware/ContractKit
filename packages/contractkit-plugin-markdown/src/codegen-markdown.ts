@@ -94,10 +94,16 @@ function renderTsInlineObject(fields: FieldNode[]): string {
 export interface MarkdownCodegenContext {
     contractRoots: ContractRootNode[];
     opRoots: OpRootNode[];
+    /**
+     * Whether to document operations marked `internal`. Defaults to `false` — internal ops
+     * are omitted from the rendered reference. Set to `true` for an internal-use doc.
+     */
+    includeInternal?: boolean;
 }
 
 export function generateMarkdown(ctx: MarkdownCodegenContext): string {
     const { contractRoots, opRoots } = ctx;
+    const includeInternal = ctx.includeInternal ?? false;
     const modelIndex = buildModelIndex(contractRoots);
     const lines: string[] = [];
 
@@ -105,7 +111,7 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
     lines.push('');
 
     // ── Collect grouped data ─────────────────────────────────────
-    const endpointGroups = groupEndpoints(opRoots);
+    const endpointGroups = groupEndpoints(opRoots, includeInternal);
     const publicModels = computePubliclyReachableModels(opRoots, contractRoots);
     const modelGroups = groupModels(contractRoots, publicModels);
 
@@ -256,7 +262,7 @@ interface ModelGroup {
     models: ModelNode[];
 }
 
-function groupEndpoints(opRoots: OpRootNode[]): EndpointGroup[] {
+function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): EndpointGroup[] {
     const grouped = new Map<string, EndpointEntry[]>();
     const ungrouped: EndpointEntry[] = [];
 
@@ -265,7 +271,7 @@ function groupEndpoints(opRoots: OpRootNode[]): EndpointGroup[] {
         for (const route of opRoot.routes) {
             for (const op of route.operations) {
                 const mods = resolveModifiers(route, op);
-                if (mods.includes('internal')) continue;
+                if (!includeInternal && mods.includes('internal')) continue;
                 const entry: EndpointEntry = { route, op };
                 if (area) {
                     const list = grouped.get(area) ?? [];

@@ -34,6 +34,12 @@ export interface OpenApiConfig {
     servers?: OpenApiServerEntry[];
     /** Global OpenAPI security requirements (e.g. [{ bearerAuth: [] }]). Distinct from scheme definitions. */
     security?: Record<string, string[]>[];
+    /**
+     * Whether to document operations marked `internal`. Defaults to `false` — internal ops
+     * are omitted from the spec so external consumers don't see them. Set to `true` for an
+     * internal-use spec.
+     */
+    includeInternal?: boolean;
 }
 
 // ─── Type reachability ────────────────────────────────────────────────────
@@ -80,12 +86,12 @@ function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string
 }
 
 /** Collect all type names directly referenced by public operations (seed set). */
-function collectPublicTypeRefs(opRoots: OpRootNode[]): Set<string> {
+function collectPublicTypeRefs(opRoots: OpRootNode[], includeInternal = false): Set<string> {
     const refs = new Set<string>();
     for (const opRoot of opRoots) {
         for (const route of opRoot.routes) {
             for (const op of route.operations) {
-                if (resolveModifiers(route, op).includes('internal')) continue;
+                if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
                 if (op.request) {
                     for (const body of op.request.bodies) collectRefsFromType(body.bodyType, refs);
                 }
@@ -138,6 +144,7 @@ export interface OpenApiCodegenContext {
 
 export function generateOpenApi(ctx: OpenApiCodegenContext): string {
     const { contractRoots, opRoots, config, securitySchemes } = ctx;
+    const includeInternal = config.includeInternal ?? false;
 
     const doc: Record<string, unknown> = {
         openapi: '3.1.0',
@@ -180,7 +187,7 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
 
             for (const op of route.operations) {
                 const mods = resolveModifiers(route, op);
-                if (mods.includes('internal')) continue;
+                if (!includeInternal && mods.includes('internal')) continue;
                 // Lazily initialize the path object so all-internal routes
                 // leave no empty entry in the output
                 if (!paths[oaPath]) paths[oaPath] = {};
@@ -198,7 +205,7 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
     const schemas: Record<string, unknown> =
         opRoots.length > 0
             ? (() => {
-                  const reachable = computeReachableSchemas(collectPublicTypeRefs(opRoots), modelMap);
+                  const reachable = computeReachableSchemas(collectPublicTypeRefs(opRoots, includeInternal), modelMap);
                   const filtered: Record<string, unknown> = {};
                   for (const [name, schema] of Object.entries(allSchemas)) {
                       if (reachable.has(name)) filtered[name] = schema;

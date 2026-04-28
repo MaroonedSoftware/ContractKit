@@ -108,19 +108,21 @@ Generates Koa router files from `operation` declarations. Optionally also emits 
 | `output.routes`       | `string`  | Path template for Koa router files. Default: `{filename}.router.ts`                                 |
 | `output.types`        | `string`  | Path template for type/schema files                                                                 |
 | `servicePathTemplate` | `string`  | Import path template for service implementations. Supports `{module}`.                              |
+| `includeInternal`     | `boolean` | Whether to emit handlers for `internal` operations. Default: `true`.                                |
 
 ##### `sdk`
 
-Generates a typed TypeScript HTTP client. Each operation file becomes a client class; an aggregator class plus a shared `sdk-options.ts` runtime helper file are emitted automatically. Operations marked `internal` are excluded from the SDK.
+Generates a typed TypeScript HTTP client. Each operation file becomes a client class; an aggregator class plus a shared `sdk-options.ts` runtime helper file are emitted automatically. Operations marked `internal` are excluded from the SDK by default — set `includeInternal: true` for an internal-use SDK.
 
-| Field            | Type      | Description                                                                                         |
-| ---------------- | --------- | --------------------------------------------------------------------------------------------------- |
-| `baseDir`        | `string`  | Directory (relative to `rootDir`) where SDK files are written                                       |
-| `name`           | `string`  | Used for the aggregator SDK class name (e.g. `"myapp"` → `MyappSdk`)                                |
-| `zod`            | `boolean` | When true, `output.types` emits Zod schemas. When false/omitted, emits plain TypeScript interfaces. |
-| `output.sdk`     | `string`  | Path template for the SDK aggregator file. Supports `{name}`. Default: `sdk.ts`                     |
-| `output.types`   | `string`  | Path template for SDK type files                                                                    |
-| `output.clients` | `string`  | Path template for client class files                                                                |
+| Field             | Type      | Description                                                                                         |
+| ----------------- | --------- | --------------------------------------------------------------------------------------------------- |
+| `baseDir`         | `string`  | Directory (relative to `rootDir`) where SDK files are written                                       |
+| `name`            | `string`  | Used for the aggregator SDK class name (e.g. `"myapp"` → `MyappSdk`)                                |
+| `zod`             | `boolean` | When true, `output.types` emits Zod schemas. When false/omitted, emits plain TypeScript interfaces. |
+| `output.sdk`      | `string`  | Path template for the SDK aggregator file. Supports `{name}`. Default: `sdk.ts`                     |
+| `output.types`    | `string`  | Path template for SDK type files                                                                    |
+| `output.clients`  | `string`  | Path template for client class files                                                                |
+| `includeInternal` | `boolean` | Whether to emit SDK methods for `internal` operations. Default: `false`.                            |
 
 ##### `zod` and `types`
 
@@ -135,43 +137,47 @@ All path templates support `{filename}`, `{dir}`, `{area}`, and (for `output.sdk
 
 #### `contractkit-plugin-openapi`
 
-| Field             | Type     | Description                                                            |
-| ----------------- | -------- | ---------------------------------------------------------------------- |
-| `baseDir`         | `string` | Directory for the output file                                          |
-| `output`          | `string` | Output filename. Default: `openapi.yaml`                               |
-| `info`            | `object` | OpenAPI `info` block (`title`, `version`, `description`)               |
-| `servers`         | `array`  | List of `{ url, description }` server entries                          |
-| `security`        | `array`  | Global OpenAPI security requirement                                    |
-| `securitySchemes` | `object` | Map of scheme name → OpenAPI security scheme (e.g. `{ type, scheme }`) |
+| Field             | Type      | Description                                                                          |
+| ----------------- | --------- | ------------------------------------------------------------------------------------ |
+| `baseDir`         | `string`  | Directory for the output file                                                        |
+| `output`          | `string`  | Output filename. Default: `openapi.yaml`                                             |
+| `info`            | `object`  | OpenAPI `info` block (`title`, `version`, `description`)                             |
+| `servers`         | `array`   | List of `{ url, description }` server entries                                        |
+| `security`        | `array`   | Global OpenAPI security requirement                                                  |
+| `securitySchemes` | `object`  | Map of scheme name → OpenAPI security scheme (e.g. `{ type, scheme }`)               |
+| `includeInternal` | `boolean` | Whether to document `internal` operations. Default: `false`.                         |
 
-Only types referenced by public (non-`internal`) operations are included.
+Only types referenced by emitted operations are included.
 
 #### `contractkit-plugin-markdown`
 
-| Field     | Type     | Description                                  |
-| --------- | -------- | -------------------------------------------- |
-| `baseDir` | `string` | Directory for the output file                |
-| `output`  | `string` | Output filename. Default: `api-reference.md` |
+| Field             | Type      | Description                                                          |
+| ----------------- | --------- | -------------------------------------------------------------------- |
+| `baseDir`         | `string`  | Directory for the output file                                        |
+| `output`          | `string`  | Output filename. Default: `api-reference.md`                         |
+| `includeInternal` | `boolean` | Whether to render `internal` operations. Default: `false`.           |
 
-Internal operations and unreachable types are excluded.
+Unreachable types are excluded.
 
 #### `contractkit-plugin-bruno`
 
-| Field            | Type     | Description                                                                                       |
-| ---------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `baseDir`        | `string` | Directory for the output collection                                                               |
-| `output`         | `string` | Output directory name. Default: `bruno-collection`                                                |
-| `collectionName` | `string` | Bruno collection name. Default: the rootDir basename                                              |
-| `auth`           | `object` | `{ defaultScheme, schemes }` — schemes use the same shape as OpenAPI security schemes plus `hmac` |
+| Field             | Type      | Description                                                                                       |
+| ----------------- | --------- | ------------------------------------------------------------------------------------------------- |
+| `baseDir`         | `string`  | Directory for the output collection                                                               |
+| `output`          | `string`  | Output directory name. Default: `bruno-collection`                                                |
+| `collectionName`  | `string`  | Bruno collection name. Default: the rootDir basename                                              |
+| `auth`            | `object`  | `{ defaultScheme, schemes }` — schemes use the same shape as OpenAPI security schemes plus `hmac` |
+| `includeInternal` | `boolean` | Whether to generate request files for `internal` operations. Default: `true`.                     |
 
 Regenerates the output directory cleanly on each run.
 
 #### `contractkit-plugin-python`
 
-| Field         | Type     | Description                                                   |
-| ------------- | -------- | ------------------------------------------------------------- |
-| `baseDir`     | `string` | Output directory relative to `rootDir`. Default: `python-sdk` |
-| `packageName` | `string` | Used in the aggregator class name. Default: `Sdk`             |
+| Field             | Type      | Description                                                                |
+| ----------------- | --------- | -------------------------------------------------------------------------- |
+| `baseDir`         | `string`  | Output directory relative to `rootDir`. Default: `python-sdk`              |
+| `packageName`     | `string`  | Used in the aggregator class name. Default: `Sdk`                          |
+| `includeInternal` | `boolean` | Whether to emit client methods for `internal` operations. Default: `false`. |
 
 Emits one Pydantic v2 module per contract file and one httpx client per operation file. Method names follow the same priority as the TS SDK (`sdk:` → `name:` → derived from HTTP verb + path), converted to `snake_case`.
 
@@ -664,7 +670,7 @@ operation(deprecated) /v1/users: { ... }
 
 | Modifier     | Effect                                                                                                  |
 | ------------ | ------------------------------------------------------------------------------------------------------- |
-| `internal`   | Excluded from SDK generation, markdown docs, and OpenAPI output. Server router code is still generated. |
+| `internal`   | By default: excluded from SDK / Python SDK / OpenAPI / Markdown output, included in the server router and Bruno collection. Each plugin accepts an `includeInternal: boolean` config option to override its default. |
 | `deprecated` | Adds `@deprecated` JSDoc and `deprecated: true` in OpenAPI output for all operations on this route.     |
 
 Route-level modifiers cascade to all operations. Individual operations can override using the same modifier syntax on the HTTP method verb (see below).
