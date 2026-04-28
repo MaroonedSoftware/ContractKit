@@ -233,6 +233,8 @@ export interface OpResponseNode {
     bodyType?: ContractTypeNode;
     /** Declared response headers for this status code. Undefined = none declared. */
     headers?: OpResponseHeaderNode[];
+    /** Set when the status code body declares `headers: none` — suppresses options-level response header merge for this code. */
+    headersOptOut?: boolean;
 }
 
 export interface OpOperationNode {
@@ -250,6 +252,8 @@ export interface OpOperationNode {
     queryMode?: ObjectMode;
     headers?: ParamSource;
     headersMode?: ObjectMode;
+    /** Set when the operation declares `headers: none` — suppresses options-level request header merge for this op. */
+    requestHeadersOptOut?: boolean;
     security?: SecurityNode; // overrides config default; "none" = explicitly public
     /** Explicit modifiers. undefined = inherit from route; [] or array = override. */
     modifiers?: RouteModifier[];
@@ -298,6 +302,10 @@ export interface OpRootNode {
     services?: Record<string, string>;
     /** File-level security default — cascades to all routes/operations unless overridden. */
     security?: SecurityNode;
+    /** File-level request headers from `options { request: { headers { ... } } }` — merged into every operation's request headers. */
+    requestHeaders?: OpResponseHeaderNode[];
+    /** File-level response headers from `options { response: { headers { ... } } }` — merged into every status code on every operation. */
+    responseHeaders?: OpResponseHeaderNode[];
     routes: OpRouteNode[];
     file: string;
     /** Comment lines not attached to any node, sorted by line number. */
@@ -312,6 +320,10 @@ export interface CkRootNode {
     services: Record<string, string>;
     /** File-level security default — cascades to all routes/operations unless overridden. */
     security?: SecurityNode;
+    /** File-level request headers from `options { request: { headers { ... } } }` — merged into every operation's request headers. */
+    requestHeaders?: OpResponseHeaderNode[];
+    /** File-level response headers from `options { response: { headers { ... } } }` — merged into every status code on every operation. */
+    responseHeaders?: OpResponseHeaderNode[];
     models: ModelNode[];
     routes: OpRouteNode[];
     file: string;

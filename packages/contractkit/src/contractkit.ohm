@@ -31,7 +31,14 @@ Contract {
 
   OptionsBodyItem = OptionsKeysBlock
                   | OptionsServicesBlock
+                  | OptionsRequestBlock
+                  | OptionsResponseBlock
                   | SecurityBlock
+
+  OptionsRequestBlock  = requestKw  ":" "{" (comment | OptionsHeadersBlock)* "}"
+  OptionsResponseBlock = responseKw ":" "{" (comment | OptionsHeadersBlock)* "}"
+
+  OptionsHeadersBlock = headersKw ":" "{" (comment | ResponseHeaderField)* "}"
 
   OptionsKeysBlock = keysKw ":" "{" (comment | OptionsEntry)* "}"
 
@@ -200,7 +207,8 @@ Contract {
 
   QueryBlock = objectMode? queryKw ":" TypeExpression
 
-  HeadersBlock = objectMode? headersKw ":" TypeExpression
+  HeadersBlock = headersKw ":" noneKw                  -- none
+               | objectMode? headersKw ":" TypeExpression  -- type
 
   // ─── Request & Response ─────────────────────────────────────────
 
@@ -216,7 +224,8 @@ Contract {
 
   ContentTypeLine = identifier "/" identifier ":" TypeExpression
 
-  ResponseHeadersBlock = headersKw ":" "{" (comment | ResponseHeaderField)* "}"
+  ResponseHeadersBlock = headersKw ":" noneKw                                    -- none
+                       | headersKw ":" "{" (comment | ResponseHeaderField)* "}"  -- fields
 
   ResponseHeaderField = identifier "?"? ":" TypeExpression comment?
 

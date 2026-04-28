@@ -200,7 +200,7 @@ operation /path: { ... } # route declarations
 
 ### Options Block
 
-Declares file-level metadata: key/value pairs and service import paths.
+Declares file-level metadata: key/value pairs, service import paths, security defaults, and global request/response headers.
 
 ```
 options {
@@ -210,6 +210,17 @@ options {
     services: {
         LedgerService: "#src/modules/ledger/ledger.service.js"
     }
+    request: {
+        headers: {
+            authorization: string
+            x-request-id?: uuid
+        }
+    }
+    response: {
+        headers: {
+            x-request-id: uuid
+        }
+    }
     security: {
         roles: admin
     }
@@ -218,6 +229,8 @@ options {
 
 - **`keys`** — arbitrary key/value pairs attached to the file's metadata (e.g. `area` is used for grouping in generated docs)
 - **`services`** — maps service identifiers to import paths; used in `service:` bindings within operations. Paths starting with `#` are resolved as package-relative imports.
+- **`request: { headers }`** — request headers applied to every operation in the file. Op-level headers with the same name override; an operation can opt out entirely with `headers: none`. A name collision with a path parameter raises an error.
+- **`response: { headers }`** — response headers applied to every status code on every operation. Per-status override is `headers: { same-name: <type> }`; per-status opt-out is `headers: none`. Note: OpenAPI and Markdown reflect these on every status; the TS server (`ctx.set`) and SDK return shape only emit headers on the primary response (first body-bearing response), matching existing inline-headers behavior.
 - **`security`** — file-level default security applied to all operations unless overridden at the route or operation level. Accepts the same syntax as operation-level `security:` blocks.
 
 ---

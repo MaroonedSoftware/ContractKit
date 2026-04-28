@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { printCk } from '../src/print-ck.js';
+import { parseCk, DiagnosticCollector } from '@maroonedsoftware/contractkit';
 import type { OpRouteNode, OpOperationNode, CkRootNode, SecurityFields, ParamSource, ContractTypeNode, OpParamNode } from '@maroonedsoftware/contractkit';
 
 // ─── Minimal AST builders ────────────────────────────────────────────────────
@@ -408,5 +409,96 @@ describe('printCk — response headers', () => {
         expect(out).toContain('                headers: {');
         expect(out).toContain('                    x-deleted-at: string');
         expect(out).not.toContain('application/json');
+    });
+});
+
+describe('printCk — options-level header globals (round-trip)', () => {
+    function roundTrip(source: string): string {
+        const diag = new DiagnosticCollector();
+        const ast = parseCk(source, 'test.ck', diag);
+        expect(diag.hasErrors()).toBe(false);
+        return printCk(ast);
+    }
+
+    it('round-trips options.request.headers', () => {
+        const source = `\
+options {
+    request: {
+        headers: {
+            x-request-id: uuid
+            authorization?: string
+        }
+    }
+}
+
+operation /widgets: {
+    get: {
+        response: {
+            200: {
+                application/json: Widget
+            }
+        }
+    }
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toBe(source);
+    });
+
+    it('round-trips options.response.headers', () => {
+        const source = `\
+options {
+    response: {
+        headers: {
+            x-request-id: uuid
+        }
+    }
+}
+
+operation /widgets: {
+    get: {
+        response: {
+            200: {
+                application/json: Widget
+            }
+        }
+    }
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+
+    it('round-trips operation-level headers: none', () => {
+        const source = `\
+operation /widgets: {
+    get: {
+        headers: none
+        response: {
+            200: {
+                application/json: Widget
+            }
+        }
+    }
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+
+    it('round-trips per-status headers: none', () => {
+        const source = `\
+operation /widgets: {
+    get: {
+        response: {
+            200: {
+                application/json: Widget
+            }
+            404: {
+                headers: none
+            }
+        }
+    }
+}
+`;
+        expect(roundTrip(source)).toBe(source);
     });
 });

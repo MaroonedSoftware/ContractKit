@@ -51,6 +51,28 @@ function getLine(node: { source: { sourceString: string; startIdx: number } }): 
     return line;
 }
 
+/**
+ * Collect a single inner `headers: { ... }` block from an options-level `request:` or `response:` body.
+ * Multiple inner blocks are tolerated but only the first is kept; duplicates emit a warning.
+ */
+function collectOptionsHeaders(
+    items: IterationNode,
+    file: string,
+    diag: DiagnosticCollector | undefined,
+): OpResponseHeaderNode[] {
+    let headers: OpResponseHeaderNode[] | undefined;
+    for (let i = 0; i < items.numChildren; i++) {
+        const child = items.child(i);
+        if (child.ctorName === 'comment') continue;
+        if (headers !== undefined) {
+            diag?.warn(file, getLine(child), `Duplicate headers block in options`);
+            continue;
+        }
+        headers = child.toAst(file, diag) as OpResponseHeaderNode[];
+    }
+    return headers ?? [];
+}
+
 export function createSemantics(grammar: Grammar) {
     const semantics = grammar.createSemantics();
 
@@ -63,12 +85,16 @@ export function createSemantics(grammar: Grammar) {
             let meta: Record<string, string> = {};
             let services: Record<string, string> = {};
             let security: SecurityNode | undefined;
+            let requestHeaders: OpResponseHeaderNode[] | undefined;
+            let responseHeaders: OpResponseHeaderNode[] | undefined;
 
             if (preambleOpt.numChildren > 0) {
                 const result = preambleOpt.child(0).toAst(file, this.args.diag);
                 meta = result.meta ?? {};
                 services = result.services ?? {};
                 security = result.security;
+                requestHeaders = result.requestHeaders;
+                responseHeaders = result.responseHeaders;
             }
 
             const models: ModelNode[] = [];
@@ -83,7 +109,10 @@ export function createSemantics(grammar: Grammar) {
                 }
             }
 
-            return { kind: 'ckRoot', meta, services, security, models, routes, file } as CkRootNode;
+            const root: CkRootNode = { kind: 'ckRoot', meta, services, security, models, routes, file };
+            if (requestHeaders) root.requestHeaders = requestHeaders;
+            if (responseHeaders) root.responseHeaders = responseHeaders;
+            return root;
         },
 
         Decl(child) {
@@ -101,13 +130,30 @@ export function createSemantics(grammar: Grammar) {
         // ─── Options block ───────────────────────────────────────────
 
         OptionsBlock(_optionsKw, _lb, items, _rb) {
+            const file = this.args.file;
+            const diag = this.args.diag;
             const meta: Record<string, string> = {};
             const services: Record<string, string> = {};
             let security: SecurityNode | undefined;
+            let requestHeaders: OpResponseHeaderNode[] | undefined;
+            let responseHeaders: OpResponseHeaderNode[] | undefined;
             for (let i = 0; i < items.numChildren; i++) {
-                const result = items.child(i).toAst(this.args.file, this.args.diag);
+                const itemNode = items.child(i);
+                const result = itemNode.toAst(file, diag);
                 if (result._type === 'security') {
                     security = result.value;
+                } else if (result._type === 'optionsRequestHeaders') {
+                    if (requestHeaders !== undefined) {
+                        diag?.warn(file, getLine(itemNode), `Duplicate options request block`);
+                        continue;
+                    }
+                    requestHeaders = result.value;
+                } else if (result._type === 'optionsResponseHeaders') {
+                    if (responseHeaders !== undefined) {
+                        diag?.warn(file, getLine(itemNode), `Duplicate options response block`);
+                        continue;
+                    }
+                    responseHeaders = result.value;
                 } else if (result.entries) {
                     for (const [key, value] of result.entries as [string, string][]) {
                         if (result._type === 'keys') meta[key] = value;
@@ -115,7 +161,7 @@ export function createSemantics(grammar: Grammar) {
                     }
                 }
             }
-            return { meta, services, security };
+            return { meta, services, security, requestHeaders, responseHeaders };
         },
 
         OptionsBodyItem(child) {
@@ -140,6 +186,36 @@ export function createSemantics(grammar: Grammar) {
                 entries.push(child.toAst(this.args.file, this.args.diag));
             }
             return { _type: 'services', entries };
+        },
+
+        OptionsRequestBlock(_requestKw, _colon, _lb, items, _rb) {
+            const headers = collectOptionsHeaders(items as IterationNode, this.args.file, this.args.diag);
+            return { _type: 'optionsRequestHeaders', value: headers };
+        },
+
+        OptionsResponseBlock(_responseKw, _colon, _lb, items, _rb) {
+            const headers = collectOptionsHeaders(items as IterationNode, this.args.file, this.args.diag);
+            return { _type: 'optionsResponseHeaders', value: headers };
+        },
+
+        OptionsHeadersBlock(_headersKw, _colon, _lb, items, _rb) {
+            const file = this.args.file;
+            const diag = this.args.diag;
+            const headers: OpResponseHeaderNode[] = [];
+            const seen = new Set<string>();
+            for (let i = 0; i < items.numChildren; i++) {
+                const child = items.child(i);
+                if (child.ctorName === 'comment') continue;
+                const header = child.toAst(file, diag) as OpResponseHeaderNode;
+                const key = header.name.toLowerCase();
+                if (seen.has(key)) {
+                    diag?.warn(file, getLine(child), `Duplicate header '${header.name}' in options block`);
+                    continue;
+                }
+                seen.add(key);
+                headers.push(header);
+            }
+            return headers;
         },
 
         OptionsEntry(keyNode, _colon, valueNode) {
@@ -704,6 +780,7 @@ export function createSemantics(grammar: Grammar) {
                 queryMode?: ObjectMode;
                 headers?: ParamSource;
                 headersMode?: ObjectMode;
+                requestHeadersOptOut?: boolean;
                 request?: OpRequestNode;
                 responses: OpResponseNode[];
                 security?: SecurityNode;
@@ -734,6 +811,7 @@ export function createSemantics(grammar: Grammar) {
             let queryMode: ObjectMode | undefined;
             let headers: ParamSource | undefined;
             let headersMode: ObjectMode | undefined;
+            let requestHeadersOptOut: boolean | undefined;
             let request: OpRequestNode | undefined;
             let responses: OpResponseNode[] = [];
             let security: SecurityNode | undefined;
@@ -760,8 +838,12 @@ export function createSemantics(grammar: Grammar) {
                         queryMode = item.mode;
                         break;
                     case 'headers':
-                        headers = item.source;
-                        headersMode = item.mode;
+                        if (item.optOut) {
+                            requestHeadersOptOut = true;
+                        } else {
+                            headers = item.source;
+                            headersMode = item.mode;
+                        }
                         break;
                     case 'request':
                         request = item.value;
@@ -775,7 +857,7 @@ export function createSemantics(grammar: Grammar) {
                 }
             }
 
-            return { name, service, sdk, signature, signatureDescription, query, queryMode, headers, headersMode, request, responses, security };
+            return { name, service, sdk, signature, signatureDescription, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, security };
         },
 
         OperationBodyItem(child) {
@@ -817,7 +899,11 @@ export function createSemantics(grammar: Grammar) {
             return { _type: 'query', source: typeNodeToParamSource(typeNode), mode };
         },
 
-        HeadersBlock(modeOpt, _headersKw, _colon, typeExprNode) {
+        HeadersBlock_none(_headersKw, _colon, _noneKw) {
+            return { _type: 'headers', optOut: true };
+        },
+
+        HeadersBlock_type(modeOpt, _headersKw, _colon, typeExprNode) {
             let mode: ObjectMode | undefined;
             if (modeOpt.numChildren > 0) {
                 const modeText = modeOpt.child(0).sourceString.trim();
@@ -874,6 +960,8 @@ export function createSemantics(grammar: Grammar) {
             let contentType: 'application/json' | undefined;
             let bodyType: ContractTypeNode | undefined;
             let headers: OpResponseHeaderNode[] | undefined;
+            let headersOptOut: boolean | undefined;
+            let sawResponseHeaders = false;
 
             // ("{" StatusCodeBodyItem* "}")? desugars so that itemsOpt is the *outer* `?` wrapper
             // around the StatusCodeBodyItem* iteration; child(0) is the inner iteration when present.
@@ -884,11 +972,16 @@ export function createSemantics(grammar: Grammar) {
                 const item = itemNode.toAst(file, diag);
                 if (!item) continue;
                 if (item._type === 'responseHeaders') {
-                    if (headers !== undefined) {
+                    if (sawResponseHeaders) {
                         diag?.warn(file, getLine(itemNode), `Duplicate response headers block for status ${statusCode}`);
                         continue;
                     }
-                    headers = item.value;
+                    sawResponseHeaders = true;
+                    if (item.optOut) {
+                        headersOptOut = true;
+                    } else {
+                        headers = item.value;
+                    }
                 } else if (item.contentType !== undefined && item.bodyType !== undefined) {
                     if (contentType !== undefined) {
                         diag?.warn(file, getLine(itemNode), `Duplicate response body for status ${statusCode}`);
@@ -899,7 +992,12 @@ export function createSemantics(grammar: Grammar) {
                 }
             }
 
-            return { statusCode, contentType, bodyType, headers } as OpResponseNode;
+            const result: OpResponseNode = { statusCode };
+            if (contentType) result.contentType = contentType;
+            if (bodyType) result.bodyType = bodyType;
+            if (headers) result.headers = headers;
+            if (headersOptOut) result.headersOptOut = true;
+            return result;
         },
 
         StatusCodeBodyItem(child) {
@@ -913,7 +1011,11 @@ export function createSemantics(grammar: Grammar) {
             return { contentType, bodyType };
         },
 
-        ResponseHeadersBlock(_headersKw, _colon, _lb, items, _rb) {
+        ResponseHeadersBlock_none(_headersKw, _colon, _noneKw) {
+            return { _type: 'responseHeaders', optOut: true };
+        },
+
+        ResponseHeadersBlock_fields(_headersKw, _colon, _lb, items, _rb) {
             const file = this.args.file;
             const diag = this.args.diag;
             const headers: OpResponseHeaderNode[] = [];

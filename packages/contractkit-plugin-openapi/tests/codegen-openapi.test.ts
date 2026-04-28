@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parseCk, decomposeCk, applyOptionsDefaults, DiagnosticCollector } from '@maroonedsoftware/contractkit';
 import { generateOpenApi, toYaml } from '../src/codegen-openapi.js';
 import {
     scalarType,
@@ -675,5 +676,71 @@ describe('route modifiers', () => {
             const deprecatedCount = (output.match(/deprecated: true/g) ?? []).length;
             expect(deprecatedCount).toBe(2);
         });
+    });
+});
+
+describe('options-level header globals', () => {
+    function compileToOpenApi(source: string): string {
+        const diag = new DiagnosticCollector();
+        const ck = parseCk(source, 'widgets.ck', diag);
+        applyOptionsDefaults(ck, diag);
+        const { op } = decomposeCk(ck);
+        return generateOpenApi({ contractRoots: [], opRoots: [op], config: {} });
+    }
+
+    it('renders global response headers on every status code, including bodyless and 4xx/5xx', () => {
+        const output = compileToOpenApi(`
+options { response: { headers: { x-request-id: uuid } } }
+operation /widgets/{id}: {
+    params: { id: uuid }
+    delete: {
+        response: {
+            204:
+            404:
+            500: { application/json: ApiError }
+        }
+    }
+}`);
+        // Each of the three status code sections should declare x-request-id under headers:
+        const matches = output.match(/x-request-id:/g) ?? [];
+        expect(matches.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('omits global response headers on a status code that opts out via headers: none', () => {
+        const output = compileToOpenApi(`
+options { response: { headers: { x-request-id: uuid } } }
+operation /widgets: {
+    get: {
+        response: {
+            200: { application/json: Widget }
+            404: { headers: none }
+        }
+    }
+}`);
+        // Slice the document at the 404 marker — we expect no header for that response.
+        const after404 = output.split(/^\s*'404':/m)[1] ?? '';
+        const beforeNext = after404.split(/^\s*'\d{3}':/m)[0] ?? '';
+        expect(beforeNext).not.toContain('x-request-id');
+    });
+
+    it('renders global request headers as parameters on every operation', () => {
+        const output = compileToOpenApi(`
+options { request: { headers: {
+    x-request-id: uuid
+    authorization: string
+} } }
+operation /widgets: {
+    get: { response: { 200: { application/json: Widget } } }
+    post: {
+        request: { application/json: Widget }
+        response: { 201: { application/json: Widget } }
+    }
+}`);
+        // Both operations should carry the global headers as parameters.
+        const requestIdParams = (output.match(/name: x-request-id\b/g) ?? []).length;
+        const authParams = (output.match(/name: authorization\b/g) ?? []).length;
+        expect(requestIdParams).toBe(2);
+        expect(authParams).toBe(2);
+        expect(output.match(/in: header/g)?.length).toBeGreaterThanOrEqual(4);
     });
 });

@@ -1,6 +1,7 @@
-import type { CkRootNode } from '@maroonedsoftware/contractkit';
+import type { CkRootNode, OpResponseHeaderNode } from '@maroonedsoftware/contractkit';
 import { printModelDecl } from './print-contract.js';
 import { printRoute, printSecurity, type CommentBlock } from './print-operation.js';
+import { printType } from './print-type.js';
 import { INDENT } from './indent.js';
 
 export const DEFAULT_PRINT_WIDTH = 80;
@@ -11,8 +12,10 @@ function printOptionsBlock(ast: CkRootNode): string | null {
     const hasMeta = Object.keys(ast.meta).length > 0;
     const hasServices = Object.keys(ast.services).length > 0;
     const hasSecurity = ast.security !== undefined;
+    const hasRequestHeaders = (ast.requestHeaders?.length ?? 0) > 0;
+    const hasResponseHeaders = (ast.responseHeaders?.length ?? 0) > 0;
 
-    if (!hasMeta && !hasServices && !hasSecurity) return null;
+    if (!hasMeta && !hasServices && !hasSecurity && !hasRequestHeaders && !hasResponseHeaders) return null;
 
     const lines: string[] = ['options {'];
 
@@ -34,12 +37,34 @@ function printOptionsBlock(ast: CkRootNode): string | null {
         lines.push(`${INDENT}}`);
     }
 
+    if (hasRequestHeaders) {
+        lines.push(...printOptionsHeaderScope('request', ast.requestHeaders!));
+    }
+
+    if (hasResponseHeaders) {
+        lines.push(...printOptionsHeaderScope('response', ast.responseHeaders!));
+    }
+
     if (hasSecurity) {
         lines.push(...printSecurity(ast.security!, INDENT, INDENT + INDENT));
     }
 
     lines.push('}');
     return lines.join('\n');
+}
+
+function printOptionsHeaderScope(keyword: 'request' | 'response', headers: OpResponseHeaderNode[]): string[] {
+    const I2 = INDENT + INDENT;
+    const I3 = INDENT + INDENT + INDENT;
+    const lines = [`${INDENT}${keyword}: {`, `${I2}headers: {`];
+    for (const h of headers) {
+        const opt = h.optional ? '?' : '';
+        const trail = h.description ? ` # ${h.description}` : '';
+        lines.push(`${I3}${h.name}${opt}: ${printType(h.type)}${trail}`);
+    }
+    lines.push(`${I2}}`);
+    lines.push(`${INDENT}}`);
+    return lines;
 }
 
 // ─── CK file printer ───────────────────────────────────────────────────────

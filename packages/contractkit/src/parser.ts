@@ -9,6 +9,14 @@ import type { CkRootNode } from './ast.js';
 
 const semantics = createSemantics(grammar);
 
+/**
+ * Parse a .ck source file into a CkRootNode AST.
+ *
+ * Does NOT merge options-level header globals into operations — that is a separate
+ * normalization step (see `applyOptionsDefaults`) that codegen pipelines opt into.
+ * Tools that need the original source shape (e.g. the prettier plugin for round-trip
+ * formatting) should use this raw output.
+ */
 export function parseCk(source: string, file: string, diag: DiagnosticCollector): CkRootNode {
     const match = grammar.match(source, 'Root');
 

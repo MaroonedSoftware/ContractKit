@@ -1,6 +1,7 @@
-import { parseCk, decomposeCk, validateOp, validateRefs, DiagnosticCollector } from '@maroonedsoftware/contractkit';
+import { parseCk, decomposeCk, validateOp, validateRefs, applyOptionsDefaults, DiagnosticCollector } from '@maroonedsoftware/contractkit';
 import { generateContract } from '../src/codegen-contract.js';
 import { generateOp } from '../src/codegen-operation.js';
+import { generateSdk } from '../src/codegen-sdk.js';
 import { SIMPLE_USER_CONTRACT, VISIBILITY_CONTRACT, INHERITANCE_CONTRACT, SIMPLE_USERS_OP, PARAMETERIZED_OP } from './helpers.js';
 
 function compileContractSource(source: string) {
@@ -203,6 +204,95 @@ describe('error handling pipeline', () => {
     it('reports diagnostics for invalid OP source', () => {
         const { diag } = compileOpSource('no-slash { get: {} }');
         expect(diag.hasErrors()).toBe(true);
+    });
+});
+
+describe('options-level header globals parity', () => {
+    function compileOp(source: string) {
+        const diag = new DiagnosticCollector();
+        const ck = parseCk(source, 'widgets.ck', diag);
+        applyOptionsDefaults(ck, diag);
+        const { op } = decomposeCk(ck);
+        return { server: generateOp(op), sdk: generateSdk(op), diag };
+    }
+
+    // Strip source-line refs (e.g. `widgets.ck#L7`) so we can compare two equivalent
+    // shapes whose operation sits on different lines in the source.
+    const stripLineRefs = (s: string) => s.replace(/widgets\.ck#L\d+/g, 'widgets.ck#L?');
+
+    it('options-level request headers produce the same server and SDK output as inlined headers', () => {
+        const globalsForm = `
+options { request: { headers: {
+    x-request-id: uuid
+    authorization: string
+} } }
+
+operation /widgets: {
+    get: {
+        response: { 200: { application/json: Widget } }
+    }
+}`;
+        const inlinedForm = `
+operation /widgets: {
+    get: {
+        headers: {
+            x-request-id: uuid
+            authorization: string
+        }
+        response: { 200: { application/json: Widget } }
+    }
+}`;
+        const a = compileOp(globalsForm);
+        const b = compileOp(inlinedForm);
+        expect(a.diag.hasErrors()).toBe(false);
+        expect(b.diag.hasErrors()).toBe(false);
+        expect(stripLineRefs(a.server)).toBe(stripLineRefs(b.server));
+        expect(stripLineRefs(a.sdk)).toBe(stripLineRefs(b.sdk));
+    });
+
+    it('options-level response headers on primary status produce the same server and SDK output as inlined headers', () => {
+        const globalsForm = `
+options { response: { headers: {
+    x-request-id: uuid
+} } }
+
+operation /widgets: {
+    get: {
+        response: { 200: { application/json: Widget } }
+    }
+}`;
+        const inlinedForm = `
+operation /widgets: {
+    get: {
+        response: {
+            200: {
+                application/json: Widget
+                headers: { x-request-id: uuid }
+            }
+        }
+    }
+}`;
+        const a = compileOp(globalsForm);
+        const b = compileOp(inlinedForm);
+        expect(a.diag.hasErrors()).toBe(false);
+        expect(b.diag.hasErrors()).toBe(false);
+        expect(stripLineRefs(a.server)).toBe(stripLineRefs(b.server));
+        expect(stripLineRefs(a.sdk)).toBe(stripLineRefs(b.sdk));
+    });
+
+    it('headers: none on an operation suppresses the global request header merge', () => {
+        const source = `
+options { request: { headers: { x-request-id: uuid } } }
+operation /widgets: {
+    get: {
+        headers: none
+        response: { 200: { application/json: Widget } }
+    }
+}`;
+        const { server, sdk } = compileOp(source);
+        // the request header should not appear in either output
+        expect(server).not.toContain("'x-request-id'");
+        expect(sdk).not.toContain("'x-request-id'");
     });
 });
 

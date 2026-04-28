@@ -244,6 +244,16 @@ A status code body can declare `headers: { name?: type, ... }` alongside `applic
 
 Header values are always read as strings (TS uses `Headers.get(...) ?? undefined`, Python uses the lowercased response-header dict). Declaring a non-`string` type is allowed but no runtime parsing/coercion is generated.
 
+### Options-level header globals
+
+A file's `options` block can declare `request: { headers: {...} }` and `response: { headers: {...} }` to apply headers to every operation in the file. AST: `OpRootNode.requestHeaders?` / `responseHeaders?: OpResponseHeaderNode[]`. The merge happens in `apply-options-defaults.ts` — a normalization pass that runs after parsing (in the CLI between `parseCk` and decompose, NOT inside `parseCk` itself, so the prettier plugin sees the un-merged AST for round-trip formatting).
+
+- **Request headers**: merged into every operation's request headers. Op-level header with the same name wins (override warning emitted). If the op declares `headers: none` (`OpOperationNode.requestHeadersOptOut`), the merge is skipped. If the op uses a referenced/compound type for headers, the merge is skipped with a warning.
+- **Response headers**: merged into every status code on every operation, regardless of body presence or status class. Per-status `headers: none` (`OpResponseNode.headersOptOut`) skips the merge for that code. Per-status header with the same name wins.
+- **Path-param collision**: a global request header that collides with a path parameter name on any route raises an error.
+
+Asymmetry to know about: TS server `ctx.set()` emission and TS SDK return shape only honor headers on the **primary response** (the first response with a body, fallback to first response). OpenAPI and Markdown iterate every status code, so options-level response headers fully surface there. Treat global response headers as a **spec/docs feature** — runtime emission for non-primary statuses still requires inlining the header on that status.
+
 ### Scalar types worth knowing
 
 - `datetime` → Luxon `DateTime`

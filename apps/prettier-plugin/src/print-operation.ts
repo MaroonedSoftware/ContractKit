@@ -119,7 +119,11 @@ function printOperation(op: OpOperationNode): string[] {
     }
     if (op.security !== undefined) lines.push(...printSecurity(op.security));
     if (op.query !== undefined) lines.push(...printQueryOrHeaders('query', op.query, op.queryMode));
-    if (op.headers !== undefined) lines.push(...printQueryOrHeaders('headers', op.headers, op.headersMode));
+    if (op.requestHeadersOptOut) {
+        lines.push(`${I2}headers: none`);
+    } else if (op.headers !== undefined) {
+        lines.push(...printQueryOrHeaders('headers', op.headers, op.headersMode));
+    }
     if (op.request) {
         lines.push(`${I2}request: {`);
         for (const body of op.request.bodies) {
@@ -210,12 +214,15 @@ function printResponseBlock(responses: OpResponseNode[]): string[] {
     for (const resp of responses) {
         const hasBody = resp.contentType && resp.bodyType;
         const hasHeaders = resp.headers && resp.headers.length > 0;
-        if (hasBody || hasHeaders) {
+        const optOut = resp.headersOptOut;
+        if (hasBody || hasHeaders || optOut) {
             lines.push(`${I3}${resp.statusCode}: {`);
             if (hasBody) {
                 lines.push(...printContentTypeLine(resp.contentType!, resp.bodyType!, I4));
             }
-            if (hasHeaders) {
+            if (optOut) {
+                lines.push(`${I4}headers: none`);
+            } else if (hasHeaders) {
                 lines.push(`${I4}headers: {`);
                 for (const h of resp.headers!) {
                     const opt = h.optional ? '?' : '';
