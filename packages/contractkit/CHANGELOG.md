@@ -1,5 +1,11 @@
 # @contractkit/core
 
+## 0.9.0
+
+### Minor Changes
+
+- d13614c: Enhance content type handling in contract DSL. This update introduces support for vendor JSON MIME types and improves the classification of content types, allowing for better handling of text and binary responses. The grammar has been updated to accept a wider range of MIME types, and tests have been added to ensure correct parsing and serialization behavior. Additionally, the code has been refactored to normalize content types for stable comparisons and to support multi-MIME request bodies.
+
 ## 0.8.0
 
 ### Minor Changes

@@ -1,5 +1,12 @@
 # @contractkit/contractkit-plugin-bruno
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [d13614c]
+    - @maroonedsoftware/contractkit@0.9.0
+
 ## 0.7.0
 
 ### Minor Changes

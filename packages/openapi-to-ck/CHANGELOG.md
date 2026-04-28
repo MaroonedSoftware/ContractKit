@@ -1,5 +1,12 @@
 # @contractkit/openapi-to-ck
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [d13614c]
+    - @maroonedsoftware/contractkit@0.9.0
+
 ## 0.6.0
 
 ### Minor Changes
