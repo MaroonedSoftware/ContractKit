@@ -1,5 +1,12 @@
 # @contractkit/cli
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [9b13e28]
+    - @maroonedsoftware/openapi-to-ck@0.5.0
+
 ## 0.3.1
 
 ### Patch Changes

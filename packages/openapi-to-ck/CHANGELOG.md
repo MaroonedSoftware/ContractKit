@@ -1,5 +1,11 @@
 # @contractkit/openapi-to-ck
 
+## 0.5.0
+
+### Minor Changes
+
+- 9b13e28: Implement support for lifting response headers in OpenAPI 3.x and Swagger 2.0. Enhanced serialization of responses to include headers, updated normalization functions, and added tests to verify correct handling of response headers in generated output.
+
 ## 0.4.2
 
 ### Patch Changes
