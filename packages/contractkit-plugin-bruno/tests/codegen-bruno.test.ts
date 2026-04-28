@@ -717,6 +717,43 @@ describe('generateOpenCollection', () => {
         expect(yml!.content).not.toContain('runtime:');
     });
 
+    it('emits assertions for required response headers and lists them in the docs', () => {
+        const root = opRoot(
+            [
+                opRoute(
+                    '/transfers/{id}',
+                    [
+                        opOperation('get', {
+                            responses: [
+                                {
+                                    statusCode: 200,
+                                    contentType: 'application/json',
+                                    bodyType: { kind: 'ref', name: 'Transfer' },
+                                    headers: [
+                                        { name: 'preference-applied', optional: true, type: { kind: 'scalar', name: 'string' } },
+                                        { name: 'ETag', optional: false, type: { kind: 'scalar', name: 'string' }, description: 'cache validator' },
+                                    ],
+                                },
+                            ],
+                        }),
+                    ],
+                ),
+            ],
+            'transfers.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'transfers/get-transfers-id.yml');
+        expect(yml!.content).toContain('value: "200"');
+        // Required header gets an assertion using lowercased name; optional one does not.
+        expect(yml!.content).toContain('    - expression: res.headers["etag"]');
+        expect(yml!.content).toContain('      operator: isDefined');
+        expect(yml!.content).not.toContain('res.headers["preference-applied"]');
+        // Both headers documented.
+        expect(yml!.content).toContain('**Response headers**');
+        expect(yml!.content).toContain('- `preference-applied` (optional)');
+        expect(yml!.content).toContain('- `ETag` (required) — cache validator');
+    });
+
     // ─── docs ──────────────────────────────────────────────────────────────
 
     it('emits a docs block from the operation description', () => {

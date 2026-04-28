@@ -874,6 +874,8 @@ Generated effects:
 - **OpenAPI** emits `headers:` under each response with the schema and required flag.
 - **TypeScript SDK** changes the method's return shape from `Promise<T>` to `Promise<{ data: T; headers: { preferenceApplied?: string; ... } }>` (or `Promise<{ headers: ... }>` for void responses). Header names are camelCased; values are read from the `Headers` object as strings (`null` becomes `undefined`).
 - **TypeScript router** types the service method's return as `{ body, headers }` (or `{ headers }` for void), and the wrapper calls `ctx.set(name, String(value))` for each declared header.
+- **Python SDK** generates a per-method `TypedDict` (e.g. `GetTransferHeaders`) and changes the return type to `tuple[T, GetTransferHeaders]` (or `GetTransferHeaders` for void). Header keys are snake_cased; values come from the lower-cased response-header dict.
+- **Bruno** adds an `isDefined` runtime assertion for each required response header on the asserted status code, and lists all declared headers in the request's `docs` block.
 - **Markdown docs** render a `Response headers` table per status code.
 
 Operations without a `headers` block on their response keep the current return shape — this change is opt-in per response.

@@ -224,4 +224,67 @@ describe('generatePythonClient', () => {
         expect(output).toContain('body: PaymentInput');
         expect(output).toContain('body=body.model_dump(mode="json")');
     });
+
+    describe('response headers', () => {
+        it('emits a TypedDict and tuple return type when response declares headers', () => {
+            const root = opRoot([
+                opRoute('/transfers/{id}', [
+                    opOperation('get', {
+                        sdk: 'getTransfer',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                contentType: 'application/json',
+                                bodyType: { kind: 'ref', name: 'Transfer' },
+                                headers: [
+                                    { name: 'preference-applied', optional: true, type: scalarType('string') },
+                                    { name: 'etag', optional: false, type: scalarType('string') },
+                                ],
+                            },
+                        ],
+                    }),
+                ], paramNodes([opParam('id', scalarType('uuid'))])),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('from typing import TypedDict');
+            expect(output).toContain('class GetTransferHeaders(TypedDict, total=False):');
+            expect(output).toContain('    preference_applied: str  # preference-applied (optional)');
+            expect(output).toContain('    etag: str  # etag (required)');
+            expect(output).toContain('-> tuple[Transfer, GetTransferHeaders]:');
+            expect(output).toContain('await self._fetch_with_headers(');
+            expect(output).toContain('"preference-applied" in _response_headers');
+            expect(output).toContain('headers["preference_applied"] = _response_headers["preference-applied"]');
+            expect(output).toContain('return Transfer.model_validate(result), headers');
+        });
+
+        it('returns just headers TypedDict for void ops with declared response headers', () => {
+            const root = opRoot([
+                opRoute('/resources/{id}', [
+                    opOperation('delete', {
+                        sdk: 'deleteResource',
+                        responses: [
+                            {
+                                statusCode: 204,
+                                headers: [{ name: 'x-deleted-at', optional: false, type: scalarType('string') }],
+                            },
+                        ],
+                    }),
+                ], paramNodes([opParam('id', scalarType('uuid'))])),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('class DeleteResourceHeaders(TypedDict, total=False):');
+            expect(output).toContain('-> DeleteResourceHeaders:');
+            expect(output).toContain('return headers');
+        });
+
+        it('keeps plain return type when no response headers are declared', () => {
+            const root = opRoot([
+                opRoute('/users/{id}', [opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User')] })], paramNodes([opParam('id', scalarType('uuid'))])),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('-> User:');
+            expect(output).not.toContain('TypedDict');
+            expect(output).not.toContain('_fetch_with_headers');
+        });
+    });
 });

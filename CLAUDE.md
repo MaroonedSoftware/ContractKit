@@ -238,10 +238,11 @@ A status code body can declare `headers: { name?: type, ... }` alongside `applic
 - **OpenAPI** emits `headers:` under the response with `schema`/`required`/`description`.
 - **TS SDK** changes the method return shape to `Promise<{ data: T; headers: { ... } }>` (or `Promise<{ headers: ... }>` for void). Header property names are camelCased via `headerNameToProperty` in `ts-render.ts`.
 - **TS router** types the service result as `{ body, headers }` and emits `ctx.set(name, String(value))` per header (guarded by `!== undefined` for optional headers).
+- **Python SDK** emits a per-method `TypedDict` (e.g. `GetTransferHeaders`) at module top and changes the method return type to `tuple[T, GetTransferHeaders]` (or just the TypedDict for void). The base client gains `_fetch_with_headers`, which lowercases response-header keys for case-insensitive lookup.
+- **Bruno** emits `isDefined` runtime assertions for each required response header on the asserted status code, and lists all declared headers in the request's `docs` block.
 - **Markdown** renders a "Response headers" table.
-- **Python SDK** and **Bruno** plugins are unaware — declared response headers do not surface there yet.
 
-Header values are always read as strings from `Headers.get()`; declaring a non-`string` type is allowed but no runtime parsing/coercion is generated.
+Header values are always read as strings (TS uses `Headers.get(...) ?? undefined`, Python uses the lowercased response-header dict). Declaring a non-`string` type is allowed but no runtime parsing/coercion is generated.
 
 ### Scalar types worth knowing
 

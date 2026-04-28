@@ -241,8 +241,10 @@ function generateRequestFile(
         }
     }
 
-    // runtime.assertions — auto-generate a status-code check from the declared response.
+    // runtime.assertions — auto-generate a status-code check and presence checks for required response headers.
     const expectedStatus = pickAssertionStatus(op.responses);
+    const assertedResponse = op.responses.find(r => r.statusCode === expectedStatus);
+    const requiredHeaders = (assertedResponse?.headers ?? []).filter(h => !h.optional);
     if (expectedStatus !== undefined) {
         lines.push(``);
         lines.push(`runtime:`);
@@ -252,10 +254,15 @@ function generateRequestFile(
         // Always quote — the OpenCollection schema types `value` as a string,
         // so we must keep "200" from being parsed as YAML number 200.
         lines.push(`      value: "${expectedStatus}"`);
+        for (const h of requiredHeaders) {
+            lines.push(`    - expression: res.headers["${h.name.toLowerCase()}"]`);
+            lines.push(`      operator: isDefined`);
+            lines.push(`      value: ""`);
+        }
     }
 
-    // docs — combine route- and operation-level descriptions as a markdown block.
-    const docs = buildRequestDocs(route, op);
+    // docs — combine route- and operation-level descriptions plus the declared response-header summary.
+    const docs = buildRequestDocs(route, op, assertedResponse);
     if (docs) {
         lines.push(``);
         lines.push(`docs: |-`);
@@ -274,11 +281,21 @@ function pickAssertionStatus(responses: OpResponseNode[]): number | undefined {
     return success?.statusCode ?? responses[0]?.statusCode;
 }
 
-/** Build a markdown docs block from route- and operation-level descriptions. */
-function buildRequestDocs(route: OpRouteNode, op: OpOperationNode): string | undefined {
+/** Build a markdown docs block from route- and operation-level descriptions, plus declared response-header summary. */
+function buildRequestDocs(route: OpRouteNode, op: OpOperationNode, assertedResponse?: OpResponseNode): string | undefined {
     const parts: string[] = [];
     if (route.description) parts.push(route.description.trim());
     if (op.description) parts.push(op.description.trim());
+    const headers = assertedResponse?.headers ?? [];
+    if (headers.length > 0) {
+        const lines = ['**Response headers**', ''];
+        for (const h of headers) {
+            const tag = h.optional ? 'optional' : 'required';
+            const desc = h.description ? ` — ${h.description}` : '';
+            lines.push(`- \`${h.name}\` (${tag})${desc}`);
+        }
+        parts.push(lines.join('\n'));
+    }
     return parts.length > 0 ? parts.join('\n\n') : undefined;
 }
 

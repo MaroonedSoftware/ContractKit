@@ -1,4 +1,4 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
+import type { OpRootNode, OpRouteNode, OpOperationNode, OpResponseHeaderNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
 import { resolveModifiers } from '@maroonedsoftware/contractkit';
 import { renderPyType, toPythonFieldName } from './codegen-models.js';
 
@@ -53,7 +53,26 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         lines.push(`from datetime import ${dtParts.join(', ')}`);
     }
     if (needsUUID) lines.push('from uuid import UUID');
-    if (needsAny) lines.push('from typing import Any');
+
+    // Collect public ops once — used both for TypedDict emission and method generation.
+    const publicOps: Array<{ route: OpRouteNode; op: OpOperationNode }> = [];
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (resolveModifiers(route, op).includes('internal')) continue;
+            publicOps.push({ route, op });
+        }
+    }
+    const opsWithRespHeaders = publicOps.filter(({ op }) => {
+        const primary = op.responses.find(r => r.bodyType) ?? op.responses[0];
+        return (primary?.headers?.length ?? 0) > 0;
+    });
+
+    if (needsAny || opsWithRespHeaders.length > 0) {
+        const typingImports: string[] = [];
+        if (needsAny) typingImports.push('Any');
+        if (opsWithRespHeaders.length > 0) typingImports.push('TypedDict');
+        lines.push(`from typing import ${typingImports.join(', ')}`);
+    }
     lines.push('from ._base_client import BaseClient, SdkError  # noqa: F401');
 
     // Model imports grouped by module
@@ -73,6 +92,20 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     for (const [mod, names] of [...modelImportsByModule].sort((a, b) => a[0].localeCompare(b[0]))) {
         const sorted = [...names].sort().join(', ');
         lines.push(`from ${mod} import ${sorted}`);
+    }
+
+    // Per-method response-header TypedDicts.
+    for (const { route, op } of opsWithRespHeaders) {
+        const primary = op.responses.find(r => r.bodyType) ?? op.responses[0]!;
+        const className = `${snakeToPascal(deriveMethodName(op, route))}Headers`;
+        lines.push('');
+        lines.push('');
+        lines.push(`class ${className}(TypedDict, total=False):`);
+        for (const h of primary.headers!) {
+            const pyName = toPythonFieldName(h.name);
+            const tag = h.optional ? 'optional' : 'required';
+            lines.push(`    ${pyName}: str  # ${h.name} (${tag})`);
+        }
     }
 
     lines.push('');
@@ -126,9 +159,13 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     // Return type
     const primaryResponse = op.responses.find(r => r.bodyType) ?? op.responses[0];
     const isVoid = !primaryResponse?.bodyType;
-    const returnType = isVoid ? 'None' : renderPyType(primaryResponse!.bodyType!, modelsWithInput);
+    const dataType = isVoid ? 'None' : renderPyType(primaryResponse!.bodyType!, modelsWithInput);
     const isModelReturn = !isVoid && isModelRef(primaryResponse!.bodyType!, modelsWithInput);
     const isListModelReturn = !isVoid && isListModelRef(primaryResponse!.bodyType!, modelsWithInput);
+    const respHeaders = primaryResponse?.headers ?? [];
+    const hasRespHeaders = respHeaders.length > 0;
+    const headersTypeName = hasRespHeaders ? `${snakeToPascal(methodName)}Headers` : '';
+    const returnType = hasRespHeaders ? (isVoid ? headersTypeName : `tuple[${dataType}, ${headersTypeName}]`) : dataType;
 
     // Description
     const desc = op.description ?? route.description;
@@ -177,21 +214,58 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
 
     const kwargsStr = fetchKwargs.length > 1 ? fetchKwargs.join(', ') : (fetchKwargs[0] ?? '');
 
-    lines.push(`        result = await self._fetch(${urlExpr}, ${kwargsStr})`);
+    if (hasRespHeaders) {
+        lines.push(`        result, _response_headers = await self._fetch_with_headers(${urlExpr}, ${kwargsStr})`);
+        lines.push(...buildHeadersDictLines(respHeaders, headersTypeName));
+    } else {
+        lines.push(`        result = await self._fetch(${urlExpr}, ${kwargsStr})`);
+    }
 
     if (isVoid) {
-        // nothing to return, _fetch returns None for 204
-        lines.push(`        return None`);
-    } else if (isListModelReturn) {
-        const innerType = getListItemType(primaryResponse!.bodyType!, modelsWithInput);
-        lines.push(`        return [${innerType}.model_validate(item) for item in result]`);
-    } else if (isModelReturn) {
-        lines.push(`        return ${returnType}.model_validate(result)`);
+        if (hasRespHeaders) {
+            lines.push(`        return headers`);
+        } else {
+            lines.push(`        return None`);
+        }
     } else {
-        lines.push(`        return result`);
+        let dataExpr: string;
+        if (isListModelReturn) {
+            const innerType = getListItemType(primaryResponse!.bodyType!, modelsWithInput);
+            dataExpr = `[${innerType}.model_validate(item) for item in result]`;
+        } else if (isModelReturn) {
+            dataExpr = `${dataType}.model_validate(result)`;
+        } else {
+            dataExpr = 'result';
+        }
+        if (hasRespHeaders) {
+            lines.push(`        return ${dataExpr}, headers`);
+        } else {
+            lines.push(`        return ${dataExpr}`);
+        }
     }
 
     return lines;
+}
+
+/** Build the lines that construct a TypedDict literal of declared response headers. */
+function buildHeadersDictLines(headers: OpResponseHeaderNode[], typeName: string): string[] {
+    const lines: string[] = [];
+    lines.push(`        headers: ${typeName} = {}`);
+    for (const h of headers) {
+        const pyName = toPythonFieldName(h.name);
+        lines.push(`        if ${JSON.stringify(h.name.toLowerCase())} in _response_headers:`);
+        lines.push(`            headers[${JSON.stringify(pyName)}] = _response_headers[${JSON.stringify(h.name.toLowerCase())}]`);
+    }
+    return lines;
+}
+
+/** snake_case → PascalCase. */
+function snakeToPascal(s: string): string {
+    return s
+        .split('_')
+        .filter(Boolean)
+        .map(p => p.charAt(0).toUpperCase() + p.slice(1))
+        .join('');
 }
 
 // ─── URL building ─────────────────────────────────────────────────────────
@@ -493,6 +567,24 @@ class BaseClient:
         params: dict | None = None,
         extra_headers: dict | None = None,
     ) -> Any:
+        result, _ = await self._fetch_with_headers(
+            path,
+            method=method,
+            body=body,
+            params=params,
+            extra_headers=extra_headers,
+        )
+        return result
+
+    async def _fetch_with_headers(
+        self,
+        path: str,
+        *,
+        method: str,
+        body: Any = None,
+        params: dict | None = None,
+        extra_headers: dict | None = None,
+    ) -> tuple[Any, dict[str, str]]:
         headers = {**self._headers, **(extra_headers or {})}
         if body is not None:
             headers["Content-Type"] = "application/json"
@@ -509,7 +601,9 @@ class BaseClient:
             except Exception:
                 error_body = response.text
             raise SdkError(response.status_code, response.reason_phrase, error_body)
+        # HTTP headers are case-insensitive — normalize to lowercase keys for stable lookup.
+        response_headers = {k.lower(): v for k, v in response.headers.items()}
         if response.status_code == 204 or not response.content:
-            return None
-        return response.json()
+            return None, response_headers
+        return response.json(), response_headers
 `;
