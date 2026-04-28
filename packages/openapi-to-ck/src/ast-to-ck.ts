@@ -374,9 +374,22 @@ function serializeResponses(lines: string[], responses: OpResponseNode[], depth:
     const indent = INDENT.repeat(depth);
     lines.push(`${indent}response: {`);
     for (const resp of responses) {
-        if (resp.bodyType && resp.contentType) {
+        const hasBody = resp.bodyType && resp.contentType;
+        const hasHeaders = resp.headers && resp.headers.length > 0;
+        if (hasBody || hasHeaders) {
             lines.push(`${INDENT.repeat(depth + 1)}${resp.statusCode}: {`);
-            lines.push(`${INDENT.repeat(depth + 2)}${resp.contentType}: ${serializeType(resp.bodyType)}`);
+            if (hasBody) {
+                lines.push(`${INDENT.repeat(depth + 2)}${resp.contentType}: ${serializeType(resp.bodyType!)}`);
+            }
+            if (hasHeaders) {
+                lines.push(`${INDENT.repeat(depth + 2)}headers: {`);
+                for (const h of resp.headers!) {
+                    const opt = h.optional ? '?' : '';
+                    const trail = h.description ? ` # ${h.description}` : '';
+                    lines.push(`${INDENT.repeat(depth + 3)}${h.name}${opt}: ${serializeType(h.type)}${trail}`);
+                }
+                lines.push(`${INDENT.repeat(depth + 2)}}`);
+            }
             lines.push(`${INDENT.repeat(depth + 1)}}`);
         } else {
             lines.push(`${INDENT.repeat(depth + 1)}${resp.statusCode}:`);

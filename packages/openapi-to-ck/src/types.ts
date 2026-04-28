@@ -121,4 +121,13 @@ export interface NormalizedRequestBody {
 export interface NormalizedResponse {
     description?: string;
     content?: Record<string, { schema?: NormalizedSchema }>;
+    /** OpenAPI Header Objects keyed by header name (case-insensitive on the wire). */
+    headers?: Record<string, NormalizedHeader>;
+}
+
+export interface NormalizedHeader {
+    description?: string;
+    required?: boolean;
+    deprecated?: boolean;
+    schema?: NormalizedSchema;
 }

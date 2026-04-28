@@ -4,6 +4,7 @@ import type {
     OpParamNode,
     OpRequestNode,
     OpResponseNode,
+    OpResponseHeaderNode,
     HttpMethod,
     ModelNode,
     SourceLocation,
@@ -264,14 +265,16 @@ function responseToNode(
     schemaCtx: SchemaContext,
     ctx: PathsContext,
 ): OpResponseNode {
+    const headers = convertResponseHeaders(resp.headers, schemaCtx);
+
     if (!resp.content) {
-        return { statusCode };
+        return headers ? { statusCode, headers } : { statusCode };
     }
 
     // Pick the first content type
     const [contentType, mediaType] = Object.entries(resp.content)[0] ?? [];
     if (!contentType || !mediaType?.schema) {
-        return { statusCode };
+        return headers ? { statusCode, headers } : { statusCode };
     }
 
     const { typeNode, model } = extractInlineModel(mediaType.schema, `${toPascalCase(operationName)}Response${statusCode}`, schemaCtx);
@@ -284,7 +287,29 @@ function responseToNode(
         statusCode,
         contentType: contentType as 'application/json',
         bodyType: typeNode,
+        ...(headers ? { headers } : {}),
     };
+}
+
+function convertResponseHeaders(
+    headers: NormalizedResponse['headers'],
+    schemaCtx: SchemaContext,
+): OpResponseHeaderNode[] | undefined {
+    if (!headers) return undefined;
+    const out: OpResponseHeaderNode[] = [];
+    for (const [name, header] of Object.entries(headers)) {
+        if (!header) continue;
+        const type = header.schema
+            ? schemaToTypeNode(header.schema, schemaCtx)
+            : { kind: 'scalar' as const, name: 'string' as const };
+        out.push({
+            name,
+            optional: !header.required,
+            type,
+            description: schemaCtx.includeComments ? header.description : undefined,
+        });
+    }
+    return out.length > 0 ? out : undefined;
 }
 
 // ─── Security ─────────────────────────────────────────────────────────────

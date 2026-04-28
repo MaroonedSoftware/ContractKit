@@ -169,18 +169,21 @@ function normalizePathItem2(
         const opResponses = (op.responses as Record<string, Record<string, unknown>>) ?? {};
         for (const [code, resp] of Object.entries(opResponses)) {
             const contentType = opProduces[0] ?? 'application/json';
+            const headers = convertResponseHeaders2(resp.headers as Record<string, Record<string, unknown>> | undefined);
+            const responseEntry: Record<string, unknown> = {
+                description: resp.description ?? '',
+            };
             if (resp.schema) {
-                responses[code] = {
-                    description: resp.description ?? '',
-                    content: {
-                        [contentType]: {
-                            schema: normalizeNullable30(resp.schema as Record<string, unknown>),
-                        },
+                responseEntry.content = {
+                    [contentType]: {
+                        schema: normalizeNullable30(resp.schema as Record<string, unknown>),
                     },
                 };
-            } else {
-                responses[code] = { description: resp.description ?? '' };
             }
+            if (headers) {
+                responseEntry.headers = headers;
+            }
+            responses[code] = responseEntry;
         }
 
         normalized[method] = {
@@ -197,6 +200,30 @@ function normalizePathItem2(
     }
 
     return normalized;
+}
+
+/**
+ * Convert Swagger 2.0 response headers to a 3.x-shaped Header Object map.
+ * 2.0 stores `type`/`format`/`items` inline on the header; 3.x wraps the same fields under `schema`.
+ */
+function convertResponseHeaders2(
+    headers: Record<string, Record<string, unknown>> | undefined,
+): Record<string, Record<string, unknown>> | undefined {
+    if (!headers) return undefined;
+    const out: Record<string, Record<string, unknown>> = {};
+    for (const [name, header] of Object.entries(headers)) {
+        if (!header || typeof header !== 'object') continue;
+        const { description, type, format, items, ...rest } = header;
+        const schema: Record<string, unknown> = { ...rest };
+        if (type !== undefined) schema.type = type;
+        if (format !== undefined) schema.format = format;
+        if (items !== undefined) schema.items = items;
+        const normalized: Record<string, unknown> = {};
+        if (description !== undefined) normalized.description = description;
+        if (Object.keys(schema).length > 0) normalized.schema = normalizeNullable30(schema);
+        out[name] = normalized;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function convertSecurityScheme2(scheme: Record<string, unknown>): unknown {
