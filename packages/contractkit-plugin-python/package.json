@@ -1,6 +1,6 @@
 {
     "name": "@maroonedsoftware/contractkit-plugin-python",
-    "version": "0.4.1",
+    "version": "0.4.2",
     "description": "ContractKit built-in plugin: Python SDK client generation (Pydantic v2 + httpx)",
     "type": "module",
     "main": "./dist/index.js",

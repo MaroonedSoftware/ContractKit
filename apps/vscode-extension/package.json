@@ -2,7 +2,7 @@
     "name": "contractkit-vscode-extension",
     "displayName": "ContractKit",
     "description": "Language support for .ck contract definition files",
-    "version": "0.4.2",
+    "version": "0.4.3",
     "private": true,
     "type": "module",
     "publisher": "MaroonedSoftware",
