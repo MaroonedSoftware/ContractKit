@@ -801,6 +801,91 @@ operation /users/{id}: {
             expect(responses[2]!.statusCode).toBe(204);
             expect(responses[2]!.bodyType).toBeUndefined();
         });
+
+        it('parses response headers alongside content type', () => {
+            const { root, diag } = parse(`\
+operation /transfers/{id}: {
+    get: {
+        response: {
+            200: {
+                application/json: Transfer
+                headers: {
+                    preference-applied?: string
+                    vary?: string
+                    etag: string # cache validator
+                }
+            }
+        }
+    }
+}`);
+            expect(diag.hasErrors()).toBe(false);
+            const responses = root.routes[0]!.operations[0]!.responses;
+            expect(responses).toHaveLength(1);
+            expect(responses[0]!.bodyType).toEqual({ kind: 'ref', name: 'Transfer' });
+            const headers = responses[0]!.headers!;
+            expect(headers).toHaveLength(3);
+            expect(headers[0]).toMatchObject({ name: 'preference-applied', optional: true });
+            expect(headers[0]!.type).toEqual({ kind: 'scalar', name: 'string' });
+            expect(headers[1]).toMatchObject({ name: 'vary', optional: true });
+            expect(headers[2]).toMatchObject({ name: 'etag', optional: false, description: 'cache validator' });
+        });
+
+        it('parses response headers without a content type body', () => {
+            const { root, diag } = parse(`\
+operation /resources/{id}: {
+    delete: {
+        response: {
+            204: {
+                headers: {
+                    x-deleted-at: string
+                }
+            }
+        }
+    }
+}`);
+            expect(diag.hasErrors()).toBe(false);
+            const responses = root.routes[0]!.operations[0]!.responses;
+            expect(responses).toHaveLength(1);
+            expect(responses[0]!.statusCode).toBe(204);
+            expect(responses[0]!.bodyType).toBeUndefined();
+            expect(responses[0]!.headers).toHaveLength(1);
+            expect(responses[0]!.headers![0]!.name).toBe('x-deleted-at');
+        });
+
+        it('warns on duplicate response headers block', () => {
+            const { diag } = parse(`\
+operation /r: {
+    get: {
+        response: {
+            200: {
+                application/json: User
+                headers: { etag: string }
+                headers: { etag: string }
+            }
+        }
+    }
+}`);
+            const warnings = diag.getAll().filter(e => /Duplicate response headers/.test(e.message));
+            expect(warnings).toHaveLength(1);
+        });
+
+        it('warns on duplicate response header name', () => {
+            const { diag } = parse(`\
+operation /r: {
+    get: {
+        response: {
+            200: {
+                headers: {
+                    etag: string
+                    etag: string
+                }
+            }
+        }
+    }
+}`);
+            const warnings = diag.getAll().filter(e => /Duplicate response header/.test(e.message));
+            expect(warnings).toHaveLength(1);
+        });
     });
 
     // ─── Query block ─────────────────────────────────────────────────

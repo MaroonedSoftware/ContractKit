@@ -231,6 +231,18 @@ Models with visibility modifiers generate up to three schemas:
 
 `discriminated(by=<field>, A | B | C)` compiles to `z.discriminatedUnion("field", [...])` in Zod, an `Annotated[Union[...], Field(discriminator=...)]` in Python, and `oneOf` + `discriminator.mapping` in OpenAPI. Validated at parse time in `validate-discriminated.ts` — every member must be a model ref or inline object containing the discriminator as a `literal()`/`enum()` field, and at least two members are required. Failures emit warnings, not errors.
 
+### Response headers
+
+A status code body can declare `headers: { name?: type, ... }` alongside `application/json:`. AST: `OpResponseNode.headers?: OpResponseHeaderNode[]`. When present:
+
+- **OpenAPI** emits `headers:` under the response with `schema`/`required`/`description`.
+- **TS SDK** changes the method return shape to `Promise<{ data: T; headers: { ... } }>` (or `Promise<{ headers: ... }>` for void). Header property names are camelCased via `headerNameToProperty` in `ts-render.ts`.
+- **TS router** types the service result as `{ body, headers }` and emits `ctx.set(name, String(value))` per header (guarded by `!== undefined` for optional headers).
+- **Markdown** renders a "Response headers" table.
+- **Python SDK** and **Bruno** plugins are unaware — declared response headers do not surface there yet.
+
+Header values are always read as strings from `Headers.get()`; declaring a non-`string` type is allowed but no runtime parsing/coercion is generated.
+
 ### Scalar types worth knowing
 
 - `datetime` → Luxon `DateTime`

@@ -362,3 +362,51 @@ describe('printCk — request blocks', () => {
         expect(i1).toBeLessThan(i2);
     });
 });
+
+describe('printCk — response headers', () => {
+    it('prints response headers alongside body', () => {
+        const ast = makeRoot([
+            makeRoute('/transfers/{id}', [
+                makeOp('get', {
+                    responses: [
+                        {
+                            statusCode: 200,
+                            contentType: 'application/json',
+                            bodyType: { kind: 'ref', name: 'Transfer' },
+                            headers: [
+                                { name: 'preference-applied', optional: true, type: { kind: 'scalar', name: 'string' } },
+                                { name: 'etag', optional: false, type: { kind: 'scalar', name: 'string' }, description: 'cache validator' },
+                            ],
+                        },
+                    ],
+                }),
+            ]),
+        ]);
+        const out = printCk(ast);
+        expect(out).toContain('            200: {');
+        expect(out).toContain('                application/json: Transfer');
+        expect(out).toContain('                headers: {');
+        expect(out).toContain('                    preference-applied?: string');
+        expect(out).toContain('                    etag: string # cache validator');
+    });
+
+    it('prints response headers without a body', () => {
+        const ast = makeRoot([
+            makeRoute('/resources/{id}', [
+                makeOp('delete', {
+                    responses: [
+                        {
+                            statusCode: 204,
+                            headers: [{ name: 'x-deleted-at', optional: false, type: { kind: 'scalar', name: 'string' } }],
+                        },
+                    ],
+                }),
+            ]),
+        ]);
+        const out = printCk(ast);
+        expect(out).toContain('            204: {');
+        expect(out).toContain('                headers: {');
+        expect(out).toContain('                    x-deleted-at: string');
+        expect(out).not.toContain('application/json');
+    });
+});

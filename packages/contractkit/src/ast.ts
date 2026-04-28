@@ -219,10 +219,20 @@ export interface OpRequestNode {
     bodies: OpRequestBodyNode[];
 }
 
+export interface OpResponseHeaderNode {
+    /** Header name as written in the .ck source (preserves casing/hyphens, e.g. `preference-applied`, `ETag`). */
+    name: string;
+    optional: boolean;
+    type: ContractTypeNode;
+    description?: string;
+}
+
 export interface OpResponseNode {
     statusCode: number;
     contentType?: 'application/json';
     bodyType?: ContractTypeNode;
+    /** Declared response headers for this status code. Undefined = none declared. */
+    headers?: OpResponseHeaderNode[];
 }
 
 export interface OpOperationNode {

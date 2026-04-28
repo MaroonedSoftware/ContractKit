@@ -91,6 +91,9 @@ function collectPublicTypeRefs(opRoots: OpRootNode[]): Set<string> {
                 }
                 for (const resp of op.responses) {
                     if (resp.bodyType) collectRefsFromType(resp.bodyType, refs);
+                    if (resp.headers) {
+                        for (const h of resp.headers) collectRefsFromType(h.type, refs);
+                    }
                 }
                 collectParamSourceRefs(route.params, refs);
                 collectParamSourceRefs(op.query, refs);
@@ -519,20 +522,29 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode): Record<string,
     const responses: Record<string, unknown> = {};
     for (const resp of op.responses) {
         const statusKey = String(resp.statusCode);
+        const responseObject: Record<string, unknown> = {
+            description: statusDescription(resp.statusCode),
+        };
         if (resp.bodyType && resp.contentType) {
-            responses[statusKey] = {
-                description: statusDescription(resp.statusCode),
-                content: {
-                    [resp.contentType]: {
-                        schema: typeToSchema(resp.bodyType),
-                    },
+            responseObject.content = {
+                [resp.contentType]: {
+                    schema: typeToSchema(resp.bodyType),
                 },
             };
-        } else {
-            responses[statusKey] = {
-                description: statusDescription(resp.statusCode),
-            };
         }
+        if (resp.headers && resp.headers.length > 0) {
+            const headers: Record<string, unknown> = {};
+            for (const h of resp.headers) {
+                const headerObject: Record<string, unknown> = {
+                    schema: typeToSchema(h.type),
+                };
+                if (!h.optional) headerObject.required = true;
+                if (h.description) headerObject.description = h.description;
+                headers[h.name] = headerObject;
+            }
+            responseObject.headers = headers;
+        }
+        responses[statusKey] = responseObject;
     }
 
     if (Object.keys(responses).length > 0) {

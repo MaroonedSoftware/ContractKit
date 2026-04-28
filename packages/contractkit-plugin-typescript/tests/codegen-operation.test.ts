@@ -462,6 +462,58 @@ describe('generateOperation', () => {
             expect(output).toContain('User[]');
         });
 
+        it('annotates service result with { body, headers } when response declares headers', () => {
+            const root = opRoot([
+                opRoute(
+                    '/transfers/{id}',
+                    [
+                        opOperation('get', {
+                            responses: [
+                                {
+                                    statusCode: 200,
+                                    contentType: 'application/json',
+                                    bodyType: { kind: 'ref', name: 'Transfer' },
+                                    headers: [
+                                        { name: 'preference-applied', optional: true, type: { kind: 'scalar', name: 'string' } },
+                                        { name: 'etag', optional: false, type: { kind: 'scalar', name: 'string' } },
+                                    ],
+                                },
+                            ],
+                        }),
+                    ],
+                    [opParam('id', { kind: 'scalar', name: 'uuid' })],
+                ),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain('{ body: Transfer; headers: { preferenceApplied?: string; etag: string } }');
+            expect(output).toContain("ctx.set('etag', String(result.headers[\"etag\"]))");
+            expect(output).toContain("if (result.headers[\"preferenceApplied\"] !== undefined) ctx.set('preference-applied', String(result.headers[\"preferenceApplied\"]))");
+            expect(output).toContain('ctx.body = result.body;');
+        });
+
+        it('annotates service result with { headers } for void ops with declared headers', () => {
+            const root = opRoot([
+                opRoute(
+                    '/resources/{id}',
+                    [
+                        opOperation('delete', {
+                            responses: [
+                                {
+                                    statusCode: 204,
+                                    headers: [{ name: 'x-deleted-at', optional: false, type: { kind: 'scalar', name: 'string' } }],
+                                },
+                            ],
+                        }),
+                    ],
+                    [opParam('id', { kind: 'scalar', name: 'uuid' })],
+                ),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain('{ headers: { xDeletedAt: string } }');
+            expect(output).toContain("ctx.set('x-deleted-at', String(result.headers[\"xDeletedAt\"]))");
+            expect(output).not.toContain('ctx.body =');
+        });
+
         it('defaults to status 200 when no response specified', () => {
             const root = opRoot([opRoute('/users', [opOperation('get')])]);
             const output = generateOp(root);

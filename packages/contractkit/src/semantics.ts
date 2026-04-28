@@ -12,6 +12,7 @@ import type {
     OpRequestBodyNode,
     RequestContentType,
     OpResponseNode,
+    OpResponseHeaderNode,
     ContractTypeNode,
     FieldNode,
     ParamSource,
@@ -863,30 +864,85 @@ export function createSemantics(grammar: Grammar) {
             return { _type: 'responses', value: responses };
         },
 
-        // StatusCodeBlock = numberLit ":" ("{" ContentTypeLine "}")?
-        // ("{" ContentTypeLine "}")? desugars to "{"? ContentTypeLine? "}"? => 3 IterationNode params
-        // Total: codeNode, _colon, _lbOpt, ctLineOpt, _rbOpt = 5
-        StatusCodeBlock(codeNode, _colon, _lbOpt, ctLineOpt, _rbOpt) {
+        // StatusCodeBlock = numberLit ":" ("{" StatusCodeBodyItem* "}")?
+        // The optional inline group desugars to three IterationNodes for its children.
+        // Total: codeNode, _colon, _lbOpt, itemsOpt, _rbOpt = 5
+        StatusCodeBlock(codeNode, _colon, _lbOpt, itemsOpt, _rbOpt) {
+            const file = this.args.file;
+            const diag = this.args.diag;
             const statusCode = parseInt(codeNode.sourceString, 10);
             let contentType: 'application/json' | undefined;
             let bodyType: ContractTypeNode | undefined;
+            let headers: OpResponseHeaderNode[] | undefined;
 
-            if ((ctLineOpt as IterationNode).numChildren > 0) {
-                const ctLine = (ctLineOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag) as {
-                    contentType: string;
-                    bodyType: ContractTypeNode;
-                };
-                contentType = 'application/json';
-                bodyType = ctLine.bodyType;
+            // ("{" StatusCodeBodyItem* "}")? desugars so that itemsOpt is the *outer* `?` wrapper
+            // around the StatusCodeBodyItem* iteration; child(0) is the inner iteration when present.
+            const outer = itemsOpt as IterationNode;
+            const items = outer.numChildren > 0 ? (outer.child(0) as IterationNode) : null;
+            for (let i = 0; items && i < items.numChildren; i++) {
+                const itemNode = items.child(i);
+                const item = itemNode.toAst(file, diag);
+                if (!item) continue;
+                if (item._type === 'responseHeaders') {
+                    if (headers !== undefined) {
+                        diag?.warn(file, getLine(itemNode), `Duplicate response headers block for status ${statusCode}`);
+                        continue;
+                    }
+                    headers = item.value;
+                } else if (item.contentType !== undefined && item.bodyType !== undefined) {
+                    if (contentType !== undefined) {
+                        diag?.warn(file, getLine(itemNode), `Duplicate response body for status ${statusCode}`);
+                        continue;
+                    }
+                    contentType = 'application/json';
+                    bodyType = item.bodyType;
+                }
             }
 
-            return { statusCode, contentType, bodyType } as OpResponseNode;
+            return { statusCode, contentType, bodyType, headers } as OpResponseNode;
+        },
+
+        StatusCodeBodyItem(child) {
+            if (child.ctorName === 'comment') return null;
+            return child.toAst(this.args.file, this.args.diag);
         },
 
         ContentTypeLine(part1Node, _slash, part2Node, _colon, typeExprNode) {
             const contentType = part1Node.sourceString + '/' + part2Node.sourceString;
             const bodyType = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
             return { contentType, bodyType };
+        },
+
+        ResponseHeadersBlock(_headersKw, _colon, _lb, items, _rb) {
+            const file = this.args.file;
+            const diag = this.args.diag;
+            const headers: OpResponseHeaderNode[] = [];
+            const seen = new Set<string>();
+            for (let i = 0; i < items.numChildren; i++) {
+                const child = items.child(i);
+                if (child.ctorName === 'comment') continue;
+                const header = child.toAst(file, diag) as OpResponseHeaderNode;
+                const key = header.name.toLowerCase();
+                if (seen.has(key)) {
+                    diag?.warn(file, getLine(child), `Duplicate response header '${header.name}'`);
+                    continue;
+                }
+                seen.add(key);
+                headers.push(header);
+            }
+            return { _type: 'responseHeaders', value: headers };
+        },
+
+        ResponseHeaderField(nameNode, optMark, _colon, typeExprNode, inlineCommentOpt) {
+            const file = this.args.file;
+            const diag = this.args.diag;
+            const name = nameNode.sourceString;
+            const optional = (optMark as IterationNode).numChildren > 0;
+            const type = typeExprNode.toAst(file, diag) as ContractTypeNode;
+            const inline = inlineCommentOpt as IterationNode;
+            const description =
+                inline.numChildren > 0 ? inline.child(0).sourceString.replace(/^#\s?/, '').trimEnd() : undefined;
+            return { name, optional, type, description } as OpResponseHeaderNode;
         },
 
         // ─── Security ─────────────────────────────────────────────────

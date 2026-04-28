@@ -9,6 +9,7 @@ import {
     typeNeedsScalar,
     modeToWrapper,
 } from './codegen-contract.js';
+import { renderOutputTsType, quoteKey, headerNameToProperty } from './ts-render.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Content-type helpers ──────────────────────────────────────────────────
@@ -284,6 +285,13 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     // Service call — use the first response with a body as the primary response
     const primaryResponse = op.responses.find(r => r.bodyType) ?? op.responses[0];
     const serviceParts = inferService(op, route, file);
+    const respHeaders = primaryResponse?.headers ?? [];
+    const hasRespHeaders = respHeaders.length > 0;
+    const headersAnnotation = hasRespHeaders
+        ? `{ ${respHeaders
+              .map(h => `${quoteKey(headerNameToProperty(h.name))}${h.optional ? '?' : ''}: ${renderOutputTsType(h.type, options.modelsWithOutput)}`)
+              .join('; ')} }`
+        : '';
 
     if (primaryResponse?.bodyType) {
         const { annotation, prelude } = formatTypeAnnotation(primaryResponse.bodyType!, options.modelsWithOutput);
@@ -291,18 +299,41 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
             lines.push(`    ${prelude}`);
         }
         lines.push(`    const service = ctx.container.get(${serviceParts.className});`);
-        lines.push(`    const result: ${annotation} = await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
+        if (hasRespHeaders) {
+            lines.push(
+                `    const result: { body: ${annotation}; headers: ${headersAnnotation} } = await service.${serviceParts.methodName}(${buildArgs(route, op)});`,
+            );
+        } else {
+            lines.push(`    const result: ${annotation} = await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
+        }
     } else {
         lines.push(`    const service = ctx.container.get(${serviceParts.className});`);
-        lines.push(`    await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
+        if (hasRespHeaders) {
+            lines.push(
+                `    const result: { headers: ${headersAnnotation} } = await service.${serviceParts.methodName}(${buildArgs(route, op)});`,
+            );
+        } else {
+            lines.push(`    await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
+        }
     }
 
     lines.push('');
     lines.push(`    ctx.status = ${primaryResponse?.statusCode ?? 200};`);
 
+    if (hasRespHeaders) {
+        for (const h of respHeaders) {
+            const accessor = `result.headers[${JSON.stringify(headerNameToProperty(h.name))}]`;
+            if (h.optional) {
+                lines.push(`    if (${accessor} !== undefined) ctx.set('${h.name}', String(${accessor}));`);
+            } else {
+                lines.push(`    ctx.set('${h.name}', String(${accessor}));`);
+            }
+        }
+    }
+
     if (primaryResponse?.bodyType && primaryResponse.contentType) {
         lines.push(`    ctx.type = 'application/json';`);
-        lines.push(`    ctx.body = result;`);
+        lines.push(`    ctx.body = ${hasRespHeaders ? 'result.body' : 'result'};`);
     }
 
     lines.push('');
@@ -504,6 +535,12 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWit
                 if (resp.bodyType) {
                     collectTypeNodeRefs(resp.bodyType, types);
                     collectOutputTypeNodeRefs(resp.bodyType, types, modelsWithOutput);
+                }
+                if (resp.headers) {
+                    for (const h of resp.headers) {
+                        collectTypeNodeRefs(h.type, types);
+                        collectOutputTypeNodeRefs(h.type, types, modelsWithOutput);
+                    }
                 }
             }
             collectParamSourceRefs(op.query, types);

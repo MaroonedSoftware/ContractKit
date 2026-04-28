@@ -1,6 +1,6 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpRequestBodyNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
 import { resolveModifiers } from '@maroonedsoftware/contractkit';
-import { renderInputTsType, renderOutputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { basename, dirname, relative } from 'path';
@@ -210,7 +210,17 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
     // Determine return type — response side uses Output variants (post-transform wire shape)
     const primaryResponse = op.responses.find(r => r.bodyType) ?? op.responses[0];
     const isVoid = !primaryResponse?.bodyType;
-    const returnType = isVoid ? 'void' : renderOutputTsType(primaryResponse!.bodyType!, modelsWithOutput);
+    const dataType = isVoid ? 'void' : renderOutputTsType(primaryResponse!.bodyType!, modelsWithOutput);
+    const respHeaders = primaryResponse?.headers ?? [];
+    const hasRespHeaders = respHeaders.length > 0;
+    const headersShape = hasRespHeaders
+        ? `{ ${respHeaders.map(h => `${quoteKey(headerNameToProperty(h.name))}${h.optional ? '?' : ''}: ${renderOutputTsType(h.type, modelsWithOutput)}`).join('; ')} }`
+        : '';
+    const returnType = hasRespHeaders
+        ? isVoid
+            ? `{ headers: ${headersShape} }`
+            : `{ data: ${dataType}; headers: ${headersShape} }`
+        : dataType;
 
     // JSDoc
     const desc = op.description ?? route.description;
@@ -300,7 +310,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
         }
     }
 
-    const resultPrefix = isVoid ? '' : 'const result = ';
+    const resultPrefix = isVoid && !hasRespHeaders ? '' : 'const result = ';
     if (fetchArgs.length === 2 && !hasBody && !hasOpHeaders && !hasQuery) {
         // Simple case — inline
         lines.push(`        ${resultPrefix}await this.fetch(\`${fetchUrl}\`, { method: '${httpMethod}' });`);
@@ -312,8 +322,18 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
         lines.push(`        });`);
     }
 
-    if (!isVoid) {
-        lines.push(`        return await parseJson<${returnType}>(result);`);
+    if (hasRespHeaders) {
+        const headerEntries = respHeaders
+            .map(h => `${quoteKey(headerNameToProperty(h.name))}: result.headers.get('${h.name}') ?? undefined`)
+            .join(', ');
+        if (isVoid) {
+            lines.push(`        return { headers: { ${headerEntries} } };`);
+        } else {
+            lines.push(`        const data = await parseJson<${dataType}>(result);`);
+            lines.push(`        return { data, headers: { ${headerEntries} } };`);
+        }
+    } else if (!isVoid) {
+        lines.push(`        return await parseJson<${dataType}>(result);`);
     }
 
     lines.push('    }');
@@ -495,6 +515,12 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWit
                 if (resp.bodyType) {
                     collectTypeNodeRefs(resp.bodyType, types);
                     collectOutputTypeNodeRefs(resp.bodyType, types, modelsWithOutput);
+                }
+                if (resp.headers) {
+                    for (const h of resp.headers) {
+                        collectTypeNodeRefs(h.type, types);
+                        collectOutputTypeNodeRefs(h.type, types, modelsWithOutput);
+                    }
                 }
             }
             collectParamSourceRefs(op.query, types);

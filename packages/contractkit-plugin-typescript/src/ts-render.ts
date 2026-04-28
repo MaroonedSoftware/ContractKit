@@ -6,6 +6,17 @@ export function quoteKey(name: string): string {
     return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
 }
 
+/** Convert an HTTP header name (e.g. `preference-applied`, `X-Request-ID`, `ETag`) to camelCase for use as a JS property. */
+export function headerNameToProperty(name: string): string {
+    const parts = name.split(/[-_]/).filter(Boolean);
+    return parts
+        .map((p, i) => {
+            const lower = p.toLowerCase();
+            return i === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
+        })
+        .join('');
+}
+
 // ─── TypeScript type rendering ────────────────────────────────────────────
 
 export function renderTsType(type: ContractTypeNode): string {

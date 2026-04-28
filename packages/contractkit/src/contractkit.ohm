@@ -208,9 +208,17 @@ Contract {
 
   ResponseBlock = responseKw ":" "{" (comment | StatusCodeBlock)* "}"
 
-  StatusCodeBlock = numberLit ":" ("{" ContentTypeLine "}")?
+  StatusCodeBlock = numberLit ":" ("{" StatusCodeBodyItem* "}")?
+
+  StatusCodeBodyItem = comment
+                     | ResponseHeadersBlock
+                     | ContentTypeLine
 
   ContentTypeLine = identifier "/" identifier ":" TypeExpression
+
+  ResponseHeadersBlock = headersKw ":" "{" (comment | ResponseHeaderField)* "}"
+
+  ResponseHeaderField = identifier "?"? ":" TypeExpression comment?
 
   // ─── Security ───────────────────────────────────────────────────
 

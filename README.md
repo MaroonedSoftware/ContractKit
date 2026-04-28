@@ -850,6 +850,34 @@ delete: {
 }
 ```
 
+#### Typed response headers
+
+Each status code can declare typed response headers alongside the body. Names use the on-the-wire form (hyphens allowed, case-insensitive). The `?` suffix marks a header optional.
+
+```
+get: {
+    response: {
+        200: {
+            application/json: Transfer
+            headers: {
+                preference-applied?: string
+                vary?: string
+                etag: string # cache validator
+            }
+        }
+    }
+}
+```
+
+Generated effects:
+
+- **OpenAPI** emits `headers:` under each response with the schema and required flag.
+- **TypeScript SDK** changes the method's return shape from `Promise<T>` to `Promise<{ data: T; headers: { preferenceApplied?: string; ... } }>` (or `Promise<{ headers: ... }>` for void responses). Header names are camelCased; values are read from the `Headers` object as strings (`null` becomes `undefined`).
+- **TypeScript router** types the service method's return as `{ body, headers }` (or `{ headers }` for void), and the wrapper calls `ctx.set(name, String(value))` for each declared header.
+- **Markdown docs** render a `Response headers` table per status code.
+
+Operations without a `headers` block on their response keep the current return shape — this change is opt-in per response.
+
 ---
 
 ### Security

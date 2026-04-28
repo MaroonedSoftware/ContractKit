@@ -208,9 +208,22 @@ function printResponseBlock(responses: OpResponseNode[]): string[] {
     const lines: string[] = [`${I2}response: {`];
 
     for (const resp of responses) {
-        if (resp.contentType && resp.bodyType) {
+        const hasBody = resp.contentType && resp.bodyType;
+        const hasHeaders = resp.headers && resp.headers.length > 0;
+        if (hasBody || hasHeaders) {
             lines.push(`${I3}${resp.statusCode}: {`);
-            lines.push(...printContentTypeLine(resp.contentType, resp.bodyType, I4));
+            if (hasBody) {
+                lines.push(...printContentTypeLine(resp.contentType!, resp.bodyType!, I4));
+            }
+            if (hasHeaders) {
+                lines.push(`${I4}headers: {`);
+                for (const h of resp.headers!) {
+                    const opt = h.optional ? '?' : '';
+                    const trail = h.description ? ` # ${h.description}` : '';
+                    lines.push(`${I4}${INDENT}${h.name}${opt}: ${printType(h.type)}${trail}`);
+                }
+                lines.push(`${I4}}`);
+            }
             lines.push(`${I3}}`);
         } else {
             lines.push(`${I3}${resp.statusCode}:`);

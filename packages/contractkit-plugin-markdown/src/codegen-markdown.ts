@@ -524,10 +524,7 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
             if (!resp.bodyType) {
                 lines.push(`\`${statusLabel}\``);
                 lines.push('');
-                continue;
-            }
-
-            if (resp.bodyType.kind === 'inlineObject') {
+            } else if (resp.bodyType.kind === 'inlineObject') {
                 // Inline objects — expand into field table
                 lines.push(`\`${statusLabel}\``);
                 lines.push('');
@@ -543,6 +540,20 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
             } else {
                 // Named type — reference it; the Models section has the full definition
                 lines.push(`\`${statusLabel}\` — ${typeProseLink(resp.bodyType, 'Returns')}`);
+                lines.push('');
+            }
+
+            if (resp.headers && resp.headers.length > 0) {
+                const headerRows = resp.headers.map(h => {
+                    const required = h.optional ? '' : ' *(required)*';
+                    const desc = h.description ? escapeCell(h.description) : '';
+                    return `| \`${h.name}\` | \`${escapeCell(renderTsType(h.type))}\`${required} | ${desc} |`;
+                });
+                lines.push('Response headers:');
+                lines.push('');
+                lines.push('| Header | Type | Description |');
+                lines.push('| ------ | ---- | ----------- |');
+                for (const r of headerRows) lines.push(r);
                 lines.push('');
             }
         }

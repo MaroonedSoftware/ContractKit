@@ -227,6 +227,72 @@ describe('generateSdk', () => {
         });
     });
 
+    describe('response headers', () => {
+        it('returns { data, headers } when response declares headers', () => {
+            const root = opRoot([
+                opRoute(
+                    '/transfers/{id}',
+                    [
+                        opOperation('get', {
+                            sdk: 'getTransfer',
+                            responses: [
+                                {
+                                    statusCode: 200,
+                                    contentType: 'application/json',
+                                    bodyType: { kind: 'ref', name: 'Transfer' },
+                                    headers: [
+                                        { name: 'preference-applied', optional: true, type: scalarType('string') },
+                                        { name: 'etag', optional: false, type: scalarType('string') },
+                                    ],
+                                },
+                            ],
+                        }),
+                    ],
+                    [opParam('id', scalarType('uuid'))],
+                ),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('Promise<{ data: Transfer; headers: { preferenceApplied?: string; etag: string } }>');
+            expect(out).toContain("preferenceApplied: result.headers.get('preference-applied') ?? undefined");
+            expect(out).toContain("etag: result.headers.get('etag') ?? undefined");
+            expect(out).toContain('return { data, headers:');
+        });
+
+        it('returns { headers } for void operations with declared response headers', () => {
+            const root = opRoot([
+                opRoute(
+                    '/resources/{id}',
+                    [
+                        opOperation('delete', {
+                            sdk: 'deleteResource',
+                            responses: [
+                                {
+                                    statusCode: 204,
+                                    headers: [{ name: 'x-deleted-at', optional: false, type: scalarType('string') }],
+                                },
+                            ],
+                        }),
+                    ],
+                    [opParam('id', scalarType('uuid'))],
+                ),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('Promise<{ headers: { xDeletedAt: string } }>');
+            expect(out).toContain("xDeletedAt: result.headers.get('x-deleted-at') ?? undefined");
+            expect(out).toContain('return { headers:');
+            expect(out).not.toContain('parseJson<void>');
+        });
+
+        it('preserves plain return type when no response headers are declared', () => {
+            const root = opRoot([
+                opRoute('/users/{id}', [opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User', 'application/json')] })], [opParam('id', scalarType('uuid'))]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('Promise<User>');
+            expect(out).not.toContain('result.headers.get');
+        });
+    });
+
     describe('query params', () => {
         it('adds query parameter to method signature', () => {
             const root = opRoot([

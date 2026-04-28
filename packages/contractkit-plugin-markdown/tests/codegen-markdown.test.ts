@@ -473,6 +473,32 @@ describe('generateMarkdown', () => {
             expect(output).toContain('`204 No Content`');
         });
 
+        it('renders response headers table', () => {
+            const op = opRoot([
+                opRoute('/transfers/{id}', [
+                    opOperation('get', {
+                        responses: [
+                            {
+                                statusCode: 200,
+                                contentType: 'application/json',
+                                bodyType: { kind: 'ref', name: 'Transfer' },
+                                headers: [
+                                    { name: 'preference-applied', optional: true, type: scalarType('string') },
+                                    { name: 'etag', optional: false, type: scalarType('string'), description: 'cache validator' },
+                                ],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
+            expect(output).toContain('Response headers:');
+            expect(output).toContain('| `preference-applied` |');
+            expect(output).toContain('| `etag` |');
+            expect(output).toContain('*(required)*');
+            expect(output).toContain('cache validator');
+        });
+
         it('renders 201 Created status text', () => {
             const op = opRoot([
                 opRoute('/users', [

@@ -454,6 +454,32 @@ describe('generateOpenApi', () => {
             expect(output).toContain("description: 'List all users'");
         });
 
+        it('emits response headers', () => {
+            const op = opRoot([
+                opRoute('/transfers/{id}', [
+                    opOperation('get', {
+                        responses: [
+                            {
+                                statusCode: 200,
+                                contentType: 'application/json',
+                                bodyType: refType('Transfer'),
+                                headers: [
+                                    { name: 'preference-applied', optional: true, type: scalarType('string') },
+                                    { name: 'etag', optional: false, type: scalarType('string'), description: 'cache validator' },
+                                ],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generateOpenApi({ contractRoots: [], opRoots: [op], config: {} });
+            expect(output).toContain('headers:');
+            expect(output).toContain('preference-applied:');
+            expect(output).toContain('etag:');
+            expect(output).toContain("description: 'cache validator'");
+            expect(output).toContain('required: true');
+        });
+
         it('handles inline object response body', () => {
             const op = opRoot([
                 opRoute('/users', [
