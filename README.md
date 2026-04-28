@@ -446,7 +446,7 @@ contract Validated: {
 | `min=N`           | string, number, array | Minimum length / value / count  |
 | `max=N`           | string, number, array | Maximum length / value / count  |
 | `length=N`        | string                | Exact string length             |
-| `regex=/pattern/` | string                | Regex pattern validation        |
+| `regex=/pattern/` | string                | Regex pattern validation. Patterns without `^`/`$` are auto-anchored for full-match semantics; patterns with explicit anchors are emitted as-written. |
 | `format=name`     | string                | Named format hint (passthrough) |
 
 ---

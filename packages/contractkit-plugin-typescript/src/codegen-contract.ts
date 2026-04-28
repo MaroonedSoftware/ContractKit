@@ -485,6 +485,32 @@ export function renderType(type: ContractTypeNode, parseCaseTransform?: 'snake' 
     }
 }
 
+/**
+ * Render a regex source as a JS regex literal for `.regex(...)`. If the source already has
+ * anchors (`^` at the start and/or an unescaped `$` at the end) we trust the user's intent
+ * and emit it as-is; otherwise we wrap with `^...$` so contracts default to full-match
+ * semantics. Forward slashes are always escaped since `/` is the literal delimiter.
+ */
+function renderRegexLiteral(source: string): string {
+    const body = source.replace(/\//g, '\\/');
+    if (regexHasAnchor(source)) return `/${body}/`;
+    return `/^${body}$/`;
+}
+
+function regexHasAnchor(source: string): boolean {
+    if (source.startsWith('^')) return true;
+    if (!source.endsWith('$')) return false;
+    // The trailing `$` is an anchor only if it isn't escaped — count immediately preceding
+    // backslashes; an even count (including zero) means `$` is unescaped.
+    let i = source.length - 2;
+    let backslashes = 0;
+    while (i >= 0 && source[i] === '\\') {
+        backslashes++;
+        i--;
+    }
+    return backslashes % 2 === 0;
+}
+
 function renderScalar(s: ScalarTypeNode): string {
     switch (s.name) {
         case 'string': {
@@ -493,7 +519,7 @@ function renderScalar(s: ScalarTypeNode): string {
             else if (s.min !== undefined) e += `.min(${s.min})`;
             else if (s.max !== undefined) e += `.max(${s.max})`;
             if (s.len !== undefined) e += `.length(${s.len})`;
-            if (s.regex) e += `.regex(/^${s.regex.replace(/\//g, '\\/')}$/)`;
+            if (s.regex) e += `.regex(${renderRegexLiteral(s.regex)})`;
             return e;
         }
         case 'number': {

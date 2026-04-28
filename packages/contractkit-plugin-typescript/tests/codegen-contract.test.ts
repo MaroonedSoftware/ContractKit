@@ -50,6 +50,26 @@ describe('renderType', () => {
             expect(renderType(scalarType('string', { regex: 'https?://[^/]+/path' }))).toBe('z.string().regex(/^https?:\\/\\/[^\\/]+\\/path$/)');
         });
 
+        it('preserves user-supplied ^ and $ anchors instead of double-wrapping', () => {
+            expect(renderType(scalarType('string', { regex: '^\\+[1-9]\\d{1,14}$' })))
+                .toBe('z.string().regex(/^\\+[1-9]\\d{1,14}$/)');
+        });
+
+        it('preserves a leading-only ^ anchor', () => {
+            expect(renderType(scalarType('string', { regex: '^foo' })))
+                .toBe('z.string().regex(/^foo/)');
+        });
+
+        it('preserves a trailing-only $ anchor', () => {
+            expect(renderType(scalarType('string', { regex: 'foo$' })))
+                .toBe('z.string().regex(/foo$/)');
+        });
+
+        it('treats an escaped trailing \\$ as a literal and still auto-anchors', () => {
+            expect(renderType(scalarType('string', { regex: 'price:\\$' })))
+                .toBe('z.string().regex(/^price:\\$$/)');
+        });
+
         it('renders z.coerce.number()', () => {
             expect(renderType(scalarType('number'))).toBe('z.coerce.number()');
         });
