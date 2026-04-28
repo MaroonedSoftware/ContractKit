@@ -1,5 +1,11 @@
 # @contractkit/contractkit-plugin-python
 
+## 0.5.0
+
+### Minor Changes
+
+- 5d42e39: Enhance Python and TypeScript SDKs to support typed response headers. Updated the Python client to generate `TypedDict` for response headers and modified return types accordingly. The TypeScript SDK now includes runtime assertions for required headers and documents them in the generated markdown. Tests were added to verify the correct handling of response headers in both SDKs.
+
 ## 0.4.2
 
 ### Patch Changes
