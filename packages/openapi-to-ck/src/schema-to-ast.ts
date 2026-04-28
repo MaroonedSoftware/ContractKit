@@ -79,7 +79,7 @@ function schemaToModel(name: string, schema: NormalizedSchema, ctx: SchemaContex
                 return {
                     kind: 'model',
                     name,
-                    base: baseName,
+                    bases: [baseName],
                     fields,
                     description,
                     loc: LOC,

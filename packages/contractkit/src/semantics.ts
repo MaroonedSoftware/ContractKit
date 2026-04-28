@@ -260,7 +260,7 @@ export function createSemantics(grammar: Grammar) {
                 loc: { file, line: prefix.line },
             };
 
-            if (body.base) result.base = body.base;
+            if (body.bases && body.bases.length > 0) result.bases = body.bases;
             if (body.type) result.type = body.type;
             if (prefix.mode) result.mode = prefix.mode;
             if (prefix.inputCase) result.inputCase = prefix.inputCase;
@@ -312,14 +312,19 @@ export function createSemantics(grammar: Grammar) {
             };
         },
 
-        ModelBody_inheritance(baseNode, _amp, _lb, fieldListNode, _rb) {
+        ModelBody_inheritance(firstBaseNode, _amp, restBases, _ampLast, _lb, fieldListNode, _rb) {
             const result = fieldListNode.toAst(this.args.file, this.args.diag) as {
                 fields: FieldNode[];
                 firstCommentLine?: number;
                 firstCommentText?: string;
             };
+            const bases = [firstBaseNode.sourceString];
+            const rest = restBases as IterationNode;
+            for (let i = 0; i < rest.numChildren; i++) {
+                bases.push(rest.child(i).sourceString);
+            }
             return {
-                base: baseNode.sourceString,
+                bases,
                 fields: result.fields,
                 firstCommentLine: result.firstCommentLine,
                 firstCommentText: result.firstCommentText,
@@ -399,60 +404,65 @@ export function createSemantics(grammar: Grammar) {
                 type: ContractTypeNode;
                 visibility: 'readonly' | 'writeonly' | 'normal';
                 deprecated?: boolean;
+                override?: boolean;
                 default?: string | number | boolean;
             };
             const { type, nullable } = extractNullability(body.type);
             const field: FieldNode = { name, optional, nullable, visibility: body.visibility, type, default: body.default, loc: { file, line } };
             if (body.deprecated) field.deprecated = true;
+            if (body.override) field.override = true;
             return field;
         },
 
-        FieldBody_depWithVisibility(_depKw, visNode, typeExprNode, _eqOpt, defaultValOpt) {
-            const vis = visNode.sourceString.trim() as 'readonly' | 'writeonly';
-            const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
+        FieldBody(modifiersIter, typeExprNode, _eqOpt, defaultValOpt) {
+            const file = this.args.file;
+            const diag = this.args.diag;
+            let visibility: 'readonly' | 'writeonly' | 'normal' = 'normal';
+            let deprecated = false;
+            let override = false;
+            let visibilitySet = false;
+            const modifiers = modifiersIter as IterationNode;
+            for (let i = 0; i < modifiers.numChildren; i++) {
+                const modNode = modifiers.child(i);
+                const tag = modNode.toAst(file, diag) as 'readonly' | 'writeonly' | 'deprecated' | 'override';
+                if (tag === 'readonly' || tag === 'writeonly') {
+                    if (visibilitySet && visibility !== tag) {
+                        diag?.error(file, getLine(modNode), `Conflicting visibility modifiers: cannot combine 'readonly' and 'writeonly'`);
+                    } else if (visibilitySet) {
+                        diag?.warn(file, getLine(modNode), `Duplicate '${tag}' modifier`);
+                    }
+                    visibility = tag;
+                    visibilitySet = true;
+                } else if (tag === 'deprecated') {
+                    if (deprecated) diag?.warn(file, getLine(modNode), `Duplicate 'deprecated' modifier`);
+                    deprecated = true;
+                } else if (tag === 'override') {
+                    if (override) diag?.warn(file, getLine(modNode), `Duplicate 'override' modifier`);
+                    override = true;
+                }
+            }
+            const type = typeExprNode.toAst(file, diag) as ContractTypeNode;
             let defaultVal: string | number | boolean | undefined;
             if ((defaultValOpt as IterationNode).numChildren > 0) {
-                defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
+                defaultVal = (defaultValOpt as IterationNode).child(0).toAst(file, diag);
             }
-            return { type, visibility: vis, deprecated: true, default: defaultVal };
+            return { type, visibility, deprecated, override, default: defaultVal };
         },
 
-        FieldBody_visibilityDep(visNode, _depKw, typeExprNode, _eqOpt, defaultValOpt) {
-            const vis = visNode.sourceString.trim() as 'readonly' | 'writeonly';
-            const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
-            let defaultVal: string | number | boolean | undefined;
-            if ((defaultValOpt as IterationNode).numChildren > 0) {
-                defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
-            }
-            return { type, visibility: vis, deprecated: true, default: defaultVal };
+        fieldModifier_readonly(_kw) {
+            return 'readonly';
         },
 
-        FieldBody_depPlain(_depKw, typeExprNode, _eqOpt, defaultValOpt) {
-            const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
-            let defaultVal: string | number | boolean | undefined;
-            if ((defaultValOpt as IterationNode).numChildren > 0) {
-                defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
-            }
-            return { type, visibility: 'normal', deprecated: true, default: defaultVal };
+        fieldModifier_writeonly(_kw) {
+            return 'writeonly';
         },
 
-        FieldBody_withVisibility(visNode, typeExprNode, _eqOpt, defaultValOpt) {
-            const vis = visNode.sourceString.trim() as 'readonly' | 'writeonly';
-            const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
-            let defaultVal: string | number | boolean | undefined;
-            if ((defaultValOpt as IterationNode).numChildren > 0) {
-                defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
-            }
-            return { type, visibility: vis, default: defaultVal };
+        fieldModifier_deprecated(_kw) {
+            return 'deprecated';
         },
 
-        FieldBody_plain(typeExprNode, _eqOpt, defaultValOpt) {
-            const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
-            let defaultVal: string | number | boolean | undefined;
-            if ((defaultValOpt as IterationNode).numChildren > 0) {
-                defaultVal = (defaultValOpt as IterationNode).child(0).toAst(this.args.file, this.args.diag);
-            }
-            return { type, visibility: 'normal', default: defaultVal };
+        fieldModifier_override(_kw) {
+            return 'override';
         },
 
         // ─── Type Expressions ────────────────────────────────────────
@@ -584,11 +594,13 @@ export function createSemantics(grammar: Grammar) {
                 type: ContractTypeNode;
                 visibility: 'readonly' | 'writeonly' | 'normal';
                 deprecated?: boolean;
+                override?: boolean;
                 default?: string | number | boolean;
             };
             const { type, nullable } = extractNullability(body.type);
             const field: FieldNode = { name, optional, nullable, visibility: body.visibility, type, default: body.default, loc: { file, line } };
             if (body.deprecated) field.deprecated = true;
+            if (body.override) field.override = true;
             return field;
         },
 

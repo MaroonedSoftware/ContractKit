@@ -210,7 +210,7 @@ export function computeModelsWithInput(models: ModelNode[], externalModelsWithIn
             for (const field of model.fields) {
                 collectTypeRefs(field.type, refs);
             }
-            if (model.base) refs.add(model.base);
+            if (model.bases) for (const b of model.bases) refs.add(b);
             if (model.type) collectTypeRefs(model.type, refs);
             for (const ref of refs) {
                 if (result.has(ref) || externalModelsWithInput.has(ref)) {
@@ -251,7 +251,7 @@ export function computeModelsWithOutput(models: ModelNode[], externalModelsWithO
             for (const field of model.fields) {
                 collectTypeRefs(field.type, refs);
             }
-            if (model.base) refs.add(model.base);
+            if (model.bases) for (const b of model.bases) refs.add(b);
             if (model.type) collectTypeRefs(model.type, refs);
             for (const ref of refs) {
                 if (result.has(ref) || externalModelsWithOutput.has(ref)) {
@@ -271,7 +271,7 @@ export function collectExternalRefs(root: ContractRootNode): string[] {
     const refs = new Set<string>();
 
     for (const model of root.models) {
-        if (model.base && !localNames.has(model.base)) refs.add(model.base);
+        if (model.bases) for (const b of model.bases) if (!localNames.has(b)) refs.add(b);
         if (model.type) collectTypeRefs(model.type, refs);
         for (const field of model.fields) {
             collectTypeRefs(field.type, refs);
@@ -293,8 +293,10 @@ export function collectExternalOutputRefs(root: ContractRootNode, modelsWithOutp
             collectOutputTypeRefsForExport(model.type, refs, modelsWithOutput);
             continue;
         }
-        if (model.base && modelsWithOutput.has(model.base) && !localNames.has(model.base)) {
-            refs.add(`${model.base}Output`);
+        if (model.bases) {
+            for (const base of model.bases) {
+                if (modelsWithOutput.has(base) && !localNames.has(base)) refs.add(`${base}Output`);
+            }
         }
         for (const field of model.fields) {
             collectOutputTypeRefsForExport(field.type, refs, modelsWithOutput);
@@ -352,8 +354,10 @@ export function collectExternalInputRefs(root: ContractRootNode, modelsWithInput
             collectInputTypeRefsForExport(model.type, refs, modelsWithInput);
             continue;
         }
-        if (model.base && modelsWithInput.has(model.base) && !localNames.has(model.base)) {
-            refs.add(`${model.base}Input`);
+        if (model.bases) {
+            for (const base of model.bases) {
+                if (modelsWithInput.has(base) && !localNames.has(base)) refs.add(`${base}Input`);
+            }
         }
         const writeFields = model.fields.filter(f => f.visibility !== 'readonly');
         for (const field of writeFields) {
@@ -412,7 +416,7 @@ export function topoSortModels(models: ModelNode[]): ModelNode[] {
     const deps = new Map<string, Set<string>>();
     for (const model of models) {
         const refs = new Set<string>();
-        if (model.base && localNames.has(model.base)) refs.add(model.base);
+        if (model.bases) for (const b of model.bases) if (localNames.has(b)) refs.add(b);
         if (model.type) collectTypeRefs(model.type, refs);
         for (const field of model.fields) {
             collectTypeRefs(field.type, refs);

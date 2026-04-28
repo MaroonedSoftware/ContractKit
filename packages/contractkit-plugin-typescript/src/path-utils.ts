@@ -150,7 +150,7 @@ export function computePubliclyReachableTypes(
     for (const contractAst of contractAsts) {
         for (const model of contractAst.models) {
             const deps = new Set<string>();
-            if (model.base) deps.add(model.base);
+            if (model.bases) for (const b of model.bases) deps.add(b);
             if (model.type) collectTypeRefs(model.type, deps);
             for (const field of model.fields) collectTypeRefs(field.type, deps);
             modelDeps.set(model.name, deps);

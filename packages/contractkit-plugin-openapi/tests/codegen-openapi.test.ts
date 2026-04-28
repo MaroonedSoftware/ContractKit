@@ -235,7 +235,7 @@ describe('generateOpenApi', () => {
         });
 
         it('generates model with base (allOf)', () => {
-            const dto = contractRoot([model('Admin', [field('role', enumType('admin', 'superadmin'))], { base: 'User' })]);
+            const dto = contractRoot([model('Admin', [field('role', enumType('admin', 'superadmin'))], { bases: ['User'] })]);
             const output = generateOpenApi({
                 contractRoots: [dto],
                 opRoots: [],
@@ -243,6 +243,17 @@ describe('generateOpenApi', () => {
             });
             expect(output).toContain('allOf:');
             expect(output).toContain("'$ref': '#/components/schemas/User'");
+        });
+
+        it('emits one $ref per base for multi-base inheritance', () => {
+            const dto = contractRoot([
+                model('Test5', [field('e', scalarType('string'))], { bases: ['A', 'B', 'C', 'D'] }),
+            ]);
+            const output = generateOpenApi({ contractRoots: [dto], opRoots: [], config: {} });
+            expect(output).toContain("'$ref': '#/components/schemas/A'");
+            expect(output).toContain("'$ref': '#/components/schemas/B'");
+            expect(output).toContain("'$ref': '#/components/schemas/C'");
+            expect(output).toContain("'$ref': '#/components/schemas/D'");
         });
 
         it('handles scalar type constraints', () => {

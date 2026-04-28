@@ -229,12 +229,14 @@ function resolveModelFields(name: string, modelIndex: Map<string, ModelNode>): F
     if (model.type) return undefined; // type alias, no fields
 
     const ownFields = model.fields;
-    if (!model.base) return ownFields;
+    if (!model.bases || model.bases.length === 0) return ownFields;
 
-    const baseFields = resolveModelFields(model.base, modelIndex);
-    if (!baseFields) return ownFields;
-
-    return [...baseFields, ...ownFields];
+    const collected: FieldNode[] = [];
+    for (const base of model.bases) {
+        const baseFields = resolveModelFields(base, modelIndex);
+        if (baseFields) collected.push(...baseFields);
+    }
+    return [...collected, ...ownFields];
 }
 
 // ─── Grouping ──────────────────────────────────────────────────────────────
@@ -310,7 +312,7 @@ function computePubliclyReachableModels(opRoots: OpRootNode[], contractRoots: Co
     for (const contractRoot of contractRoots) {
         for (const model of contractRoot.models) {
             const deps = new Set<string>();
-            if (model.base) deps.add(model.base);
+            if (model.bases) for (const b of model.bases) deps.add(b);
             if (model.type) collectTypeRefs(model.type, deps);
             for (const field of model.fields) collectTypeRefs(field.type, deps);
             modelDeps.set(model.name, deps);
@@ -710,8 +712,9 @@ function renderModel(model: ModelNode, nested: boolean): string[] {
         lines.push('');
     }
 
-    if (model.base) {
-        lines.push(`Extends [\`${model.base}\`](#${anchor(model.base)})`);
+    if (model.bases && model.bases.length > 0) {
+        const links = model.bases.map(b => `[\`${b}\`](#${anchor(b)})`).join(', ');
+        lines.push(`Extends ${links}`);
         lines.push('');
     }
 

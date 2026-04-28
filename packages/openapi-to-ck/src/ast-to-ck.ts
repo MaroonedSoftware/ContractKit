@@ -121,9 +121,9 @@ function serializeModel(model: ModelNode, ctx: Ctx): string {
         return parts.join('');
     }
 
-    // Inheritance: contract Name: Base & { ... }
-    if (model.base) {
-        parts.push(`contract ${prefix}${model.name}: ${model.base} & {${comment}`);
+    // Inheritance: contract Name: Base1 & Base2 & { ... }
+    if (model.bases && model.bases.length > 0) {
+        parts.push(`contract ${prefix}${model.name}: ${model.bases.join(' & ')} & {${comment}`);
     } else {
         parts.push(`contract ${prefix}${model.name}: {${comment}`);
     }

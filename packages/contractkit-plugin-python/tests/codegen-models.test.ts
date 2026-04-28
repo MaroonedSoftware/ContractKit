@@ -265,10 +265,20 @@ describe('generatePydanticModels', () => {
     it('handles model extending another model', () => {
         const root = contractRoot([
             model('BaseEntity', [field('id', scalarType('uuid'))]),
-            model('Payment', [field('amount', scalarType('number'))], { base: 'BaseEntity' }),
+            model('Payment', [field('amount', scalarType('number'))], { bases: ['BaseEntity'] }),
         ]);
         const output = generatePydanticModels(root);
         expect(output).toContain('class Payment(BaseEntity):');
+    });
+
+    it('emits a comma-separated parent list for multi-base inheritance', () => {
+        const root = contractRoot([
+            model('A', [field('a', scalarType('string'))]),
+            model('B', [field('b', scalarType('int'))]),
+            model('Test5', [field('e', scalarType('string'))], { bases: ['A', 'B'] }),
+        ]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('class Test5(A, B):');
     });
 
     it('generates array and record types', () => {

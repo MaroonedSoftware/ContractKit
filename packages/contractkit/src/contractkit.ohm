@@ -61,9 +61,9 @@ Contract {
 
   modelModifier = objectMode | formatMode | deprecatedKw
 
-  ModelBody = identifier "&" "{" FieldList "}"  -- inheritance
-            | "{" FieldList "}"                  -- fields
-            | TypeExpression comment?            -- alias
+  ModelBody = identifier ("&" identifier)* "&" "{" FieldList "}"  -- inheritance
+            | "{" FieldList "}"                                    -- fields
+            | TypeExpression comment?                              -- alias
 
   // ─── Fields ─────────────────────────────────────────────────────
 
@@ -73,13 +73,12 @@ Contract {
 
   FieldDecl = identifier "?"? ":" FieldBody
 
-  FieldBody = deprecatedKw visibility TypeExpression ("=" DefaultValue)?   -- depWithVisibility
-            | visibility deprecatedKw TypeExpression ("=" DefaultValue)?   -- visibilityDep
-            | deprecatedKw TypeExpression ("=" DefaultValue)?              -- depPlain
-            | visibility TypeExpression ("=" DefaultValue)?                -- withVisibility
-            | TypeExpression ("=" DefaultValue)?                           -- plain
+  FieldBody = fieldModifier* TypeExpression ("=" DefaultValue)?
 
-  visibility = "readonly" ~identPart | "writeonly" ~identPart
+  fieldModifier = "readonly"  ~identPart   -- readonly
+                | "writeonly" ~identPart   -- writeonly
+                | deprecatedKw             -- deprecated
+                | overrideKw               -- override
 
   // ─── Type Expressions ───────────────────────────────────────────
 
@@ -267,6 +266,7 @@ Contract {
   noneKw = "none" ~identPart
   rolesKw = "roles" ~identPart
   deprecatedKw = "deprecated" ~identPart
+  overrideKw = "override" ~identPart
 
   // ─── Lexical Rules ──────────────────────────────────────────────
 

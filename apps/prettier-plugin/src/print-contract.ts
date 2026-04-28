@@ -22,7 +22,8 @@ export function printModelDecl(model: ModelNode, printWidth: number = 80): strin
         .filter(Boolean)
         .join(' ');
     const modePrefix = modifiers ? `${modifiers} ` : '';
-    const header = model.base ? `${modePrefix}${model.name}: ${model.base} & {${commentSuffix}` : `${modePrefix}${model.name}: {${commentSuffix}`;
+    const baseChain = model.bases && model.bases.length > 0 ? `${model.bases.join(' & ')} & ` : '';
+    const header = `${modePrefix}${model.name}: ${baseChain}{${commentSuffix}`;
 
     const lines: string[] = [header];
     for (const field of model.fields) {

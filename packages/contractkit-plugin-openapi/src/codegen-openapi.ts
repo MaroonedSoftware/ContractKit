@@ -115,7 +115,7 @@ function computeReachableSchemas(seeds: Set<string>, modelMap: Map<string, Model
         const refs = new Set<string>();
         if (model.type) collectRefsFromType(model.type, refs);
         for (const field of model.fields) collectRefsFromType(field.type, refs);
-        if (model.base) refs.add(model.base);
+        if (model.bases) for (const b of model.bases) refs.add(b);
         for (const ref of refs) {
             if (!reachable.has(ref)) {
                 reachable.add(ref);
@@ -258,9 +258,9 @@ function modelToSchema(model: ModelNode, modelMap?: Map<string, ModelNode>): Rec
         schema.required = required;
     }
 
-    if (model.base) {
+    if (model.bases && model.bases.length > 0) {
         return {
-            allOf: [{ $ref: `#/components/schemas/${model.base}` }, schema],
+            allOf: [...model.bases.map(b => ({ $ref: `#/components/schemas/${b}` })), schema],
         };
     }
 

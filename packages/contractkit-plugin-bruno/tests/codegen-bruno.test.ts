@@ -482,7 +482,7 @@ describe('generateOpenCollection', () => {
 
     it('expands inherited fields from base model in ref body', () => {
         const baseModel = model('BaseEntity', [field('id', scalarType('uuid'), { visibility: 'readonly' })]);
-        const userModel = model('CreateUserInput', [field('name', scalarType('string'))], { base: 'BaseEntity' });
+        const userModel = model('CreateUserInput', [field('name', scalarType('string'))], { bases: ['BaseEntity'] });
         const root = opRoot(
             [opRoute('/users', [opOperation('post', { request: opRequest('CreateUserInput') })])],
             'users.op',

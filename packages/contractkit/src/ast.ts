@@ -139,6 +139,9 @@ export interface FieldNode {
     type: ContractTypeNode;
     default?: string | number | boolean;
     deprecated?: boolean;
+    /** Set when the field is declared with the `override` modifier — used by inheritance validation
+     * to confirm the field is intentionally redeclaring a conflicting base field. */
+    override?: boolean;
     description?: string;
     loc: SourceLocation;
 }
@@ -146,7 +149,9 @@ export interface FieldNode {
 export interface ModelNode {
     kind: 'model';
     name: string;
-    base?: string;
+    /** Names of base contracts this model extends, in left-to-right declaration order.
+     * `contract C: A & B & { ... }` produces `bases: ['A', 'B']`. Empty/undefined for non-inherited models. */
+    bases?: string[];
     fields: FieldNode[];
     type?: ContractTypeNode; // type alias: Name: typeExpression (fields will be empty)
     mode?: ObjectMode; // object validation mode — defaults to 'strict'

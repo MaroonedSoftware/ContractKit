@@ -74,7 +74,7 @@ export function computeModelsWithInput(models: ModelNode[], externalModelsWithIn
             }
             // A model that extends a parent with Input variants also needs an Input variant,
             // so that the write schema can extend ParentInput instead of Parent.
-            if (model.base) refs.add(model.base);
+            if (model.bases) for (const b of model.bases) refs.add(b);
             // A type alias (model.type set) that references a model with Input variants
             // also needs an Input variant.
             if (model.type) collectTypeRefs(model.type, refs);
@@ -185,8 +185,11 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
  * no ancestor has format, preserving the existing `.extend()`-based output.
  */
 function flattenFormatChain(model: ModelNode, modelMap: Map<string, ModelNode>): ModelNode {
-    if (!model.base) return model;
-    const parent = modelMap.get(model.base);
+    if (!model.bases || model.bases.length === 0) return model;
+    // TODO(multi-base): currently only the first base is followed for format inheritance.
+    // Multi-base format flattening will need a topological merge across all bases.
+    const firstBase = model.bases[0]!;
+    const parent = modelMap.get(firstBase);
     if (!parent) return model;
     const flatParent = flattenFormatChain(parent, modelMap);
     const parentHasFormat =
@@ -200,7 +203,7 @@ function flattenFormatChain(model: ModelNode, modelMap: Map<string, ModelNode>):
 
     return {
         ...model,
-        base: undefined,
+        bases: undefined,
         fields: [...merged.values()],
         inputCase: model.inputCase ?? flatParent.inputCase,
         outputCase: model.outputCase ?? flatParent.outputCase,
@@ -289,8 +292,11 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
     }
 
     const body = renderFields(model.fields, model.mode);
-    if (model.base) {
-        lines.push(`export const ${model.name} = ${model.base}.extend({`);
+    const bases = model.bases ?? [];
+    if (bases.length > 0) {
+        const head = bases[0]!;
+        const tail = bases.slice(1).map(b => `.extend(${b}.shape)`).join('');
+        lines.push(`export const ${model.name} = ${head}${tail}.extend({`);
         lines.push(...body.map(l => `    ${l}`));
         lines.push(`});`);
     } else {
@@ -301,6 +307,14 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
 
     lines.push(`export type ${model.name} = z.infer<typeof ${model.name}>;`);
     return lines;
+}
+
+/** Builds a Zod extension chain "Head.extend(B.shape).extend(C.shape)..." for a list of base names,
+ * applying a per-base name resolver (e.g. choosing "BaseInput" for bases that have an Input variant). */
+function buildExtendChain(bases: string[], resolveName: (b: string) => string): { head: string; tail: string } {
+    const head = resolveName(bases[0]!);
+    const tail = bases.slice(1).map(b => `.extend(${resolveName(b)}.shape)`).join('');
+    return { head, tail };
 }
 
 function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>, modelsWithWriteonly?: Set<string>): string[] {
@@ -314,14 +328,15 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
     const allFields = model.fields;
     const hasWriteonly = allFields.some(f => f.visibility === 'writeonly');
 
+    const bases = model.bases ?? [];
+
     // Base schema — all fields (used internally when a submodel extends this one).
     // Only needed when this model has writeonly fields; otherwise Base === Read.
     if (hasWriteonly) {
         const baseBody = renderFields(allFields, model.mode);
-        // Use ParentBase.extend() only when parent actually has writeonly fields (and thus a Base schema).
-        const baseParent = model.base ? (modelsWithWriteonly?.has(model.base) ? `${model.base}Base` : model.base) : null;
-        if (baseParent) {
-            lines.push(`const ${name}Base = ${baseParent}.extend({`);
+        if (bases.length > 0) {
+            const { head, tail } = buildExtendChain(bases, b => (modelsWithWriteonly?.has(b) ? `${b}Base` : b));
+            lines.push(`const ${name}Base = ${head}${tail}.extend({`);
         } else {
             lines.push(`const ${name}Base = ${wrapper}({`);
         }
@@ -333,8 +348,9 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
     // Read schema — omit writeonly fields; extends parent read schema
     const readFields = allFields.filter(f => f.visibility !== 'writeonly');
     const readBody = renderFields(readFields, model.mode);
-    if (model.base) {
-        lines.push(`export const ${name} = ${model.base}.extend({`);
+    if (bases.length > 0) {
+        const { head, tail } = buildExtendChain(bases, b => b);
+        lines.push(`export const ${name} = ${head}${tail}.extend({`);
     } else {
         lines.push(`export const ${name} = ${wrapper}({`);
     }
@@ -347,9 +363,9 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
     // extends ParentInput if parent has an Input variant, else extends parent read schema
     const writeFields = allFields.filter(f => f.visibility !== 'readonly');
     const writeBody = modelsWithInput ? renderInputFields(writeFields, modelsWithInput, model.mode) : renderFields(writeFields, model.mode);
-    const writeBase = model.base ? (modelsWithInput?.has(model.base) ? `${model.base}Input` : model.base) : null;
-    if (writeBase) {
-        lines.push(`export const ${name}Input = ${writeBase}.extend({`);
+    if (bases.length > 0) {
+        const { head, tail } = buildExtendChain(bases, b => (modelsWithInput?.has(b) ? `${b}Input` : b));
+        lines.push(`export const ${name}Input = ${head}${tail}.extend({`);
     } else {
         lines.push(`export const ${name}Input = ${wrapper}({`);
     }
@@ -858,7 +874,7 @@ export function collectExternalRefs(root: ContractRootNode): string[] {
     const refs = new Set<string>();
 
     for (const model of root.models) {
-        if (model.base && !localNames.has(model.base)) refs.add(model.base);
+        if (model.bases?.[0] && !localNames.has(model.bases?.[0])) refs.add(model.bases?.[0]);
         if (model.type) collectTypeRefs(model.type, refs);
         for (const field of model.fields) {
             collectTypeRefs(field.type, refs);
@@ -883,8 +899,8 @@ export function collectExternalInputRefs(root: ContractRootNode, modelsWithInput
         }
         // When a model extends an external parent that has an Input variant,
         // the write schema extends ParentInput — so we need to import it.
-        if (model.base && modelsWithInput.has(model.base) && !localNames.has(model.base)) {
-            refs.add(`${model.base}Input`);
+        if (model.bases?.[0] && modelsWithInput.has(model.bases?.[0]) && !localNames.has(model.bases?.[0])) {
+            refs.add(`${model.bases?.[0]}Input`);
         }
         const writeFields = model.fields.filter(f => f.visibility !== 'readonly');
         for (const field of writeFields) {
@@ -945,7 +961,7 @@ export function topoSortModels(models: ModelNode[]): ModelNode[] {
     const deps = new Map<string, Set<string>>();
     for (const model of models) {
         const refs = new Set<string>();
-        if (model.base && localNames.has(model.base)) refs.add(model.base);
+        if (model.bases?.[0] && localNames.has(model.bases?.[0])) refs.add(model.bases?.[0]);
         if (model.type) collectTypeRefs(model.type, refs);
         for (const field of model.fields) {
             collectTypeRefs(field.type, refs);

@@ -292,8 +292,8 @@ function generateSimpleModel(model: ModelNode, allModelsWithInput: Set<string>, 
     if (model.description) lines.push(`# ${model.description}`);
     if (model.deprecated) lines.push('# @deprecated');
 
-    const base = model.base ?? 'BaseModel';
-    lines.push(`class ${model.name}(${base}):`);
+    const baseList = model.bases && model.bases.length > 0 ? model.bases.join(', ') : 'BaseModel';
+    lines.push(`class ${model.name}(${baseList}):`);
 
     const fieldLines = renderFields(model.fields, allModelsWithInput, imports, false);
     const needsConfig = model.fields.some(f => toPythonFieldName(f.name) !== f.name);
@@ -320,8 +320,8 @@ function generateSplitModel(model: ModelNode, allModelsWithInput: Set<string>, i
     if (model.description) lines.push(`# ${model.description}`);
     if (model.deprecated) lines.push('# @deprecated');
 
-    const readBase = model.base ?? 'BaseModel';
-    lines.push(`class ${model.name}(${readBase}):`);
+    const readBaseList = model.bases && model.bases.length > 0 ? model.bases.join(', ') : 'BaseModel';
+    lines.push(`class ${model.name}(${readBaseList}):`);
     const readNeedsConfig = readFields.some(f => toPythonFieldName(f.name) !== f.name);
     if (readNeedsConfig) {
         imports.add('pydantic', 'ConfigDict');
@@ -339,8 +339,10 @@ function generateSplitModel(model: ModelNode, allModelsWithInput: Set<string>, i
 
     // Input model — omit readonly fields
     const writeFields = model.fields.filter(f => f.visibility !== 'readonly');
-    const inputBase = model.base ? (allModelsWithInput.has(model.base) ? `${model.base}Input` : model.base) : 'BaseModel';
-    lines.push(`class ${model.name}Input(${inputBase}):`);
+    const inputBaseList = model.bases && model.bases.length > 0
+        ? model.bases.map(b => (allModelsWithInput.has(b) ? `${b}Input` : b)).join(', ')
+        : 'BaseModel';
+    lines.push(`class ${model.name}Input(${inputBaseList}):`);
     const writeNeedsConfig = writeFields.some(f => toPythonFieldName(f.name) !== f.name);
     if (writeNeedsConfig) {
         imports.add('pydantic', 'ConfigDict');

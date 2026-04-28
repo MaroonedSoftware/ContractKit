@@ -337,10 +337,16 @@ function buildModelMap(contractRoots: ContractRootNode[]): Map<string, ModelNode
     return map;
 }
 
-/** Resolve all fields for a model, including inherited base fields (base-first). */
+/** Resolve all fields for a model, including inherited base fields (bases first, in declaration order). */
 function resolveModelFields(model: ModelNode, modelMap: Map<string, ModelNode>): FieldNode[] {
-    const baseFields = model.base ? resolveModelFields(modelMap.get(model.base) ?? ({ fields: [] } as unknown as ModelNode), modelMap) : [];
-    return [...baseFields, ...model.fields];
+    const collected: FieldNode[] = [];
+    if (model.bases) {
+        for (const base of model.bases) {
+            const baseModel = modelMap.get(base);
+            if (baseModel) collected.push(...resolveModelFields(baseModel, modelMap));
+        }
+    }
+    return [...collected, ...model.fields];
 }
 
 // ─── Param helpers ─────────────────────────────────────────────────────────

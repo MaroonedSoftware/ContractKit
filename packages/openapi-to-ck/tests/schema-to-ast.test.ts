@@ -316,7 +316,7 @@ describe('schemasToModels', () => {
         const models = schemasToModels(schemas as Record<string, NormalizedSchema>, ctx);
 
         const admin = models.find(m => m.name === 'Admin')!;
-        expect(admin.base).toBe('User');
+        expect(admin.bases).toEqual(['User']);
         expect(admin.fields.length).toBe(1);
         expect(admin.fields[0]!.name).toBe('role');
     });

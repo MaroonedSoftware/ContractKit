@@ -180,7 +180,7 @@ function collectTypeRefs(type: ContractTypeNode, refs: Set<string>): void {
 }
 
 function collectModelRefs(model: ModelNode, refs: Set<string>): void {
-    if (model.base) refs.add(model.base);
+    if (model.bases) for (const b of model.bases) refs.add(b);
     if (model.type) collectTypeRefs(model.type, refs);
     for (const field of model.fields) {
         collectTypeRefs(field.type, refs);

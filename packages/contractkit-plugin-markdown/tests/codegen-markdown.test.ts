@@ -595,9 +595,19 @@ describe('generateMarkdown', () => {
         });
 
         it('renders extends link for base model', () => {
-            const dto = contractRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
+            const dto = contractRoot([model('Admin', [field('role', scalarType('string'))], { bases: ['User'] })]);
             const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
             expect(output).toContain('Extends [`User`](#user)');
+        });
+
+        it('renders comma-separated links for multi-base inheritance', () => {
+            const dto = contractRoot([
+                model('A', [field('a', scalarType('string'))]),
+                model('B', [field('b', scalarType('int'))]),
+                model('Test5', [field('e', scalarType('string'))], { bases: ['A', 'B'] }),
+            ]);
+            const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
+            expect(output).toContain('Extends [`A`](#a), [`B`](#b)');
         });
 
         it('uses Attribute column header', () => {

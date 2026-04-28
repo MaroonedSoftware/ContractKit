@@ -547,7 +547,7 @@ describe('generateContract', () => {
 
     describe('inheritance', () => {
         it('generates .extend() for models with a base', () => {
-            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
+            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { bases: ['User'] })]);
             const output = generateContract(root);
             expect(output).toContain('User.extend({');
         });
@@ -555,7 +555,7 @@ describe('generateContract', () => {
         it('child extends parent in same file: both get three-schema when parent has visibility', () => {
             const root = contractRoot([
                 model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))]),
-                model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
+                model('Admin', [field('role', scalarType('string'))], { bases: ['User'] }),
             ]);
             const output = generateContract(root);
             // User has only readonly (no writeonly) — Base === Read, so no UserBase emitted
@@ -571,7 +571,7 @@ describe('generateContract', () => {
         it('child with visibility extending parent without visibility: uses .extend() for base, read, and write', () => {
             const root = contractRoot([
                 model('User', [field('name', scalarType('string'))]),
-                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { base: 'User' }),
+                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { bases: ['User'] }),
             ]);
             const output = generateContract(root);
             // User has no visibility — simple schema
@@ -586,7 +586,7 @@ describe('generateContract', () => {
         it('parent with writeonly fields generates Base; child Base extends ParentBase', () => {
             const root = contractRoot([
                 model('User', [field('password', scalarType('string'), { visibility: 'writeonly' }), field('name', scalarType('string'))]),
-                model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
+                model('Admin', [field('role', scalarType('string'))], { bases: ['User'] }),
             ]);
             const output = generateContract(root);
             // User has writeonly — Base !== Read, so UserBase is emitted
@@ -601,7 +601,7 @@ describe('generateContract', () => {
 
         it('child inheriting from external parent with Input variant uses ParentInput.extend()', () => {
             const root = contractRoot([
-                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { base: 'User' }),
+                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { bases: ['User'] }),
             ]);
             const output = generateContract(root, {
                 modelsWithInput: new Set(['User']),
@@ -609,6 +609,29 @@ describe('generateContract', () => {
                 modelOutPaths: new Map(),
             });
             expect(output).toContain('export const AdminInput = UserInput.extend({');
+        });
+
+        it('chains .extend() for multi-base inheritance', () => {
+            const root = contractRoot([
+                model('A', [field('a', scalarType('string'))]),
+                model('B', [field('b', scalarType('int'))]),
+                model('C', [field('c', scalarType('boolean'))]),
+                model('D', [field('d', scalarType('string'))]),
+                model('Test5', [field('e', scalarType('string'))], { bases: ['A', 'B', 'C', 'D'] }),
+            ]);
+            const output = generateContract(root);
+            expect(output).toContain('export const Test5 = A.extend(B.shape).extend(C.shape).extend(D.shape).extend({');
+        });
+
+        it('chains Input variants for multi-base when bases have Input variants', () => {
+            const root = contractRoot([
+                model('A', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('a', scalarType('string'))]),
+                model('B', [field('b', scalarType('int'))]),
+                model('Test', [field('e', scalarType('string'))], { bases: ['A', 'B'] }),
+            ]);
+            const output = generateContract(root);
+            // A has Input variant (because of readonly), B doesn't.
+            expect(output).toContain('export const TestInput = AInput.extend(B.shape).extend({');
         });
     });
 
@@ -717,7 +740,7 @@ describe('generateContract', () => {
         });
 
         it('imports base model when inherited from external', () => {
-            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
+            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { bases: ['User'] })]);
             const output = generateContract(root);
             expect(output).toContain("import { User } from './user.js';");
         });
@@ -725,7 +748,7 @@ describe('generateContract', () => {
         it('does not import base model when defined locally', () => {
             const root = contractRoot([
                 model('User', [field('name', scalarType('string'))]),
-                model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
+                model('Admin', [field('role', scalarType('string'))], { bases: ['User'] }),
             ]);
             const output = generateContract(root);
             expect(output).not.toContain('import { User }');
@@ -928,7 +951,7 @@ describe('generateContract', () => {
             const root = contractRoot([
                 model('Base', [field('grantType', scalarType('string')), field('clientId', scalarType('uuid'), { optional: true })], { inputCase: 'snake' }),
                 model('Child', [field('grantType', literalType('client_credentials')), field('clientId', scalarType('uuid')), field('clientSecret', scalarType('string'))], {
-                    base: 'Base',
+                    bases: ['Base'],
                 }),
             ]);
             const output = generateContract(root);

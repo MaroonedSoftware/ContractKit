@@ -383,15 +383,48 @@ contract M: {
     describe('model inheritance', () => {
         it('parses model with base model', () => {
             const { root } = parse('contract Admin: User & { role: string }');
-            expect(root.models[0]!.base).toBe('User');
+            expect(root.models[0]!.bases).toEqual(['User']);
             expect(root.models[0]!.name).toBe('Admin');
         });
 
         it('parses intersection with inline object as inheritance', () => {
             const { root } = parse('contract Query: Pagination & { status?: enum(pending, posted) }');
-            expect(root.models[0]!.base).toBe('Pagination');
+            expect(root.models[0]!.bases).toEqual(['Pagination']);
             expect(root.models[0]!.fields[0]!.name).toBe('status');
             expect(root.models[0]!.fields[0]!.optional).toBe(true);
+        });
+
+        it('parses model with multiple bases', () => {
+            const { root } = parse('contract Test5: Test1 & Test2 & Test3 & Test4 & { e: string }');
+            expect(root.models[0]!.bases).toEqual(['Test1', 'Test2', 'Test3', 'Test4']);
+            expect(root.models[0]!.fields[0]!.name).toBe('e');
+        });
+
+        it('parses override modifier on a field', () => {
+            const { root } = parse('contract Test5: Test1 & { a: override int }');
+            const field = root.models[0]!.fields[0]!;
+            expect(field.name).toBe('a');
+            expect(field.override).toBe(true);
+            expect(field.type).toEqual({ kind: 'scalar', name: 'int' });
+        });
+
+        it('parses override combined with other modifiers in any order', () => {
+            const { root } = parse(`
+contract Test5: Test1 & {
+    a: override readonly string
+    b: deprecated override int
+    c: override deprecated readonly string
+}`);
+            const fields = root.models[0]!.fields;
+            expect(fields[0]).toMatchObject({ name: 'a', override: true, visibility: 'readonly' });
+            expect(fields[1]).toMatchObject({ name: 'b', override: true, deprecated: true });
+            expect(fields[2]).toMatchObject({ name: 'c', override: true, deprecated: true, visibility: 'readonly' });
+        });
+
+        it('errors on conflicting visibility modifiers', () => {
+            const { diag } = parse('contract Test: { a: readonly writeonly string }');
+            const errs = diag.getAll().filter(d => d.severity === 'error');
+            expect(errs.some(e => e.message.includes('Conflicting visibility'))).toBe(true);
         });
     });
 

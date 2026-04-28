@@ -209,13 +209,37 @@ operation(internal) /payments/{id}: {
 
 ### Field modifiers
 
-| Modifier                 | Effect                                                 |
-| ------------------------ | ------------------------------------------------------ |
-| `?` suffix on field name | Optional field                                         |
-| `readonly`               | Field excluded from Input schema                       |
-| `writeonly`              | Field excluded from Read schema                        |
-| `deprecated`             | Marks field as deprecated                              |
-| `= value`                | Default value (string, number, boolean, or identifier) |
+| Modifier                 | Effect                                                                                          |
+| ------------------------ | ----------------------------------------------------------------------------------------------- |
+| `?` suffix on field name | Optional field                                                                                  |
+| `readonly`               | Field excluded from Input schema                                                                |
+| `writeonly`              | Field excluded from Read schema                                                                 |
+| `deprecated`             | Marks field as deprecated                                                                       |
+| `override`               | Required when redeclaring a field that conflicts across bases. See "Multi-base inheritance".    |
+| `= value`                | Default value (string, number, boolean, or identifier)                                          |
+
+Modifiers compose in any order on the source side (`override readonly`, `readonly override`, `deprecated override readonly`, etc.). The prettier printer emits them in canonical order: **override → deprecated → readonly|writeonly**. Conflicting visibility modifiers (`readonly` + `writeonly` on the same field) are a parse-time error.
+
+### Multi-base inheritance
+
+`contract C: A & B & C & D & { ... }` produces `model.bases = ['A', 'B', 'C', 'D']` (multi-base). Each base contributes its full **effective** field set (own fields plus its own bases', with own overrides applied) — diamond inheritance is deduplicated at resolution time.
+
+`validate-inheritance.ts` runs after `validate-refs` and enforces:
+
+- **Cross-base conflict requires `override`** — if two bases contribute a same-named field with non-identical shape, the subclass must redeclare with `override`. Identical contributions are silently deduplicated. The shape predicate `fieldsAreIdentical` compares type (deep), `optional`, `nullable`, `visibility`, `default`, `deprecated`; `description` and `loc` are ignored.
+- **`override` must shadow** — using `override` on a field name not present in any base is an error.
+- **Cycle detection** — `A: B`, `B: A` (or longer chains) emit `Inheritance cycle: ...` once per cycle and skip the conflict check for nodes in the cycle.
+
+Codegen impact:
+
+- **Zod**: `Test5 = A.extend(B.shape).extend(C.shape).extend(D.shape).extend({...inline})`. Last-wins is the runtime semantics; the inline block is appended last so overrides win.
+- **Plain TS** (`codegen-plain-types.ts`): `interface Test5 extends A, B, C, D { ... }`. When fields are overridden, each base is wrapped in `Omit<Base, 'a' | 'b'>` (TypeScript's `Omit` tolerates omit keys that don't exist on the base, so we omit unconditionally — no per-base field-set lookup needed).
+- **Python**: `class Test5(A, B, C, D): ...` with Pydantic v2 MRO handling override redeclarations.
+- **OpenAPI**: `allOf: [{ $ref: A }, { $ref: B }, { $ref: C }, { $ref: D }, { ...inline }]`.
+- **Markdown**: `Extends [\`A\`](#a), [\`B\`](#b), ...`
+- **Bruno** uses `resolveModelFields` to flatten the chain with overrides applied; nothing user-visible changes.
+
+`override` semantics are **replace, not patch** — the modifier replaces the full field declaration including visibility, defaults, optionality. Re-add them on the override line if you want to preserve them (`override readonly int = 0`).
 
 ### Zod schema generation (codegen-contract)
 

@@ -68,11 +68,14 @@ export function printEnumExpanded(values: string[], indent: string): string {
 
 // ─── Field printer ──────────────────────────────────────────────────────────
 
-/** Print a full field declaration, including visibility, default, and inline comment. */
+/** Print a full field declaration, including visibility, default, and inline comment.
+ * Modifier order is canonical: override → deprecated → readonly|writeonly → type. */
 export function printField(field: FieldNode, indent: string, printWidth: number = 80): string {
     const opt = field.optional ? '?' : '';
+    const ovr = field.override ? 'override ' : '';
     const dep = field.deprecated ? 'deprecated ' : '';
     const vis = field.visibility !== 'normal' ? `${field.visibility} ` : '';
+    const mods = `${ovr}${dep}${vis}`;
     const def = field.default !== undefined ? ` = ${formatDefault(field.default)}` : '';
     const comment = field.description ? ` # ${field.description}` : '';
     const innerIndent = indent + INDENT;
@@ -85,18 +88,18 @@ export function printField(field: FieldNode, indent: string, printWidth: number 
             const { prefix, inlineObj } = trailing;
             const modePart = inlineObj.mode ? `mode(${inlineObj.mode}) ` : '';
             const header = prefix
-                ? `${indent}${field.name}${opt}: ${dep}${vis}${prefix} & ${modePart}{${comment}`
-                : `${indent}${field.name}${opt}: ${dep}${vis}${modePart}{${comment}`;
+                ? `${indent}${field.name}${opt}: ${mods}${prefix} & ${modePart}{${comment}`
+                : `${indent}${field.name}${opt}: ${mods}${modePart}{${comment}`;
             return [header, ...printInlineObjectExpanded(inlineObj, innerIndent, printWidth), `${indent}}`].join('\n');
         }
     }
 
     let typeStr = printType(field.type);
     if (field.nullable) typeStr += ' | null';
-    const fullLine = `${indent}${field.name}${opt}: ${dep}${vis}${typeStr}${def}${comment}`;
+    const fullLine = `${indent}${field.name}${opt}: ${mods}${typeStr}${def}${comment}`;
     if (field.type.kind === 'enum' && !field.nullable && field.default === undefined && fullLine.length > printWidth) {
         const enumStr = printEnumExpanded(field.type.values, indent);
-        return `${indent}${field.name}${opt}: ${dep}${vis}${enumStr}${comment}`;
+        return `${indent}${field.name}${opt}: ${mods}${enumStr}${comment}`;
     }
     return fullLine;
 }

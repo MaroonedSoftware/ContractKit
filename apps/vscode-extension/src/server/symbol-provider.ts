@@ -22,7 +22,7 @@ export function getDocumentSymbols(parsed: ParsedDocument): DocumentSymbol[] {
             kind: SymbolKind.Class,
             range: Range.create(modelLine, 0, modelLine + model.fields.length + 1, 0),
             selectionRange: Range.create(modelLine, 0, modelLine, model.name.length),
-            detail: model.base ? `extends ${model.base}` : undefined,
+            detail: model.bases && model.bases.length > 0 ? `extends ${model.bases.join(', ')}` : undefined,
             children,
         });
     }

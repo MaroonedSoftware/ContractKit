@@ -6,6 +6,7 @@ export * from './parser.js';
 export * from './decompose.js';
 export * from './type-utils.js';
 export * from './validate-operation.js';
+export * from './validate-inheritance.js';
 export * from './apply-options-defaults.js';
 export * from './validate-refs.js';
 export * from './plugin.js';

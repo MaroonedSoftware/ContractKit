@@ -254,13 +254,42 @@ contract User: {
 
 #### Inheritance
 
-Use `&` to extend a base model. The generated Zod schema uses `.extend()`.
+Use `&` to extend one or more base models. The generated Zod schema uses chained `.extend()`s, OpenAPI emits `allOf`, plain TypeScript emits `extends` (with `Omit<...>` per base when fields are overridden), and Python emits a comma-separated parent list.
 
 ```
 contract Admin: User & {
     permissions: array(string)
     department: string
 }
+```
+
+**Multi-base** — list bases left-to-right, inline block last:
+
+```
+contract Test5: Test1 & Test2 & Test3 & Test4 & {
+    e: string
+}
+```
+
+When two or more bases declare a field with the **same name and same shape**, no action is needed — the duplicate is silently deduplicated.
+
+When two or more bases declare a field with the **same name but different shape** (different type, optionality, nullability, visibility, default, or deprecation), this is a **conflict**. The model must redeclare that field in its inline block with the `override` modifier; otherwise compilation fails:
+
+```
+contract A: { x: string }
+contract B: { x: int }
+
+contract C: A & B & {
+    x: override int     # required — bases disagree
+}
+```
+
+`override` also acts as a deliberate redeclaration when extending a single base — it makes shadowing intent explicit. It must shadow at least one base-contributed field; using `override` on a name that no base declares is an error.
+
+The override declaration **fully replaces** the field — visibility, optionality, defaults, and deprecation flags from the base are not inherited. Re-add them on the override line if needed:
+
+```
+override x: readonly int = 0
 ```
 
 #### Type Alias

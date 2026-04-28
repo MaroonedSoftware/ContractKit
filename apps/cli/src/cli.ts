@@ -8,7 +8,7 @@ import { default as importOpenApiPlugin } from '@maroonedsoftware/openapi-to-ck/
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { glob } from 'glob';
-import { DiagnosticCollector, parseCk, decomposeCk, validateOp, validateRefs, applyOptionsDefaults, computeModelsWithInput, computeModelsWithOutput } from '@maroonedsoftware/contractkit';
+import { DiagnosticCollector, parseCk, decomposeCk, validateOp, validateRefs, validateInheritance, applyOptionsDefaults, computeModelsWithInput, computeModelsWithOutput } from '@maroonedsoftware/contractkit';
 import type { ContractRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
 import { loadConfig, mergeConfig } from './config.js';
 import { loadCache, saveCache, computeHash } from './cache.js';
@@ -221,6 +221,7 @@ async function main() {
 
         // ── Cross-file validation ──────────────────────────────────────
         validateRefs(allContracts, allOps, diag);
+        validateInheritance(allContracts, diag);
 
         for (const op of allOps) {
             validateOp(op, diag);

@@ -115,15 +115,26 @@ function generateTypeAlias(model: ModelNode, outPath?: string, modelsWithInput?:
     return lines;
 }
 
+/** Build the `extends` clause for a multi-base model.
+ * Override-marked field names are wrapped in `Omit<Base, 'name1' | 'name2'>` per base so the
+ * subclass can legally redeclare them with new types. TypeScript's `Omit<T, K extends keyof any>`
+ * tolerates omit keys that don't appear on the base, so we omit unconditionally — no need to know
+ * each base's actual field set. */
+function buildExtendsClause(bases: string[], overrideNames: string[], baseNameResolver: (b: string) => string): string {
+    if (bases.length === 0) return '';
+    if (overrideNames.length === 0) return ` extends ${bases.map(baseNameResolver).join(', ')}`;
+    const omitKeys = overrideNames.map(n => `'${n}'`).join(' | ');
+    const wrapped = bases.map(b => `Omit<${baseNameResolver(b)}, ${omitKeys}>`);
+    return ` extends ${wrapped.join(', ')}`;
+}
+
 function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
 
-    if (model.base) {
-        lines.push(`export interface ${model.name} extends ${model.base} {`);
-    } else {
-        lines.push(`export interface ${model.name} {`);
-    }
+    const bases = model.bases ?? [];
+    const overrideNames = model.fields.filter(f => f.override).map(f => f.name);
+    lines.push(`export interface ${model.name}${buildExtendsClause(bases, overrideNames, b => b)} {`);
 
     for (const field of model.fields) {
         lines.push(`    ${renderField(field)}`);
@@ -137,14 +148,12 @@ function generateVisibilityModel(model: ModelNode, outPath?: string, modelsWithI
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
 
+    const bases = model.bases ?? [];
+    const overrideNames = model.fields.filter(f => f.override).map(f => f.name);
+
     // Read type — omit writeonly fields
     const readFields = model.fields.filter(f => f.visibility !== 'writeonly');
-
-    if (model.base) {
-        lines.push(`export interface ${model.name} extends ${model.base} {`);
-    } else {
-        lines.push(`export interface ${model.name} {`);
-    }
+    lines.push(`export interface ${model.name}${buildExtendsClause(bases, overrideNames, b => b)} {`);
     for (const field of readFields) {
         lines.push(`    ${renderField(field)}`);
     }
@@ -154,12 +163,8 @@ function generateVisibilityModel(model: ModelNode, outPath?: string, modelsWithI
     // Write type — omit readonly fields (use Input variants for sub-type refs);
     // extends ParentInput if parent has an Input variant, else extends parent read type
     const writeFields = model.fields.filter(f => f.visibility !== 'readonly');
-    const inputBase = model.base ? (modelsWithInput?.has(model.base) ? `${model.base}Input` : model.base) : undefined;
-    if (inputBase) {
-        lines.push(`export interface ${model.name}Input extends ${inputBase} {`);
-    } else {
-        lines.push(`export interface ${model.name}Input {`);
-    }
+    const inputResolver = (b: string) => (modelsWithInput?.has(b) ? `${b}Input` : b);
+    lines.push(`export interface ${model.name}Input${buildExtendsClause(bases, overrideNames, inputResolver)} {`);
     for (const field of writeFields) {
         lines.push(`    ${modelsWithInput ? renderInputField(field, modelsWithInput) : renderField(field)}`);
     }
@@ -230,7 +235,7 @@ function generateOutputModel(model: ModelNode, modelsWithOutput: Set<string>): s
 
     // Transitive-only (no direct outputCase): preserve `extends` and original key names.
     if (!outputCase) {
-        const baseExt = model.base && modelsWithOutput.has(model.base) ? ` extends ${model.base}Output` : model.base ? ` extends ${model.base}` : '';
+        const baseExt = model.bases?.[0] && modelsWithOutput.has(model.bases?.[0]) ? ` extends ${model.bases?.[0]}Output` : model.bases?.[0] ? ` extends ${model.bases?.[0]}` : '';
         lines.push(`export interface ${model.name}Output${baseExt} {`);
         for (const field of readFields) {
             lines.push(`    ${renderOutputField(field, model.outputCase, modelsWithOutput)}`);

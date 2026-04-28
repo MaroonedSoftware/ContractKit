@@ -502,3 +502,43 @@ operation /widgets: {
         expect(roundTrip(source)).toBe(source);
     });
 });
+
+describe('printCk — multi-base inheritance and override (round-trip)', () => {
+    function roundTrip(source: string): string {
+        const diag = new DiagnosticCollector();
+        const ast = parseCk(source, 'test.ck', diag);
+        expect(diag.hasErrors()).toBe(false);
+        return printCk(ast);
+    }
+
+    it('round-trips multi-base inheritance', () => {
+        const source = `\
+contract Test5: A & B & C & D & {
+    e: string
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+
+    it('round-trips override modifier on a field', () => {
+        const source = `\
+contract Test5: A & {
+    a: override int
+    e: string
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+
+    it('emits canonical modifier order: override → deprecated → readonly', () => {
+        const source = `\
+contract Test: A & {
+    a: deprecated override readonly string
+}
+`;
+        // Canonical order is override → deprecated → readonly|writeonly.
+        // Re-printing reorders the modifiers.
+        const printed = roundTrip(source);
+        expect(printed).toContain('a: override deprecated readonly string');
+    });
+});

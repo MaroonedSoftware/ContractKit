@@ -348,14 +348,14 @@ describe('generatePlainTypes', () => {
 
     describe('inheritance', () => {
         it('generates extends clause for models with a base', () => {
-            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
+            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { bases: ['User'] })]);
             const output = generatePlainTypes(root);
             expect(output).toContain('export interface Admin extends User {');
         });
 
         it('generates extends for visibility model with base (base has no Input variant)', () => {
             const root = contractRoot([
-                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { base: 'User' }),
+                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { bases: ['User'] }),
             ]);
             const output = generatePlainTypes(root);
             expect(output).toContain('export interface Admin extends User {');
@@ -365,7 +365,7 @@ describe('generatePlainTypes', () => {
 
         it('generates extends for visibility model with base (base has Input variant)', () => {
             const root = contractRoot([
-                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { base: 'User' }),
+                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { bases: ['User'] }),
             ]);
             const output = generatePlainTypes(root, {
                 modelsWithInput: new Set(['User']),
@@ -380,7 +380,7 @@ describe('generatePlainTypes', () => {
         it('child extends parent in same file both get Input when parent has visibility', () => {
             const root = contractRoot([
                 model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))]),
-                model('Admin', [field('role', scalarType('string'))], { base: 'User' }),
+                model('Admin', [field('role', scalarType('string'))], { bases: ['User'] }),
             ]);
             const output = generatePlainTypes(root);
             // User has visibility fields → needs Input; Admin extends User → also needs Input
@@ -388,6 +388,36 @@ describe('generatePlainTypes', () => {
             expect(output).toContain('export interface UserInput {');
             expect(output).toContain('export interface Admin extends User {');
             expect(output).toContain('export interface AdminInput extends UserInput {');
+        });
+
+        it('emits a multi-base extends clause', () => {
+            const root = contractRoot([
+                model('Test5', [field('e', scalarType('string'))], { bases: ['A', 'B', 'C', 'D'] }),
+            ]);
+            const output = generatePlainTypes(root);
+            expect(output).toContain('export interface Test5 extends A, B, C, D {');
+        });
+
+        it('omits override fields from each base via Omit', () => {
+            const root = contractRoot([
+                model('Test5', [
+                    field('a', scalarType('int'), { override: true }),
+                    field('e', scalarType('string')),
+                ], { bases: ['A', 'B'] }),
+            ]);
+            const output = generatePlainTypes(root);
+            expect(output).toContain("export interface Test5 extends Omit<A, 'a'>, Omit<B, 'a'> {");
+        });
+
+        it('combines multiple override fields into a union Omit key', () => {
+            const root = contractRoot([
+                model('Test5', [
+                    field('a', scalarType('int'), { override: true }),
+                    field('b', scalarType('string'), { override: true }),
+                ], { bases: ['A'] }),
+            ]);
+            const output = generatePlainTypes(root);
+            expect(output).toContain("export interface Test5 extends Omit<A, 'a' | 'b'> {");
         });
     });
 
@@ -500,7 +530,7 @@ describe('generatePlainTypes', () => {
         });
 
         it('imports base model when inherited from external', () => {
-            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { base: 'User' })]);
+            const root = contractRoot([model('Admin', [field('role', scalarType('string'))], { bases: ['User'] })]);
             const output = generatePlainTypes(root);
             expect(output).toContain("import type { User } from './user.js';");
         });

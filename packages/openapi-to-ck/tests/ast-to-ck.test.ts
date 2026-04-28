@@ -151,7 +151,7 @@ describe('model serialization', () => {
 
     it('serializes model with inheritance', () => {
         const root = ckRoot({
-            models: [model('Admin', [field('role', enumType('admin', 'superadmin'))], { base: 'User' })],
+            models: [model('Admin', [field('role', enumType('admin', 'superadmin'))], { bases: ['User'] })],
         });
         const result = astToCk(root);
         expect(result).toContain('contract Admin: User & {');

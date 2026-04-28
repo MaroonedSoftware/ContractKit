@@ -20,8 +20,12 @@ export function validateRefs(contractRoots: ContractRootNode[], opRoots: OpRootN
     // Phase 2: Check contract type references
     for (const root of contractRoots) {
         for (const model of root.models) {
-            if (model.base && !modelNames.has(model.base)) {
-                diag.warn(model.loc.file, model.loc.line, `Base model "${model.base}" is not defined in any contract file`);
+            if (model.bases) {
+                for (const base of model.bases) {
+                    if (!modelNames.has(base)) {
+                        diag.warn(model.loc.file, model.loc.line, `Base model "${base}" is not defined in any contract file`);
+                    }
+                }
             }
             if (model.type) {
                 checkTypeRefs(model.type, model.loc.file, model.loc.line, modelNames, diag);
@@ -165,9 +169,11 @@ function resolveMemberFields(member: ContractTypeNode, models: Map<string, Model
         // For aliased models, peer through to the aliased type.
         if (model.type) return resolveMemberFields(model.type, models);
         const fields = [...model.fields];
-        if (model.base) {
-            const baseFields = resolveMemberFields({ kind: 'ref', name: model.base }, models);
-            if (baseFields) fields.push(...baseFields);
+        if (model.bases) {
+            for (const base of model.bases) {
+                const baseFields = resolveMemberFields({ kind: 'ref', name: base }, models);
+                if (baseFields) fields.push(...baseFields);
+            }
         }
         return fields;
     }

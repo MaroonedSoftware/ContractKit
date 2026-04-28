@@ -71,11 +71,12 @@ export function getHover(params: TextDocumentPositionParams, document: TextDocum
 function formatModelHover(model: ModelNode): string {
     const lines: string[] = [];
     lines.push(`**${model.name}**`);
-    if (model.base) lines.push(`extends \`${model.base}\``);
+    const baseList = model.bases && model.bases.length > 0 ? model.bases : null;
+    if (baseList) lines.push(`extends ${baseList.map(b => `\`${b}\``).join(', ')}`);
     if (model.description) lines.push(`\n${model.description}`);
     lines.push('');
     lines.push('```ck');
-    lines.push(`contract ${model.name}${model.base ? `: ${model.base} & ` : ': '}{`);
+    lines.push(`contract ${model.name}${baseList ? `: ${baseList.join(' & ')} & ` : ': '}{`);
     for (const field of model.fields) {
         lines.push(`    ${formatField(field)}`);
     }
