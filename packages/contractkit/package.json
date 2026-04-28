@@ -1,6 +1,6 @@
 {
     "name": "@maroonedsoftware/contractkit",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "description": "Core DSL compiler library: grammar-driven parser, codegen, and validation",
     "type": "module",
     "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 {
     "name": "@maroonedsoftware/contractkit-cli",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "description": "Compiler for .ck files",
     "type": "module",
     "main": "./dist/cli.js",

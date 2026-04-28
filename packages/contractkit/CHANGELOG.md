@@ -1,5 +1,11 @@
 # @contractkit/core
 
+## 0.7.0
+
+### Minor Changes
+
+- 16ac3a7: Implement support for typed response headers in API operations. Added functionality to declare headers alongside response bodies, affecting OpenAPI, TypeScript SDK, and Markdown documentation generation. Updated related tests to ensure correct parsing and rendering of response headers, including handling optional headers and duplicate declarations.
+
 ## 0.6.0
 
 ### Minor Changes
