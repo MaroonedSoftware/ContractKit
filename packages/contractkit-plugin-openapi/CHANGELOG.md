@@ -1,5 +1,18 @@
 # @contractkit/contractkit-plugin-openapi
 
+## 0.6.0
+
+### Minor Changes
+
+- 353aa10: Implement options-level header globals for request and response in the contract DSL. This update allows headers to be declared at the file level, merging them into every operation's request and response. Added normalization logic to handle header collisions and opt-out scenarios. Updated documentation and tests to reflect these changes, ensuring proper round-trip formatting and validation of headers.
+- 888ded5: Enhance contract DSL with multi-base inheritance support and override modifier. This update introduces the ability to declare multiple base contracts, along with validation rules for field conflicts across bases. The `override` modifier is now required for redeclaring conflicting fields, and the documentation has been updated to reflect these changes. Tests have been added to ensure correct behavior for inheritance and modifier usage.
+
+### Patch Changes
+
+- Updated dependencies [353aa10]
+- Updated dependencies [888ded5]
+    - @maroonedsoftware/contractkit@0.8.0
+
 ## 0.5.0
 
 ### Minor Changes
