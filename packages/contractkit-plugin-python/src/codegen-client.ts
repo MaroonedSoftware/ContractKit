@@ -1,5 +1,5 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, OpResponseHeaderNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
-import { resolveModifiers, classifyContentType } from '@maroonedsoftware/contractkit';
+import type { OpRootNode, OpRouteNode, OpOperationNode, OpResponseHeaderNode, ContractTypeNode, ParamSource } from '@contractkit/core';
+import { resolveModifiers, classifyContentType } from '@contractkit/core';
 import { renderPyType, toPythonFieldName } from './codegen-models.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -174,10 +174,10 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     const dataType = isVoid
         ? 'None'
         : respCategory === 'text'
-            ? 'str'
-            : respCategory === 'binary'
-                ? 'bytes'
-                : renderPyType(primaryResponse!.bodyType!, modelsWithInput);
+          ? 'str'
+          : respCategory === 'binary'
+            ? 'bytes'
+            : renderPyType(primaryResponse!.bodyType!, modelsWithInput);
     const isModelReturn = !isVoid && respCategory === 'json' && isModelRef(primaryResponse!.bodyType!, modelsWithInput);
     const isListModelReturn = !isVoid && respCategory === 'json' && isListModelRef(primaryResponse!.bodyType!, modelsWithInput);
     const respHeaders = primaryResponse?.headers ?? [];

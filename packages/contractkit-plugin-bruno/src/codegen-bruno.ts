@@ -8,8 +8,8 @@ import type {
     ContractRootNode,
     ModelNode,
     FieldNode,
-} from '@maroonedsoftware/contractkit';
-import { resolveSecurity, resolveModifiers, SECURITY_NONE } from '@maroonedsoftware/contractkit';
+} from '@contractkit/core';
+import { resolveSecurity, resolveModifiers, SECURITY_NONE } from '@contractkit/core';
 import { basename } from 'path';
 
 export interface OpenCollectionFile {
@@ -223,14 +223,13 @@ function generateRequestFile(
 
     // Body — Bruno supports a single body per request, so prefer JSON, then form-urlencoded, then multipart.
     if (op.request && op.request.bodies.length > 0) {
-        const preferredOrder: Array<typeof op.request.bodies[number]['contentType']> = [
+        const preferredOrder: Array<(typeof op.request.bodies)[number]['contentType']> = [
             'application/json',
             'application/x-www-form-urlencoded',
             'multipart/form-data',
         ];
-        const primary = preferredOrder
-            .map(ct => op.request!.bodies.find(b => b.contentType === ct))
-            .find(b => b !== undefined) ?? op.request.bodies[0]!;
+        const primary =
+            preferredOrder.map(ct => op.request!.bodies.find(b => b.contentType === ct)).find(b => b !== undefined) ?? op.request.bodies[0]!;
 
         lines.push(`  body:`);
         if (primary.contentType === 'multipart/form-data') {

@@ -67,12 +67,12 @@ describe('mergeConfig', () => {
     it('normalizes plugins from record format', () => {
         const config: DslConfig = {
             plugins: {
-                '@maroonedsoftware/contractkit-plugin-typescript': { server: { baseDir: 'apps/api/' } },
+                '@contractkit/core-plugin-typescript': { server: { baseDir: 'apps/api/' } },
             },
         };
         const result = mergeConfig(config, baseCli);
         expect(result.plugins).toHaveLength(1);
-        expect(result.plugins[0]!.plugin).toBe('@maroonedsoftware/contractkit-plugin-typescript');
+        expect(result.plugins[0]!.plugin).toBe('@contractkit/core-plugin-typescript');
         expect(result.plugins[0]!.options).toEqual({ server: { baseDir: 'apps/api/' } });
     });
 

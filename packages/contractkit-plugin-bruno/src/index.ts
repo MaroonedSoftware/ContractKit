@@ -2,7 +2,7 @@ import { resolve, basename, dirname } from 'node:path';
 import { existsSync, readFileSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
 import { generateOpenCollection, MANIFEST_FILENAME, parseManifest } from './codegen-bruno.js';
 import type { BrunoSecurityScheme } from './codegen-bruno.js';
-import type { ContractKitPlugin } from '@maroonedsoftware/contractkit';
+import type { ContractKitPlugin } from '@contractkit/core';
 
 export interface BrunoPluginConfig {
     baseDir?: string;

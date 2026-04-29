@@ -16,7 +16,7 @@ import {
     model,
     contractRoot,
 } from './helpers.js';
-import type { ScalarTypeNode } from '@maroonedsoftware/contractkit';
+import type { ScalarTypeNode } from '@contractkit/core';
 
 describe('renderType', () => {
     // ─── Scalar types ───────────────────────────────────────────────
@@ -51,23 +51,19 @@ describe('renderType', () => {
         });
 
         it('preserves user-supplied ^ and $ anchors instead of double-wrapping', () => {
-            expect(renderType(scalarType('string', { regex: '^\\+[1-9]\\d{1,14}$' })))
-                .toBe('z.string().regex(/^\\+[1-9]\\d{1,14}$/)');
+            expect(renderType(scalarType('string', { regex: '^\\+[1-9]\\d{1,14}$' }))).toBe('z.string().regex(/^\\+[1-9]\\d{1,14}$/)');
         });
 
         it('preserves a leading-only ^ anchor', () => {
-            expect(renderType(scalarType('string', { regex: '^foo' })))
-                .toBe('z.string().regex(/^foo/)');
+            expect(renderType(scalarType('string', { regex: '^foo' }))).toBe('z.string().regex(/^foo/)');
         });
 
         it('preserves a trailing-only $ anchor', () => {
-            expect(renderType(scalarType('string', { regex: 'foo$' })))
-                .toBe('z.string().regex(/foo$/)');
+            expect(renderType(scalarType('string', { regex: 'foo$' }))).toBe('z.string().regex(/foo$/)');
         });
 
         it('treats an escaped trailing \\$ as a literal and still auto-anchors', () => {
-            expect(renderType(scalarType('string', { regex: 'price:\\$' })))
-                .toBe('z.string().regex(/^price:\\$$/)');
+            expect(renderType(scalarType('string', { regex: 'price:\\$' }))).toBe('z.string().regex(/^price:\\$$/)');
         });
 
         it('renders z.coerce.number()', () => {
@@ -314,7 +310,9 @@ describe('generateContract', () => {
         });
 
         it('includes Interval alongside DateTime and Duration when all are used', () => {
-            const root = contractRoot([model('M', [field('d', scalarType('datetime')), field('t', scalarType('duration')), field('i', scalarType('interval'))])]);
+            const root = contractRoot([
+                model('M', [field('d', scalarType('datetime')), field('t', scalarType('duration')), field('i', scalarType('interval'))]),
+            ]);
             const output = generateContract(root);
             expect(output).toContain("import { DateTime, Duration, Interval } from 'luxon';");
         });
@@ -470,7 +468,9 @@ describe('generateContract', () => {
         });
 
         it('write schema omits readonly fields', () => {
-            const root = contractRoot([model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))])]);
+            const root = contractRoot([
+                model('User', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('name', scalarType('string'))]),
+            ]);
             const output = generateContract(root);
             // Find the UserInput (write) schema section
             const inputSection = output.split('export const UserInput =')[1]!.split('});')[0]!;
@@ -591,7 +591,9 @@ describe('generateContract', () => {
         it('child with visibility extending parent without visibility: uses .extend() for base, read, and write', () => {
             const root = contractRoot([
                 model('User', [field('name', scalarType('string'))]),
-                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { bases: ['User'] }),
+                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], {
+                    bases: ['User'],
+                }),
             ]);
             const output = generateContract(root);
             // User has no visibility — simple schema
@@ -621,7 +623,9 @@ describe('generateContract', () => {
 
         it('child inheriting from external parent with Input variant uses ParentInput.extend()', () => {
             const root = contractRoot([
-                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { bases: ['User'] }),
+                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], {
+                    bases: ['User'],
+                }),
             ]);
             const output = generateContract(root, {
                 modelsWithInput: new Set(['User']),
@@ -969,16 +973,28 @@ describe('generateContract', () => {
             // The child must flatten the chain so it can build its own object and re-apply the transform,
             // instead of emitting `Parent.extend({...})` (which fails to type-check).
             const root = contractRoot([
-                model('Base', [field('grantType', scalarType('string')), field('clientId', scalarType('uuid'), { optional: true })], { inputCase: 'snake' }),
-                model('Child', [field('grantType', literalType('client_credentials')), field('clientId', scalarType('uuid')), field('clientSecret', scalarType('string'))], {
-                    bases: ['Base'],
+                model('Base', [field('grantType', scalarType('string')), field('clientId', scalarType('uuid'), { optional: true })], {
+                    inputCase: 'snake',
                 }),
+                model(
+                    'Child',
+                    [
+                        field('grantType', literalType('client_credentials')),
+                        field('clientId', scalarType('uuid')),
+                        field('clientSecret', scalarType('string')),
+                    ],
+                    {
+                        bases: ['Base'],
+                    },
+                ),
             ]);
             const output = generateContract(root);
             // Child must NOT use Base.extend (Base is a ZodPipe).
             expect(output).not.toContain('Base.extend');
             // Child generates as a transformed object with snake_case input keys for both inherited and own fields.
-            expect(output).toMatch(/export const Child = z\.strictObject\(\{[\s\S]*grant_type:[\s\S]*client_id:[\s\S]*client_secret:[\s\S]*\}\)\.transform/);
+            expect(output).toMatch(
+                /export const Child = z\.strictObject\(\{[\s\S]*grant_type:[\s\S]*client_id:[\s\S]*client_secret:[\s\S]*\}\)\.transform/,
+            );
             expect(output).toContain('grantType: data.grant_type');
             expect(output).toContain('clientId: data.client_id');
             expect(output).toContain('clientSecret: data.client_secret');

@@ -1,5 +1,5 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource, ObjectMode } from '@maroonedsoftware/contractkit';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType } from '@maroonedsoftware/contractkit';
+import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource, ObjectMode } from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType } from '@contractkit/core';
 import {
     renderType,
     renderInputType,
@@ -322,9 +322,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     } else {
         lines.push(`    const service = ctx.container.get(${serviceParts.className});`);
         if (hasRespHeaders) {
-            lines.push(
-                `    const result: { headers: ${headersAnnotation} } = await service.${serviceParts.methodName}(${buildArgs(route, op)});`,
-            );
+            lines.push(`    const result: { headers: ${headersAnnotation} } = await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
         } else {
             lines.push(`    await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
         }

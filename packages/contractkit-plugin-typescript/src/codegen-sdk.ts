@@ -1,5 +1,5 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, OpRequestBodyNode, ContractTypeNode, ParamSource } from '@maroonedsoftware/contractkit';
-import { resolveModifiers, isJsonMime, classifyContentType } from '@maroonedsoftware/contractkit';
+import type { OpRootNode, OpRouteNode, OpOperationNode, OpRequestBodyNode, ContractTypeNode, ParamSource } from '@contractkit/core';
+import { resolveModifiers, isJsonMime, classifyContentType } from '@contractkit/core';
 import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
@@ -227,20 +227,16 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
     const dataType = isVoid
         ? 'void'
         : respCategory === 'text'
-            ? 'string'
-            : respCategory === 'binary'
-                ? 'Blob'
-                : renderOutputTsType(primaryResponse!.bodyType!, modelsWithOutput);
+          ? 'string'
+          : respCategory === 'binary'
+            ? 'Blob'
+            : renderOutputTsType(primaryResponse!.bodyType!, modelsWithOutput);
     const respHeaders = primaryResponse?.headers ?? [];
     const hasRespHeaders = respHeaders.length > 0;
     const headersShape = hasRespHeaders
         ? `{ ${respHeaders.map(h => `${quoteKey(headerNameToProperty(h.name))}${h.optional ? '?' : ''}: ${renderOutputTsType(h.type, modelsWithOutput)}`).join('; ')} }`
         : '';
-    const returnType = hasRespHeaders
-        ? isVoid
-            ? `{ headers: ${headersShape} }`
-            : `{ data: ${dataType}; headers: ${headersShape} }`
-        : dataType;
+    const returnType = hasRespHeaders ? (isVoid ? `{ headers: ${headersShape} }` : `{ data: ${dataType}; headers: ${headersShape} }`) : dataType;
 
     // JSDoc
     const desc = op.description ?? route.description;
@@ -349,11 +345,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
     }
 
     const readBodyExpr =
-        respCategory === 'text'
-            ? `await result.text()`
-            : respCategory === 'binary'
-                ? `await result.blob()`
-                : `await parseJson<${dataType}>(result)`;
+        respCategory === 'text' ? `await result.text()` : respCategory === 'binary' ? `await result.blob()` : `await parseJson<${dataType}>(result)`;
 
     if (hasRespHeaders) {
         const headerEntries = respHeaders
@@ -534,12 +526,7 @@ export function deriveClientPropertyName(file: string): string {
 
 // ─── Type collection ──────────────────────────────────────────────────────
 
-function collectTypes(
-    root: OpRootNode,
-    modelsWithInput?: Set<string>,
-    modelsWithOutput?: Set<string>,
-    includeInternal = false,
-): string[] {
+function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWithOutput?: Set<string>, includeInternal = false): string[] {
     const types = new Set<string>();
     for (const route of root.routes) {
         const publicOps = route.operations.filter(op => includeInternal || !resolveModifiers(route, op).includes('internal'));

@@ -1,5 +1,5 @@
 {
-    "name": "@maroonedsoftware/contractkit-plugin-typescript",
+    "name": "@contractkit/plugin-typescript",
     "version": "0.15.0",
     "description": "ContractKit built-in plugin: TypeScript codegen (SDK clients, Koa routers, Zod schemas, plain types)",
     "type": "module",
@@ -18,7 +18,7 @@
         "test:ci": "vitest run --coverage"
     },
     "dependencies": {
-        "@maroonedsoftware/contractkit": "workspace:*"
+        "@contractkit/core": "workspace:*"
     },
     "devDependencies": {
         "@repo/config-eslint": "workspace:*",

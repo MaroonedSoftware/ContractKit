@@ -1,6 +1,6 @@
 import { relative, dirname } from 'node:path';
-import type { ContractRootNode, ModelNode, FieldNode } from '@maroonedsoftware/contractkit';
-import { computeModelsWithOutput, collectExternalOutputRefs } from '@maroonedsoftware/contractkit';
+import type { ContractRootNode, ModelNode, FieldNode } from '@contractkit/core';
+import { computeModelsWithOutput, collectExternalOutputRefs } from '@contractkit/core';
 import type { ContractCodegenContext } from './codegen-contract.js';
 import {
     collectExternalRefs,
@@ -75,9 +75,7 @@ function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set
     // transitively references models that have Input variants (captured in modelsWithInput).
     const needsInputSplit = model.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(model.name) ?? false);
 
-    const lines = needsInputSplit
-        ? generateVisibilityModel(model, outPath, modelsWithInput)
-        : generateSimpleModel(model, outPath);
+    const lines = needsInputSplit ? generateVisibilityModel(model, outPath, modelsWithInput) : generateSimpleModel(model, outPath);
 
     if (modelsWithOutput?.has(model.name)) {
         lines.push('');
@@ -235,7 +233,12 @@ function generateOutputModel(model: ModelNode, modelsWithOutput: Set<string>): s
 
     // Transitive-only (no direct outputCase): preserve `extends` and original key names.
     if (!outputCase) {
-        const baseExt = model.bases?.[0] && modelsWithOutput.has(model.bases?.[0]) ? ` extends ${model.bases?.[0]}Output` : model.bases?.[0] ? ` extends ${model.bases?.[0]}` : '';
+        const baseExt =
+            model.bases?.[0] && modelsWithOutput.has(model.bases?.[0])
+                ? ` extends ${model.bases?.[0]}Output`
+                : model.bases?.[0]
+                  ? ` extends ${model.bases?.[0]}`
+                  : '';
         lines.push(`export interface ${model.name}Output${baseExt} {`);
         for (const field of readFields) {
             lines.push(`    ${renderOutputField(field, model.outputCase, modelsWithOutput)}`);

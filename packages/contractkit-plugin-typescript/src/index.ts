@@ -1,7 +1,7 @@
 import { resolve, join, relative, dirname, basename } from 'node:path';
 import { generateContract } from './codegen-contract.js';
 import { generateOp } from './codegen-operation.js';
-import type { ContractKitPlugin } from '@maroonedsoftware/contractkit';
+import type { ContractKitPlugin } from '@contractkit/core';
 import {
     generateSdk,
     generateSdkOptions,
@@ -126,7 +126,7 @@ function runServerGeneration(
 
         // Pass 1: register all model → outPath entries before generating content,
         // so cross-file type refs resolve correctly.
-        const typeEntries: { ast: typeof inputs.contractRoots[number]; typeOutPath: string }[] = [];
+        const typeEntries: { ast: (typeof inputs.contractRoots)[number]; typeOutPath: string }[] = [];
         for (const ast of inputs.contractRoots) {
             const typeOutPath = computeContractOutPath(ast.file, serverBase, config.output.types, '.ts', commonRoot, ast.meta);
             typeEntries.push({ ast, typeOutPath });
@@ -144,9 +144,7 @@ function runServerGeneration(
         // Pass 2: emit type files.
         for (const { ast, typeOutPath } of typeEntries) {
             const ctx = { modelOutPaths: serverModelOutPaths, currentOutPath: typeOutPath, modelsWithInput, modelsWithOutput };
-            const content = config.zod
-                ? generateContract(ast, ctx)
-                : generatePlainTypes(ast, ctx);
+            const content = config.zod ? generateContract(ast, ctx) : generatePlainTypes(ast, ctx);
             emitFile(typeOutPath, content);
         }
     }
@@ -196,7 +194,7 @@ function runSdkGeneration(
         sdkModelOutPaths = new Map<string, string>();
         const publicTypes = computePubliclyReachableTypes(inputs.opRoots, inputs.contractRoots, modelsWithInput, modelsWithOutput);
 
-        const sdkContractEntries: { ast: typeof inputs.contractRoots[number]; typeOutPath: string }[] = [];
+        const sdkContractEntries: { ast: (typeof inputs.contractRoots)[number]; typeOutPath: string }[] = [];
         for (const ast of inputs.contractRoots) {
             const typeOutPath = computeSdkTypeOutPath(ast.file, sdkBase, config.output.types, ckCommonRoot, ast.meta);
             if (!typeOutPath) continue;
@@ -244,15 +242,18 @@ function runSdkGeneration(
                 className: deriveClientClassName(ast.file),
                 propertyName: deriveClientPropertyName(ast.file),
             });
-            emitFile(sdkOutPath, generateSdk(ast, {
-                typeImportPathTemplate: undefined,
-                outPath: sdkOutPath,
-                modelOutPaths: sdkModelOutPaths,
-                sdkOptionsPath,
-                modelsWithInput,
-                modelsWithOutput,
-                includeInternal: config.includeInternal,
-            }));
+            emitFile(
+                sdkOutPath,
+                generateSdk(ast, {
+                    typeImportPathTemplate: undefined,
+                    outPath: sdkOutPath,
+                    modelOutPaths: sdkModelOutPaths,
+                    sdkOptionsPath,
+                    modelsWithInput,
+                    modelsWithOutput,
+                    includeInternal: config.includeInternal,
+                }),
+            );
         }
     }
 
@@ -269,13 +270,12 @@ function runSdkGeneration(
         });
         const sdkOptionsRel = relative(sdkEntryDir, sdkOptionsPath).replace(/\.ts$/, '.js');
         const sdkClassName = sdkName
-            ? sdkName.split(/[-._\s]+/).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('') + 'Sdk'
+            ? sdkName
+                  .split(/[-._\s]+/)
+                  .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+                  .join('') + 'Sdk'
             : 'Sdk';
-        emitFile(sdkEntryPath, generateSdkAggregator(
-            clients,
-            sdkOptionsRel.startsWith('.') ? sdkOptionsRel : './' + sdkOptionsRel,
-            sdkClassName,
-        ));
+        emitFile(sdkEntryPath, generateSdkAggregator(clients, sdkOptionsRel.startsWith('.') ? sdkOptionsRel : './' + sdkOptionsRel, sdkClassName));
     }
 
     // ── Barrel files ──
@@ -283,9 +283,7 @@ function runSdkGeneration(
     const sdkTypeBarrels = generateBarrelFiles(sdkTypePaths);
     for (const barrel of sdkTypeBarrels) emitFile(barrel.outPath, barrel.content);
 
-    const rootExports: string[] = [
-        `export * from './${basename(sdkOptionsPath).replace(/\.ts$/, '.js')}';`,
-    ];
+    const rootExports: string[] = [`export * from './${basename(sdkOptionsPath).replace(/\.ts$/, '.js')}';`];
     if (sdkClientInfos.length > 0) {
         rootExports.push(`export * from './${basename(sdkEntryPath).replace(/\.ts$/, '.js')}';`);
     }
@@ -318,7 +316,7 @@ function runZodGeneration(
 
     // Pre-pass: register all model → outPath before generating, so cross-file imports resolve.
     const modelOutPaths = new Map<string, string>();
-    const entries: { ast: typeof inputs.contractRoots[number]; outPath: string }[] = [];
+    const entries: { ast: (typeof inputs.contractRoots)[number]; outPath: string }[] = [];
     for (const ast of inputs.contractRoots) {
         const outPath = computeContractOutPath(ast.file, zodBase, config.output, '.schema.ts', commonRoot, ast.meta);
         entries.push({ ast, outPath });
@@ -356,7 +354,7 @@ function runTypesGeneration(
 
     // Pre-pass: register all model → outPath before generating.
     const modelOutPaths = new Map<string, string>();
-    const entries: { ast: typeof inputs.contractRoots[number]; outPath: string }[] = [];
+    const entries: { ast: (typeof inputs.contractRoots)[number]; outPath: string }[] = [];
     for (const ast of inputs.contractRoots) {
         const outPath = computeContractOutPath(ast.file, typesBase, config.output, '.types.ts', commonRoot, ast.meta);
         entries.push({ ast, outPath });
@@ -425,4 +423,3 @@ export function createTypescriptPlugin(config: TypescriptPluginConfig, rootDir: 
         },
     };
 }
-

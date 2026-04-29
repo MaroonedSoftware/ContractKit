@@ -1,4 +1,4 @@
-import type { CkRootNode, OpResponseHeaderNode } from '@maroonedsoftware/contractkit';
+import type { CkRootNode, OpResponseHeaderNode } from '@contractkit/core';
 import { printModelDecl } from './print-contract.js';
 import { printRoute, printSecurity, type CommentBlock } from './print-operation.js';
 import { printType } from './print-type.js';

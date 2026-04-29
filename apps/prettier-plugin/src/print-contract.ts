@@ -1,4 +1,4 @@
-import type { ModelNode } from '@maroonedsoftware/contractkit';
+import type { ModelNode } from '@contractkit/core';
 import { printField, printInlineObjectExpanded, extractTrailingInlineObject, printType, printEnumExpanded } from './print-type.js';
 import { INDENT } from './indent.js';
 

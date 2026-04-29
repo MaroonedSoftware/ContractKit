@@ -1,5 +1,5 @@
 {
-    "name": "@maroonedsoftware/contractkit-plugin-markdown",
+    "name": "@contractkit/plugin-markdown",
     "version": "0.7.0",
     "description": "ContractKit built-in plugin: Markdown API reference generation",
     "type": "module",
@@ -18,7 +18,7 @@
         "test:ci": "vitest run --coverage"
     },
     "dependencies": {
-        "@maroonedsoftware/contractkit": "workspace:*"
+        "@contractkit/core": "workspace:*"
     },
     "devDependencies": {
         "@repo/config-eslint": "workspace:*",

@@ -9,7 +9,7 @@ import type {
     ModelNode,
     SourceLocation,
     SecurityNode,
-} from '@maroonedsoftware/contractkit';
+} from '@contractkit/core';
 import type {
     NormalizedDocument,
     NormalizedPathItem,
@@ -291,17 +291,12 @@ function responseToNode(
     };
 }
 
-function convertResponseHeaders(
-    headers: NormalizedResponse['headers'],
-    schemaCtx: SchemaContext,
-): OpResponseHeaderNode[] | undefined {
+function convertResponseHeaders(headers: NormalizedResponse['headers'], schemaCtx: SchemaContext): OpResponseHeaderNode[] | undefined {
     if (!headers) return undefined;
     const out: OpResponseHeaderNode[] = [];
     for (const [name, header] of Object.entries(headers)) {
         if (!header) continue;
-        const type = header.schema
-            ? schemaToTypeNode(header.schema, schemaCtx)
-            : { kind: 'scalar' as const, name: 'string' as const };
+        const type = header.schema ? schemaToTypeNode(header.schema, schemaCtx) : { kind: 'scalar' as const, name: 'string' as const };
         out.push({
             name,
             optional: !header.required,

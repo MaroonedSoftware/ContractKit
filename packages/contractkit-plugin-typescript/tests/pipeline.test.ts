@@ -1,4 +1,4 @@
-import { parseCk, decomposeCk, validateOp, validateRefs, applyOptionsDefaults, DiagnosticCollector } from '@maroonedsoftware/contractkit';
+import { parseCk, decomposeCk, validateOp, validateRefs, applyOptionsDefaults, DiagnosticCollector } from '@contractkit/core';
 import { generateContract } from '../src/codegen-contract.js';
 import { generateOp } from '../src/codegen-operation.js';
 import { generateSdk } from '../src/codegen-sdk.js';

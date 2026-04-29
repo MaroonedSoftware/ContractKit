@@ -1,4 +1,4 @@
-import type { ContractTypeNode, FieldNode } from '@maroonedsoftware/contractkit';
+import type { ContractTypeNode, FieldNode } from '@contractkit/core';
 
 export const JSON_VALUE_TYPE_DECL = 'export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };';
 
@@ -26,7 +26,10 @@ export function renderTsType(type: ContractTypeNode): string {
         case 'array': {
             const inner = renderTsType(type.item);
             const needsParens =
-                type.item.kind === 'union' || type.item.kind === 'discriminatedUnion' || type.item.kind === 'intersection' || type.item.kind === 'enum';
+                type.item.kind === 'union' ||
+                type.item.kind === 'discriminatedUnion' ||
+                type.item.kind === 'intersection' ||
+                type.item.kind === 'enum';
             return needsParens ? `(${inner})[]` : `${inner}[]`;
         }
         case 'tuple':
@@ -109,7 +112,10 @@ export function renderInputTsType(type: ContractTypeNode, modelsWithInput?: Set<
         case 'array': {
             const inner = renderInputTsType(type.item, modelsWithInput);
             const needsParens =
-                type.item.kind === 'union' || type.item.kind === 'discriminatedUnion' || type.item.kind === 'intersection' || type.item.kind === 'enum';
+                type.item.kind === 'union' ||
+                type.item.kind === 'discriminatedUnion' ||
+                type.item.kind === 'intersection' ||
+                type.item.kind === 'enum';
             return needsParens ? `(${inner})[]` : `${inner}[]`;
         }
         case 'intersection':
@@ -141,7 +147,10 @@ export function renderOutputTsType(type: ContractTypeNode, modelsWithOutput?: Se
         case 'array': {
             const inner = renderOutputTsType(type.item, modelsWithOutput);
             const needsParens =
-                type.item.kind === 'union' || type.item.kind === 'discriminatedUnion' || type.item.kind === 'intersection' || type.item.kind === 'enum';
+                type.item.kind === 'union' ||
+                type.item.kind === 'discriminatedUnion' ||
+                type.item.kind === 'intersection' ||
+                type.item.kind === 'enum';
             return needsParens ? `(${inner})[]` : `${inner}[]`;
         }
         case 'intersection':

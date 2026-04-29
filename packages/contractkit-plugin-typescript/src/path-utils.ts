@@ -1,6 +1,6 @@
 import { resolve, join, relative, dirname } from 'node:path';
-import type { ContractRootNode, OpRootNode } from '@maroonedsoftware/contractkit';
-import { collectTypeRefs, collectPublicTypeNames } from '@maroonedsoftware/contractkit';
+import type { ContractRootNode, OpRootNode } from '@contractkit/core';
+import { collectTypeRefs, collectPublicTypeNames } from '@contractkit/core';
 
 export const TEMPLATE_VAR_RE = /\{\w+\}/;
 
@@ -20,7 +20,10 @@ export function commonDir(files: string[], rootDir: string): string {
     let depth = first.length;
     for (const p of parts) {
         for (let i = 0; i < depth; i++) {
-            if (p[i] !== first[i]) { depth = i; break; }
+            if (p[i] !== first[i]) {
+                depth = i;
+                break;
+            }
         }
     }
     return first.slice(0, depth).join('/') || '/';
@@ -161,14 +164,23 @@ export function computePubliclyReachableTypes(
         const name = frontier.pop()!;
         const baseName = name.endsWith('Input') ? name.slice(0, -5) : name.endsWith('Output') ? name.slice(0, -6) : name;
         for (const dep of modelDeps.get(baseName) ?? []) {
-            if (!reachable.has(dep)) { reachable.add(dep); frontier.push(dep); }
+            if (!reachable.has(dep)) {
+                reachable.add(dep);
+                frontier.push(dep);
+            }
             if (modelsWithInput.has(dep)) {
                 const inputDep = `${dep}Input`;
-                if (!reachable.has(inputDep)) { reachable.add(inputDep); frontier.push(inputDep); }
+                if (!reachable.has(inputDep)) {
+                    reachable.add(inputDep);
+                    frontier.push(inputDep);
+                }
             }
             if (modelsWithOutput.has(dep)) {
                 const outputDep = `${dep}Output`;
-                if (!reachable.has(outputDep)) { reachable.add(outputDep); frontier.push(outputDep); }
+                if (!reachable.has(outputDep)) {
+                    reachable.add(outputDep);
+                    frontier.push(outputDep);
+                }
             }
         }
     }

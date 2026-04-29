@@ -1,7 +1,7 @@
 import type { Plugin } from 'prettier';
 import { builders } from 'prettier/doc';
-import { parseCk, DiagnosticCollector } from '@maroonedsoftware/contractkit';
-import type { CkRootNode } from '@maroonedsoftware/contractkit';
+import { parseCk, DiagnosticCollector } from '@contractkit/core';
+import type { CkRootNode } from '@contractkit/core';
 import { printCk } from './print-ck.js';
 
 const { hardline, join } = builders;

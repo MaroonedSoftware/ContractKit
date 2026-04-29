@@ -1,4 +1,4 @@
-import type {
+import {
     ContractRootNode,
     OpRootNode,
     OpRouteNode,
@@ -8,8 +8,12 @@ import type {
     ModelNode,
     ParamSource,
     HttpMethod,
-} from '@maroonedsoftware/contractkit';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, collectPublicTypeNames, collectTypeRefs } from '@maroonedsoftware/contractkit';
+    resolveModifiers,
+    resolveSecurity,
+    SECURITY_NONE,
+    collectPublicTypeNames,
+    collectTypeRefs,
+} from '@contractkit/core';
 
 // ─── Local TypeScript type rendering ─────────────────────────────────────
 
@@ -20,7 +24,10 @@ function renderTsType(type: ContractTypeNode): string {
         case 'array': {
             const inner = renderTsType(type.item);
             const needsParens =
-                type.item.kind === 'union' || type.item.kind === 'discriminatedUnion' || type.item.kind === 'intersection' || type.item.kind === 'enum';
+                type.item.kind === 'union' ||
+                type.item.kind === 'discriminatedUnion' ||
+                type.item.kind === 'intersection' ||
+                type.item.kind === 'enum';
             return needsParens ? `(${inner})[]` : `${inner}[]`;
         }
         case 'tuple':
@@ -510,7 +517,9 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
             if (body.bodyType.kind === 'inlineObject') {
                 const writableFields = body.bodyType.fields.filter(f => f.visibility !== 'readonly');
                 if (writableFields.length > 0) {
-                    lines.push(...wrapCollapsible(`Attributes (${writableFields.length})`, renderFieldsTable(writableFields, { excludeReadonly: true })));
+                    lines.push(
+                        ...wrapCollapsible(`Attributes (${writableFields.length})`, renderFieldsTable(writableFields, { excludeReadonly: true })),
+                    );
                     lines.push('');
                 }
             } else {

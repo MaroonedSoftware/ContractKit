@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generatePlainTypes } from '../src/codegen-plain-types.js';
-import type { ContractCodegenContext } from '@maroonedsoftware/contractkit';
+import type { ContractCodegenContext } from '@contractkit/core';
 import {
     scalarType,
     arrayType,
@@ -68,7 +68,9 @@ describe('generatePlainTypes', () => {
         });
 
         it('maps numeric types correctly', () => {
-            const root = contractRoot([model('M', [field('n', scalarType('number')), field('i', scalarType('int')), field('b', scalarType('bigint'))])]);
+            const root = contractRoot([
+                model('M', [field('n', scalarType('number')), field('i', scalarType('int')), field('b', scalarType('bigint'))]),
+            ]);
             const output = generatePlainTypes(root);
             expect(output).toContain('n: number;');
             expect(output).toContain('i: number;');
@@ -355,7 +357,9 @@ describe('generatePlainTypes', () => {
 
         it('generates extends for visibility model with base (base has no Input variant)', () => {
             const root = contractRoot([
-                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { bases: ['User'] }),
+                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], {
+                    bases: ['User'],
+                }),
             ]);
             const output = generatePlainTypes(root);
             expect(output).toContain('export interface Admin extends User {');
@@ -365,7 +369,9 @@ describe('generatePlainTypes', () => {
 
         it('generates extends for visibility model with base (base has Input variant)', () => {
             const root = contractRoot([
-                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], { bases: ['User'] }),
+                model('Admin', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('role', scalarType('string'))], {
+                    bases: ['User'],
+                }),
             ]);
             const output = generatePlainTypes(root, {
                 modelsWithInput: new Set(['User']),
@@ -391,19 +397,14 @@ describe('generatePlainTypes', () => {
         });
 
         it('emits a multi-base extends clause', () => {
-            const root = contractRoot([
-                model('Test5', [field('e', scalarType('string'))], { bases: ['A', 'B', 'C', 'D'] }),
-            ]);
+            const root = contractRoot([model('Test5', [field('e', scalarType('string'))], { bases: ['A', 'B', 'C', 'D'] })]);
             const output = generatePlainTypes(root);
             expect(output).toContain('export interface Test5 extends A, B, C, D {');
         });
 
         it('omits override fields from each base via Omit', () => {
             const root = contractRoot([
-                model('Test5', [
-                    field('a', scalarType('int'), { override: true }),
-                    field('e', scalarType('string')),
-                ], { bases: ['A', 'B'] }),
+                model('Test5', [field('a', scalarType('int'), { override: true }), field('e', scalarType('string'))], { bases: ['A', 'B'] }),
             ]);
             const output = generatePlainTypes(root);
             expect(output).toContain("export interface Test5 extends Omit<A, 'a'>, Omit<B, 'a'> {");
@@ -411,10 +412,9 @@ describe('generatePlainTypes', () => {
 
         it('combines multiple override fields into a union Omit key', () => {
             const root = contractRoot([
-                model('Test5', [
-                    field('a', scalarType('int'), { override: true }),
-                    field('b', scalarType('string'), { override: true }),
-                ], { bases: ['A'] }),
+                model('Test5', [field('a', scalarType('int'), { override: true }), field('b', scalarType('string'), { override: true })], {
+                    bases: ['A'],
+                }),
             ]);
             const output = generatePlainTypes(root);
             expect(output).toContain("export interface Test5 extends Omit<A, 'a' | 'b'> {");

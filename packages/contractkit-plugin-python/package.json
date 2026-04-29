@@ -1,5 +1,5 @@
 {
-    "name": "@maroonedsoftware/contractkit-plugin-python",
+    "name": "@contractkit/plugin-python",
     "version": "0.8.0",
     "description": "ContractKit built-in plugin: Python SDK client generation (Pydantic v2 + httpx)",
     "type": "module",
@@ -18,7 +18,7 @@
         "test:ci": "vitest run --coverage"
     },
     "dependencies": {
-        "@maroonedsoftware/contractkit": "workspace:*"
+        "@contractkit/core": "workspace:*"
     },
     "devDependencies": {
         "@repo/config-eslint": "workspace:*",

@@ -1,7 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { generateOp } from '../src/codegen-operation.js';
-import { SECURITY_NONE } from '@maroonedsoftware/contractkit';
-import { scalarType, arrayType, refType, inlineObjectType, field, opParam, opRequest, opMultiRequest, opResponse, opOperation, opRoute, opRoot } from './helpers.js';
+import { SECURITY_NONE } from '@contractkit/core';
+import {
+    scalarType,
+    arrayType,
+    refType,
+    inlineObjectType,
+    field,
+    opParam,
+    opRequest,
+    opMultiRequest,
+    opResponse,
+    opOperation,
+    opRoute,
+    opRoot,
+} from './helpers.js';
 
 describe('generateOperation', () => {
     // ─── Router name derivation ─────────────────────────────────────
@@ -299,7 +312,7 @@ describe('generateOperation', () => {
                                     fields: [field('schemaName', scalarType('string'), { optional: true })],
                                 },
                             ],
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         } as any,
                     }),
                 ]),
@@ -451,9 +464,7 @@ describe('generateOperation', () => {
         });
 
         it('emits handlers for internal operations by default', () => {
-            const root = opRoot([
-                opRoute('/secret', [opOperation('get', { responses: [opResponse(200, 'User')] })], undefined, ['internal']),
-            ]);
+            const root = opRoot([opRoute('/secret', [opOperation('get', { responses: [opResponse(200, 'User')] })], undefined, ['internal'])]);
             expect(generateOp(root)).toContain("'/secret'");
         });
 
@@ -528,8 +539,10 @@ describe('generateOperation', () => {
             ]);
             const output = generateOp(root);
             expect(output).toContain('{ body: Transfer; headers: { preferenceApplied?: string; etag: string } }');
-            expect(output).toContain("ctx.set('etag', String(result.headers[\"etag\"]))");
-            expect(output).toContain("if (result.headers[\"preferenceApplied\"] !== undefined) ctx.set('preference-applied', String(result.headers[\"preferenceApplied\"]))");
+            expect(output).toContain('ctx.set(\'etag\', String(result.headers["etag"]))');
+            expect(output).toContain(
+                'if (result.headers["preferenceApplied"] !== undefined) ctx.set(\'preference-applied\', String(result.headers["preferenceApplied"]))',
+            );
             expect(output).toContain('ctx.body = result.body;');
         });
 
@@ -552,7 +565,7 @@ describe('generateOperation', () => {
             ]);
             const output = generateOp(root);
             expect(output).toContain('{ headers: { xDeletedAt: string } }');
-            expect(output).toContain("ctx.set('x-deleted-at', String(result.headers[\"xDeletedAt\"]))");
+            expect(output).toContain('ctx.set(\'x-deleted-at\', String(result.headers["xDeletedAt"]))');
             expect(output).not.toContain('ctx.body =');
         });
 

@@ -1,4 +1,4 @@
-import type { ContractTypeNode, ScalarTypeNode, ModelNode, FieldNode, SourceLocation } from '@maroonedsoftware/contractkit';
+import type { ContractTypeNode, ScalarTypeNode, ModelNode, FieldNode, SourceLocation } from '@contractkit/core';
 import type { NormalizedSchema } from './types.js';
 import { extractRefName } from './circular-refs.js';
 import type { WarningCollector } from './warnings.js';

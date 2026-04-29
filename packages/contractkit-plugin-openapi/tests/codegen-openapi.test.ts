@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCk, decomposeCk, applyOptionsDefaults, DiagnosticCollector } from '@maroonedsoftware/contractkit';
+import { parseCk, decomposeCk, applyOptionsDefaults, DiagnosticCollector } from '@contractkit/core';
 import { generateOpenApi, toYaml } from '../src/codegen-openapi.js';
 import {
     scalarType,
@@ -246,9 +246,7 @@ describe('generateOpenApi', () => {
         });
 
         it('emits one $ref per base for multi-base inheritance', () => {
-            const dto = contractRoot([
-                model('Test5', [field('e', scalarType('string'))], { bases: ['A', 'B', 'C', 'D'] }),
-            ]);
+            const dto = contractRoot([model('Test5', [field('e', scalarType('string'))], { bases: ['A', 'B', 'C', 'D'] })]);
             const output = generateOpenApi({ contractRoots: [dto], opRoots: [], config: {} });
             expect(output).toContain("'$ref': '#/components/schemas/A'");
             expect(output).toContain("'$ref': '#/components/schemas/B'");

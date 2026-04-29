@@ -1,4 +1,4 @@
-import type { CkRootNode, ModelNode, OpRouteNode, ContractTypeNode } from '@maroonedsoftware/contractkit';
+import type { CkRootNode, ModelNode, OpRouteNode, ContractTypeNode } from '@contractkit/core';
 
 /**
  * Split models and routes into per-tag CkRootNode instances.

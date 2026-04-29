@@ -24,7 +24,7 @@ import type {
     HttpMethod,
     ParamSource,
     RouteModifier,
-} from '@maroonedsoftware/contractkit';
+} from '@contractkit/core';
 
 // ─── AST Builder Helpers ────────────────────────────────────────────────────
 
@@ -127,7 +127,8 @@ export function opRequest(
 }
 
 export function opResponse(statusCode: number, bodyType?: string | ContractTypeNode, contentType?: 'application/json'): OpResponseNode {
-    const bt: ContractTypeNode | undefined = bodyType === undefined ? undefined : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
+    const bt: ContractTypeNode | undefined =
+        bodyType === undefined ? undefined : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
     return { statusCode, contentType, bodyType: bt };
 }
 

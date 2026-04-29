@@ -1,5 +1,5 @@
 import { resolve, join } from 'node:path';
-import type { ContractKitPlugin } from '@maroonedsoftware/contractkit';
+import type { ContractKitPlugin } from '@contractkit/core';
 import { generatePydanticModels, deriveModelsModuleName } from './codegen-models.js';
 import {
     generatePythonClient,
@@ -49,7 +49,7 @@ export function createPythonSdkPlugin(config: PythonSdkPluginConfig, rootDir: st
             // ── Build model module path map ──
             // model name → importable Python module string, e.g. "._models_payment"
             const modelModulePaths = new Map<string, string>();
-            const contractEntries: { moduleName: string; outPath: string; root: typeof contractRoots[number] }[] = [];
+            const contractEntries: { moduleName: string; outPath: string; root: (typeof contractRoots)[number] }[] = [];
 
             for (const contractRoot of contractRoots) {
                 const moduleName = deriveModelsModuleName(contractRoot.file);
@@ -85,12 +85,15 @@ export function createPythonSdkPlugin(config: PythonSdkPluginConfig, rootDir: st
                     className: deriveClientClassName(opRoot.file),
                     propertyName: deriveClientPropertyName(opRoot.file),
                 });
-                ctx.emitFile(outPath, generatePythonClient(opRoot, {
-                    modelModulePaths,
-                    currentModule: `.${moduleName}`,
-                    modelsWithInput,
-                    includeInternal: config.includeInternal,
-                }));
+                ctx.emitFile(
+                    outPath,
+                    generatePythonClient(opRoot, {
+                        modelModulePaths,
+                        currentModule: `.${moduleName}`,
+                        modelsWithInput,
+                        includeInternal: config.includeInternal,
+                    }),
+                );
             }
 
             // ── Emit shared _base_client.py ──
@@ -102,9 +105,9 @@ export function createPythonSdkPlugin(config: PythonSdkPluginConfig, rootDir: st
             // ── Emit __init__.py aggregator ──
             const sdkClassName = config.packageName
                 ? config.packageName
-                    .split(/[-._\s]+/)
-                    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
-                    .join('') + 'Sdk'
+                      .split(/[-._\s]+/)
+                      .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+                      .join('') + 'Sdk'
                 : 'Sdk';
 
             const initLines: string[] = [

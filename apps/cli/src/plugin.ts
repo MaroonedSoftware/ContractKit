@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { computeHash } from './cache.js';
 import type { PluginEntry, ResolvedConfig } from './config.js';
-import type { ContractKitPlugin, PluginContext } from '@maroonedsoftware/contractkit';
+import type { ContractKitPlugin, PluginContext } from '@contractkit/core';
 import type { FileHashMap } from './cache.js';
 
 export type { ContractKitPlugin };

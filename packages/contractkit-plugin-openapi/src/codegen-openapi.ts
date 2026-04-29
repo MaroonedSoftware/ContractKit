@@ -7,8 +7,8 @@ import type {
     OpRouteNode,
     OpOperationNode,
     ParamSource,
-} from '@maroonedsoftware/contractkit';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@maroonedsoftware/contractkit';
+} from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@contractkit/core';
 
 export interface OpenApiServerEntry {
     url: string;
@@ -364,7 +364,7 @@ function resolveDiscriminatorLiterals(modelName: string, discriminator: string, 
     return [];
 }
 
-function scalarToSchema(type: import('@maroonedsoftware/contractkit').ScalarTypeNode): Record<string, unknown> {
+function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode): Record<string, unknown> {
     const s: Record<string, unknown> = {};
 
     switch (type.name) {
@@ -440,7 +440,7 @@ function scalarToSchema(type: import('@maroonedsoftware/contractkit').ScalarType
     return s;
 }
 
-function arrayToSchema(type: import('@maroonedsoftware/contractkit').ArrayTypeNode, modelMap?: Map<string, ModelNode>): Record<string, unknown> {
+function arrayToSchema(type: import('@contractkit/core').ArrayTypeNode, modelMap?: Map<string, ModelNode>): Record<string, unknown> {
     const s: Record<string, unknown> = { type: 'array', items: typeToSchema(type.item, modelMap) };
     if (type.min !== undefined) s.minItems = type.min;
     if (type.max !== undefined) s.maxItems = type.max;

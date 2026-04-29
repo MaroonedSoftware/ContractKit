@@ -1,19 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createTypescriptPlugin } from '../src/index.js';
-import type { PluginContext } from '@maroonedsoftware/contractkit';
-import {
-    opRoot,
-    opRoute,
-    opOperation,
-    opParam,
-    opRequest,
-    opResponse,
-    scalarType,
-    refType,
-    contractRoot,
-    model,
-    field,
-} from './helpers.js';
+import type { PluginContext } from '@contractkit/core';
+import { opRoot, opRoute, opOperation, opParam, opRequest, opResponse, scalarType, refType, contractRoot, model, field } from './helpers.js';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -22,7 +10,9 @@ function makeCtx(rootDir = '/project', options: Record<string, unknown> = {}): P
     return {
         rootDir,
         options,
-        emitFile: (outPath: string, content: string) => { emitted.set(outPath, content); },
+        emitFile: (outPath: string, content: string) => {
+            emitted.set(outPath, content);
+        },
         emitted,
     };
 }
@@ -77,14 +67,17 @@ describe('createTypescriptPlugin (server)', () => {
         });
 
         it('emits type files alongside routes when output.types is configured', async () => {
-            const plugin = createTypescriptPlugin({
-                server: {
-                    output: {
-                        routes: 'src/routes/{filename}.router.ts',
-                        types: 'src/types/{filename}.ts',
+            const plugin = createTypescriptPlugin(
+                {
+                    server: {
+                        output: {
+                            routes: 'src/routes/{filename}.router.ts',
+                            types: 'src/types/{filename}.ts',
+                        },
                     },
                 },
-            }, '/project');
+                '/project',
+            );
             const ctx = makeCtx('/project');
             const contractRoots = [contractRoot([model('User', [field('id', scalarType('uuid'))])], '/project/contracts/users.ck')];
             await plugin.generateTargets!(inputs(undefined, contractRoots as any), ctx);
@@ -92,12 +85,15 @@ describe('createTypescriptPlugin (server)', () => {
         });
 
         it('emits Zod schemas for types when zod: true', async () => {
-            const plugin = createTypescriptPlugin({
-                server: {
-                    zod: true,
-                    output: { types: 'src/types/{filename}.ts' },
+            const plugin = createTypescriptPlugin(
+                {
+                    server: {
+                        zod: true,
+                        output: { types: 'src/types/{filename}.ts' },
+                    },
                 },
-            }, '/project');
+                '/project',
+            );
             const ctx = makeCtx('/project');
             const contractRoots = [contractRoot([model('User', [field('id', scalarType('uuid'))])], '/project/contracts/users.ck')];
             await plugin.generateTargets!(inputs([], contractRoots as any), ctx);
@@ -106,11 +102,14 @@ describe('createTypescriptPlugin (server)', () => {
         });
 
         it('emits plain TypeScript types when zod is not set', async () => {
-            const plugin = createTypescriptPlugin({
-                server: {
-                    output: { types: 'src/types/{filename}.ts' },
+            const plugin = createTypescriptPlugin(
+                {
+                    server: {
+                        output: { types: 'src/types/{filename}.ts' },
+                    },
                 },
-            }, '/project');
+                '/project',
+            );
             const ctx = makeCtx('/project');
             const contractRoots = [contractRoot([model('User', [field('id', scalarType('uuid'))])], '/project/contracts/users.ck')];
             await plugin.generateTargets!(inputs([], contractRoots as any), ctx);
@@ -149,10 +148,7 @@ describe('createTypescriptPlugin (server)', () => {
         it('includes request body validation when route has a POST body', async () => {
             const plugin = createTypescriptPlugin({ server: {} }, '/project');
             const ctx = makeCtx('/project');
-            const root = opRoot(
-                [opRoute('/users', [opOperation('post', { request: opRequest('CreateUser') })])],
-                '/project/contracts/users.ck',
-            );
+            const root = opRoot([opRoute('/users', [opOperation('post', { request: opRequest('CreateUser') })])], '/project/contracts/users.ck');
             await plugin.generateTargets!(inputs([root]), ctx);
             const content = [...ctx.emitted.values()][0]!;
             expect(content).toContain('parseAndValidate');
@@ -161,10 +157,7 @@ describe('createTypescriptPlugin (server)', () => {
         it('includes uuid param validation', async () => {
             const plugin = createTypescriptPlugin({ server: {} }, '/project');
             const ctx = makeCtx('/project');
-            const root = opRoot(
-                [opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])],
-                '/project/contracts/users.ck',
-            );
+            const root = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])], '/project/contracts/users.ck');
             await plugin.generateTargets!(inputs([root]), ctx);
             const content = [...ctx.emitted.values()][0]!;
             expect(content).toContain('parseAndValidate');

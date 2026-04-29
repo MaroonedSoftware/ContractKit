@@ -1,5 +1,5 @@
 {
-    "name": "@maroonedsoftware/prettier-plugin-contractkit",
+    "name": "@contractkit/prettier-plugin",
     "version": "0.7.0",
     "type": "module",
     "main": "./dist/index.js",
@@ -20,7 +20,7 @@
         "prettier": "^3.0.0"
     },
     "dependencies": {
-        "@maroonedsoftware/contractkit": "workspace:*"
+        "@contractkit/core": "workspace:*"
     },
     "devDependencies": {
         "@repo/config-eslint": "workspace:*",

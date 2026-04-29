@@ -24,7 +24,7 @@ import type {
     HttpMethod,
     ParamSource,
     RouteModifier,
-} from '@maroonedsoftware/contractkit';
+} from '@contractkit/core';
 
 // ─── AST Builder Helpers ────────────────────────────────────────────────────
 
@@ -118,17 +118,12 @@ export function paramType(node: ContractTypeNode): ParamSource {
     return { kind: 'type', node };
 }
 
-export function opRequest(
-    bodyType: string | ContractTypeNode,
-    contentType: string = 'application/json',
-): OpRequestNode {
+export function opRequest(bodyType: string | ContractTypeNode, contentType: string = 'application/json'): OpRequestNode {
     const bt: ContractTypeNode = typeof bodyType === 'string' ? refType(bodyType) : bodyType;
     return { bodies: [{ contentType, bodyType: bt }] };
 }
 
-export function opMultiRequest(
-    entries: Array<[string, string | ContractTypeNode]>,
-): OpRequestNode {
+export function opMultiRequest(entries: Array<[string, string | ContractTypeNode]>): OpRequestNode {
     return {
         bodies: entries.map(([contentType, body]) => ({
             contentType,
@@ -138,7 +133,8 @@ export function opMultiRequest(
 }
 
 export function opResponse(statusCode: number, bodyType?: string | ContractTypeNode, contentType?: string): OpResponseNode {
-    const bt: ContractTypeNode | undefined = bodyType === undefined ? undefined : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
+    const bt: ContractTypeNode | undefined =
+        bodyType === undefined ? undefined : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
     return { statusCode, contentType, bodyType: bt };
 }
 

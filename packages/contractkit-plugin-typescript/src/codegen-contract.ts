@@ -15,8 +15,12 @@ import type {
     InlineObjectTypeNode,
     IntersectionTypeNode,
     ObjectMode,
-} from '@maroonedsoftware/contractkit';
-import { collectTypeRefs, computeModelsWithOutput as ckComputeModelsWithOutput, collectExternalOutputRefs as ckCollectExternalOutputRefs } from '@maroonedsoftware/contractkit';
+} from '@contractkit/core';
+import {
+    collectTypeRefs,
+    computeModelsWithOutput as ckComputeModelsWithOutput,
+    collectExternalOutputRefs as ckCollectExternalOutputRefs,
+} from '@contractkit/core';
 
 export function modeToWrapper(mode: ObjectMode): string {
     switch (mode) {
@@ -295,7 +299,10 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
     const bases = model.bases ?? [];
     if (bases.length > 0) {
         const head = bases[0]!;
-        const tail = bases.slice(1).map(b => `.extend(${b}.shape)`).join('');
+        const tail = bases
+            .slice(1)
+            .map(b => `.extend(${b}.shape)`)
+            .join('');
         lines.push(`export const ${model.name} = ${head}${tail}.extend({`);
         lines.push(...body.map(l => `    ${l}`));
         lines.push(`});`);
@@ -313,7 +320,10 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
  * applying a per-base name resolver (e.g. choosing "BaseInput" for bases that have an Input variant). */
 function buildExtendChain(bases: string[], resolveName: (b: string) => string): { head: string; tail: string } {
     const head = resolveName(bases[0]!);
-    const tail = bases.slice(1).map(b => `.extend(${resolveName(b)}.shape)`).join('');
+    const tail = bases
+        .slice(1)
+        .map(b => `.extend(${resolveName(b)}.shape)`)
+        .join('');
     return { head, tail };
 }
 

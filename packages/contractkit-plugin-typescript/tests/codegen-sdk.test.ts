@@ -7,7 +7,7 @@ import {
     deriveClientPropertyName,
     hasPublicOperations,
 } from '../src/codegen-sdk.js';
-import { collectPublicTypeNames } from '@maroonedsoftware/contractkit';
+import { collectPublicTypeNames } from '@contractkit/core';
 import { renderTsType, renderInputTsType } from '../src/ts-render.js';
 import {
     opRoot,
@@ -166,9 +166,7 @@ describe('generateSdk', () => {
         });
 
         it('hasPublicOperations reports true on an internal-only root when includeInternal is true', () => {
-            const root = opRoot([
-                opRoute('/secret', [opOperation('get', { responses: [opResponse(200, 'User')] })], undefined, ['internal']),
-            ]);
+            const root = opRoot([opRoute('/secret', [opOperation('get', { responses: [opResponse(200, 'User')] })], undefined, ['internal'])]);
             expect(hasPublicOperations(root)).toBe(false);
             expect(hasPublicOperations(root, true)).toBe(true);
         });
@@ -270,9 +268,7 @@ describe('generateSdk', () => {
                 ]),
             ]);
             const out = generateSdk(root);
-            expect(out).toContain(
-                "options?: { contentType?: 'application/json' | 'application/x-www-form-urlencoded' }",
-            );
+            expect(out).toContain("options?: { contentType?: 'application/json' | 'application/x-www-form-urlencoded' }");
             expect(out).toContain("const __contentType = options?.contentType ?? 'application/json'");
             expect(out).toContain('new URLSearchParams(body as unknown as Record<string, string>).toString()');
             expect(out).toContain('JSON.stringify(body, bigIntReplacer)');
@@ -311,9 +307,7 @@ describe('generateSdk', () => {
             ]);
             const out = generateSdk(root);
             expect(out).toContain('body: AInput | BInput');
-            expect(out).toContain(
-                "options: { contentType: 'application/json' | 'application/x-www-form-urlencoded' }",
-            );
+            expect(out).toContain("options: { contentType: 'application/json' | 'application/x-www-form-urlencoded' }");
             expect(out).toContain('const __contentType = options.contentType');
         });
     });
@@ -396,7 +390,11 @@ describe('generateSdk', () => {
 
         it('preserves plain return type when no response headers are declared', () => {
             const root = opRoot([
-                opRoute('/users/{id}', [opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User', 'application/json')] })], [opParam('id', scalarType('uuid'))]),
+                opRoute(
+                    '/users/{id}',
+                    [opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User', 'application/json')] })],
+                    [opParam('id', scalarType('uuid'))],
+                ),
             ]);
             const out = generateSdk(root);
             expect(out).toContain('Promise<User>');
@@ -859,7 +857,9 @@ describe('generateSdk — route modifiers', () => {
 
     it('prefers op.sdk over op.name as method name', () => {
         const root = opRoot([
-            opRoute('/offers', [opOperation('post', { sdk: 'makeOffer', name: 'Create an Offer', responses: [opResponse(201, 'Offer', 'application/json')] })]),
+            opRoute('/offers', [
+                opOperation('post', { sdk: 'makeOffer', name: 'Create an Offer', responses: [opResponse(201, 'Offer', 'application/json')] }),
+            ]),
         ]);
         const out = generateSdk(root);
         expect(out).toContain('async makeOffer(');
@@ -867,9 +867,7 @@ describe('generateSdk — route modifiers', () => {
     });
 
     it('falls back to inferred method name when neither op.sdk nor op.name is set', () => {
-        const root = opRoot([
-            opRoute('/offers', [opOperation('post', { responses: [opResponse(201, 'Offer', 'application/json')] })]),
-        ]);
+        const root = opRoot([opRoute('/offers', [opOperation('post', { responses: [opResponse(201, 'Offer', 'application/json')] })])]);
         const out = generateSdk(root);
         expect(out).toContain('async postOffers(');
     });
@@ -884,7 +882,13 @@ describe('generateSdk — route modifiers', () => {
 
     it('emits multi-line jsdoc when both description and name are set', () => {
         const root = opRoot([
-            opRoute('/offers', [opOperation('post', { name: 'Create an Offer', description: 'Creates a new offer', responses: [opResponse(201, 'Offer', 'application/json')] })]),
+            opRoute('/offers', [
+                opOperation('post', {
+                    name: 'Create an Offer',
+                    description: 'Creates a new offer',
+                    responses: [opResponse(201, 'Offer', 'application/json')],
+                }),
+            ]),
         ]);
         const out = generateSdk(root);
         expect(out).toContain('* @name Create an Offer');
@@ -893,7 +897,9 @@ describe('generateSdk — route modifiers', () => {
 
     it('emits single-line description jsdoc when only description is set', () => {
         const root = opRoot([
-            opRoute('/offers', [opOperation('post', { description: 'Creates a new offer', responses: [opResponse(201, 'Offer', 'application/json')] })]),
+            opRoute('/offers', [
+                opOperation('post', { description: 'Creates a new offer', responses: [opResponse(201, 'Offer', 'application/json')] }),
+            ]),
         ]);
         const out = generateSdk(root);
         expect(out).toContain('/** @description Creates a new offer */');
