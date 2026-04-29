@@ -735,9 +735,12 @@ export function createSemantics(grammar: Grammar) {
 
         ParamDecl(nameNode, _colon, typeNode, commentOpt) {
             const file = this.args.file as string;
+            const diag = this.args.diag;
             const name = nameNode.sourceString;
             const line = getLine(nameNode);
-            const typeName = typeNode.sourceString;
+
+            const rawType = typeNode.toAst(file, diag) as ContractTypeNode;
+            const { type, nullable } = extractNullability(rawType);
 
             let description: string | undefined;
             if ((commentOpt as IterationNode).numChildren > 0) {
@@ -747,8 +750,8 @@ export function createSemantics(grammar: Grammar) {
             return {
                 name,
                 optional: false,
-                nullable: false,
-                type: resolveSimpleType(typeName),
+                nullable,
+                type,
                 description,
                 loc: { file, line },
             } as OpParamNode;

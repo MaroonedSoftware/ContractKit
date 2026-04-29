@@ -165,7 +165,7 @@ Contract {
   ParamsBody = "{" (comment | ParamDecl)* "}"   -- inline
              | identifier                        -- ref
 
-  ParamDecl = identifier ":" identifier comment?
+  ParamDecl = identifier ":" TypeExpression comment?
 
   // ─── HTTP Operations ────────────────────────────────────────────
 

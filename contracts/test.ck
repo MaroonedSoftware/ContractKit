@@ -211,7 +211,7 @@ operation /store/order: {
 
 operation /store/order/{orderId}: {
     params: {
-        orderId: int
+        orderId: int(min=1, max=5)
     }
 
     get: { # find purchase order by ID

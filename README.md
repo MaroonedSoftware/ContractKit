@@ -719,6 +719,24 @@ params: mode(strip) {
 }
 ```
 
+Path parameter types accept the full type-expression syntax — including constraints, enums, and unions:
+
+```
+operation /orders/{orderId}: {
+    params: {
+        orderId: int(min=1, max=5)
+    }
+    get: { ... }
+}
+
+operation /pets/{status}: {
+    params: {
+        status: enum(available, pending, sold)
+    }
+    get: { ... }
+}
+```
+
 The compiler validates that every `{param}` in the path has a corresponding entry in the `params` block and warns on mismatches. Path parameters are compiled to Koa `:param` syntax in the generated router.
 
 ---

@@ -665,6 +665,66 @@ operation /users/{id}: {
             expect(root.routes[0]!.paramsMode).toBe('strip');
             expect((root.routes[0]!.params as any).nodes).toHaveLength(1);
         });
+
+        it('parses params with constraint arguments', () => {
+            const { root, diag } = parse(`\
+operation /orders/{orderId}: {
+    params: {
+        orderId: int(min=1, max=5)
+    }
+    get: {}
+}`);
+            expect(diag.hasErrors()).toBe(false);
+            const param = (root.routes[0]!.params as any).nodes[0];
+            expect(param.name).toBe('orderId');
+            expect(param.type).toMatchObject({
+                kind: 'scalar',
+                name: 'int',
+                min: 1,
+                max: 5,
+            });
+        });
+
+        it('parses params with enum type', () => {
+            const { root, diag } = parse(`\
+operation /pets/{status}: {
+    params: {
+        status: enum(available, pending, sold)
+    }
+    get: {}
+}`);
+            expect(diag.hasErrors()).toBe(false);
+            const param = (root.routes[0]!.params as any).nodes[0];
+            expect(param.type).toMatchObject({ kind: 'enum', values: ['available', 'pending', 'sold'] });
+        });
+
+        it('parses params with regex constraint', () => {
+            const { root, diag } = parse(`\
+operation /users/{slug}: {
+    params: {
+        slug: string(regex=/^[a-z0-9-]+$/)
+    }
+    get: {}
+}`);
+            expect(diag.hasErrors()).toBe(false);
+            const param = (root.routes[0]!.params as any).nodes[0];
+            expect(param.type).toMatchObject({ kind: 'scalar', name: 'string' });
+            expect(param.type.regex).toBeDefined();
+        });
+
+        it('preserves description comment alongside complex param type', () => {
+            const { root, diag } = parse(`\
+operation /orders/{id}: {
+    params: {
+        id: int(min=1) # the order id
+    }
+    get: {}
+}`);
+            expect(diag.hasErrors()).toBe(false);
+            const param = (root.routes[0]!.params as any).nodes[0];
+            expect(param.description).toBe('the order id');
+            expect(param.type).toMatchObject({ kind: 'scalar', name: 'int', min: 1 });
+        });
     });
 
     // ─── HTTP methods ────────────────────────────────────────────────

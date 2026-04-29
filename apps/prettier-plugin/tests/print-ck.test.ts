@@ -556,3 +556,51 @@ contract Test: A & {
         expect(printed).toContain('a: override deprecated readonly string');
     });
 });
+
+describe('printCk — typed path params (round-trip)', () => {
+    function roundTrip(source: string): string {
+        const diag = new DiagnosticCollector();
+        const ast = parseCk(source, 'test.ck', diag);
+        expect(diag.hasErrors()).toBe(false);
+        return printCk(ast);
+    }
+
+    it('round-trips path params with constraint arguments', () => {
+        const source = `\
+operation /orders/{orderId}: {
+    params: {
+        orderId: int(min=1, max=5)
+    }
+    get: {
+    }
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+
+    it('round-trips path params with enum types', () => {
+        const source = `\
+operation /pets/{status}: {
+    params: {
+        status: enum(available, pending, sold)
+    }
+    get: {
+    }
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+
+    it('round-trips path params with regex constraints and a comment', () => {
+        const source = `\
+operation /users/{slug}: {
+    params: {
+        slug: string(regex=/^[a-z0-9-]+$/) # url slug
+    }
+    get: {
+    }
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+});
