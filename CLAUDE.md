@@ -12,22 +12,24 @@ A domain-specific language for defining API contracts in `.ck` files. The compil
 
 ## Repository layout
 
+All packages publish under the `@contractkit` npm scope.
+
 ```
 packages/
-  contractkit/                    # Core compiler library (@maroonedsoftware/contractkit)
-  openapi-to-ck/                  # Converts OpenAPI YAML → .ck files
-  contractkit-plugin-typescript/  # TypeScript codegen: Koa routers, SDK clients, Zod schemas, plain types
-  contractkit-plugin-openapi/     # OpenAPI 3.0 YAML generation
-  contractkit-plugin-markdown/    # Markdown API reference generation
-  contractkit-plugin-bruno/       # Bruno collection generation
-  contractkit-plugin-python/      # Python SDK generation (Pydantic v2 + httpx)
-  config-typescript/              # Shared tsconfig base
-  config-eslint/                  # Shared ESLint config
+  contractkit/         # Core compiler library (@contractkit/core)
+  openapi-to-ck/       # Converts OpenAPI YAML → .ck files (@contractkit/openapi-to-ck)
+  plugin-typescript/   # TypeScript codegen: Koa routers, SDK clients, Zod schemas, plain types
+  plugin-openapi/      # OpenAPI 3.0 YAML generation
+  plugin-markdown/     # Markdown API reference generation
+  plugin-bruno/        # Bruno collection generation
+  plugin-python/       # Python SDK generation (Pydantic v2 + httpx)
+  config-typescript/   # Shared tsconfig base
+  config-eslint/       # Shared ESLint config
 
 apps/
-  cli/                 # contractkit binary — file discovery, config loading, plugin orchestration
-  vscode-extension/    # LSP server + syntax highlighting for .ck files
-  prettier-plugin/     # Prettier plugin to format .ck files
+  cli/                 # contractkit binary — file discovery, config loading, plugin orchestration (@contractkit/cli)
+  vscode-extension/    # LSP server + syntax highlighting for .ck files (@contractkit/vscode-extension)
+  prettier-plugin/     # Prettier plugin to format .ck files (@contractkit/prettier-plugin)
 
 contracts/             # Example / test .ck contract files
 ```
@@ -39,30 +41,39 @@ contracts/             # Example / test .ck contract files
 pnpm test
 
 # Core compiler only
-pnpm --filter @maroonedsoftware/contractkit test
+pnpm --filter @contractkit/core test
 
 # TypeScript plugin only
-pnpm --filter @maroonedsoftware/contractkit-plugin-typescript test
+pnpm --filter @contractkit/plugin-typescript test
 
 # Specific test file
-pnpm --filter @maroonedsoftware/contractkit exec vitest run tests/parser-ck.test.ts
+pnpm --filter @contractkit/core exec vitest run tests/parser-ck.test.ts
 ```
 
 ## Key source files
 
 ### Core compiler (`packages/contractkit/src/`)
 
-| File                    | Role                                                                                     |
-| ----------------------- | ---------------------------------------------------------------------------------------- |
-| `contractkit.ohm`       | PEG grammar — source of truth for the language                                           |
-| `semantics.ts`          | Ohm parse tree → typed AST                                                               |
-| `parser.ts`             | `parseCk(source, file, diag)` entry point                                                |
-| `ast.ts`                | All AST node types                                                                       |
-| `type-utils.ts`         | Generic model/graph utilities — type ref collection, topo sort, `computeModelsWithInput` |
-| `validate-operation.ts` | Validates op AST against config constraints                                              |
-| `plugin.ts`             | `ContractKitPlugin` and `PluginContext` interface types                                  |
+| File                       | Role                                                                                                                   |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `contractkit.ohm`          | PEG grammar — source of truth for the language                                                                         |
+| `grammar.ts`               | Compiled Ohm grammar loader                                                                                            |
+| `semantics.ts`             | Ohm parse tree → typed AST                                                                                             |
+| `parser.ts`                | `parseCk(source, file, diag)` entry point                                                                              |
+| `ast.ts`                   | All AST node types                                                                                                     |
+| `type-builders.ts`         | Helpers used by `semantics.ts` to construct AST type nodes                                                             |
+| `type-utils.ts`            | Generic model/graph utilities — type ref collection, topo sort, `computeModelsWithInput`, `resolveModelFields`         |
+| `decompose.ts`             | Splits a parsed file into per-decl groups for cache fingerprinting and downstream codegen                              |
+| `apply-options-defaults.ts`| Normalization pass — merges file-level `options { request/response: { headers } }` into each operation's headers       |
+| `content-type.ts`          | Content-type parsing/normalization (`application/json`, `multipart/form-data`)                                         |
+| `diagnostics.ts`           | `Diagnostics` collector for errors and warnings                                                                        |
+| `validate-refs.ts`         | Cross-file type reference validation                                                                                   |
+| `validate-inheritance.ts`  | Multi-base inheritance validation (cross-base conflicts, `override` requirement, cycle detection)                      |
+| `validate-operation.ts`    | Validates op AST against config constraints                                                                            |
+| `plugin.ts`                | `ContractKitPlugin` and `PluginContext` interface types                                                                |
+| `index.ts`                 | Public package exports                                                                                                 |
 
-### TypeScript plugin (`packages/contractkit-plugin-typescript/src/`)
+### TypeScript plugin (`packages/plugin-typescript/src/`)
 
 | File                     | Role                                                                        |
 | ------------------------ | --------------------------------------------------------------------------- |
@@ -76,12 +87,13 @@ pnpm --filter @maroonedsoftware/contractkit exec vitest run tests/parser-ck.test
 
 ### CLI (`apps/cli/src/`)
 
-| File        | Role                                                          |
-| ----------- | ------------------------------------------------------------- |
-| `cli.ts`    | Entry point — file discovery, config loading, plugin dispatch |
-| `config.ts` | Loads and validates `contractkit.config.json`                 |
-| `cache.ts`  | Incremental build (file hashing, skip unchanged files)        |
-| `plugin.ts` | Plugin loading, context creation, cache fingerprinting        |
+| File           | Role                                                          |
+| -------------- | ------------------------------------------------------------- |
+| `cli.ts`       | Entry point — file discovery, config loading, plugin dispatch |
+| `config.ts`    | Loads and validates `contractkit.config.json`                 |
+| `cache.ts`     | Incremental build (file hashing, skip unchanged files)        |
+| `plugin.ts`    | Plugin loading, context creation, cache fingerprinting        |
+| `path-utils.ts`| `rootDir`/`baseDir` resolution shared with plugins            |
 
 ### Other
 
@@ -94,14 +106,16 @@ pnpm --filter @maroonedsoftware/contractkit exec vitest run tests/parser-ck.test
 
 Core parser tests live in `packages/contractkit/tests/`:
 
-| File                             | What it tests                                                          |
-| -------------------------------- | ---------------------------------------------------------------------- |
-| `parser-ck.test.ts`              | Full grammar coverage — contracts, operations, options block, combined |
-| `diagnostics.test.ts`            | Error/warning collection                                               |
-| `validate-discriminated.test.ts` | Discriminated-union validation (member shape, discriminator field)     |
-| `helpers.ts`                     | AST builder helpers                                                    |
+| File                              | What it tests                                                                                  |
+| --------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `parser-ck.test.ts`               | Full grammar coverage — contracts, operations, options block, combined                         |
+| `diagnostics.test.ts`             | Error/warning collection                                                                       |
+| `validate-discriminated.test.ts`  | Discriminated-union validation (member shape, discriminator field)                             |
+| `validate-inheritance.test.ts`    | Multi-base inheritance — cross-base conflicts, `override` requirement, cycle detection         |
+| `apply-options-defaults.test.ts`  | Options-level header globals merge — request/response header propagation, opt-outs, collisions |
+| `helpers.ts`                      | AST builder helpers                                                                            |
 
-TypeScript plugin tests live in `packages/contractkit-plugin-typescript/tests/`:
+TypeScript plugin tests live in `packages/plugin-typescript/tests/`:
 
 | File                          | What it tests                                       |
 | ----------------------------- | --------------------------------------------------- |
@@ -117,10 +131,10 @@ TypeScript plugin tests live in `packages/contractkit-plugin-typescript/tests/`:
 
 Plugins are configured in `contractkit.config.json` under `"plugins"`. Each key is the npm package name and its value is passed as `ctx.options` to the plugin.
 
-The `@maroonedsoftware/contractkit-plugin-typescript` plugin handles all TypeScript output via sub-configs:
+The `@contractkit/plugin-typescript` plugin handles all TypeScript output via sub-configs:
 
 ```json
-"@maroonedsoftware/contractkit-plugin-typescript": {
+"@contractkit/plugin-typescript": {
     "server": {
         "baseDir": "apps/api/",
         "zod": true,
@@ -298,16 +312,16 @@ When changing the grammar, also update:
 4. `apps/prettier-plugin/src/print-*.ts` — update the formatter to round-trip the new syntax. Add a round-trip test in `apps/prettier-plugin/tests/print-ck.test.ts`.
 5. `parser-ck.test.ts` — add a parser test
 6. **All codegen plugins** — every plugin that consumes the affected AST shape needs its codegen and tests updated. Check each one explicitly, not just the TypeScript plugin:
-   - `packages/contractkit-plugin-typescript` (server, SDK, Zod, plain types)
-   - `packages/contractkit-plugin-python` (Pydantic + httpx client)
-   - `packages/contractkit-plugin-openapi` (OpenAPI 3.0 YAML)
-   - `packages/contractkit-plugin-markdown` (API reference)
-   - `packages/contractkit-plugin-bruno` (Bruno collections)
+   - `packages/plugin-typescript` (server, SDK, Zod, plain types)
+   - `packages/plugin-python` (Pydantic + httpx client)
+   - `packages/plugin-openapi` (OpenAPI 3.0 YAML)
+   - `packages/plugin-markdown` (API reference)
+   - `packages/plugin-bruno` (Bruno collections)
    - `packages/openapi-to-ck` (reverse direction — OpenAPI YAML → `.ck`)
 7. `apps/cli` — update if file discovery, config schema, or cache fingerprinting is affected.
 8. `README.md` — update language reference / examples if the surface syntax changed
 9. `CLAUDE.md` — update as needed
-10. Run `pnpm test` at the workspace root to confirm all 20 tasks pass before considering the change done.
+10. Run `pnpm test` at the workspace root to confirm every package's tests pass before considering the change done.
 
 ## VS Code extension
 

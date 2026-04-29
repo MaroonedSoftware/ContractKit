@@ -33,7 +33,7 @@ Create `contractkit.config.json` in your project root. The CLI itself only handl
     "prettier": true,
     "patterns": ["contracts/types/**/*.ck", "contracts/operations/**/*.ck"],
     "plugins": {
-        "@maroonedsoftware/contractkit-plugin-typescript": {
+        "@contractkit/plugin-typescript": {
             "server": {
                 "baseDir": "apps/api/",
                 "zod": true,
@@ -53,7 +53,7 @@ Create `contractkit.config.json` in your project root. The CLI itself only handl
                 }
             }
         },
-        "@maroonedsoftware/contractkit-plugin-openapi": {
+        "@contractkit/plugin-openapi": {
             "baseDir": "docs/api/",
             "output": "openapi.yaml",
             "info": { "title": "My API", "version": "1.0.0" },
@@ -63,7 +63,7 @@ Create `contractkit.config.json` in your project root. The CLI itself only handl
                 "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
             }
         },
-        "@maroonedsoftware/contractkit-plugin-markdown": {
+        "@contractkit/plugin-markdown": {
             "baseDir": "docs/",
             "output": "api-reference.md"
         }
@@ -87,13 +87,13 @@ Each plugin is its own npm package and is loaded by listing it under `"plugins"`
 
 | Package                                           | Generates                                                        |
 | ------------------------------------------------- | ---------------------------------------------------------------- |
-| `@maroonedsoftware/contractkit-plugin-typescript` | Koa routers, TypeScript SDK clients, Zod schemas, plain TS types |
-| `@maroonedsoftware/contractkit-plugin-openapi`    | OpenAPI 3.0 YAML                                                 |
-| `@maroonedsoftware/contractkit-plugin-markdown`   | Markdown API reference                                           |
-| `@maroonedsoftware/contractkit-plugin-bruno`      | Bruno REST collection                                            |
-| `@maroonedsoftware/contractkit-plugin-python`     | Python SDK client (Pydantic v2 + httpx)                          |
+| `@contractkit/plugin-typescript` | Koa routers, TypeScript SDK clients, Zod schemas, plain TS types |
+| `@contractkit/plugin-openapi`    | OpenAPI 3.0 YAML                                                 |
+| `@contractkit/plugin-markdown`   | Markdown API reference                                           |
+| `@contractkit/plugin-bruno`      | Bruno REST collection                                            |
+| `@contractkit/plugin-python`     | Python SDK client (Pydantic v2 + httpx)                          |
 
-#### `contractkit-plugin-typescript`
+#### `@contractkit/plugin-typescript`
 
 Has up to four optional sub-configs. Each is independent — include only the ones you need.
 
@@ -135,7 +135,7 @@ Standalone generators that emit one Zod (or plain TS) file per `.ck` source file
 
 All path templates support `{filename}`, `{dir}`, `{area}`, and (for `output.sdk`) `{name}`. `{area}` resolves to the `area` value declared in the source file's `options { keys: { area: ... } }` block.
 
-#### `contractkit-plugin-openapi`
+#### `@contractkit/plugin-openapi`
 
 | Field             | Type      | Description                                                                          |
 | ----------------- | --------- | ------------------------------------------------------------------------------------ |
@@ -149,7 +149,7 @@ All path templates support `{filename}`, `{dir}`, `{area}`, and (for `output.sdk
 
 Only types referenced by emitted operations are included.
 
-#### `contractkit-plugin-markdown`
+#### `@contractkit/plugin-markdown`
 
 | Field             | Type      | Description                                                          |
 | ----------------- | --------- | -------------------------------------------------------------------- |
@@ -159,7 +159,7 @@ Only types referenced by emitted operations are included.
 
 Unreachable types are excluded.
 
-#### `contractkit-plugin-bruno`
+#### `@contractkit/plugin-bruno`
 
 | Field             | Type      | Description                                                                                       |
 | ----------------- | --------- | ------------------------------------------------------------------------------------------------- |
@@ -171,7 +171,7 @@ Unreachable types are excluded.
 
 Regenerates the output directory cleanly on each run.
 
-#### `contractkit-plugin-python`
+#### `@contractkit/plugin-python`
 
 | Field             | Type      | Description                                                                |
 | ----------------- | --------- | -------------------------------------------------------------------------- |
@@ -183,7 +183,7 @@ Emits one Pydantic v2 module per contract file and one httpx client per operatio
 
 ### Writing your own plugin
 
-Plugins implement the `ContractKitPlugin` interface from `@maroonedsoftware/contractkit`. Hooks: `transform` (mutate AST per file), `validate` (throw to fail compilation), `generateTargets` (emit output files), and `command` (register a CLI subcommand). See `packages/contractkit/src/plugin.ts`.
+Plugins implement the `ContractKitPlugin` interface from `@contractkit/core`. Hooks: `transform` (mutate AST per file), `validate` (throw to fail compilation), `generateTargets` (emit output files), and `command` (register a CLI subcommand). See `packages/contractkit/src/plugin.ts`.
 
 ---
 
@@ -1040,7 +1040,7 @@ The `signature` value must match an HMAC scheme name in the config. The generate
 
 ## SDK Generation
 
-The TypeScript SDK is produced by the `sdk` sub-config of `@maroonedsoftware/contractkit-plugin-typescript`. Each operation `.ck` file becomes a client class; an aggregator class, barrel exports, and a shared `sdk-options.ts` runtime helper are emitted automatically.
+The TypeScript SDK is produced by the `sdk` sub-config of `@contractkit/plugin-typescript`. Each operation `.ck` file becomes a client class; an aggregator class, barrel exports, and a shared `sdk-options.ts` runtime helper are emitted automatically.
 
 ```typescript
 import { MyappSdk } from '@myapp/sdk';
@@ -1049,15 +1049,15 @@ const sdk = new MyappSdk({ baseUrl: 'https://api.example.com' });
 const users = await sdk.users.list({ query: { page: 1 } });
 ```
 
-A Python SDK with the same operation coverage is available via `@maroonedsoftware/contractkit-plugin-python`.
+A Python SDK with the same operation coverage is available via `@contractkit/plugin-python`.
 
 ---
 
 ## Documentation Generation
 
-OpenAPI 3.0 YAML and Markdown reference are produced by the `@maroonedsoftware/contractkit-plugin-openapi` and `@maroonedsoftware/contractkit-plugin-markdown` plugins respectively. In both, operations marked `internal` and any types unreachable from public operations are excluded.
+OpenAPI 3.0 YAML and Markdown reference are produced by the `@contractkit/plugin-openapi` and `@contractkit/plugin-markdown` plugins respectively. In both, operations marked `internal` and any types unreachable from public operations are excluded.
 
-A Bruno REST collection can be generated via `@maroonedsoftware/contractkit-plugin-bruno`.
+A Bruno REST collection can be generated via `@contractkit/plugin-bruno`.
 
 ---
 
@@ -1077,11 +1077,11 @@ The compiler validates type references across files. If a field or operation ref
 
 Set `"prettier": true` in your config to format all generated TypeScript files using your project's local prettier installation.
 
-The `prettier-plugin-contractkit` package formats `.ck` files themselves. Add it to your prettier config:
+The `@contractkit/prettier-plugin` package formats `.ck` files themselves. Add it to your prettier config:
 
 ```json
 {
-    "plugins": ["prettier-plugin-contractkit"]
+    "plugins": ["@contractkit/prettier-plugin"]
 }
 ```
 
@@ -1089,7 +1089,7 @@ The `prettier-plugin-contractkit` package formats `.ck` files themselves. Add it
 
 ## VS Code Extension
 
-The `contractkit-vscode` extension provides:
+The `@contractkit/vscode-extension` extension provides:
 
 - Syntax highlighting for `.ck` files
 - Autocompletion for types, keywords, modifiers, and model references
@@ -1111,29 +1111,34 @@ pnpm run vscode:install
 
 ## Project Structure
 
+All packages publish under the `@contractkit` npm scope.
+
 ```
 contractkit/
   apps/
-    cli/                              # contractkit binary — discovery, config, plugin orchestration
-    vscode-extension/                 # VS Code / Cursor language support (LSP + TM grammar)
-    prettier-plugin/                  # Prettier plugin for formatting .ck files
+    cli/                              # @contractkit/cli — contractkit binary (discovery, config, plugin orchestration)
+    vscode-extension/                 # @contractkit/vscode-extension — VS Code / Cursor language support (LSP + TM grammar)
+    prettier-plugin/                  # @contractkit/prettier-plugin — Prettier plugin for formatting .ck files
   contracts/                          # Example contract files
   packages/
-    contractkit/                      # Core: parser, AST, semantics, plugin interface
+    contractkit/                      # @contractkit/core — parser, AST, semantics, plugin interface
       src/
         contractkit.ohm               # Ohm PEG grammar (source of truth)
         semantics.ts                  # Parse tree → AST
         parser.ts                     # parseCk() entry point
         ast.ts                        # AST type definitions
         type-utils.ts                 # Type ref collection, topo sort, input-model graph
+        apply-options-defaults.ts     # Merges options-level header globals into operations
+        validate-refs.ts              # Cross-file type reference validation
+        validate-inheritance.ts       # Multi-base inheritance validation
         validate-operation.ts         # Path parameter and operation validation
         plugin.ts                     # ContractKitPlugin / PluginContext interfaces
-    contractkit-plugin-typescript/    # Koa routers, TS SDK, Zod schemas, plain TS types
-    contractkit-plugin-openapi/       # OpenAPI 3.0 YAML
-    contractkit-plugin-markdown/      # Markdown API reference
-    contractkit-plugin-bruno/         # Bruno REST collection
-    contractkit-plugin-python/        # Python SDK (Pydantic v2 + httpx)
-    openapi-to-ck/                    # OpenAPI YAML → .ck file converter
+    plugin-typescript/                # @contractkit/plugin-typescript — Koa routers, TS SDK, Zod schemas, plain TS types
+    plugin-openapi/                   # @contractkit/plugin-openapi — OpenAPI 3.0 YAML
+    plugin-markdown/                  # @contractkit/plugin-markdown — Markdown API reference
+    plugin-bruno/                     # @contractkit/plugin-bruno — Bruno REST collection
+    plugin-python/                    # @contractkit/plugin-python — Python SDK (Pydantic v2 + httpx)
+    openapi-to-ck/                    # @contractkit/openapi-to-ck — OpenAPI YAML → .ck file converter
     config-typescript/                # Shared tsconfig base
     config-eslint/                    # Shared ESLint config
 ```
