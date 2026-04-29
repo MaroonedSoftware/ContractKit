@@ -1,5 +1,11 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.15.0
+
+### Minor Changes
+
+- e27b771: Add an `includeInternal: boolean` config option to every plugin so consumers can override whether `internal` operations are emitted. Defaults preserve today's behavior: server router and Bruno default to `true` (include); TS SDK, Python SDK, OpenAPI, and Markdown default to `false` (exclude).
+
 ## 0.14.1
 
 ### Patch Changes
