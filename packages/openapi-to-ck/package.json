@@ -36,8 +36,8 @@
     },
     "dependencies": {
         "@contractkit/core": "workspace:*",
-        "@scalar/openapi-parser": "^0.10.0",
-        "yaml": "^2.7.0"
+        "@scalar/openapi-parser": "^0.26.1",
+        "yaml": "^2.8.3"
     },
     "devDependencies": {
         "@repo/config-eslint": "workspace:*",
