@@ -1,5 +1,16 @@
 # @contractkit/openapi-to-ck
 
+## 0.7.0
+
+### Minor Changes
+
+- bbee232: prep for public release
+
+### Patch Changes
+
+- Updated dependencies [bbee232]
+    - @contractkit/core@0.10.0
+
 ## 0.6.1
 
 ### Patch Changes

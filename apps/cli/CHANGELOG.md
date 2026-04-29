@@ -1,5 +1,17 @@
 # @contractkit/cli
 
+## 0.5.0
+
+### Minor Changes
+
+- bbee232: prep for public release
+
+### Patch Changes
+
+- Updated dependencies [bbee232]
+    - @contractkit/core@0.10.0
+    - @contractkit/openapi-to-ck@0.7.0
+
 ## 0.4.1
 
 ### Patch Changes

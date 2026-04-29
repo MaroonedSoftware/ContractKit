@@ -1,5 +1,16 @@
 # @contractkit/contractkit-plugin-python
 
+## 0.9.0
+
+### Minor Changes
+
+- bbee232: prep for public release
+
+### Patch Changes
+
+- Updated dependencies [bbee232]
+    - @contractkit/core@0.10.0
+
 ## 0.8.0
 
 ### Minor Changes
