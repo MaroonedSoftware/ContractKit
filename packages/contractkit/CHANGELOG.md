@@ -1,5 +1,11 @@
 # @contractkit/core
 
+## 0.11.0
+
+### Minor Changes
+
+- c9f2166: Path parameters now accept the full type-expression syntax — including constraint args (`int(min=1, max=5)`), enums (`enum(available, pending, sold)`), regex strings, and unions — instead of only a bare type identifier.
+
 ## 0.10.0
 
 ### Minor Changes
