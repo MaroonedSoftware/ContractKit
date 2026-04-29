@@ -1,6 +1,23 @@
 {
     "name": "@contractkit/prettier-plugin",
     "version": "0.8.0",
+    "description": "Prettier plugin for ContractKit DSL",
+    "author": {
+        "name": "Marooned Software",
+        "url": "https://github.com/MaroonedSoftware/contractkit"
+    },
+    "bugs": {
+        "url": "https://github.com/MaroonedSoftware/contractkit/issues"
+    },
+    "homepage": "https://github.com/MaroonedSoftware/contractkit/packages/prettier-plugin#readme",
+    "keywords": [
+        "contractkit",
+        "prettier"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/MaroonedSoftware/contractkit.git"
+    },
     "type": "module",
     "main": "./dist/index.js",
     "module": "./dist/index.js",

@@ -2,6 +2,22 @@
     "name": "@contractkit/plugin-python",
     "version": "0.9.0",
     "description": "ContractKit built-in plugin: Python SDK client generation (Pydantic v2 + httpx)",
+    "author": {
+        "name": "Marooned Software",
+        "url": "https://github.com/MaroonedSoftware/contractkit"
+    },
+    "bugs": {
+        "url": "https://github.com/MaroonedSoftware/contractkit/issues"
+    },
+    "homepage": "https://github.com/MaroonedSoftware/contractkit/packages/plugin-python#readme",
+    "keywords": [
+        "contractkit",
+        "python"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/MaroonedSoftware/contractkit.git"
+    },
     "type": "module",
     "main": "./dist/index.js",
     "module": "./dist/index.js",

@@ -3,13 +3,26 @@
     "displayName": "ContractKit",
     "description": "Language support for .ck contract definition files",
     "version": "0.7.0",
+    "author": {
+        "name": "Marooned Software",
+        "url": "https://github.com/MaroonedSoftware/contractkit"
+    },
+    "bugs": {
+        "url": "https://github.com/MaroonedSoftware/contractkit/issues"
+    },
+    "homepage": "https://github.com/MaroonedSoftware/contractkit/packages/vscode-extension#readme",
+    "keywords": [
+        "contractkit",
+        "vscode",
+        "extension"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/MaroonedSoftware/contractkit.git"
+    },
     "private": true,
     "type": "module",
     "publisher": "MaroonedSoftware",
-    "repository": {
-        "type": "git",
-        "url": "https://https://github.com/MaroonedSoftware/contractkit"
-    },
     "engines": {
         "vscode": "^1.105.1"
     },

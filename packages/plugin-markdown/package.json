@@ -2,6 +2,22 @@
     "name": "@contractkit/plugin-markdown",
     "version": "0.8.0",
     "description": "ContractKit built-in plugin: Markdown API reference generation",
+    "author": {
+        "name": "Marooned Software",
+        "url": "https://github.com/MaroonedSoftware/contractkit"
+    },
+    "bugs": {
+        "url": "https://github.com/MaroonedSoftware/contractkit/issues"
+    },
+    "homepage": "https://github.com/MaroonedSoftware/contractkit/packages/plugin-markdown#readme",
+    "keywords": [
+        "contractkit",
+        "markdown"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/MaroonedSoftware/contractkit.git"
+    },
     "type": "module",
     "main": "./dist/index.js",
     "module": "./dist/index.js",

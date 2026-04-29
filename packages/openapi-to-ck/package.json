@@ -2,6 +2,22 @@
     "name": "@contractkit/openapi-to-ck",
     "version": "0.7.0",
     "description": "Convert OpenAPI specs (2.0/3.0/3.1) to Contract Kit .ck files",
+    "author": {
+        "name": "Marooned Software",
+        "url": "https://github.com/MaroonedSoftware/contractkit"
+    },
+    "bugs": {
+        "url": "https://github.com/MaroonedSoftware/contractkit/issues"
+    },
+    "homepage": "https://github.com/MaroonedSoftware/contractkit/packages/openapi-to-ck#readme",
+    "keywords": [
+        "contractkit",
+        "openapi"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/MaroonedSoftware/contractkit.git"
+    },
     "type": "module",
     "main": "./dist/index.js",
     "module": "./dist/index.js",

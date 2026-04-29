@@ -2,6 +2,22 @@
     "name": "@contractkit/plugin-openapi",
     "version": "0.8.0",
     "description": "ContractKit built-in plugin: OpenAPI 3.0 YAML generation",
+    "author": {
+        "name": "Marooned Software",
+        "url": "https://github.com/MaroonedSoftware/contractkit"
+    },
+    "bugs": {
+        "url": "https://github.com/MaroonedSoftware/contractkit/issues"
+    },
+    "homepage": "https://github.com/MaroonedSoftware/contractkit/packages/plugin-openapi#readme",
+    "keywords": [
+        "contractkit",
+        "openapi"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/MaroonedSoftware/contractkit.git"
+    },
     "type": "module",
     "main": "./dist/index.js",
     "module": "./dist/index.js",

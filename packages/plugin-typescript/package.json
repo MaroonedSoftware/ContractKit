@@ -2,6 +2,22 @@
     "name": "@contractkit/plugin-typescript",
     "version": "0.16.0",
     "description": "ContractKit built-in plugin: TypeScript codegen (SDK clients, Koa routers, Zod schemas, plain types)",
+    "author": {
+        "name": "Marooned Software",
+        "url": "https://github.com/MaroonedSoftware/contractkit"
+    },
+    "bugs": {
+        "url": "https://github.com/MaroonedSoftware/contractkit/issues"
+    },
+    "homepage": "https://github.com/MaroonedSoftware/contractkit/packages/plugin-typescript#readme",
+    "keywords": [
+        "contractkit",
+        "typescript"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/MaroonedSoftware/contractkit.git"
+    },
     "type": "module",
     "main": "./dist/index.js",
     "module": "./dist/index.js",
