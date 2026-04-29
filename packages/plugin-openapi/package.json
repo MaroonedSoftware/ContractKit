@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-openapi",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "description": "ContractKit built-in plugin: OpenAPI 3.0 YAML generation",
     "type": "module",
     "main": "./dist/index.js",

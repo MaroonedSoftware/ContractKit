@@ -1,5 +1,11 @@
 # @contractkit/core
 
+## 0.10.0
+
+### Minor Changes
+
+- bbee232: prep for public release
+
 ## 0.9.0
 
 ### Minor Changes
