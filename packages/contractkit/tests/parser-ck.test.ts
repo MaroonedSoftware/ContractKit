@@ -1426,29 +1426,72 @@ operation /health: {
 // ─── Test fixture ─────────────────────────────────────────────────────────────
 
 describe('test.ck fixture', () => {
-    it('parses the test.ck file without errors', () => {
+    it('parses the petstore fixture without errors', () => {
         const source = readFileSync(resolve(__dirname, '../../../contracts/test.ck'), 'utf-8');
         const { root, diag } = parse(source, 'test.ck');
 
         expect(diag.hasErrors()).toBe(false);
         expect(root.kind).toBe('ckRoot');
 
-        expect(root.meta).toEqual({ area: 'counterparty' });
+        expect(root.meta).toEqual({ area: 'petstore' });
         expect(root.services).toEqual({
-            CounterpartyService: '#src/modules/counterparty/counterparty.service.js',
+            PetService: '#src/modules/pet/pet.service.js',
+            StoreService: '#src/modules/store/store.service.js',
+            UserService: '#src/modules/user/user.service.js',
         });
 
-        expect(root.models).toHaveLength(2);
-        expect(root.models[0]!.name).toBe('ModernTreasuryWebhookHeaders');
-        expect(root.models[0]!.fields).toHaveLength(6);
-        expect(root.models[1]!.name).toBe('ModernTreasuryWebhookTransaction');
-        expect(root.models[1]!.inputCase).toBe('camel');
-        expect(root.models[1]!.mode).toBe('loose');
+        const modelNames = root.models.map(m => m.name);
+        expect(modelNames).toEqual([
+            'Order',
+            'Category',
+            'User',
+            'Tag',
+            'Pet',
+            'ApiResponse',
+            'UpdatePetForm',
+            'UploadFileForm',
+        ]);
 
-        expect(root.routes).toHaveLength(1);
-        expect(root.routes[0]!.path).toBe('/webhooks/moderntreasury');
-        expect(root.routes[0]!.modifiers).toEqual(['internal']);
-        expect(root.routes[0]!.operations[0]!.method).toBe('post');
-        expect(root.routes[0]!.operations[0]!.security).toBe('none');
+        const order = root.models.find(m => m.name === 'Order')!;
+        expect(order.fields.find(f => f.name === 'id')!.visibility).toBe('readonly');
+        expect(order.fields.find(f => f.name === 'status')!.default).toBe('placed');
+        expect(order.fields.find(f => f.name === 'complete')!.default).toBe(false);
+
+        const user = root.models.find(m => m.name === 'User')!;
+        expect(user.fields.find(f => f.name === 'password')!.visibility).toBe('writeonly');
+        expect(user.fields.find(f => f.name === 'firstName')!.optional).toBe(true);
+
+        const pet = root.models.find(m => m.name === 'Pet')!;
+        expect(pet.fields.find(f => f.name === 'name')!.optional).toBeFalsy();
+        expect(pet.fields.find(f => f.name === 'tags')!.optional).toBe(true);
+
+        const routePaths = root.routes.map(r => r.path);
+        expect(routePaths).toEqual([
+            '/pet',
+            '/pet/findByStatus',
+            '/pet/findByTags',
+            '/pet/{petId}',
+            '/pet/{petId}/uploadImage',
+            '/store/inventory',
+            '/store/order',
+            '/store/order/{orderId}',
+            '/user',
+            '/user/createWithList',
+            '/user/login',
+            '/user/logout',
+            '/user/{username}',
+        ]);
+
+        const findByTags = root.routes.find(r => r.path === '/pet/findByTags')!;
+        expect(findByTags.modifiers).toEqual(['deprecated']);
+
+        const petById = root.routes.find(r => r.path === '/pet/{petId}')!;
+        expect(petById.params).toBeDefined();
+        expect(petById.operations.map(o => o.method).sort()).toEqual(['delete', 'get', 'post']);
+
+        const login = root.routes.find(r => r.path === '/user/login')!;
+        const loginGet = login.operations.find(o => o.method === 'get')!;
+        const ok = loginGet.responses!.find(r => r.statusCode === 200)!;
+        expect(ok.headers?.map(h => h.name)).toEqual(['x-rate-limit', 'x-expires-after']);
     });
 });
