@@ -156,7 +156,26 @@ importers:
         specifier: workspace:*
         version: link:../config-typescript
 
-  packages/contractkit-plugin-bruno:
+  packages/openapi-to-ck:
+    dependencies:
+      '@contractkit/core':
+        specifier: workspace:*
+        version: link:../contractkit
+      '@scalar/openapi-parser':
+        specifier: ^0.10.0
+        version: 0.10.17
+      yaml:
+        specifier: ^2.7.0
+        version: 2.8.3
+    devDependencies:
+      '@repo/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/config-typescript':
+        specifier: workspace:*
+        version: link:../config-typescript
+
+  packages/plugin-bruno:
     dependencies:
       '@contractkit/core':
         specifier: workspace:*
@@ -169,7 +188,7 @@ importers:
         specifier: workspace:*
         version: link:../config-typescript
 
-  packages/contractkit-plugin-markdown:
+  packages/plugin-markdown:
     dependencies:
       '@contractkit/core':
         specifier: workspace:*
@@ -182,7 +201,7 @@ importers:
         specifier: workspace:*
         version: link:../config-typescript
 
-  packages/contractkit-plugin-openapi:
+  packages/plugin-openapi:
     dependencies:
       '@contractkit/core':
         specifier: workspace:*
@@ -195,7 +214,7 @@ importers:
         specifier: workspace:*
         version: link:../config-typescript
 
-  packages/contractkit-plugin-python:
+  packages/plugin-python:
     dependencies:
       '@contractkit/core':
         specifier: workspace:*
@@ -214,30 +233,11 @@ importers:
         specifier: ^4.1.2
         version: 4.1.2(@types/node@25.5.0)(vite@7.3.1(@types/node@25.5.0)(yaml@2.8.3))
 
-  packages/contractkit-plugin-typescript:
+  packages/plugin-typescript:
     dependencies:
       '@contractkit/core':
         specifier: workspace:*
         version: link:../contractkit
-    devDependencies:
-      '@repo/config-eslint':
-        specifier: workspace:*
-        version: link:../config-eslint
-      '@repo/config-typescript':
-        specifier: workspace:*
-        version: link:../config-typescript
-
-  packages/openapi-to-ck:
-    dependencies:
-      '@contractkit/core':
-        specifier: workspace:*
-        version: link:../contractkit
-      '@scalar/openapi-parser':
-        specifier: ^0.10.0
-        version: 0.10.17
-      yaml:
-        specifier: ^2.7.0
-        version: 2.8.3
     devDependencies:
       '@repo/config-eslint':
         specifier: workspace:*
