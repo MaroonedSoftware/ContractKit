@@ -713,6 +713,44 @@ describe('generateContract', () => {
             expect(output).toContain('export const UserId = z.uuid()');
             expect(output).not.toContain('UserIdInput');
         });
+
+        it('ref & ref type alias uses .extend(B.shape) instead of .and()', () => {
+            const root = contractRoot([
+                model('Pagination', [field('page', scalarType('int'))]),
+                model('Filter', [field('status', scalarType('string'), { optional: true })]),
+                model('ListQuery', [], {
+                    type: {
+                        kind: 'intersection',
+                        members: [
+                            { kind: 'ref', name: 'Pagination' },
+                            { kind: 'ref', name: 'Filter' },
+                        ],
+                    },
+                }),
+            ]);
+            const output = generateContract(root);
+            expect(output).toContain('export const ListQuery = Pagination.extend(Filter.shape)');
+            expect(output).not.toContain('.and(');
+        });
+
+        it('ref & ref type alias substitutes Input variant when base has Input', () => {
+            const root = contractRoot([
+                model('Pagination', [field('page', scalarType('int')), field('total', scalarType('int'), { visibility: 'readonly' })]),
+                model('Filter', [field('status', scalarType('string'), { optional: true })]),
+                model('ListQuery', [], {
+                    type: {
+                        kind: 'intersection',
+                        members: [
+                            { kind: 'ref', name: 'Pagination' },
+                            { kind: 'ref', name: 'Filter' },
+                        ],
+                    },
+                }),
+            ]);
+            const output = generateContract(root);
+            expect(output).toContain('export const ListQuery = Pagination.extend(Filter.shape)');
+            expect(output).toContain('export const ListQueryInput = PaginationInput.extend(Filter.shape)');
+        });
     });
 
     // ─── Description ──────────────────────────────────────────────

@@ -22,6 +22,11 @@ import {
     collectExternalOutputRefs as ckCollectExternalOutputRefs,
 } from '@contractkit/core';
 
+/**
+ * Maps a ContractKit object mode to its Zod constructor name.
+ *
+ * @returns `"z.strictObject"` | `"z.object"` | `"z.looseObject"`
+ */
 export function modeToWrapper(mode: ObjectMode): string {
     switch (mode) {
         case 'strict':
@@ -111,6 +116,16 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
     return lines;
 }
 
+/**
+ * Generate a TypeScript module containing Zod schemas for every model in `root`.
+ *
+ * Emits up to three schemas per model when visibility modifiers are present:
+ * `ModelBase` (all fields), `Model` (read — no writeonly), `ModelInput` (write — no readonly).
+ *
+ * @param root - The parsed contract root node.
+ * @param context - Optional cross-file context for import resolution and Input/Output variant tracking.
+ * @returns The full TypeScript source as a string.
+ */
 export function generateContract(root: ContractRootNode, context?: ContractCodegenContext): string {
     const needsDateTime = rootNeedsDateTime(root);
     const needsDuration = rootNeedsScalar(root, 'duration');
@@ -464,6 +479,14 @@ function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
 
 // ─── Type rendering ────────────────────────────────────────────────────────
 
+/**
+ * Render a ContractKit AST type node as a Zod schema expression string.
+ *
+ * @param parseCaseTransform - When set, generates a `.transform()` that remaps incoming keys from
+ *   the given casing (`'snake'` | `'pascal'`) to camelCase for `inlineObject` types.
+ * @param defaultMode - Fallback object mode (`'strict'` | `'strip'` | `'loose'`) when the node
+ *   doesn't specify its own mode.
+ */
 export function renderType(type: ContractTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
     switch (type.kind) {
         case 'scalar':
@@ -631,25 +654,34 @@ function renderDiscriminatedUnion(u: DiscriminatedUnionTypeNode, parseCaseTransf
 
 function renderIntersection(i: IntersectionTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
     const [first, ...rest] = i.members;
-    // When the pattern is ref & { inlineObject(s) }, use .extend() to produce a
-    // single merged ZodObject. Using .and(z.strictObject) breaks because each
-    // strict side rejects the other side's keys during intersection parsing.
-    if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'inlineObject')) {
-        const allFields = rest.flatMap(m => (m as InlineObjectTypeNode).fields);
-        const fieldLines =
-            parseCaseTransform === 'snake'
-                ? renderFieldsAsSnakeCase(allFields, defaultMode)
-                      .map(l => `    ${l}`)
-                      .join('\n')
-                : parseCaseTransform === 'pascal'
-                  ? renderFieldsAsPascalCase(allFields, defaultMode)
-                        .map(l => `    ${l}`)
-                        .join('\n')
-                  : allFields
-                        .flatMap(f => renderField(f, defaultMode))
-                        .map(l => `    ${l}`)
-                        .join('\n');
-        return `${first.name}.extend({\n${fieldLines}\n})`;
+    // When the pattern is ref & (ref | inlineObject)*, use .extend() chains to
+    // produce a single ZodObject. .and() breaks strict objects — each strict side
+    // rejects the other side's keys during intersection parsing, and ZodIntersection
+    // has no .strict() method.
+    if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'ref' || m.kind === 'inlineObject')) {
+        let expr = first.name;
+        for (const member of rest) {
+            if (member.kind === 'ref') {
+                expr += `.extend(${member.name}.shape)`;
+            } else {
+                const m = member as InlineObjectTypeNode;
+                const fieldLines =
+                    parseCaseTransform === 'snake'
+                        ? renderFieldsAsSnakeCase(m.fields, defaultMode)
+                              .map(l => `    ${l}`)
+                              .join('\n')
+                        : parseCaseTransform === 'pascal'
+                          ? renderFieldsAsPascalCase(m.fields, defaultMode)
+                                .map(l => `    ${l}`)
+                                .join('\n')
+                          : m.fields
+                                .flatMap(f => renderField(f, defaultMode))
+                                .map(l => `    ${l}`)
+                                .join('\n');
+                expr += `.extend({\n${fieldLines}\n})`;
+            }
+        }
+        return expr;
     }
     let expr = renderType(first!, parseCaseTransform, defaultMode);
     for (const member of rest) {
@@ -730,11 +762,20 @@ export function renderInputType(type: ContractTypeNode, modelsWithInput?: Set<st
             return `z.discriminatedUnion("${escapeString(type.discriminator)}", [${type.members.map(m => renderInputType(m, modelsWithInput, defaultMode)).join(', ')}])`;
         case 'intersection': {
             const [first, ...rest] = type.members;
-            if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'inlineObject')) {
-                const base = modelsWithInput?.has(first.name) ? `${first.name}Input` : first.name;
-                const allFields = rest.flatMap(m => (m as InlineObjectTypeNode).fields);
-                const fieldLines = allFields.map(f => `    ${renderInputField(f, modelsWithInput ?? new Set(), defaultMode)}`).join('\n');
-                return `${base}.extend({\n${fieldLines}\n})`;
+            if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'ref' || m.kind === 'inlineObject')) {
+                let expr = modelsWithInput?.has(first.name) ? `${first.name}Input` : first.name;
+                for (const member of rest) {
+                    if (member.kind === 'ref') {
+                        const name = modelsWithInput?.has(member.name) ? `${member.name}Input` : member.name;
+                        expr += `.extend(${name}.shape)`;
+                    } else {
+                        const fieldLines = (member as InlineObjectTypeNode).fields
+                            .map(f => `    ${renderInputField(f, modelsWithInput ?? new Set(), defaultMode)}`)
+                            .join('\n');
+                        expr += `.extend({\n${fieldLines}\n})`;
+                    }
+                }
+                return expr;
             }
             let expr = renderInputType(first!, modelsWithInput, defaultMode);
             for (const member of rest) {
@@ -798,11 +839,20 @@ export function renderQueryType(type: ContractTypeNode, modelsWithInput?: Set<st
         }
         case 'intersection': {
             const [first, ...rest] = type.members;
-            if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'inlineObject')) {
-                const base = modelsWithInput?.has(first.name) ? `${first.name}Input` : first.name;
-                const allFields = rest.flatMap(m => (m as InlineObjectTypeNode).fields);
-                const fieldLines = allFields.map(f => `    ${renderQueryField(f, modelsWithInput, defaultMode)}`).join('\n');
-                return `${base}.extend({\n${fieldLines}\n})`;
+            if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'ref' || m.kind === 'inlineObject')) {
+                let expr = modelsWithInput?.has(first.name) ? `${first.name}Input` : first.name;
+                for (const member of rest) {
+                    if (member.kind === 'ref') {
+                        const name = modelsWithInput?.has(member.name) ? `${member.name}Input` : member.name;
+                        expr += `.extend(${name}.shape)`;
+                    } else {
+                        const fieldLines = (member as InlineObjectTypeNode).fields
+                            .map(f => `    ${renderQueryField(f, modelsWithInput, defaultMode)}`)
+                            .join('\n');
+                        expr += `.extend({\n${fieldLines}\n})`;
+                    }
+                }
+                return expr;
             }
             let expr = renderQueryType(first!, modelsWithInput, defaultMode);
             for (const member of rest) {

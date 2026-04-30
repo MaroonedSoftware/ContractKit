@@ -324,6 +324,45 @@ describe('generateOperation', () => {
             expect(output).toMatch(/import \{[^}]*\bPaginationInput\b[^}]*\} from /);
         });
 
+        it('ref & ref intersection query uses .extend(B.shape) not .and()', () => {
+            const root = opRoot([
+                opRoute('/persons', [
+                    opOperation('get', {
+                        query: {
+                            kind: 'intersection',
+                            members: [
+                                { kind: 'ref', name: 'Pagination' },
+                                { kind: 'ref', name: 'PersonQuery' },
+                            ],
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        } as any,
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain('Pagination.extend(PersonQuery.shape)');
+            expect(output).not.toContain('.and(');
+        });
+
+        it('ref & ref intersection query substitutes Input variants', () => {
+            const root = opRoot([
+                opRoute('/persons', [
+                    opOperation('get', {
+                        query: {
+                            kind: 'intersection',
+                            members: [
+                                { kind: 'ref', name: 'Pagination' },
+                                { kind: 'ref', name: 'PersonQuery' },
+                            ],
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        } as any,
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root, { modelsWithInput: new Set(['Pagination']) });
+            expect(output).toContain('PaginationInput.extend(PersonQuery.shape)');
+        });
+
         it('wraps ContractTypeNode intersection query with array fields using z.preprocess', () => {
             const root = opRoot([
                 opRoute('/offers', [
