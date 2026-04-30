@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-typescript",
-    "version": "0.16.1",
+    "version": "0.17.0",
     "description": "ContractKit built-in plugin: TypeScript codegen (SDK clients, Koa routers, Zod schemas, plain types)",
     "author": {
         "name": "Marooned Software",
