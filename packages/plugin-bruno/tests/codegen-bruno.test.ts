@@ -671,6 +671,48 @@ describe('generateOpenCollection', () => {
         expect(env!.content).toContain('- name: token');
     });
 
+    describe('alphabetical ordering', () => {
+        function seqOf(content: string): number | undefined {
+            const match = content.match(/seq:\s*(\d+)/);
+            return match ? parseInt(match[1]!, 10) : undefined;
+        }
+
+        it('orders top-level folders alphabetically by area', () => {
+            const usersRoot = opRoot([opRoute('/users', [opOperation('get')])], 'users.op', { area: 'users' });
+            const authRoot = opRoot([opRoute('/auth', [opOperation('post')])], 'auth.op', { area: 'auth' });
+            const paymentsRoot = opRoot([opRoute('/payments', [opOperation('get')])], 'payments.op', { area: 'payments' });
+            // Pass in a non-alphabetical input order to prove the sort is doing the work.
+            const files = generateOpenCollection([usersRoot, authRoot, paymentsRoot], { collectionName: 'API' });
+
+            const auth = files.find(f => f.relativePath === 'auth/folder.yml');
+            const payments = files.find(f => f.relativePath === 'payments/folder.yml');
+            const users = files.find(f => f.relativePath === 'users/folder.yml');
+            expect(seqOf(auth!.content)).toBe(1);
+            expect(seqOf(payments!.content)).toBe(2);
+            expect(seqOf(users!.content)).toBe(3);
+        });
+
+        it('orders requests within a folder alphabetically by request name', () => {
+            const root = opRoot(
+                [
+                    opRoute('/zebras', [opOperation('get', { name: 'Zebra list' })]),
+                    opRoute('/aardvarks', [opOperation('get', { name: 'Aardvark list' })]),
+                    opRoute('/mammals', [opOperation('get', { name: 'Mammal list' })]),
+                ],
+                'zoo.op',
+                { area: 'zoo' },
+            );
+            const files = generateOpenCollection([root], { collectionName: 'API' });
+
+            const aardvark = files.find(f => f.relativePath === 'zoo/aardvark-list.yml');
+            const mammal = files.find(f => f.relativePath === 'zoo/mammal-list.yml');
+            const zebra = files.find(f => f.relativePath === 'zoo/zebra-list.yml');
+            expect(seqOf(aardvark!.content)).toBe(1);
+            expect(seqOf(mammal!.content)).toBe(2);
+            expect(seqOf(zebra!.content)).toBe(3);
+        });
+    });
+
     describe('environments config', () => {
         const root = opRoot([opRoute('/users', [opOperation('get')])], 'users.op');
 

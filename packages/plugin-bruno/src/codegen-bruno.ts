@@ -88,8 +88,18 @@ export function generateOpenCollection(roots: OpRootNode[], options: OpenCollect
     }
     // Manifest is appended at the end so it lists every generated path including itself.
 
-    for (let rootIdx = 0; rootIdx < roots.length; rootIdx++) {
-        const root = roots[rootIdx]!;
+    // Roots are sorted by their top-level folder display name (then by subarea) so the
+    // emitted `seq:` numbers — which drive Bruno's UI ordering — line up alphabetically.
+    const sortedRoots = [...roots].sort((a, b) => {
+        const aArea = a.meta['area'] ?? deriveFolderName(a.file);
+        const bArea = b.meta['area'] ?? deriveFolderName(b.file);
+        const cmp = aArea.localeCompare(bArea);
+        if (cmp !== 0) return cmp;
+        return (a.meta['subarea'] ?? '').localeCompare(b.meta['subarea'] ?? '');
+    });
+
+    for (let rootIdx = 0; rootIdx < sortedRoots.length; rootIdx++) {
+        const root = sortedRoots[rootIdx]!;
         const folder = root.meta['area'] ? slugifyName(root.meta['area']) : deriveFolderName(root.file);
         const displayName = (root.meta['area'] ?? folder).charAt(0).toUpperCase() + (root.meta['area'] ?? folder).slice(1);
 
@@ -104,20 +114,26 @@ export function generateOpenCollection(roots: OpRootNode[], options: OpenCollect
             files.push({ relativePath: `${requestDir}/folder.yml`, content: generateFolderFile(subareaDisplayName, 1) });
         }
 
-        let seq = 1;
+        // Flatten and alphabetize within this folder before assigning `seq:`.
+        const requests: Array<{ route: typeof root.routes[number]; op: typeof root.routes[number]['operations'][number]; requestName: string }> = [];
         for (const route of root.routes) {
             for (const op of route.operations) {
                 if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
-                const requestName = op.name ?? route.path;
-                const fileName = op.name ? `${slugifyName(op.name)}.yml` : `${op.method}-${sanitizePath(route.path)}.yml`;
-                let content = generateRequestFile(route, op, requestName, seq, modelMap, root, defaultScheme, randomExamples);
-                const pluginOverride = op.pluginFiles?.['bruno'];
-                if (pluginOverride !== undefined) {
-                    content = mergePluginFile(content, pluginOverride);
-                }
-                files.push({ relativePath: `${requestDir}/${fileName}`, content });
-                seq++;
+                requests.push({ route, op, requestName: op.name ?? route.path });
             }
+        }
+        requests.sort((a, b) => a.requestName.localeCompare(b.requestName));
+
+        let seq = 1;
+        for (const { route, op, requestName } of requests) {
+            const fileName = op.name ? `${slugifyName(op.name)}.yml` : `${op.method}-${sanitizePath(route.path)}.yml`;
+            let content = generateRequestFile(route, op, requestName, seq, modelMap, root, defaultScheme, randomExamples);
+            const pluginOverride = op.pluginFiles?.['bruno'];
+            if (pluginOverride !== undefined) {
+                content = mergePluginFile(content, pluginOverride);
+            }
+            files.push({ relativePath: `${requestDir}/${fileName}`, content });
+            seq++;
         }
     }
 
