@@ -1,5 +1,26 @@
 # @contractkit/contractkit-plugin-bruno
 
+## 0.10.0
+
+### Minor Changes
+
+- 876696f: Omit optional fields from generated request body skeletons instead of emitting them as `null`.
+
+    Previously, an optional field with no default produced `"nickname": null` in the example JSON body. The field is now absent so the example body sends only what the contract actually requires, matching how most APIs treat "omit" vs. "explicit null".
+
+- f2d6a74: Add YAML override support to the Bruno plugin via per-operation plugin files and a new `overrideDir` config option.
+
+    Per-operation overrides: declare `plugins: { bruno: "override.yml" }` on an operation in a `.ck` file and the file's YAML content is deep-merged into the generated request file at codegen time. Objects recurse; arrays replace entirely.
+
+    Directory overrides: set `overrideDir` in the plugin config to a directory that mirrors the generated output structure. Any file found there is deep-merged into the matching generated file, enabling overrides for collection-level files (`opencollection.yml`, `environments/local.yml`) as well as individual request files.
+
+    The `mergePluginFile` function is now exported from `@contractkit/plugin-bruno` for use in custom tooling.
+
+### Patch Changes
+
+- Updated dependencies [876696f]
+    - @contractkit/core@0.12.0
+
 ## 0.9.1
 
 ### Patch Changes

@@ -1,5 +1,28 @@
 # @contractkit/cli
 
+## 0.6.0
+
+### Minor Changes
+
+- 876696f: Add a `plugins` block to operations for attaching external files to individual code-generators.
+
+    ```
+    post: {
+        plugins: {
+            bruno: "request-token.yml"
+        }
+    }
+    ```
+
+    Each entry maps a plugin name to a path relative to the contract's `.ck` file. The CLI resolves the path before plugins run and exposes the file content on the AST as `op.pluginFiles[name]`; missing files emit a warning. Plugins keyed by their own `name` can read their entry to override or augment generated output. The raw paths remain on `op.plugins` for round-trip use cases (the prettier plugin and VS Code syntax highlighting consume the raw form).
+
+### Patch Changes
+
+- 876696f: Print all warnings and errors once at the end of the run, after file writes, instead of interleaving them with intermediate compilation phases. Errors that previously appeared twice (once at parse-time, once at the end) now appear only at the bottom of the output where they're easier to spot.
+- Updated dependencies [876696f]
+    - @contractkit/core@0.12.0
+    - @contractkit/openapi-to-ck@0.7.2
+
 ## 0.5.1
 
 ### Patch Changes
