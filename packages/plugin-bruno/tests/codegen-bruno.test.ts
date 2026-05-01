@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { generateOpenCollection, sanitizePath, MANIFEST_FILENAME, parseManifest } from '../src/codegen-bruno.js';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { generateOpenCollection, sanitizePath, MANIFEST_FILENAME, parseManifest, mergePluginFile } from '../src/codegen-bruno.js';
+import { createBrunoPlugin } from '../src/index.js';
 import {
     opRoot,
     opRoute,
@@ -1004,5 +1008,218 @@ describe('sanitizePath', () => {
 
     it('collapses consecutive dashes', () => {
         expect(sanitizePath('/users//posts')).toBe('users-posts');
+    });
+});
+
+describe('plugin file merges', () => {
+    function getRequestFile(files: ReturnType<typeof generateOpenCollection>): { relativePath: string; content: string } {
+        const f = files.find(f => !['opencollection.yml', 'environments/local.yml', MANIFEST_FILENAME].includes(f.relativePath) && !f.relativePath.endsWith('folder.yml'));
+        if (!f) throw new Error('no request file found');
+        return f;
+    }
+
+    it('deep-merges object override into generated request file', () => {
+        const root = opRoot([
+            opRoute('/users', [
+                opOperation('get', {
+                    responses: [opResponse(200, 'User')],
+                    pluginFiles: { bruno: 'runtime:\n  script:\n    req: |\n      console.log("pre");\n' },
+                }),
+            ]),
+        ]);
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const req = getRequestFile(files);
+        // injected key from override
+        expect(req.content).toContain('script:');
+        expect(req.content).toContain('console.log("pre")');
+        // generated key survives (assertions from the 200 response)
+        expect(req.content).toContain('assertions:');
+    });
+
+    it('replaces arrays in override rather than appending', () => {
+        const root = opRoot([
+            opRoute('/users', [
+                opOperation('get', {
+                    responses: [opResponse(200)],
+                    pluginFiles: {
+                        bruno: [
+                            'runtime:',
+                            '  assertions:',
+                            '    - expression: res.status',
+                            '      operator: eq',
+                            '      value: "200"',
+                            '    - expression: res.headers["x-request-id"]',
+                            '      operator: isDefined',
+                            '      value: ""',
+                        ].join('\n'),
+                    },
+                }),
+            ]),
+        ]);
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const req = getRequestFile(files);
+        // Count assertion blocks — should be exactly 2 (override replaces, not appends)
+        const matches = req.content.match(/operator:/g);
+        expect(matches).toHaveLength(2);
+    });
+
+    it('preserves sibling keys not touched by override', () => {
+        const root = opRoot([
+            opRoute('/users', [
+                opOperation('get', {
+                    responses: [opResponse(200)],
+                    pluginFiles: { bruno: 'runtime:\n  script:\n    req: |\n      // pre\n' },
+                }),
+            ]),
+        ]);
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const req = getRequestFile(files);
+        // Original http block must still be present
+        expect(req.content).toContain('method: GET');
+        expect(req.content).toContain('url:');
+    });
+
+    it('leaves generated content unchanged when pluginFiles is absent', () => {
+        const withoutOverride = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200)] })])]);
+        const withOverride = opRoot([
+            opRoute('/users', [
+                opOperation('get', {
+                    responses: [opResponse(200)],
+                    pluginFiles: {},
+                }),
+            ]),
+        ]);
+        const filesWithout = generateOpenCollection([withoutOverride], { collectionName: 'API' });
+        const filesWith = generateOpenCollection([withOverride], { collectionName: 'API' });
+        expect(getRequestFile(filesWithout).content).toBe(getRequestFile(filesWith).content);
+    });
+
+    it('ignores a malformed (non-mapping) plugin file and returns generated content unchanged', () => {
+        const withoutOverride = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200)] })])]);
+        const withBadOverride = opRoot([
+            opRoute('/users', [
+                opOperation('get', {
+                    responses: [opResponse(200)],
+                    pluginFiles: { bruno: 'just a scalar string' },
+                }),
+            ]),
+        ]);
+        const filesWithout = generateOpenCollection([withoutOverride], { collectionName: 'API' });
+        const filesWith = generateOpenCollection([withBadOverride], { collectionName: 'API' });
+        expect(getRequestFile(filesWithout).content).toBe(getRequestFile(filesWith).content);
+    });
+
+    it('scalar override value replaces generated value', () => {
+        const root = opRoot([
+            opRoute('/users', [
+                opOperation('get', {
+                    pluginFiles: { bruno: 'info:\n  name: Custom Name\n' },
+                }),
+            ]),
+        ]);
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const req = getRequestFile(files);
+        expect(req.content).toContain('name: Custom Name');
+    });
+});
+
+describe('mergePluginFile', () => {
+    it('merges override object keys into generated YAML', () => {
+        const base = 'info:\n  name: Original\n  type: http\n';
+        const override = 'info:\n  name: Overridden\n';
+        const result = mergePluginFile(base, override);
+        expect(result).toContain('name: Overridden');
+        expect(result).toContain('type: http');
+    });
+
+    it('replaces arrays in the override rather than appending', () => {
+        const base = 'runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: "200"\n';
+        const override = 'runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: "201"\n    - expression: res.status\n      operator: eq\n      value: "202"\n';
+        const result = mergePluginFile(base, override);
+        const matches = result.match(/operator:/g);
+        expect(matches).toHaveLength(2);
+        expect(result).not.toContain('"200"');
+    });
+
+    it('returns generated YAML unchanged when override is a scalar', () => {
+        const base = 'info:\n  name: Original\n';
+        expect(mergePluginFile(base, 'just a scalar')).toBe(base);
+    });
+
+    it('returns generated YAML unchanged when override is an array', () => {
+        const base = 'info:\n  name: Original\n';
+        expect(mergePluginFile(base, '- a\n- b\n')).toBe(base);
+    });
+
+    it('adds keys from override that are absent in the generated YAML', () => {
+        const base = 'http:\n  method: GET\n';
+        const override = 'runtime:\n  script:\n    req: |\n      console.log("hi");\n';
+        const result = mergePluginFile(base, override);
+        expect(result).toContain('method: GET');
+        expect(result).toContain('script:');
+    });
+});
+
+describe('overrideDir', () => {
+    it('merges a file from overrideDir into the matching generated file', async () => {
+        const dir = join(tmpdir(), `ck-bruno-test-${Date.now()}`);
+        const overrideDir = join(dir, 'overrides');
+        const outDir = join(dir, 'out');
+        mkdirSync(join(overrideDir, 'users'), { recursive: true });
+        mkdirSync(outDir, { recursive: true });
+
+        writeFileSync(join(overrideDir, 'users', 'get-users.yml'), 'runtime:\n  script:\n    req: |\n      console.log("injected");\n');
+
+        const emitted: Record<string, string> = {};
+        const ctx = {
+            rootDir: dir,
+            options: {},
+            emitFile(path: string, content: string) {
+                emitted[path] = content;
+            },
+        };
+
+        const plugin = createBrunoPlugin({ output: 'out', overrideDir: 'overrides' }, dir);
+        const root = opRoot([opRoute('/users', [opOperation('get')])]);
+        await plugin.generateTargets!({ opRoots: [root], contractRoots: [], modelsWithInput: new Set(), modelsWithOutput: new Set() }, ctx);
+
+        const requestPath = Object.keys(emitted).find(p => p.endsWith('get-users.yml'));
+        expect(requestPath).toBeDefined();
+        expect(emitted[requestPath!]).toContain('injected');
+
+        rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('leaves generated files unchanged when no matching override file exists', async () => {
+        const dir = join(tmpdir(), `ck-bruno-test-${Date.now()}`);
+        const overrideDir = join(dir, 'overrides');
+        const outDir = join(dir, 'out');
+        mkdirSync(overrideDir, { recursive: true });
+        mkdirSync(outDir, { recursive: true });
+
+        const emitted: Record<string, string> = {};
+        const ctx = {
+            rootDir: dir,
+            options: {},
+            emitFile(path: string, content: string) {
+                emitted[path] = content;
+            },
+        };
+
+        const pluginWithOverride = createBrunoPlugin({ output: 'out', overrideDir: 'overrides' }, dir);
+        const pluginWithout = createBrunoPlugin({ output: 'out' }, dir);
+        const root = opRoot([opRoute('/users', [opOperation('get')])]);
+        const inputs = { opRoots: [root], contractRoots: [], modelsWithInput: new Set<string>(), modelsWithOutput: new Set<string>() };
+
+        const emittedWith: Record<string, string> = {};
+        await pluginWithOverride.generateTargets!(inputs, { rootDir: dir, options: {}, emitFile: (p, c) => { emittedWith[p] = c; } });
+
+        const emittedWithout: Record<string, string> = {};
+        await pluginWithout.generateTargets!(inputs, { rootDir: dir, options: {}, emitFile: (p, c) => { emittedWithout[p] = c; } });
+
+        const requestPath = Object.keys(emittedWithout).find(p => p.endsWith('get-users.yml'))!;
+        expect(emittedWith[requestPath]).toBe(emittedWithout[requestPath]);
+
+        rmSync(dir, { recursive: true, force: true });
     });
 });

@@ -1,9 +1,10 @@
 import { resolve, basename, dirname } from 'node:path';
 import { existsSync, readFileSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
-import { generateOpenCollection, MANIFEST_FILENAME, parseManifest } from './codegen-bruno.js';
+import { generateOpenCollection, MANIFEST_FILENAME, parseManifest, mergePluginFile } from './codegen-bruno.js';
 import type { BrunoSecurityScheme } from './codegen-bruno.js';
 import type { ContractKitPlugin } from '@contractkit/core';
 
+/** Configuration accepted by the Bruno plugin, both via `contractkit.config.json` and `createBrunoPlugin`. */
 export interface BrunoPluginConfig {
     baseDir?: string;
     output?: string;
@@ -20,8 +21,17 @@ export interface BrunoPluginConfig {
      * benefit from full coverage. Set to `false` to omit internal ops.
      */
     includeInternal?: boolean;
+    /**
+     * Directory containing YAML override files, resolved relative to `rootDir`.
+     * The directory mirrors the generated output structure — a file at
+     * `<overrideDir>/payments/get-payment.yml` is deep-merged into the generated
+     * `payments/get-payment.yml`. Arrays in the override replace the generated
+     * array entirely. Files with no matching override are emitted unchanged.
+     */
+    overrideDir?: string;
 }
 
+/** Full plugin options shape read from `ctx.options` — extends {@link BrunoPluginConfig} with the `auth` block. */
 export interface BrunoPluginOptions extends BrunoPluginConfig {
     auth?: { defaultScheme: string; schemes?: Record<string, BrunoSecurityScheme> };
 }
@@ -39,6 +49,7 @@ const plugin: ContractKitPlugin = {
 
         cleanupTrackedFiles(outDir);
 
+        const overrideDirAbs = config.overrideDir ? resolve(ctx.rootDir, config.overrideDir) : undefined;
         const files = generateOpenCollection(opRoots, {
             collectionName,
             contractRoots,
@@ -47,7 +58,7 @@ const plugin: ContractKitPlugin = {
             includeInternal: config.includeInternal,
         });
         for (const { relativePath, content } of files) {
-            ctx.emitFile(resolve(outDir, relativePath), content);
+            ctx.emitFile(resolve(outDir, relativePath), applyDirOverride(relativePath, content, overrideDirAbs));
         }
     },
 };
@@ -56,6 +67,16 @@ export default plugin;
 
 // ─── Factory: for programmatic use with explicit config ────────────────────
 
+/**
+ * Creates a Bruno plugin instance with explicit configuration, for programmatic use.
+ *
+ * Prefer the default export when loading via `contractkit.config.json`. Use this
+ * factory when constructing the plugin in code (e.g. in tests or custom build scripts).
+ *
+ * @param config - Plugin configuration (output paths, feature flags, overrides).
+ * @param rootDir - Absolute path used to resolve relative paths in `config`.
+ * @param auth - Optional auth scheme configuration mirroring the `auth` key in plugin options.
+ */
 export function createBrunoPlugin(
     config: BrunoPluginConfig,
     rootDir: string,
@@ -71,6 +92,7 @@ export function createBrunoPlugin(
 
             cleanupTrackedFiles(outDir);
 
+            const overrideDirAbs = config.overrideDir ? resolve(rootDir, config.overrideDir) : undefined;
             const files = generateOpenCollection(opRoots, {
                 collectionName,
                 contractRoots,
@@ -78,10 +100,17 @@ export function createBrunoPlugin(
                 randomExamples: config.randomExamples ?? true,
             });
             for (const { relativePath, content } of files) {
-                ctx.emitFile(resolve(outDir, relativePath), content);
+                ctx.emitFile(resolve(outDir, relativePath), applyDirOverride(relativePath, content, overrideDirAbs));
             }
         },
     };
+}
+
+function applyDirOverride(relativePath: string, content: string, overrideDirAbs: string | undefined): string {
+    if (!overrideDirAbs || relativePath === MANIFEST_FILENAME) return content;
+    const overrideFile = resolve(overrideDirAbs, relativePath);
+    if (!existsSync(overrideFile)) return content;
+    return mergePluginFile(content, readFileSync(overrideFile, 'utf-8'));
 }
 
 /**

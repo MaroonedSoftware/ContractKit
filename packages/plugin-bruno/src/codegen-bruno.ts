@@ -11,7 +11,9 @@ import type {
 } from '@contractkit/core';
 import { resolveSecurity, resolveModifiers, SECURITY_NONE } from '@contractkit/core';
 import { basename } from 'path';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
+/** A single file produced by the Bruno codegen — a relative output path and its YAML content. */
 export interface OpenCollectionFile {
     relativePath: string;
     content: string;
@@ -28,6 +30,7 @@ export interface BrunoSecurityScheme {
     in?: string; // "header" | "query" (when type === "apiKey")
 }
 
+/** Auth configuration passed to the Bruno codegen; drives collection-level auth and per-operation auth blocks. */
 export interface BrunoAuthOptions {
     /** Name of the default scheme (from config.security.default) */
     defaultScheme?: string;
@@ -35,6 +38,7 @@ export interface BrunoAuthOptions {
     schemes?: Record<string, BrunoSecurityScheme>;
 }
 
+/** Options controlling what {@link generateOpenCollection} emits. */
 export interface OpenCollectionOptions {
     collectionName: string;
     contractRoots?: ContractRootNode[];
@@ -93,10 +97,12 @@ export function generateOpenCollection(roots: OpRootNode[], options: OpenCollect
                 if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
                 const requestName = op.name ?? route.path;
                 const fileName = op.name ? `${slugifyName(op.name)}.yml` : `${op.method}-${sanitizePath(route.path)}.yml`;
-                files.push({
-                    relativePath: `${requestDir}/${fileName}`,
-                    content: generateRequestFile(route, op, requestName, seq, modelMap, root, defaultScheme, randomExamples),
-                });
+                let content = generateRequestFile(route, op, requestName, seq, modelMap, root, defaultScheme, randomExamples);
+                const pluginOverride = op.pluginFiles?.['bruno'];
+                if (pluginOverride !== undefined) {
+                    content = mergePluginFile(content, pluginOverride);
+                }
+                files.push({ relativePath: `${requestDir}/${fileName}`, content });
                 seq++;
             }
         }
@@ -122,6 +128,46 @@ export function parseManifest(content: string): string[] {
         // fall through
     }
     return [];
+}
+
+// ─── Plugin file merge ─────────────────────────────────────────────────────
+
+function deepMerge(base: unknown, override: unknown): unknown {
+    if (
+        override !== null &&
+        typeof override === 'object' &&
+        !Array.isArray(override) &&
+        base !== null &&
+        typeof base === 'object' &&
+        !Array.isArray(base)
+    ) {
+        const result: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+        for (const [key, val] of Object.entries(override as Record<string, unknown>)) {
+            result[key] = deepMerge(result[key], val);
+        }
+        return result;
+    }
+    return override;
+}
+
+/**
+ * Deep-merges a YAML override string into a generated YAML string.
+ *
+ * Objects are merged recursively; arrays and scalars in the override replace the
+ * generated value entirely. If `pluginFileContent` is not a YAML mapping (e.g. it
+ * is a scalar or a list), the generated content is returned unchanged.
+ *
+ * @param generatedYaml - The YAML string produced by the Bruno codegen.
+ * @param pluginFileContent - The YAML override string to merge in.
+ * @returns The merged YAML string, or `generatedYaml` if the override is not a mapping.
+ */
+export function mergePluginFile(generatedYaml: string, pluginFileContent: string): string {
+    const overrideParsed = parseYaml(pluginFileContent);
+    if (overrideParsed === null || typeof overrideParsed !== 'object' || Array.isArray(overrideParsed)) {
+        return generatedYaml;
+    }
+    const merged = deepMerge(parseYaml(generatedYaml), overrideParsed);
+    return stringifyYaml(merged, { lineWidth: 0 });
 }
 
 // ─── File generators ───────────────────────────────────────────────────────

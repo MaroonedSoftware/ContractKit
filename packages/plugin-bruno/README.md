@@ -38,6 +38,8 @@ pnpm add @contractkit/contractkit-plugin-bruno
 | `output` | `string` | `"bruno-collection"` | Output directory name |
 | `collectionName` | `string` | basename of `rootDir` | Collection name shown in Bruno |
 | `randomExamples` | `boolean` | `true` | Use Bruno faker templates (`{{$randomUUID}}`, `{{$randomEmail}}`, etc.) for compatible scalar fields so each send produces fresh data. Set to `false` for stable, deterministic placeholders. |
+| `includeInternal` | `boolean` | `true` | Include operations marked `internal`. Set to `false` to omit them from the collection. |
+| `overrideDir` | `string` | — | Directory of YAML override files (relative to `rootDir`). Files mirror the generated output structure and are deep-merged at codegen time. See [Directory overrides](#directory-overrides). |
 | `auth.defaultScheme` | `string` | — | Key from `auth.schemes` to apply by default |
 | `auth.schemes` | `object` | — | Map of scheme name → security scheme definition |
 
@@ -61,6 +63,53 @@ bruno-collection/
 ```
 
 The output directory is fully replaced on each run — stale request files from removed operations are automatically cleaned up.
+
+## Per-operation overrides
+
+Add a `plugins` block to any operation in a `.ck` file to deep-merge a YAML file into the generated request:
+
+```
+post: {
+    plugins: {
+        bruno: "overrides/auth-token.yml"
+    }
+    response: { 200: AuthResponse }
+}
+```
+
+The file path is relative to the `.ck` source file. Its content is deep-merged into the generated request YAML — objects recurse, arrays replace entirely:
+
+```yaml
+# overrides/auth-token.yml
+runtime:
+  script:
+    req: |
+      bru.setVar("token", bru.getEnvVar("adminToken"));
+```
+
+## Directory overrides
+
+Set `overrideDir` to a directory that mirrors the generated output structure. Any file found there is deep-merged into the matching generated file:
+
+```
+bruno-overrides/
+├── opencollection.yml        # merged into collection root
+├── environments/
+│   └── local.yml             # merged into the Local environment
+└── payments/
+    └── get-payment.yml       # merged into that request file
+```
+
+```json
+{
+  "plugins": {
+    "@contractkit/contractkit-plugin-bruno": {
+      "output": "bruno-collection",
+      "overrideDir": "bruno-overrides"
+    }
+  }
+}
+```
 
 ## Programmatic use
 
