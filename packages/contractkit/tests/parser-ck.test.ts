@@ -1289,6 +1289,41 @@ operation /users: {
         });
     });
 
+    // ─── plugins block ───────────────────────────────────────────────
+
+    describe('plugins block', () => {
+        it('parses plugins block with a single entry', () => {
+            const { root } = parse('operation /auth/token: { post: { plugins: { bruno: "request-token.yml" } } }');
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.plugins).toEqual({ bruno: 'request-token.yml' });
+            expect(op.pluginFiles).toBeUndefined();
+        });
+
+        it('parses plugins block with multiple entries', () => {
+            const { root } = parse('operation /users: { post: { plugins: { bruno: "create-user.yml"\n  typescript: "stub.ts" } } }');
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.plugins).toEqual({ bruno: 'create-user.yml', typescript: 'stub.ts' });
+        });
+
+        it('parses empty plugins block', () => {
+            const { root } = parse('operation /users: { get: { plugins: {} } }');
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.plugins).toEqual({});
+        });
+
+        it('plugins block does not affect other fields', () => {
+            const { root } = parse('operation /users: { post: { plugins: { bruno: "stub.yml" }\n  response: { 201: } } }');
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.plugins).toEqual({ bruno: 'stub.yml' });
+            expect(op.responses[0]!.statusCode).toBe(201);
+        });
+
+        it('op without plugins block has undefined plugins', () => {
+            const { root } = parse('operation /users: { get: {} }');
+            expect(root.routes[0]!.operations[0]!.plugins).toBeUndefined();
+        });
+    });
+
     // ─── Comment descriptions ────────────────────────────────────────
 
     describe('comment descriptions', () => {

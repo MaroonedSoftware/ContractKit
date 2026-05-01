@@ -483,7 +483,7 @@ describe('generateOpenCollection', () => {
         expect(yml!.content).toContain('"name": ""');
     });
 
-    it('sets optional fields to null in expanded ref body', () => {
+    it('omits optional fields with no default from body', () => {
         const userModel = model('CreateUserInput', [
             field('name', scalarType('string')),
             field('nickname', scalarType('string'), { optional: true }),
@@ -495,7 +495,7 @@ describe('generateOpenCollection', () => {
         const files = generateOpenCollection([root], { collectionName: 'API', contractRoots: [contractRoot([userModel])] });
         const yml = files.find(f => f.relativePath === 'users/post-users.yml');
         expect(yml!.content).toContain('"name": ""');
-        expect(yml!.content).toContain('"nickname": null');
+        expect(yml!.content).not.toContain('"nickname"');
     });
 
     it('expands inherited fields from base model in ref body', () => {

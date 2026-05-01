@@ -267,6 +267,10 @@ export interface OpOperationNode {
     security?: SecurityNode; // overrides config default; "none" = explicitly public
     /** Explicit modifiers. undefined = inherit from route; [] or array = override. */
     modifiers?: RouteModifier[];
+    /** Raw plugin values from the grammar, e.g. `{ bruno: "request-token.yml" }`. */
+    plugins?: Record<string, string>;
+    /** Resolved plugin file contents keyed by plugin name. Populated by the CLI resolver; never set by the parser. */
+    pluginFiles?: Record<string, string>;
     description?: string;
     loc: SourceLocation;
 }

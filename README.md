@@ -1056,6 +1056,28 @@ The `signature` value must match an HMAC scheme name in the config. The generate
 
 ---
 
+### Per-Operation Plugin Files
+
+An operation can attach external files for individual plugins to consume. Each entry maps a plugin name to a path relative to the contract's `.ck` file:
+
+```
+post: {
+    plugins: {
+        bruno: "request-token.yml"
+    }
+    request: {
+        application/json: AuthRequest
+    }
+    response: {
+        200: { application/json: AuthResponse }
+    }
+}
+```
+
+The CLI resolves each path before plugins run and exposes the file content on the operation node as `op.pluginFiles[name]`. Missing files emit a warning and skip that entry. This is the escape hatch for cases where a plugin's generated output needs to be replaced or augmented with hand-authored content (for example, a Bruno request that needs a post-response script to extract an auth token).
+
+---
+
 ## SDK Generation
 
 The TypeScript SDK is produced by the `sdk` sub-config of `@contractkit/plugin-typescript`. Each operation `.ck` file becomes a client class; an aggregator class, barrel exports, and a shared `sdk-options.ts` runtime helper are emitted automatically.

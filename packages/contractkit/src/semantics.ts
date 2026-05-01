@@ -795,6 +795,7 @@ export function createSemantics(grammar: Grammar) {
                 request?: OpRequestNode;
                 responses: OpResponseNode[];
                 security?: SecurityNode;
+                plugins?: Record<string, string>;
             };
 
             const op: OpOperationNode = {
@@ -826,6 +827,7 @@ export function createSemantics(grammar: Grammar) {
             let request: OpRequestNode | undefined;
             let responses: OpResponseNode[] = [];
             let security: SecurityNode | undefined;
+            let plugins: Record<string, string> | undefined;
 
             for (let i = 0; i < items.numChildren; i++) {
                 const item = items.child(i).toAst(file, diag);
@@ -865,10 +867,13 @@ export function createSemantics(grammar: Grammar) {
                     case 'security':
                         security = item.value;
                         break;
+                    case 'plugins':
+                        plugins = item.value;
+                        break;
                 }
             }
 
-            return { name, service, sdk, signature, signatureDescription, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, security };
+            return { name, service, sdk, signature, signatureDescription, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, security, plugins };
         },
 
         OperationBodyItem(child) {
@@ -1105,6 +1110,24 @@ export function createSemantics(grammar: Grammar) {
             const raw = valueNode.sourceString;
             const value = raw.startsWith('"') || raw.startsWith("'") ? raw.slice(1, -1) : raw;
             return { _type: 'signatureField', value };
+        },
+
+        // ─── Plugins ─────────────────────────────────────────────────
+
+        PluginsDecl(_pluginsKw, _colon, _lb, entries, _rb) {
+            const result: Record<string, string> = {};
+            for (let i = 0; i < entries.numChildren; i++) {
+                const entry = entries.child(i).toAst(this.args.file, this.args.diag) as { key: string; value: string };
+                result[entry.key] = entry.value;
+            }
+            return { _type: 'plugins', value: result };
+        },
+
+        PluginEntry(identNode, _colon, stringNode) {
+            const key = identNode.sourceString;
+            const raw = stringNode.sourceString;
+            const value = raw.startsWith('"') || raw.startsWith("'") ? raw.slice(1, -1) : raw;
+            return { key, value };
         },
 
         // ─── Shared lexical rules ─────────────────────────────────────

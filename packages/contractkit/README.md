@@ -110,6 +110,29 @@ export function createMyPlugin(options: MyOptions = {}): ContractKitPlugin {
 
 `PluginContext` exposes `options`, `rootDir`, `emitFile`, `emitFileIfChanged`, and the `Diagnostics` collector.
 
+### Per-operation plugin files
+
+An operation can declare `plugins: { name: "path.yml" }` in the source. The CLI resolves each path relative to the operation's `.ck` file and stores the content on the AST as `op.pluginFiles[name]` before plugins run. A plugin keyed by its own `name` can read its entry to override or augment generated output:
+
+```typescript
+async generateTargets(roots, ctx) {
+    for (const root of roots) {
+        for (const route of root.routes) {
+            for (const op of route.operations) {
+                const override = op.pluginFiles?.['my-plugin'];
+                if (override) {
+                    ctx.emitFile(targetPath(op), override);
+                    continue;
+                }
+                // ... normal generation
+            }
+        }
+    }
+}
+```
+
+The raw paths from the grammar are still available on `op.plugins` for round-trip use cases (e.g. the prettier plugin); `op.pluginFiles` is set only by the CLI resolver, never by the parser.
+
 ## Programmatic parsing
 
 ```typescript

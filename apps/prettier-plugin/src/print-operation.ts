@@ -118,6 +118,13 @@ function printOperation(op: OpOperationNode): string[] {
         lines.push(`${I2}signature: ${formatSignatureValue(op.signature)}${comment}`);
     }
     if (op.security !== undefined) lines.push(...printSecurity(op.security));
+    if (op.plugins && Object.keys(op.plugins).length > 0) {
+        lines.push(`${I2}plugins: {`);
+        for (const [key, val] of Object.entries(op.plugins)) {
+            lines.push(`${I3}${key}: "${val.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+        }
+        lines.push(`${I2}}`);
+    }
     if (op.query !== undefined) lines.push(...printQueryOrHeaders('query', op.query, op.queryMode));
     if (op.requestHeadersOptOut) {
         lines.push(`${I2}headers: none`);

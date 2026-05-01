@@ -181,6 +181,51 @@ describe('printCk — security', () => {
     });
 });
 
+// ─── plugins block printing ───────────────────────────────────────────────────
+
+describe('printCk — plugins block', () => {
+    it('prints plugins block with single entry', () => {
+        const ast = makeRoot([makeRoute('/auth/token', [makeOp('post', { plugins: { bruno: 'request-token.yml' } })])]);
+        const out = printCk(ast);
+        expect(out).toContain('        plugins: {');
+        expect(out).toContain('            bruno: "request-token.yml"');
+        expect(out).toContain('        }');
+    });
+
+    it('prints plugins block with multiple entries', () => {
+        const ast = makeRoot([makeRoute('/users', [makeOp('post', { plugins: { bruno: 'create-user.yml', typescript: 'stub.ts' } })])]);
+        const out = printCk(ast);
+        expect(out).toContain('            bruno: "create-user.yml"');
+        expect(out).toContain('            typescript: "stub.ts"');
+    });
+
+    it('omits plugins block when plugins is undefined', () => {
+        const ast = makeRoot([makeRoute('/users', [makeOp('get')])]);
+        expect(printCk(ast)).not.toContain('plugins');
+    });
+
+    it('omits plugins block when plugins is empty object', () => {
+        const ast = makeRoot([makeRoute('/users', [makeOp('get', { plugins: {} })])]);
+        expect(printCk(ast)).not.toContain('plugins');
+    });
+
+    it('plugins block round-trips via parse', () => {
+        const src = `operation /auth/token: {
+    post: {
+        plugins: {
+            bruno: "request-token.yml"
+        }
+    }
+}
+`;
+        const diag = new DiagnosticCollector();
+        const ast = parseCk(src, 'test.ck', diag);
+        expect(diag.hasErrors()).toBe(false);
+        const out = printCk(ast);
+        expect(out).toContain('            bruno: "request-token.yml"');
+    });
+});
+
 // ─── Query / headers with descriptions ───────────────────────────────────────
 
 describe('printCk — query and headers descriptions', () => {

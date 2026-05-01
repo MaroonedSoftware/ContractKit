@@ -190,6 +190,7 @@ Contract {
                     | RequestBlock
                     | ResponseBlock
                     | SecurityBlock
+                    | PluginsDecl
 
   // ─── Service & SDK ──────────────────────────────────────────────
 
@@ -232,6 +233,11 @@ Contract {
 
   ResponseHeaderField = identifier "?"? ":" TypeExpression comment?
 
+  // ─── Plugins ────────────────────────────────────────────────────
+
+  PluginsDecl = pluginsKw ":" "{" PluginEntry* "}"
+  PluginEntry  = identifier ":" stringLit
+
   // ─── Security ───────────────────────────────────────────────────
 
   SecurityBlock = securityKw ":" SecurityBody
@@ -267,6 +273,7 @@ Contract {
   requestKw = "request" ~identPart
   responseKw = "response" ~identPart
   securityKw = "security" ~identPart
+  pluginsKw = "plugins" ~identPart
   noneKw = "none" ~identPart
   rolesKw = "roles" ~identPart
   deprecatedKw = "deprecated" ~identPart

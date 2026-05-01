@@ -391,10 +391,41 @@
                     "include": "#headers-block"
                 },
                 {
+                    "include": "#plugins-decl"
+                },
+                {
                     "include": "#request-block"
                 },
                 {
                     "include": "#response-block"
+                }
+            ]
+        },
+        "plugins-decl": {
+            "begin": "\\b(plugins)\\s*(:)\\s*(\\{)",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.plugins.ck"
+                },
+                "2": {
+                    "name": "punctuation.separator.colon.ck"
+                },
+                "3": {
+                    "name": "punctuation.definition.block.begin.ck"
+                }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": {
+                    "name": "punctuation.definition.block.end.ck"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#comment"
+                },
+                {
+                    "include": "#meta-entry"
                 }
             ]
         },
@@ -524,7 +555,7 @@
                     "name": "keyword.control.query.ck"
                 }
             },
-            "end": "(?<=\\})|(?=\\b(?:service|sdk|signature|security|query|headers|request|response)\\b)|(?=\\})",
+            "end": "(?<=\\})|(?=\\b(?:service|sdk|signature|security|query|headers|request|response|plugins)\\b)|(?=\\})",
             "patterns": [
                 {
                     "include": "#comment"
@@ -547,7 +578,7 @@
                     "name": "keyword.control.headers.ck"
                 }
             },
-            "end": "(?<=\\})|(?=\\b(?:service|sdk|signature|security|query|headers|request|response)\\b)|(?=\\})",
+            "end": "(?<=\\})|(?=\\b(?:service|sdk|signature|security|query|headers|request|response|plugins)\\b)|(?=\\})",
             "patterns": [
                 {
                     "include": "#comment"

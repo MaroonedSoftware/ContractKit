@@ -23,6 +23,7 @@ import type { ContractRootNode, OpRootNode } from '@contractkit/core';
 import { loadConfig, mergeConfig } from './config.js';
 import { loadCache, saveCache, computeHash } from './cache.js';
 import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist } from './plugin.js';
+import { resolvePluginFiles } from './resolve-plugin-files.js';
 import type { FileHashMap } from './cache.js';
 
 // ─── Arg parsing ───────────────────────────────────────────────────────────
@@ -206,6 +207,9 @@ async function main() {
             if (op.routes.length > 0) allOps.push(op);
         }
 
+        // ── Resolve plugin file references ────────────────────────────
+        resolvePluginFiles(allOps, resolvedBase, diag);
+
         // ── Compute cross-file semantics ───────────────────────────────
         // modelsWithInput: which model names need an Input variant (have readonly/writeonly
         // fields, or transitively reference models that do). Used by all code generators.
@@ -281,9 +285,8 @@ async function main() {
             }
         }
 
-        diag.report();
-
         if (diag.hasErrors()) {
+            diag.report();
             console.error('\nCompilation failed.');
             process.exitCode = 1;
             return;
@@ -307,6 +310,10 @@ async function main() {
         if (config.cache.enabled) {
             saveCache(resolvedBase, newCache, config.cache.filename);
         }
+
+        // Report all collected warnings/errors after file writes so they
+        // appear at the bottom of the output and are easy to spot.
+        diag.report();
 
         console.log(`\nCompiled ${results.length} file(s).`);
     };

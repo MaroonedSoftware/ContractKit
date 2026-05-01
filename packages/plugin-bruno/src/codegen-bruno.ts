@@ -540,16 +540,14 @@ function modelToExampleObject(model: ModelNode, modelMap: Map<string, ModelNode>
     return fieldsToExampleObject(resolveModelFields(model, modelMap), modelMap, randomExamples);
 }
 
-/** Build an example object from a list of FieldNodes. Excludes readonly; uses defaults when available, null for optional fields without one. */
+/** Build an example object from a list of FieldNodes. Excludes readonly fields; uses defaults when available; omits optional fields that have no default so they don't appear in the JSON output. */
 function fieldsToExampleObject(fields: FieldNode[], modelMap: Map<string, ModelNode>, randomExamples = false): Record<string, unknown> {
     const obj: Record<string, unknown> = {};
     for (const field of fields) {
         if (field.visibility === 'readonly') continue;
         if (field.default !== undefined) {
             obj[field.name] = field.default;
-        } else if (field.optional) {
-            obj[field.name] = null;
-        } else {
+        } else if (!field.optional) {
             obj[field.name] = typeToExampleValue(field.type, modelMap, randomExamples);
         }
     }
