@@ -63,7 +63,7 @@ Create `contractkit.config.json` at your project root:
 | `cache` | `boolean \| string` | Enable incremental compilation cache. Pass a string to use a custom cache filename. Default: `false`. |
 | `prettier` | `boolean` | Format generated TypeScript files with the project's local prettier. Default: `false`. |
 | `patterns` | `string[]` | Glob patterns for `.ck` files to compile, relative to `rootDir`. |
-| `plugins` | `object` | Map of plugin package name → options. The CLI loads each key as a plugin and passes its value to the plugin as `ctx.options`. Any `keys: { ... }` entries inside a plugin's options are also merged into a workspace-wide fallback map for `{{var}}` substitution in `.ck` files (file-local `options.keys` still wins). |
+| `plugins` | `object` | Map of plugin package name → options. The CLI loads each key as a plugin and passes its value to the plugin as `ctx.options`. Any `keys: { ... }` entries inside a plugin's options are also merged into a workspace-wide fallback map for `{{var}}` substitution in `.ck` files (file-local `options.keys` still wins). The values themselves can reference the built-ins `{{rootDir}}` and `{{configDir}}` for the resolved config paths. |
 
 ## Incremental cache
 

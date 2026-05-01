@@ -312,10 +312,12 @@ Plugin-config fallback example:
 ```json
 "plugins": {
     "@contractkit/plugin-bruno": {
-        "keys": { "bruno": "../../bruno" }
+        "keys": { "bruno": "{{rootDir}}/apps/api/contracts/bruno" }
     }
 }
 ```
+
+Values inside plugin-config `keys` can reference the built-in variables `{{rootDir}}` and `{{configDir}}`, which the CLI substitutes at config load time with the resolved absolute paths. Unknown built-ins emit a `console.warn` and substitute `undefined`.
 
 ### Scalar types worth knowing
 

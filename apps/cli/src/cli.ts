@@ -82,7 +82,27 @@ function parseArgs(argv: string[]): CliArgs {
 
 // ─── Fallback keys for {{var}} substitution ────────────────────────────────
 
-function collectFallbackKeys(entries: PluginEntry[]): Record<string, string> {
+/**
+ * Built-in variables available inside plugin-config `keys` values. These let a
+ * user write `"{{rootDir}}/path"` in `contractkit.config.json` and have the
+ * absolute resolved root substituted in at load time.
+ */
+const FALLBACK_BUILTINS_RE = /\\\{\{(\w+)\}\}|\{\{(\w+)\}\}/g;
+
+function substituteBuiltins(input: string, builtins: Record<string, string>, onMissing: (name: string) => void): string {
+    if (!input.includes('{{')) return input;
+    return input.replace(FALLBACK_BUILTINS_RE, (_match, escapedName: string | undefined, varName: string | undefined) => {
+        if (escapedName !== undefined) return `{{${escapedName}}}`;
+        const value = builtins[varName!];
+        if (value === undefined) {
+            onMissing(varName!);
+            return 'undefined';
+        }
+        return value;
+    });
+}
+
+function collectFallbackKeys(entries: PluginEntry[], builtins: Record<string, string>): Record<string, string> {
     const merged: Record<string, string> = {};
     for (const entry of entries) {
         const keys = entry.options?.['keys'];
@@ -96,7 +116,9 @@ function collectFallbackKeys(entries: PluginEntry[]): Record<string, string> {
                 console.warn(`  ⚠  [plugin:${entry.plugin}] 'keys.${name}' must be a string; ignoring.`);
                 continue;
             }
-            merged[name] = value;
+            merged[name] = substituteBuiltins(value, builtins, missing => {
+                console.warn(`  ⚠  [plugin:${entry.plugin}] 'keys.${name}' references unknown built-in '{{${missing}}}'.`);
+            });
         }
     }
     return merged;
@@ -171,8 +193,12 @@ async function main() {
 
     // Merge `keys` from each plugin entry's options into a single workspace-wide fallback
     // map for `{{var}}` substitution. File-local `options { keys }` always wins; this map
-    // catches anything that isn't defined per-file.
-    const fallbackKeys = collectFallbackKeys(config.plugins);
+    // catches anything that isn't defined per-file. Built-in variables (`rootDir`,
+    // `configDir`) can be referenced inside the values themselves.
+    const fallbackKeys = collectFallbackKeys(config.plugins, {
+        rootDir: config.rootDir,
+        configDir: config.configDir,
+    });
 
     if (config.patterns.length === 0) {
         printHelp();
