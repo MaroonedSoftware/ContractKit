@@ -16,11 +16,12 @@ import {
     validateRefs,
     validateInheritance,
     applyOptionsDefaults,
+    applyVariableSubstitution,
     computeModelsWithInput,
     computeModelsWithOutput,
 } from '@contractkit/core';
 import type { ContractRootNode, OpRootNode } from '@contractkit/core';
-import { loadConfig, mergeConfig } from './config.js';
+import { loadConfig, mergeConfig, type PluginEntry } from './config.js';
 import { loadCache, saveCache, computeHash } from './cache.js';
 import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist } from './plugin.js';
 import { resolvePluginFiles } from './resolve-plugin-files.js';
@@ -77,6 +78,28 @@ function parseArgs(argv: string[]): CliArgs {
     }
 
     return { config, watch, force, help };
+}
+
+// ─── Fallback keys for {{var}} substitution ────────────────────────────────
+
+function collectFallbackKeys(entries: PluginEntry[]): Record<string, string> {
+    const merged: Record<string, string> = {};
+    for (const entry of entries) {
+        const keys = entry.options?.['keys'];
+        if (keys === undefined) continue;
+        if (typeof keys !== 'object' || keys === null || Array.isArray(keys)) {
+            console.warn(`  ⚠  [plugin:${entry.plugin}] 'keys' must be an object of string→string; ignoring.`);
+            continue;
+        }
+        for (const [name, value] of Object.entries(keys)) {
+            if (typeof value !== 'string') {
+                console.warn(`  ⚠  [plugin:${entry.plugin}] 'keys.${name}' must be a string; ignoring.`);
+                continue;
+            }
+            merged[name] = value;
+        }
+    }
+    return merged;
 }
 
 // ─── File resolution ───────────────────────────────────────────────────────
@@ -146,6 +169,11 @@ async function main() {
     const config = mergeConfig(fileConfig, cliArgs, configDir);
     const plugins = await loadPlugins(config.plugins, config.configDir);
 
+    // Merge `keys` from each plugin entry's options into a single workspace-wide fallback
+    // map for `{{var}}` substitution. File-local `options { keys }` always wins; this map
+    // catches anything that isn't defined per-file.
+    const fallbackKeys = collectFallbackKeys(config.plugins);
+
     if (config.patterns.length === 0) {
         printHelp();
         process.exit(1);
@@ -182,6 +210,7 @@ async function main() {
             // Merge options-level header globals into each operation before plugins run,
             // so transform/validate hooks see the fully-resolved AST.
             applyOptionsDefaults(ckAst, diag);
+            applyVariableSubstitution(ckAst, diag, fallbackKeys);
 
             // Plugin: validate + transform hooks (run before decompose and cross-file validation)
             for (const { plugin, entry } of plugins) {

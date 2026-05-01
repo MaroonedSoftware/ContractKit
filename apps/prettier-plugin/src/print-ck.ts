@@ -8,6 +8,18 @@ export const DEFAULT_PRINT_WIDTH = 80;
 
 // ─── Options block ──────────────────────────────────────────────────────────
 
+/**
+ * Quote an options-block value if it isn't a plain identifier.
+ *
+ * Plain identifiers (starts with letter/underscore/dollar, rest are
+ * alphanumeric/underscore/dollar/hyphen/dot) are left bare. Everything
+ * else — paths with slashes, values starting with `#`, values with spaces,
+ * etc. — is double-quoted so the round-trip parse is unambiguous.
+ */
+function quoteOptionsValue(value: string): string {
+    return /^[a-zA-Z_$][a-zA-Z0-9_$\-.]*$/.test(value) ? value : `"${value}"`;
+}
+
 function printOptionsBlock(ast: CkRootNode): string | null {
     const hasMeta = Object.keys(ast.meta).length > 0;
     const hasServices = Object.keys(ast.services).length > 0;
@@ -22,8 +34,7 @@ function printOptionsBlock(ast: CkRootNode): string | null {
     if (hasMeta) {
         lines.push(`${INDENT}keys: {`);
         for (const [key, value] of Object.entries(ast.meta)) {
-            const v = value.startsWith('#') || value.includes(' ') ? `"${value}"` : value;
-            lines.push(`${INDENT}${INDENT}${key}: ${v}`);
+            lines.push(`${INDENT}${INDENT}${key}: ${quoteOptionsValue(value)}`);
         }
         lines.push(`${INDENT}}`);
     }
@@ -31,8 +42,7 @@ function printOptionsBlock(ast: CkRootNode): string | null {
     if (hasServices) {
         lines.push(`${INDENT}services: {`);
         for (const [key, value] of Object.entries(ast.services)) {
-            const v = value.startsWith('#') || value.includes(' ') ? `"${value}"` : value;
-            lines.push(`${INDENT}${INDENT}${key}: ${v}`);
+            lines.push(`${INDENT}${INDENT}${key}: ${quoteOptionsValue(value)}`);
         }
         lines.push(`${INDENT}}`);
     }
@@ -69,6 +79,14 @@ function printOptionsHeaderScope(keyword: 'request' | 'response', headers: OpRes
 
 // ─── CK file printer ───────────────────────────────────────────────────────
 
+/**
+ * Render a parsed `.ck` AST back to source. Output is byte-identical on
+ * round-trip when the input is already canonically formatted: options block
+ * first, then contracts, then operations, separated by blank lines.
+ *
+ * `printWidth` is forwarded to per-model printing for line wrapping inside
+ * inline-object types.
+ */
 export function printCk(ast: CkRootNode, printWidth: number = DEFAULT_PRINT_WIDTH): string {
     const parts: string[] = [];
 

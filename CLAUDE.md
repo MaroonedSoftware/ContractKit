@@ -292,6 +292,31 @@ A file's `options` block can declare `request: { headers: {...} }` and `response
 
 Asymmetry to know about: TS server `ctx.set()` emission and TS SDK return shape only honor headers on the **primary response** (the first response with a body, fallback to first response). OpenAPI and Markdown iterate every status code, so options-level response headers fully surface there. Treat global response headers as a **spec/docs feature** — runtime emission for non-primary statuses still requires inlining the header on that status.
 
+### Variable substitution
+
+`{{name}}` references inside any string in a `.ck` file are expanded at compile time. Lookup order:
+
+1. The file's `options { keys: { ... } }` block (`root.meta`).
+2. A workspace-wide fallback collected by the CLI from each plugin entry's `options.keys` in `contractkit.config.json`.
+
+Behavior:
+
+- Unknown variable → emits the literal string `undefined` and a warning (`Unknown variable '{{name}}'`).
+- `\{{name}}` → literal `{{name}}` (the `\` escapes the substitution; no warning).
+- Substitution applies to **every** string field in the AST except `root.meta` itself (keys are not recursively expanded).
+
+The pass lives in `apply-variable-substitution.ts` and runs in the CLI between `parseCk` and `decomposeCk`, after `applyOptionsDefaults`. It does **not** run inside `parseCk` so the prettier plugin sees the un-substituted source form and can round-trip the file.
+
+Plugin-config fallback example:
+
+```json
+"plugins": {
+    "@contractkit/plugin-bruno": {
+        "keys": { "bruno": "../../bruno" }
+    }
+}
+```
+
 ### Scalar types worth knowing
 
 - `datetime` → Luxon `DateTime`

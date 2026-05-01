@@ -39,7 +39,6 @@ pnpm add @contractkit/contractkit-plugin-bruno
 | `collectionName` | `string` | basename of `rootDir` | Collection name shown in Bruno |
 | `randomExamples` | `boolean` | `true` | Use Bruno faker templates (`{{$randomUUID}}`, `{{$randomEmail}}`, etc.) for compatible scalar fields so each send produces fresh data. Set to `false` for stable, deterministic placeholders. |
 | `includeInternal` | `boolean` | `true` | Include operations marked `internal`. Set to `false` to omit them from the collection. |
-| `overrideDir` | `string` | — | Directory of YAML override files (relative to `rootDir`). Files mirror the generated output structure and are deep-merged at codegen time. See [Directory overrides](#directory-overrides). |
 | `auth.defaultScheme` | `string` | — | Key from `auth.schemes` to apply by default |
 | `auth.schemes` | `object` | — | Map of scheme name → security scheme definition |
 
@@ -87,29 +86,22 @@ runtime:
       bru.setVar("token", bru.getEnvVar("adminToken"));
 ```
 
-## Directory overrides
-
-Set `overrideDir` to a directory that mirrors the generated output structure. Any file found there is deep-merged into the matching generated file:
+Authoring tip: combine per-operation `plugins.bruno` paths with `{{var}}` substitution to factor out a shared override directory:
 
 ```
-bruno-overrides/
-├── opencollection.yml        # merged into collection root
-├── environments/
-│   └── local.yml             # merged into the Local environment
-└── payments/
-    └── get-payment.yml       # merged into that request file
-```
+options {
+    keys: { bruno: "../../bruno-overrides" }
+}
 
-```json
-{
-  "plugins": {
-    "@contractkit/contractkit-plugin-bruno": {
-      "output": "bruno-collection",
-      "overrideDir": "bruno-overrides"
+operation /payments/{id}: {
+    get: {
+        plugins: { bruno: "{{bruno}}/payments/get-payment.yml" }
+        response: { 200: { application/json: Payment } }
     }
-  }
 }
 ```
+
+The `{{bruno}}` reference can also be supplied workspace-wide via the plugin's `keys` config in `contractkit.config.json`.
 
 ## Programmatic use
 

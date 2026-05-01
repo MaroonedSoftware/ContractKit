@@ -649,3 +649,67 @@ operation /users/{slug}: {
         expect(roundTrip(source)).toBe(source);
     });
 });
+
+describe('printCk — options keys and services quoting', () => {
+    function roundTrip(source: string): string {
+        const diag = new DiagnosticCollector();
+        const ast = parseCk(source, 'test.ck', diag);
+        expect(diag.hasErrors()).toBe(false);
+        return printCk(ast);
+    }
+
+    it('leaves simple identifier keys values unquoted', () => {
+        const source = `\
+options {
+    keys: {
+        area: payments
+    }
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+
+    it('preserves quotes on path-like values containing slashes', () => {
+        const source = `\
+options {
+    keys: {
+        bruno: "../../bruno/"
+    }
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+
+    it('quotes values that start with a dot', () => {
+        const source = `\
+options {
+    keys: {
+        path: "../relative"
+    }
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+
+    it('preserves quotes on service paths starting with #', () => {
+        const source = `\
+options {
+    services: {
+        AuthService: "#src/modules/auth/auth.service.js"
+    }
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+
+    it('leaves plain identifier service names unquoted', () => {
+        const source = `\
+options {
+    services: {
+        AuthService: authService
+    }
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+});

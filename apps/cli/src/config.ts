@@ -6,7 +6,13 @@ import { homedir } from 'node:os';
 export interface PluginEntry {
     /** npm package name or local path relative to contractkit.config.json */
     plugin: string;
-    /** Plugin-specific options passed as ctx.options */
+    /**
+     * Plugin-specific options passed as ctx.options.
+     *
+     * One reserved key: `keys?: Record<string, string>`. Entries are merged across all plugin
+     * entries into a workspace-wide fallback map for `{{var}}` substitution in `.ck` files.
+     * A file's `options { keys }` block still wins over this fallback when both define a name.
+     */
     options?: Record<string, unknown>;
 }
 

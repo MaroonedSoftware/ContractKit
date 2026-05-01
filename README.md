@@ -233,11 +233,34 @@ options {
 }
 ```
 
-- **`keys`** — arbitrary key/value pairs attached to the file's metadata (e.g. `area` is used for grouping in generated docs)
+- **`keys`** — arbitrary key/value pairs attached to the file's metadata (e.g. `area` is used for grouping in generated docs). Any key can also be referenced from any string in the file as `{{name}}`; see [Variable substitution](#variable-substitution).
 - **`services`** — maps service identifiers to import paths; used in `service:` bindings within operations. Paths starting with `#` are resolved as package-relative imports.
 - **`request: { headers }`** — request headers applied to every operation in the file. Op-level headers with the same name override; an operation can opt out entirely with `headers: none`. A name collision with a path parameter raises an error.
 - **`response: { headers }`** — response headers applied to every status code on every operation. Per-status override is `headers: { same-name: <type> }`; per-status opt-out is `headers: none`. Note: OpenAPI and Markdown reflect these on every status; the TS server (`ctx.set`) and SDK return shape only emit headers on the primary response (first body-bearing response), matching existing inline-headers behavior.
 - **`security`** — file-level default security applied to all operations unless overridden at the route or operation level. Accepts the same syntax as operation-level `security:` blocks.
+
+#### Variable substitution
+
+Any string in a `.ck` file can reference a value from `options.keys` with `{{name}}`:
+
+```
+options {
+    keys: { bruno: "../../bruno" }
+}
+
+operation /auth/token: {
+    post: {
+        plugins: { bruno: "{{bruno}}/authentication/request.token.yml" }
+        response: { 201: { application/json: AuthenticationToken } }
+    }
+}
+```
+
+Behavior:
+
+- `{{name}}` resolves to `options.keys[name]` first, then to a workspace-wide fallback collected by the CLI from each plugin's `keys` config in `contractkit.config.json`. If neither layer defines the name, the literal string `undefined` is emitted and a warning is raised.
+- `\{{name}}` escapes the substitution; the literal characters `{{name}}` are emitted with no warning.
+- Substitution applies to every string field in the AST except `options.keys` itself — keys are not recursively expanded.
 
 ---
 

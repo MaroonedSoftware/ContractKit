@@ -37,6 +37,7 @@ import {
 | `parseCk(source, file, diag)` | Parse a `.ck` source string into a typed AST. Errors and warnings are collected on the supplied `Diagnostics` instance. |
 | `Diagnostics` | Mutable error/warning collector passed through every parsing and validation pass. |
 | `applyOptionsDefaults(root)` | Normalization pass that merges file-level `options { request/response: { headers } }` into each operation. Run after `parseCk`, before downstream consumers. |
+| `applyVariableSubstitution(root, diag, fallbackKeys?)` | Normalization pass that expands `{{name}}` references in every string field of the AST using `root.meta` first, then the optional `fallbackKeys` map. Run after `applyOptionsDefaults`. |
 | `validateRefs(roots)` | Cross-file type-reference validation. Warns when a model is referenced but not declared anywhere. |
 | `validateInheritance(roots)` | Multi-base inheritance validation — cross-base conflicts, `override` requirement, cycle detection. |
 | `validateOperation(route, root)` | Validates an operation against config constraints (path-param coverage, service references, signature schemes). |

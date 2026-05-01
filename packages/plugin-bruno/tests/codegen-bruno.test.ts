@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { generateOpenCollection, sanitizePath, MANIFEST_FILENAME, parseManifest, mergePluginFile } from '../src/codegen-bruno.js';
-import { createBrunoPlugin } from '../src/index.js';
 import {
     opRoot,
     opRoute,
@@ -1160,66 +1156,3 @@ describe('mergePluginFile', () => {
     });
 });
 
-describe('overrideDir', () => {
-    it('merges a file from overrideDir into the matching generated file', async () => {
-        const dir = join(tmpdir(), `ck-bruno-test-${Date.now()}`);
-        const overrideDir = join(dir, 'overrides');
-        const outDir = join(dir, 'out');
-        mkdirSync(join(overrideDir, 'users'), { recursive: true });
-        mkdirSync(outDir, { recursive: true });
-
-        writeFileSync(join(overrideDir, 'users', 'get-users.yml'), 'runtime:\n  script:\n    req: |\n      console.log("injected");\n');
-
-        const emitted: Record<string, string> = {};
-        const ctx = {
-            rootDir: dir,
-            options: {},
-            emitFile(path: string, content: string) {
-                emitted[path] = content;
-            },
-        };
-
-        const plugin = createBrunoPlugin({ output: 'out', overrideDir: 'overrides' }, dir);
-        const root = opRoot([opRoute('/users', [opOperation('get')])]);
-        await plugin.generateTargets!({ opRoots: [root], contractRoots: [], modelsWithInput: new Set(), modelsWithOutput: new Set() }, ctx);
-
-        const requestPath = Object.keys(emitted).find(p => p.endsWith('get-users.yml'));
-        expect(requestPath).toBeDefined();
-        expect(emitted[requestPath!]).toContain('injected');
-
-        rmSync(dir, { recursive: true, force: true });
-    });
-
-    it('leaves generated files unchanged when no matching override file exists', async () => {
-        const dir = join(tmpdir(), `ck-bruno-test-${Date.now()}`);
-        const overrideDir = join(dir, 'overrides');
-        const outDir = join(dir, 'out');
-        mkdirSync(overrideDir, { recursive: true });
-        mkdirSync(outDir, { recursive: true });
-
-        const emitted: Record<string, string> = {};
-        const ctx = {
-            rootDir: dir,
-            options: {},
-            emitFile(path: string, content: string) {
-                emitted[path] = content;
-            },
-        };
-
-        const pluginWithOverride = createBrunoPlugin({ output: 'out', overrideDir: 'overrides' }, dir);
-        const pluginWithout = createBrunoPlugin({ output: 'out' }, dir);
-        const root = opRoot([opRoute('/users', [opOperation('get')])]);
-        const inputs = { opRoots: [root], contractRoots: [], modelsWithInput: new Set<string>(), modelsWithOutput: new Set<string>() };
-
-        const emittedWith: Record<string, string> = {};
-        await pluginWithOverride.generateTargets!(inputs, { rootDir: dir, options: {}, emitFile: (p, c) => { emittedWith[p] = c; } });
-
-        const emittedWithout: Record<string, string> = {};
-        await pluginWithout.generateTargets!(inputs, { rootDir: dir, options: {}, emitFile: (p, c) => { emittedWithout[p] = c; } });
-
-        const requestPath = Object.keys(emittedWithout).find(p => p.endsWith('get-users.yml'))!;
-        expect(emittedWith[requestPath]).toBe(emittedWithout[requestPath]);
-
-        rmSync(dir, { recursive: true, force: true });
-    });
-});
