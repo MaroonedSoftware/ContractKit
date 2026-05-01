@@ -1,5 +1,16 @@
 # @contractkit/prettier-plugin-contractkit
 
+## 0.9.1
+
+### Patch Changes
+
+- 7555412: Round-trip path-like values in `options.keys` and `options.services` correctly.
+
+    Values that aren't plain identifiers (paths with slashes, values starting with `.` or `#`, values containing spaces, etc.) are now consistently double-quoted on output. Previously only values starting with `#` or containing spaces were quoted, so a value like `"../../bruno"` lost its quotes on round-trip and re-parsed as a different shape.
+
+- Updated dependencies [7555412]
+    - @contractkit/core@0.13.0
+
 ## 0.9.0
 
 ### Minor Changes
