@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-bruno",
-    "version": "0.9.1",
+    "version": "0.10.0",
     "description": "ContractKit built-in plugin: Bruno REST collection generation",
     "author": {
         "name": "Marooned Software",

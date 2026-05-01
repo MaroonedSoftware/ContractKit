@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/core",
-    "version": "0.11.0",
+    "version": "0.12.0",
     "description": "Core DSL compiler library: grammar-driven parser, codegen, and validation",
     "author": {
         "name": "Marooned Software",
