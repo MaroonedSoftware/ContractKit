@@ -55,6 +55,17 @@ export interface OpenCollectionOptions {
      * benefit from full coverage. Set to `false` to omit internal ops.
      */
     includeInternal?: boolean;
+    /**
+     * Map of environment name → variables. Each entry produces a
+     * `environments/<name>.yml` file with the variables in declaration order.
+     * Values are coerced to strings.
+     *
+     * When omitted, a default `environments/local.yml` is emitted with
+     * `baseUrl=http://localhost:3000` plus any auth env-var placeholders the
+     * default scheme requires. When provided, the default is replaced entirely
+     * — auth vars are not auto-injected, so include them explicitly if needed.
+     */
+    environments?: Record<string, Record<string, unknown>>;
 }
 
 /**
@@ -72,7 +83,9 @@ export function generateOpenCollection(roots: OpRootNode[], options: OpenCollect
     const includeInternal = options.includeInternal ?? true;
 
     files.push({ relativePath: 'opencollection.yml', content: generateCollectionRoot(options.collectionName, defaultScheme) });
-    files.push({ relativePath: 'environments/local.yml', content: generateEnvFile(defaultScheme) });
+    for (const envFile of generateEnvFiles(options.environments, defaultScheme)) {
+        files.push(envFile);
+    }
     // Manifest is appended at the end so it lists every generated path including itself.
 
     for (let rootIdx = 0; rootIdx < roots.length; rootIdx++) {
@@ -183,16 +196,36 @@ function generateCollectionRoot(name: string, scheme?: BrunoSecurityScheme): str
     return lines.join('\n');
 }
 
-function generateEnvFile(scheme?: BrunoSecurityScheme): string {
-    const lines = [`name: Local`, `variables:`, `  - name: baseUrl`, `    value: "http://localhost:3000"`];
+function generateEnvFiles(
+    environments: Record<string, Record<string, unknown>> | undefined,
+    scheme: BrunoSecurityScheme | undefined,
+): OpenCollectionFile[] {
+    if (environments && Object.keys(environments).length > 0) {
+        return Object.entries(environments).map(([name, variables]) => ({
+            relativePath: `environments/${name}.yml`,
+            content: renderEnvFile(displayNameFor(name), variables),
+        }));
+    }
+    const defaultVars: Record<string, string> = { baseUrl: 'http://localhost:3000' };
     if (scheme) {
-        for (const varName of authEnvVarNames(scheme)) {
-            lines.push(`  - name: ${varName}`);
-            lines.push(`    value: ""`);
-        }
+        for (const varName of authEnvVarNames(scheme)) defaultVars[varName] = '';
+    }
+    return [{ relativePath: 'environments/local.yml', content: renderEnvFile('Local', defaultVars) }];
+}
+
+function renderEnvFile(name: string, variables: Record<string, unknown>): string {
+    const lines = [`name: ${name}`, `variables:`];
+    for (const [key, value] of Object.entries(variables)) {
+        const escaped = String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        lines.push(`  - name: ${key}`);
+        lines.push(`    value: "${escaped}"`);
     }
     lines.push(``);
     return lines.join('\n');
+}
+
+function displayNameFor(envKey: string): string {
+    return envKey.charAt(0).toUpperCase() + envKey.slice(1);
 }
 
 function generateFolderFile(name: string, seq: number): string {

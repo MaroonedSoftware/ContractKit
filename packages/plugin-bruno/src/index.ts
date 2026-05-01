@@ -21,6 +21,14 @@ export interface BrunoPluginConfig {
      * benefit from full coverage. Set to `false` to omit internal ops.
      */
     includeInternal?: boolean;
+    /**
+     * Map of environment name → variables. Each entry produces a
+     * `environments/<name>.yml` file. When omitted, a default `local.yml` is
+     * emitted with `baseUrl=http://localhost:3000` and any auth env-var
+     * placeholders. When provided, the default is replaced entirely; include
+     * auth variables (e.g. `token`) explicitly if you need them.
+     */
+    environments?: Record<string, Record<string, unknown>>;
 }
 
 /** Full plugin options shape read from `ctx.options` — extends {@link BrunoPluginConfig} with the `auth` block. */
@@ -47,6 +55,7 @@ const plugin: ContractKitPlugin = {
             auth,
             randomExamples: config.randomExamples ?? true,
             includeInternal: config.includeInternal,
+            environments: config.environments,
         });
         for (const { relativePath, content } of files) {
             ctx.emitFile(resolve(outDir, relativePath), content);
@@ -88,6 +97,8 @@ export function createBrunoPlugin(
                 contractRoots,
                 auth,
                 randomExamples: config.randomExamples ?? true,
+                includeInternal: config.includeInternal,
+                environments: config.environments,
             });
             for (const { relativePath, content } of files) {
                 ctx.emitFile(resolve(outDir, relativePath), content);

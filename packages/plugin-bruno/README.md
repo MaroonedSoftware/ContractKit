@@ -41,6 +41,7 @@ pnpm add @contractkit/contractkit-plugin-bruno
 | `includeInternal` | `boolean` | `true` | Include operations marked `internal`. Set to `false` to omit them from the collection. |
 | `auth.defaultScheme` | `string` | — | Key from `auth.schemes` to apply by default |
 | `auth.schemes` | `object` | — | Map of scheme name → security scheme definition |
+| `environments` | `object` | — | Map of environment name → variables. Each entry produces a `environments/<name>.yml` file. See [Environments](#environments). |
 
 ### Auth scheme types
 
@@ -102,6 +103,35 @@ operation /payments/{id}: {
 ```
 
 The `{{bruno}}` reference can also be supplied workspace-wide via the plugin's `keys` config in `contractkit.config.json`.
+
+## Environments
+
+Provide an `environments` block in the plugin config to control what `environments/<name>.yml` files Bruno sees. Each top-level key becomes a file; its values become the variables in that file:
+
+```json
+{
+  "plugins": {
+    "@contractkit/contractkit-plugin-bruno": {
+      "environments": {
+        "local": {
+          "baseUrl": "http://localhost:3000",
+          "token": ""
+        },
+        "staging": {
+          "baseUrl": "https://staging.example.com",
+          "token": ""
+        }
+      }
+    }
+  }
+}
+```
+
+Notes:
+
+- Variable values are coerced to strings and always emitted with double quotes.
+- When `environments` is omitted or empty, a default `environments/local.yml` is emitted with `baseUrl=http://localhost:3000` plus any auth env-var placeholders the default `auth` scheme requires.
+- When `environments` is provided, the default is replaced entirely — auth variables are not auto-injected, so include them explicitly if needed.
 
 ## Programmatic use
 

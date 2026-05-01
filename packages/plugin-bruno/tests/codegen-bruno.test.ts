@@ -671,6 +671,61 @@ describe('generateOpenCollection', () => {
         expect(env!.content).toContain('- name: token');
     });
 
+    describe('environments config', () => {
+        const root = opRoot([opRoute('/users', [opOperation('get')])], 'users.op');
+
+        it('emits one file per entry, replacing the default local.yml', () => {
+            const files = generateOpenCollection([root], {
+                collectionName: 'API',
+                environments: {
+                    local: { baseUrl: 'http://localhost:3000', token: '' },
+                    staging: { baseUrl: 'https://staging.example.com', token: 'secret' },
+                },
+            });
+            const local = files.find(f => f.relativePath === 'environments/local.yml');
+            const staging = files.find(f => f.relativePath === 'environments/staging.yml');
+            expect(local).toBeDefined();
+            expect(staging).toBeDefined();
+            expect(local!.content).toContain('name: Local');
+            expect(local!.content).toContain('- name: baseUrl');
+            expect(local!.content).toContain('value: "http://localhost:3000"');
+            expect(local!.content).toContain('- name: token');
+            expect(staging!.content).toContain('name: Staging');
+            expect(staging!.content).toContain('value: "https://staging.example.com"');
+            expect(staging!.content).toContain('value: "secret"');
+        });
+
+        it('does not auto-inject auth env vars when environments is provided', () => {
+            const files = generateOpenCollection([root], {
+                collectionName: 'API',
+                auth: bearerAuth,
+                environments: {
+                    local: { baseUrl: 'http://localhost:3000' },
+                },
+            });
+            const local = files.find(f => f.relativePath === 'environments/local.yml');
+            expect(local!.content).not.toContain('- name: token');
+        });
+
+        it('falls back to the default local.yml when environments is empty', () => {
+            const files = generateOpenCollection([root], { collectionName: 'API', environments: {} });
+            const local = files.find(f => f.relativePath === 'environments/local.yml');
+            expect(local).toBeDefined();
+            expect(local!.content).toContain('name: Local');
+            expect(local!.content).toContain('value: "http://localhost:3000"');
+        });
+
+        it('coerces non-string values to strings', () => {
+            const files = generateOpenCollection([root], {
+                collectionName: 'API',
+                environments: { local: { port: 3000, debug: true } as unknown as Record<string, unknown> },
+            });
+            const local = files.find(f => f.relativePath === 'environments/local.yml');
+            expect(local!.content).toContain('value: "3000"');
+            expect(local!.content).toContain('value: "true"');
+        });
+    });
+
     it('does not add request or auth to opencollection.yml when no security config', () => {
         const root = opRoot([opRoute('/users', [opOperation('get')])], 'users.op');
         const files = generateOpenCollection([root], { collectionName: 'API' });

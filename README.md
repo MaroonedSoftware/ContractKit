@@ -168,6 +168,7 @@ Unreachable types are excluded.
 | `collectionName`  | `string`  | Bruno collection name. Default: the rootDir basename                                              |
 | `auth`            | `object`  | `{ defaultScheme, schemes }` — schemes use the same shape as OpenAPI security schemes plus `hmac` |
 | `includeInternal` | `boolean` | Whether to generate request files for `internal` operations. Default: `true`.                     |
+| `environments`    | `object`  | Map of environment name → variables. Each entry produces a `environments/<name>.yml` file.        |
 
 Regenerates the output directory cleanly on each run.
 
