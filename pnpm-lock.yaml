@@ -99,7 +99,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/config-typescript
       '@types/vscode':
-        specifier: ^1.116.0
+        specifier: ^1.105.1
         version: 1.116.0
       '@vscode/vsce':
         specifier: ^3.9.1

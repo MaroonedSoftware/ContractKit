@@ -1,5 +1,5 @@
 {
-    "name": "@contractkit/vscode-extension",
+    "name": "contractkit-vscode-extension",
     "displayName": "ContractKit",
     "description": "Language support for .ck contract definition files",
     "version": "0.8.0",
@@ -79,6 +79,9 @@
             }
         }
     },
+    "vsce": {
+        "packagePath": "contractkit.vsix"
+    },
     "scripts": {
         "build": "node esbuild.mjs",
         "build:ci": "eslint --max-warnings=0 && pnpm run build",
@@ -88,8 +91,8 @@
         "test": "vitest run",
         "test:ci": "vitest run --coverage",
         "package": "node esbuild.mjs && pnpm exec vsce package --no-dependencies",
-        "vscode:install": "pnpm run package && cursor --install-extension contractkit-vscode-0.1.0.vsix",
-        "vscode:uninstall": "cursor --uninstall-extension contractkit-vscode-0.1.0.vsix"
+        "vscode:install": "pnpm run package && cursor --install-extension contractkit.vsix",
+        "vscode:uninstall": "cursor --uninstall-extension contractkit.vsix"
     },
     "dependencies": {
         "@contractkit/core": "workspace:*",
@@ -100,7 +103,7 @@
     "devDependencies": {
         "@repo/config-eslint": "workspace:*",
         "@repo/config-typescript": "workspace:*",
-        "@types/vscode": "^1.116.0",
+        "@types/vscode": "^1.105.1",
         "@vscode/vsce": "^3.9.1",
         "esbuild": "^0.28.0"
     }
