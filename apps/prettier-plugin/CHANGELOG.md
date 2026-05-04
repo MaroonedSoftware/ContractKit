@@ -1,5 +1,11 @@
 # @contractkit/prettier-plugin-contractkit
 
+## 0.9.2
+
+### Patch Changes
+
+- 1be6771: Fix prettier printer to re-quote enum values that contain spaces or other non-identifier characters, preventing round-trip parse failures for values like `"Sole Proprietorship"`.
+
 ## 0.9.1
 
 ### Patch Changes
