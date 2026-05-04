@@ -713,3 +713,30 @@ options {
         expect(roundTrip(source)).toBe(source);
     });
 });
+
+describe('printCk — enum values with spaces (round-trip)', () => {
+    function roundTrip(source: string): string {
+        const diag = new DiagnosticCollector();
+        const ast = parseCk(source, 'test.ck', diag);
+        expect(diag.hasErrors()).toBe(false);
+        return printCk(ast);
+    }
+
+    it('round-trips enum with bare identifiers unchanged', () => {
+        const source = `\
+contract M: {
+    status: enum(active, inactive, pending)
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+
+    it('round-trips enum with quoted multi-word values', () => {
+        const source = `\
+contract M: {
+    entityType: enum("Sole Proprietorship", LLC, "Limited Partnership")
+}
+`;
+        expect(roundTrip(source)).toBe(source);
+    });
+});

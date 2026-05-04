@@ -3,6 +3,7 @@ import { INDENT } from './indent.js';
 
 // ─── Type expression printer ────────────────────────────────────────────────
 
+/** Render a `ContractTypeNode` back to its `.ck` source string. */
 export function printType(type: ContractTypeNode): string {
     switch (type.kind) {
         case 'scalar': {
@@ -29,7 +30,7 @@ export function printType(type: ContractTypeNode): string {
         case 'record':
             return `record(${printType(type.key)}, ${printType(type.value)})`;
         case 'enum':
-            return `enum(${type.values.join(', ')})`;
+            return `enum(${type.values.map(formatEnumValue).join(', ')})`;
         case 'literal':
             return typeof type.value === 'string' ? `literal("${type.value}")` : `literal(${type.value})`;
         case 'union':
@@ -63,7 +64,7 @@ function printInlineObjectCompact(obj: InlineObjectTypeNode): string {
 /** Multi-line enum form — one value per line, used when single-line would exceed print width. */
 export function printEnumExpanded(values: string[], indent: string): string {
     const innerIndent = indent + INDENT;
-    return `enum(\n${values.map(v => `${innerIndent}${v}`).join(',\n')}\n${indent})`;
+    return `enum(\n${values.map(v => `${innerIndent}${formatEnumValue(v)}`).join(',\n')}\n${indent})`;
 }
 
 // ─── Field printer ──────────────────────────────────────────────────────────
@@ -110,6 +111,12 @@ export function printInlineObjectExpanded(obj: InlineObjectTypeNode, indent: str
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Format a single enum value: bare identifier stays bare; anything else gets double-quoted. */
+export function formatEnumValue(v: string): string {
+    if (/^[a-zA-Z_$][a-zA-Z0-9_$\-.]*$/.test(v)) return v;
+    return `"${v}"`;
+}
 
 /** Format a default value: quote strings that aren't valid bare identifiers. */
 export function formatDefault(val: string | number | boolean): string {

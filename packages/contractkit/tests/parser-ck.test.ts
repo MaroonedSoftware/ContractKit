@@ -241,6 +241,14 @@ contract M: {
             expect(type.values).toEqual(['active', 'inactive', 'pending']);
         });
 
+        it('parses enum type with quoted string values', () => {
+            const { root, diag } = parse('contract M: { status: enum("Sole Proprietorship", LLC, "C-Corp Inc") }');
+            expect(diag.hasErrors()).toBe(false);
+            const type = root.models[0]!.fields[0]!.type as EnumTypeNode;
+            expect(type.kind).toBe('enum');
+            expect(type.values).toEqual(['Sole Proprietorship', 'LLC', 'C-Corp Inc']);
+        });
+
         it('parses literal string type', () => {
             const { root } = parse('contract M: { kind: literal("user") }');
             const type = root.models[0]!.fields[0]!.type as LiteralTypeNode;
