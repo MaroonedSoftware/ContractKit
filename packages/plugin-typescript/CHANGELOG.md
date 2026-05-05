@@ -1,5 +1,11 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.17.3
+
+### Patch Changes
+
+- 1247514: Fix `override readonly` fields not being omitted from child Input schemas in Zod codegen
+
 ## 0.17.2
 
 ### Patch Changes
