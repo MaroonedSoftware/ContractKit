@@ -55,8 +55,10 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
         lines.push('');
     }
 
+    const modelMap = new Map(root.models.map(m => [m.name, m]));
+
     for (const model of topoSortModels(root.models)) {
-        lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, allModelsWithOutput));
+        lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, allModelsWithOutput, modelMap));
         lines.push('');
     }
 
@@ -65,7 +67,13 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
 
 // ─── Model ─────────────────────────────────────────────────────────────────
 
-function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>, modelsWithOutput?: Set<string>): string[] {
+function generateModel(
+    model: ModelNode,
+    outPath?: string,
+    modelsWithInput?: Set<string>,
+    modelsWithOutput?: Set<string>,
+    modelMap?: Map<string, ModelNode>,
+): string[] {
     // Type alias: Name : typeExpression
     if (model.type) {
         return generateTypeAlias(model, outPath, modelsWithInput, modelsWithOutput);
@@ -75,13 +83,37 @@ function generateModel(model: ModelNode, outPath?: string, modelsWithInput?: Set
     // transitively references models that have Input variants (captured in modelsWithInput).
     const needsInputSplit = model.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(model.name) ?? false);
 
-    const lines = needsInputSplit ? generateVisibilityModel(model, outPath, modelsWithInput) : generateSimpleModel(model, outPath);
+    const lines = needsInputSplit ? generateVisibilityModel(model, outPath, modelsWithInput, modelMap) : generateSimpleModel(model, outPath, modelMap);
 
     if (modelsWithOutput?.has(model.name)) {
         lines.push('');
         lines.push(...generateOutputModel(model, modelsWithOutput));
     }
     return lines;
+}
+
+/** Recursively collect every field name defined on `bases` and their ancestors. Used to detect
+ * fields that the child re-declares without an explicit `override` keyword — those still need an
+ * `Omit<Base, …>` wrap, otherwise the child's narrower/incompatible declaration collides with the
+ * inherited one. */
+function collectInheritedFieldNames(bases: string[], modelMap: Map<string, ModelNode>): Set<string> {
+    const result = new Set<string>();
+    const visit = (name: string): void => {
+        const m = modelMap.get(name);
+        if (!m || m.type) return;
+        for (const f of m.fields) result.add(f.name);
+        for (const b of m.bases ?? []) visit(b);
+    };
+    for (const b of bases) visit(b);
+    return result;
+}
+
+/** Names of fields the child declaration overrides — explicit `override` plus any field whose
+ * name shadows an inherited one. The latter catches single-base redeclarations that omit the
+ * `override` keyword (e.g. narrowing `kind: BusinessRoleKind` → `kind: 'employee'`). */
+function computeOverrideNames(model: ModelNode, modelMap?: Map<string, ModelNode>): string[] {
+    const inherited = modelMap ? collectInheritedFieldNames(model.bases ?? [], modelMap) : new Set<string>();
+    return model.fields.filter(f => f.override || inherited.has(f.name)).map(f => f.name);
 }
 
 function generateComments(model: ModelNode, outPath?: string): string[] {
@@ -113,11 +145,11 @@ function generateTypeAlias(model: ModelNode, outPath?: string, modelsWithInput?:
     return lines;
 }
 
-/** Build the `extends` clause for a multi-base model.
- * Override-marked field names are wrapped in `Omit<Base, 'name1' | 'name2'>` per base so the
- * subclass can legally redeclare them with new types. TypeScript's `Omit<T, K extends keyof any>`
- * tolerates omit keys that don't appear on the base, so we omit unconditionally — no need to know
- * each base's actual field set. */
+/** Build the `extends` clause for a model.
+ * Each entry in `overrideNames` is wrapped in `Omit<Base, 'name1' | 'name2'>` per base so the
+ * subclass can legally redeclare those fields with new (possibly incompatible) types.
+ * TypeScript's `Omit<T, K extends keyof any>` tolerates omit keys that don't appear on the base,
+ * so we apply the same omit list to every base without per-base field-set lookup. */
 function buildExtendsClause(bases: string[], overrideNames: string[], baseNameResolver: (b: string) => string): string {
     if (bases.length === 0) return '';
     if (overrideNames.length === 0) return ` extends ${bases.map(baseNameResolver).join(', ')}`;
@@ -126,12 +158,12 @@ function buildExtendsClause(bases: string[], overrideNames: string[], baseNameRe
     return ` extends ${wrapped.join(', ')}`;
 }
 
-function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
+function generateSimpleModel(model: ModelNode, outPath?: string, modelMap?: Map<string, ModelNode>): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
 
     const bases = model.bases ?? [];
-    const overrideNames = model.fields.filter(f => f.override).map(f => f.name);
+    const overrideNames = computeOverrideNames(model, modelMap);
     lines.push(`export interface ${model.name}${buildExtendsClause(bases, overrideNames, b => b)} {`);
 
     for (const field of model.fields) {
@@ -142,12 +174,12 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
     return lines;
 }
 
-function generateVisibilityModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>): string[] {
+function generateVisibilityModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>, modelMap?: Map<string, ModelNode>): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
 
     const bases = model.bases ?? [];
-    const overrideNames = model.fields.filter(f => f.override).map(f => f.name);
+    const overrideNames = computeOverrideNames(model, modelMap);
 
     // Read type — omit writeonly fields
     const readFields = model.fields.filter(f => f.visibility !== 'writeonly');

@@ -419,6 +419,44 @@ describe('generatePlainTypes', () => {
             const output = generatePlainTypes(root);
             expect(output).toContain("export interface Test5 extends Omit<A, 'a' | 'b'> {");
         });
+
+        it('omits implicit single-base redeclarations even without explicit override', () => {
+            // BusinessRoleOfficer-style: child redeclares `kind` without `override` keyword,
+            // narrowing to an incompatible literal — must wrap base in Omit to compile.
+            const root = contractRoot([
+                model('Employee', [field('kind', literalType('employee')), field('title', scalarType('string'))]),
+                model('Officer', [field('kind', literalType('officer')), field('isControlPerson', scalarType('boolean'))], {
+                    bases: ['Employee'],
+                }),
+            ]);
+            const output = generatePlainTypes(root);
+            expect(output).toContain("export interface Officer extends Omit<Employee, 'kind'> {");
+        });
+
+        it('applies implicit-override Omit to both Read and Input interfaces', () => {
+            const root = contractRoot([
+                model('Employee', [
+                    field('id', scalarType('uuid'), { visibility: 'readonly' }),
+                    field('kind', literalType('employee')),
+                ]),
+                model('Officer', [field('kind', literalType('officer')), field('isControlPerson', scalarType('boolean'))], {
+                    bases: ['Employee'],
+                }),
+            ]);
+            const output = generatePlainTypes(root);
+            expect(output).toContain("export interface Officer extends Omit<Employee, 'kind'> {");
+            expect(output).toContain("export interface OfficerInput extends Omit<EmployeeInput, 'kind'> {");
+        });
+
+        it('detects redeclaration through transitive base chain', () => {
+            const root = contractRoot([
+                model('Root', [field('kind', scalarType('string'))]),
+                model('Mid', [], { bases: ['Root'] }),
+                model('Leaf', [field('kind', literalType('leaf'))], { bases: ['Mid'] }),
+            ]);
+            const output = generatePlainTypes(root);
+            expect(output).toContain("export interface Leaf extends Omit<Mid, 'kind'> {");
+        });
     });
 
     // ─── Type alias Input variants ────────────────────────────────
