@@ -40,6 +40,7 @@ export function modeToWrapper(mode: ObjectMode): string {
 
 // ─── Cross-file import resolution ─────────────────────────────────────────
 
+/** Cross-file context passed to `generateContract` to wire up imports and Input/Output variant tracking. */
 export interface ContractCodegenContext {
     /** Map from model name → absolute output file path */
     modelOutPaths: Map<string, string>;
@@ -250,7 +251,7 @@ function generateModel(
     const needsInputSplit = effective.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(effective.name) ?? false);
 
     const lines = needsInputSplit
-        ? generateThreeSchemaModel(effective, outPath, modelsWithInput, modelsWithWriteonly)
+        ? generateThreeSchemaModel(effective, outPath, modelsWithInput, modelsWithWriteonly, modelMap)
         : generateSimpleModel(effective, outPath);
 
     // Emit Output type alias when this model (transitively) has format(output=...)
@@ -342,7 +343,27 @@ function buildExtendChain(bases: string[], resolveName: (b: string) => string): 
     return { head, tail };
 }
 
-function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>, modelsWithWriteonly?: Set<string>): string[] {
+function collectEffectiveWritableFieldNames(modelName: string, modelMap: Map<string, ModelNode>): Set<string> {
+    const model = modelMap.get(modelName);
+    if (!model || model.type) return new Set();
+    const result = new Set<string>();
+    for (const base of model.bases ?? []) {
+        for (const f of collectEffectiveWritableFieldNames(base, modelMap)) result.add(f);
+    }
+    for (const field of model.fields) {
+        if (field.visibility === 'readonly') result.delete(field.name);
+        else result.add(field.name);
+    }
+    return result;
+}
+
+function generateThreeSchemaModel(
+    model: ModelNode,
+    outPath?: string,
+    modelsWithInput?: Set<string>,
+    modelsWithWriteonly?: Set<string>,
+    modelMap?: Map<string, ModelNode>,
+): string[] {
     const lines: string[] = [];
     const name = model.name;
 
@@ -388,9 +409,28 @@ function generateThreeSchemaModel(model: ModelNode, outPath?: string, modelsWith
     // extends ParentInput if parent has an Input variant, else extends parent read schema
     const writeFields = allFields.filter(f => f.visibility !== 'readonly');
     const writeBody = modelsWithInput ? renderInputFields(writeFields, modelsWithInput, model.mode) : renderFields(writeFields, model.mode);
+    // Fields that become readonly in this model but were writable in a base must be omitted from
+    // the base Input schema — Zod's .extend() cannot remove inherited fields.
+    const fieldsToOmit = new Set<string>();
+    if (bases.length > 0 && modelMap) {
+        for (const field of allFields) {
+            if (field.visibility === 'readonly') {
+                for (const base of bases) {
+                    if (collectEffectiveWritableFieldNames(base, modelMap).has(field.name)) {
+                        fieldsToOmit.add(field.name);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    const omitClause =
+        fieldsToOmit.size > 0
+            ? `.omit({ ${[...fieldsToOmit].map(f => `${quoteKey(f)}: true`).join(', ')} })`
+            : '';
     if (bases.length > 0) {
         const { head, tail } = buildExtendChain(bases, b => (modelsWithInput?.has(b) ? `${b}Input` : b));
-        lines.push(`export const ${name}Input = ${head}${tail}.extend({`);
+        lines.push(`export const ${name}Input = ${head}${tail}${omitClause}.extend({`);
     } else {
         lines.push(`export const ${name}Input = ${wrapper}({`);
     }
@@ -907,6 +947,7 @@ function rootNeedsDateTime(root: ContractRootNode): boolean {
     return root.models.some(m => (m.type && typeNeedsDateTime(m.type)) || m.fields.some(f => typeNeedsDateTime(f.type)));
 }
 
+/** Returns true if `type` (recursively) contains a scalar with the given `name`. */
 export function typeNeedsScalar(type: ContractTypeNode, name: string): boolean {
     switch (type.kind) {
         case 'scalar':
@@ -932,10 +973,12 @@ export function typeNeedsScalar(type: ContractTypeNode, name: string): boolean {
     }
 }
 
+/** Returns true if any model in `root` uses a scalar with the given `name`. */
 export function rootNeedsScalar(root: ContractRootNode, name: string): boolean {
     return root.models.some(m => (m.type && typeNeedsScalar(m.type, name)) || m.fields.some(f => typeNeedsScalar(f.type, name)));
 }
 
+/** Returns true if `type` (recursively) contains a `date`, `time`, or `datetime` scalar. */
 export function typeNeedsDateTime(type: ContractTypeNode): boolean {
     switch (type.kind) {
         case 'scalar':
@@ -955,6 +998,7 @@ export function typeNeedsDateTime(type: ContractTypeNode): boolean {
     }
 }
 
+/** Collect model names referenced in `root` that are not defined locally (need to be imported). */
 export function collectExternalRefs(root: ContractRootNode): string[] {
     const localNames = new Set(root.models.map(m => m.name));
     const refs = new Set<string>();

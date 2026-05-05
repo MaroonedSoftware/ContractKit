@@ -657,6 +657,32 @@ describe('generateContract', () => {
             // A has Input variant (because of readonly), B doesn't.
             expect(output).toContain('export const TestInput = AInput.extend(B.shape).extend({');
         });
+
+        it('omits override-readonly field from child Input schema', () => {
+            const root = contractRoot([
+                model('Base', [field('id', scalarType('uuid')), field('name', scalarType('string'))]),
+                model('Child', [field('name', scalarType('string'), { visibility: 'readonly', override: true })], {
+                    bases: ['Base'],
+                }),
+            ]);
+            const output = generateContract(root);
+            // Base has no visibility — no BaseInput
+            expect(output).not.toContain('BaseInput');
+            // Child re-declares 'name' as readonly, so 'name' must be omitted from Base before extending
+            expect(output).toContain('export const ChildInput = Base.omit({ name: true }).extend({');
+        });
+
+        it('omits override-readonly field inherited transitively through multiple bases', () => {
+            const root = contractRoot([
+                model('Root', [field('legalId', scalarType('uuid'))]),
+                model('Mid', [], { bases: ['Root'] }),
+                model('Child', [field('legalId', scalarType('uuid'), { visibility: 'readonly', override: true })], {
+                    bases: ['Mid'],
+                }),
+            ]);
+            const output = generateContract(root);
+            expect(output).toContain('export const ChildInput = Mid.omit({ legalId: true }).extend({');
+        });
     });
 
     // ─── Type alias Input variants ────────────────────────────────
