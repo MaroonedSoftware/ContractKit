@@ -76,7 +76,7 @@ Create `contractkit.config.json` in your project root. The CLI itself only handl
 | Field      | Type                | Description                                                                                       |
 | ---------- | ------------------- | ------------------------------------------------------------------------------------------------- |
 | `rootDir`  | `string`            | Base directory for resolving relative paths. Supports `~` for `$HOME`. Default: `.`               |
-| `cache`    | `boolean \| string` | Enable incremental compilation cache. Pass a string for a custom cache filename. Default: `false` |
+| `cache`    | `boolean \| string` | Enable on-disk caching (build hashes + fetched HTTP responses). Pass a string to override the cache directory (default: `.contractkit/cache`). Default: `false` |
 | `prettier` | `boolean`           | Format generated TypeScript files with your local prettier. Default: `false`                      |
 | `patterns` | `string[]`          | Glob patterns for `.ck` files to compile, relative to `rootDir`                                   |
 | `plugins`  | `object`            | Map of plugin package name → options. See plugins below.                                          |
@@ -1080,14 +1080,16 @@ The `signature` value must match an HMAC scheme name in the config. The generate
 
 ---
 
-### Per-Operation Plugin Files
+### Per-Operation Plugin Extensions
 
-An operation can attach external files for individual plugins to consume. Each entry maps a plugin name to a path relative to the contract's `.ck` file:
+An operation can attach plugin-specific configuration via the `plugins:` block. Each entry maps a plugin name to a JSON-like value (string, number, boolean, null, object, array) — the plugin owns its schema for that value:
 
 ```
 post: {
     plugins: {
-        bruno: "request-token.yml"
+        bruno: {
+            template: "file://request-token.yml"
+        }
     }
     request: {
         application/json: AuthRequest
@@ -1098,7 +1100,13 @@ post: {
 }
 ```
 
-The CLI resolves each path before plugins run and exposes the file content on the operation node as `op.pluginFiles[name]`. Missing files emit a warning and skip that entry. This is the escape hatch for cases where a plugin's generated output needs to be replaced or augmented with hand-authored content (for example, a Bruno request that needs a post-response script to extract an auth token).
+Any string starting with `file://` is treated as a path relative to the `.ck` file, and any string starting with `http://` or `https://` is fetched via GET; in both cases the CLI replaces the URL with the response body before plugins run. The original (raw) tree lives at `op.plugins`; the resolved tree lives at `op.pluginExtensions`. Missing files, network errors, and non-2xx responses emit a warning and leave the URL string in place.
+
+When the build cache is enabled, successful HTTP responses are persisted under `<rootDir>/.contractkit/cache/http/` (keyed by URL hash) and reused on subsequent runs without hitting the network. The build hash cache lives next to it at `<rootDir>/.contractkit/cache/build.json`. Add `.contractkit/` to `.gitignore`. Pass `--force` (or set `cache: false`) to bypass both caches. Each unique URL is also deduplicated within a single run.
+
+Plugins can validate their entry shape at compile time by implementing `validateExtension(value)` on the `ContractKitPlugin` interface and returning `{ errors?: string[]; warnings?: string[] }`. The CLI matches each entry's key against each plugin's `name` and runs the validator post-resolution. The Bruno plugin uses this to enforce a `{ template?: string }` shape and reject unknown fields.
+
+This is the escape hatch for cases where a plugin's generated output needs to be replaced or augmented with hand-authored content (for example, a Bruno request that needs a post-response script to extract an auth token).
 
 ---
 
@@ -1127,7 +1135,7 @@ A Bruno REST collection can be generated via `@contractkit/plugin-bruno`.
 
 ## Incremental Compilation
 
-The compiler caches file hashes and skips unchanged files on subsequent runs. Set `"cache": true` in your config to enable. Use `--force` to bypass the cache and recompile everything.
+The compiler caches file hashes and skips unchanged files on subsequent runs. Set `"cache": true` in your config to enable. The cache directory (`.contractkit/cache` by default) holds both build hashes (`build.json`) and any fetched plugin extension HTTP responses (`http/`); pass a string for `cache` to override the directory. Use `--force` to bypass the cache and recompile everything.
 
 ---
 

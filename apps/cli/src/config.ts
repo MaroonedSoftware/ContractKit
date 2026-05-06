@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
-import { DEFAULT_CACHE_FILENAME } from './cache.js';
+import { DEFAULT_CACHE_DIR } from './cache.js';
 import { homedir } from 'node:os';
 
 export interface PluginEntry {
@@ -19,8 +19,15 @@ export interface PluginEntry {
 /** Record-keyed plugin config: each key is the plugin package name, value is options. */
 export type PluginsConfig = Record<string, Record<string, unknown>>;
 
+/** Raw shape of `contractkit.config.json` before CLI flag merge. All fields are optional. */
 export interface DslConfig {
     rootDir?: string;
+    /**
+     * Build/HTTP caching control.
+     *   - `true`  — enable, default directory `.contractkit/cache`
+     *   - `false` (default) — disabled
+     *   - `string` — enabled, treats the value as a custom cache directory (relative to `rootDir` or absolute)
+     */
     cache?: boolean | string;
     /** Glob patterns for .ck files to compile, relative to rootDir. */
     patterns?: string[];
@@ -30,16 +37,24 @@ export interface DslConfig {
     plugins?: PluginsConfig;
 }
 
+/** Resolved cache configuration produced by {@link mergeConfig}. */
 export interface ResolvedCacheConfig {
+    /** Whether the build/HTTP caches are active. `--force` does NOT flip this — it is gated separately at the CLI. */
     enabled: boolean;
-    filename: string;
+    /** Directory (relative to `rootDir` or absolute) where caches live. */
+    dir: string;
 }
 
 const CONFIG_FILENAME = 'contractkit.config.json';
 
 /**
- * Load config from an explicit path, or search upward from `startDir`
- * for contractkit.config.json.
+ * Load `contractkit.config.json` from an explicit path or by walking up from `startDir`.
+ *
+ * Returns the parsed config plus the directory that contained it (used to resolve relative
+ * paths in the config). When no config is found anywhere on the path, returns an empty
+ * config rooted at `startDir`.
+ *
+ * @throws if `configPath` is provided but the file cannot be read or parsed.
  */
 export function loadConfig(configPath?: string, startDir: string = process.cwd()): { config: DslConfig; configDir: string } {
     if (configPath) {
@@ -69,6 +84,7 @@ export function loadConfig(configPath?: string, startDir: string = process.cwd()
     return { config: {}, configDir: resolve(startDir) };
 }
 
+/** Fully resolved configuration: file values merged with CLI flags, paths absolutized, plugins normalized. */
 export interface ResolvedConfig {
     patterns: string[];
     rootDir: string;
@@ -85,12 +101,18 @@ function normalizePlugins(plugins: PluginsConfig | undefined): PluginEntry[] {
     return Object.entries(plugins).map(([name, options]) => ({ plugin: name, options }));
 }
 
-/** Merge config file values with CLI flags. */
+/**
+ * Merge a parsed {@link DslConfig} with CLI flags into a fully resolved configuration.
+ *
+ * Normalizes `cache` (boolean | string), expands a leading `~` in `rootDir`, resolves
+ * `rootDir` to an absolute path, and converts the record-shaped `plugins` block into
+ * an ordered `PluginEntry[]`.
+ */
 export function mergeConfig(config: DslConfig, cliArgs: { watch: boolean; force: boolean }, configDir: string = process.cwd()): ResolvedConfig {
     const cache: ResolvedCacheConfig =
         typeof config.cache === 'string'
-            ? { enabled: true, filename: config.cache }
-            : { enabled: config.cache === true, filename: DEFAULT_CACHE_FILENAME };
+            ? { enabled: true, dir: config.cache }
+            : { enabled: config.cache === true, dir: DEFAULT_CACHE_DIR };
 
     let rootDir = config.rootDir ?? '.';
     if (rootDir.startsWith('~')) {

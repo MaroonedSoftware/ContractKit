@@ -235,8 +235,17 @@ Contract {
 
   // ─── Plugins ────────────────────────────────────────────────────
 
-  PluginsDecl = pluginsKw ":" "{" PluginEntry* "}"
-  PluginEntry  = identifier ":" stringLit
+  PluginsDecl = pluginsKw ":" "{" (comment | PluginEntry)* "}"
+  PluginEntry  = identifier ":" PluginValue
+
+  PluginValue = stringLit                                  -- string
+              | numberLit                                  -- number
+              | booleanLit                                 -- boolean
+              | nullKw                                     -- null
+              | "{" (comment | PluginField)* "}"           -- object
+              | "[" (comment | PluginValue)* "]"           -- array
+
+  PluginField = (identifier | stringLit) ":" PluginValue
 
   // ─── Security ───────────────────────────────────────────────────
 
@@ -275,6 +284,7 @@ Contract {
   securityKw = "security" ~identPart
   pluginsKw = "plugins" ~identPart
   noneKw = "none" ~identPart
+  nullKw = "null" ~identPart
   rolesKw = "roles" ~identPart
   deprecatedKw = "deprecated" ~identPart
   overrideKw = "override" ~identPart

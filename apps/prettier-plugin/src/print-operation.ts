@@ -7,6 +7,7 @@ import type {
     SecurityFields,
     ContractTypeNode,
     ObjectMode,
+    PluginValue,
 } from '@contractkit/core';
 import { SECURITY_NONE } from '@contractkit/core';
 import { printType, formatDefault } from './print-type.js';
@@ -121,7 +122,7 @@ function printOperation(op: OpOperationNode): string[] {
     if (op.plugins && Object.keys(op.plugins).length > 0) {
         lines.push(`${I2}plugins: {`);
         for (const [key, val] of Object.entries(op.plugins)) {
-            lines.push(`${I3}${key}: "${val.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+            lines.push(...printPluginEntry(key, val, I3));
         }
         lines.push(`${I2}}`);
     }
@@ -144,6 +145,74 @@ function printOperation(op: OpOperationNode): string[] {
 
     lines.push(`${I1}}`);
     return lines;
+}
+
+// ─── Plugins block ───────────────────────────────────────────────────────────
+
+const IDENT_RE = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+
+function escapeString(s: string): string {
+    return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function printPluginEntry(key: string, value: PluginValue, indent: string): string[] {
+    const lines: string[] = [];
+    const inline = printPluginInline(value);
+    if (inline !== null) {
+        lines.push(`${indent}${key}: ${inline}`);
+    } else {
+        const head = `${indent}${key}: `;
+        const block = printPluginBlock(value, indent);
+        lines.push(`${head}${block[0]!.trimStart()}`);
+        for (let i = 1; i < block.length; i++) lines.push(block[i]!);
+    }
+    return lines;
+}
+
+function printPluginInline(value: PluginValue): string | null {
+    if (typeof value === 'string') return `"${escapeString(value)}"`;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (value === null) return 'null';
+    if (Array.isArray(value) && value.length === 0) return '[]';
+    if (!Array.isArray(value) && typeof value === 'object' && Object.keys(value).length === 0) return '{}';
+    return null;
+}
+
+function printPluginBlock(value: PluginValue, indent: string): string[] {
+    const inner = indent + INDENT;
+    const lines: string[] = [];
+    if (Array.isArray(value)) {
+        lines.push(`${indent}[`);
+        for (const item of value) {
+            const inline = printPluginInline(item);
+            if (inline !== null) {
+                lines.push(`${inner}${inline}`);
+            } else {
+                const block = printPluginBlock(item, inner);
+                for (const l of block) lines.push(l);
+            }
+        }
+        lines.push(`${indent}]`);
+        return lines;
+    }
+    if (typeof value === 'object' && value !== null) {
+        lines.push(`${indent}{`);
+        for (const [k, v] of Object.entries(value)) {
+            const fieldKey = IDENT_RE.test(k) ? k : `"${escapeString(k)}"`;
+            const inline = printPluginInline(v);
+            if (inline !== null) {
+                lines.push(`${inner}${fieldKey}: ${inline}`);
+            } else {
+                const block = printPluginBlock(v, inner);
+                lines.push(`${inner}${fieldKey}: ${block[0]!.trimStart()}`);
+                for (let i = 1; i < block.length; i++) lines.push(block[i]!);
+            }
+        }
+        lines.push(`${indent}}`);
+        return lines;
+    }
+    // Scalars are always inline; printPluginInline already handles them.
+    return [`${indent}${printPluginInline(value)}`];
 }
 
 // ─── Security ────────────────────────────────────────────────────────────────

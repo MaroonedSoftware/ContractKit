@@ -21,6 +21,7 @@ import type {
     RouteModifier,
     HttpMethod,
     InlineObjectTypeNode,
+    PluginValue,
 } from './ast.js';
 import { SECURITY_NONE } from './ast.js';
 import { buildCompoundType, resolveSimpleType, extractNullability, typeNodeToParamSource, OBJECT_MODES, type TypeArg } from './type-builders.js';
@@ -795,7 +796,7 @@ export function createSemantics(grammar: Grammar) {
                 request?: OpRequestNode;
                 responses: OpResponseNode[];
                 security?: SecurityNode;
-                plugins?: Record<string, string>;
+                plugins?: Record<string, PluginValue>;
             };
 
             const op: OpOperationNode = {
@@ -827,7 +828,7 @@ export function createSemantics(grammar: Grammar) {
             let request: OpRequestNode | undefined;
             let responses: OpResponseNode[] = [];
             let security: SecurityNode | undefined;
-            let plugins: Record<string, string> | undefined;
+            let plugins: Record<string, PluginValue> | undefined;
 
             for (let i = 0; i < items.numChildren; i++) {
                 const item = items.child(i).toAst(file, diag);
@@ -1115,18 +1116,71 @@ export function createSemantics(grammar: Grammar) {
         // ─── Plugins ─────────────────────────────────────────────────
 
         PluginsDecl(_pluginsKw, _colon, _lb, entries, _rb) {
-            const result: Record<string, string> = {};
+            const file = this.args.file;
+            const diag = this.args.diag;
+            const result: Record<string, PluginValue> = {};
             for (let i = 0; i < entries.numChildren; i++) {
-                const entry = entries.child(i).toAst(this.args.file, this.args.diag) as { key: string; value: string };
+                const child = entries.child(i);
+                if (child.ctorName === 'comment') continue;
+                const entry = child.toAst(file, diag) as { key: string; value: PluginValue };
                 result[entry.key] = entry.value;
             }
             return { _type: 'plugins', value: result };
         },
 
-        PluginEntry(identNode, _colon, stringNode) {
+        PluginEntry(identNode, _colon, valueNode) {
             const key = identNode.sourceString;
-            const raw = stringNode.sourceString;
-            const value = raw.startsWith('"') || raw.startsWith("'") ? raw.slice(1, -1) : raw;
+            const value = valueNode.toAst(this.args.file, this.args.diag) as PluginValue;
+            return { key, value };
+        },
+
+        PluginValue_string(stringNode) {
+            return stringNode.toAst(this.args.file, this.args.diag);
+        },
+
+        PluginValue_number(numNode) {
+            return numNode.toAst(this.args.file, this.args.diag);
+        },
+
+        PluginValue_boolean(boolNode) {
+            return boolNode.toAst(this.args.file, this.args.diag);
+        },
+
+        PluginValue_null(_nullKw) {
+            return null;
+        },
+
+        PluginValue_object(_lb, items, _rb) {
+            const file = this.args.file;
+            const diag = this.args.diag;
+            const result: Record<string, PluginValue> = {};
+            for (let i = 0; i < items.numChildren; i++) {
+                const child = items.child(i);
+                if (child.ctorName === 'comment') continue;
+                const field = child.toAst(file, diag) as { key: string; value: PluginValue };
+                result[field.key] = field.value;
+            }
+            return result;
+        },
+
+        PluginValue_array(_lb, items, _rb) {
+            const file = this.args.file;
+            const diag = this.args.diag;
+            const result: PluginValue[] = [];
+            for (let i = 0; i < items.numChildren; i++) {
+                const child = items.child(i);
+                if (child.ctorName === 'comment') continue;
+                result.push(child.toAst(file, diag) as PluginValue);
+            }
+            return result;
+        },
+
+        PluginField(keyNode, _colon, valueNode) {
+            const file = this.args.file;
+            const diag = this.args.diag;
+            const rawKey = keyNode.sourceString;
+            const key = rawKey.startsWith('"') || rawKey.startsWith("'") ? rawKey.slice(1, -1) : rawKey;
+            const value = valueNode.toAst(file, diag) as PluginValue;
             return { key, value };
         },
 

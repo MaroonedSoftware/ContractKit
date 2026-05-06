@@ -66,18 +66,18 @@ The output directory is fully replaced on each run — stale request files from 
 
 ## Per-operation overrides
 
-Add a `plugins` block to any operation in a `.ck` file to deep-merge a YAML file into the generated request:
+Add a `plugins` block to any operation in a `.ck` file to deep-merge a YAML fragment into the generated request. The Bruno plugin reads `plugins.bruno.template`; the value is either an inline YAML string or a `file://`/`http(s)://` URL that the CLI resolves to the file/response body before the plugin runs:
 
 ```
 post: {
     plugins: {
-        bruno: "overrides/auth-token.yml"
+        bruno: { template: "file://overrides/auth-token.yml" }
     }
     response: { 200: AuthResponse }
 }
 ```
 
-The file path is relative to the `.ck` source file. Its content is deep-merged into the generated request YAML — objects recurse, arrays replace entirely:
+The `file://` path is relative to the `.ck` source file. The resolved content is deep-merged into the generated request YAML — objects recurse, arrays replace entirely:
 
 ```yaml
 # overrides/auth-token.yml
@@ -87,7 +87,9 @@ runtime:
       bru.setVar("token", bru.getEnvVar("adminToken"));
 ```
 
-Authoring tip: combine per-operation `plugins.bruno` paths with `{{var}}` substitution to factor out a shared override directory:
+`validateBrunoExtension` (run during compilation) enforces the shape: the value must be an object whose only allowed key is `template: string`. Anything else fails the build with a precise error.
+
+Authoring tip: combine per-operation `template` URLs with `{{var}}` substitution to factor out a shared override directory:
 
 ```
 options {
@@ -96,7 +98,7 @@ options {
 
 operation /payments/{id}: {
     get: {
-        plugins: { bruno: "{{bruno}}/payments/get-payment.yml" }
+        plugins: { bruno: { template: "file://{{bruno}}/payments/get-payment.yml" } }
         response: { 200: { application/json: Payment } }
     }
 }

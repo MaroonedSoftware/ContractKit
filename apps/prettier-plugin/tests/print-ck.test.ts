@@ -224,6 +224,56 @@ describe('printCk — plugins block', () => {
         const out = printCk(ast);
         expect(out).toContain('            bruno: "request-token.yml"');
     });
+
+    it('prints object plugin value with file:// URL', () => {
+        const ast = makeRoot([
+            makeRoute('/auth/token', [
+                makeOp('post', { plugins: { bruno: { template: 'file://request-token.yml' } } }),
+            ]),
+        ]);
+        const out = printCk(ast);
+        expect(out).toContain('            bruno: {');
+        expect(out).toContain('                template: "file://request-token.yml"');
+    });
+
+    it('round-trips object plugin value through parse', () => {
+        const src = `operation /auth/token: {
+    post: {
+        plugins: {
+            bruno: {
+                template: "file://request-token.yml"
+            }
+        }
+    }
+}
+`;
+        const diag = new DiagnosticCollector();
+        const ast = parseCk(src, 'test.ck', diag);
+        expect(diag.hasErrors()).toBe(false);
+        const out = printCk(ast);
+        expect(out).toContain('            bruno: {');
+        expect(out).toContain('                template: "file://request-token.yml"');
+    });
+
+    it('prints scalar, array, and nested-object plugin values', () => {
+        const ast = makeRoot([
+            makeRoute('/x', [
+                makeOp('get', {
+                    plugins: {
+                        flag: true,
+                        count: 3,
+                        tags: ['a', 'b'],
+                        meta: { nested: { x: 1 } },
+                    },
+                }),
+            ]),
+        ]);
+        const out = printCk(ast);
+        expect(out).toContain('flag: true');
+        expect(out).toContain('count: 3');
+        expect(out).toContain('tags: [');
+        expect(out).toContain('meta: {');
+    });
 });
 
 // ─── Query / headers with descriptions ───────────────────────────────────────

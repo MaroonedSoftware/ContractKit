@@ -2,7 +2,7 @@ import { resolve, basename, dirname } from 'node:path';
 import { existsSync, readFileSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
 import { generateOpenCollection, MANIFEST_FILENAME, parseManifest } from './codegen-bruno.js';
 import type { BrunoSecurityScheme } from './codegen-bruno.js';
-import type { ContractKitPlugin } from '@contractkit/core';
+import type { ContractKitPlugin, PluginValue } from '@contractkit/core';
 
 /** Configuration accepted by the Bruno plugin, both via `contractkit.config.json` and `createBrunoPlugin`. */
 export interface BrunoPluginConfig {
@@ -38,9 +38,37 @@ export interface BrunoPluginOptions extends BrunoPluginConfig {
 
 // ─── Default export: loaded via plugins array, reads config from ctx.options ─
 
+/**
+ * Validates a `plugins.bruno` extension entry on an operation. The expected shape is
+ * `{ template?: string }`, where `template` is a YAML fragment to deep-merge into the
+ * generated request file (typically a `file://...` URL whose contents have already
+ * been loaded by the CLI resolver).
+ */
+export function validateBrunoExtension(value: PluginValue): { errors?: string[] } | void {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        return { errors: [`expected an object, got ${describe(value)}`] };
+    }
+    const errors: string[] = [];
+    for (const [key, val] of Object.entries(value)) {
+        if (key === 'template') {
+            if (typeof val !== 'string') errors.push(`'template' must be a string, got ${describe(val)}`);
+        } else {
+            errors.push(`unknown field '${key}' (allowed: template)`);
+        }
+    }
+    return errors.length ? { errors } : undefined;
+}
+
+function describe(value: PluginValue): string {
+    if (value === null) return 'null';
+    if (Array.isArray(value)) return 'array';
+    return typeof value;
+}
+
 const plugin: ContractKitPlugin = {
     name: 'bruno',
     cacheKey: 'bruno',
+    validateExtension: validateBrunoExtension,
     async generateTargets({ opRoots, contractRoots }, ctx) {
         const { auth, ...config } = ctx.options as BrunoPluginOptions;
         const base = config.baseDir ? resolve(ctx.rootDir, config.baseDir) : ctx.rootDir;
@@ -85,6 +113,7 @@ export function createBrunoPlugin(
     return {
         name: 'bruno',
         cacheKey: `bruno:${JSON.stringify(config)}`,
+        validateExtension: validateBrunoExtension,
         async generateTargets({ opRoots, contractRoots }, ctx) {
             const base = config.baseDir ? resolve(rootDir, config.baseDir) : rootDir;
             const outDir = resolve(base, config.output ?? 'bruno-collection');

@@ -35,13 +35,13 @@ describe('mergeConfig', () => {
     it('resolves cache config from boolean', () => {
         const result = mergeConfig({ cache: true }, baseCli);
         expect(result.cache.enabled).toBe(true);
-        expect(result.cache.filename).toBe('.contractkit-cache');
+        expect(result.cache.dir).toBe('.contractkit/cache');
     });
 
-    it('resolves cache config from string', () => {
-        const result = mergeConfig({ cache: 'my-cache' }, baseCli);
+    it('treats cache string as a custom cache directory', () => {
+        const result = mergeConfig({ cache: 'my-cache-dir' }, baseCli);
         expect(result.cache.enabled).toBe(true);
-        expect(result.cache.filename).toBe('my-cache');
+        expect(result.cache.dir).toBe('my-cache-dir');
     });
 
     it('disables cache by default', () => {

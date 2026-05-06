@@ -167,8 +167,20 @@ The plugin interface is defined in `packages/contractkit/src/plugin.ts`. Hooks:
 
 - `transform` — mutate the AST per file before validation
 - `validate` — throw to fail compilation
+- `validateExtension(value)` — validate the plugin's per-operation `pluginExtensions[name]` entry; return `{ errors?, warnings? }` (errors fail compilation)
 - `generateTargets` — called once after all files are parsed; call `ctx.emitFile()` for each output
 - `command` — register a CLI subcommand (`contractkit <name>`)
+
+### Per-operation plugin extensions
+
+The `plugins:` block on an operation accepts JSON-like values (string, number, boolean, null, object, array). Each entry's key maps to a plugin by `name`. Pipeline:
+
+1. Parser builds `op.plugins: Record<string, PluginValue>` (raw AST — retained so prettier can round-trip).
+2. CLI runs `resolvePluginExtensions` (`apps/cli/src/resolve-plugin-extensions.ts`, async) — walks each value tree and replaces strings starting with `file://` (resolved relative to the `.ck` file) or `http(s)://` (fetched via GET) with the corresponding payload. The transformed tree is stored at `op.pluginExtensions`. Missing files, network errors, and non-2xx HTTP responses warn and leave the URL string in place. Each unique HTTP URL is fetched at most once per run; when caching is enabled, successful responses are persisted via `CacheService.httpCache()` and reused across runs. `--force` (or `cache: false`) skips both caches.
+3. CLI dispatches each `pluginExtensions[name]` entry to the plugin whose `name` matches; the plugin's `validateExtension` callback returns errors/warnings that the CLI emits on `op.loc.line`.
+4. Plugins read `op.pluginExtensions[name]` (never `op.plugins`) at codegen time. Bruno expects `{ template?: string }` where `template` is a YAML fragment to deep-merge into the generated request — `validateBrunoExtension` enforces the shape.
+
+Variable substitution (`{{name}}`) walks recursively into nested plugin values, so `file://{{bruno}}/foo.yml` works.
 
 ## The language
 

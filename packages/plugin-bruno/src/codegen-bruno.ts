@@ -128,8 +128,11 @@ export function generateOpenCollection(roots: OpRootNode[], options: OpenCollect
         for (const { route, op, requestName } of requests) {
             const fileName = op.name ? `${slugifyName(op.name)}.yml` : `${op.method}-${sanitizePath(route.path)}.yml`;
             let content = generateRequestFile(route, op, requestName, seq, modelMap, root, defaultScheme, randomExamples);
-            const pluginOverride = op.pluginFiles?.['bruno'];
-            if (pluginOverride !== undefined) {
+            const brunoExt = op.pluginExtensions?.['bruno'];
+            const pluginOverride = brunoExt && typeof brunoExt === 'object' && !Array.isArray(brunoExt)
+                ? brunoExt['template']
+                : undefined;
+            if (typeof pluginOverride === 'string') {
                 content = mergePluginFile(content, pluginOverride);
             }
             files.push({ relativePath: `${requestDir}/${fileName}`, content });

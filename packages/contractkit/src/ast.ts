@@ -200,6 +200,9 @@ export type ObjectMode = 'strict' | 'strip' | 'loose';
  * `public` is operation-only: overrides inherited route-level modifiers. */
 export type RouteModifier = 'internal' | 'deprecated' | 'public';
 
+/** JSON-like value tree used for `plugins` entries — strings, numbers, booleans, null, nested objects, and arrays. */
+export type PluginValue = string | number | boolean | null | PluginValue[] | { [key: string]: PluginValue };
+
 export interface OpParamNode {
     name: string;
     optional: boolean;
@@ -267,10 +270,10 @@ export interface OpOperationNode {
     security?: SecurityNode; // overrides config default; "none" = explicitly public
     /** Explicit modifiers. undefined = inherit from route; [] or array = override. */
     modifiers?: RouteModifier[];
-    /** Raw plugin values from the grammar, e.g. `{ bruno: "request-token.yml" }`. */
-    plugins?: Record<string, string>;
-    /** Resolved plugin file contents keyed by plugin name. Populated by the CLI resolver; never set by the parser. */
-    pluginFiles?: Record<string, string>;
+    /** Raw plugin values from the grammar, e.g. `{ bruno: { template: "file://request-token.yml" } }`. */
+    plugins?: Record<string, PluginValue>;
+    /** Resolved plugin extension values keyed by plugin name. Populated by the CLI resolver — same shape as `plugins`, but every `file://` URL string is replaced with the file's contents. Never set by the parser. */
+    pluginExtensions?: Record<string, PluginValue>;
     description?: string;
     loc: SourceLocation;
 }

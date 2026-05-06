@@ -425,7 +425,66 @@
                     "include": "#comment"
                 },
                 {
+                    "include": "#plugin-value-block"
+                },
+                {
+                    "include": "#plugin-value-array"
+                },
+                {
                     "include": "#meta-entry"
+                }
+            ]
+        },
+        "plugin-value-block": {
+            "begin": "\\{",
+            "end": "\\}",
+            "beginCaptures": {
+                "0": {
+                    "name": "punctuation.definition.block.begin.ck"
+                }
+            },
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.definition.block.end.ck"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#comment"
+                },
+                {
+                    "include": "#plugin-value-block"
+                },
+                {
+                    "include": "#plugin-value-array"
+                },
+                {
+                    "include": "#meta-entry"
+                }
+            ]
+        },
+        "plugin-value-array": {
+            "begin": "\\[",
+            "end": "\\]",
+            "beginCaptures": {
+                "0": {
+                    "name": "punctuation.definition.block.begin.ck"
+                }
+            },
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.definition.block.end.ck"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#comment"
+                },
+                {
+                    "include": "#plugin-value-block"
+                },
+                {
+                    "include": "#plugin-value-array"
                 }
             ]
         },

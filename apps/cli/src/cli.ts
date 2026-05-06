@@ -20,11 +20,11 @@ import {
     computeModelsWithInput,
     computeModelsWithOutput,
 } from '@contractkit/core';
-import type { ContractRootNode, OpRootNode } from '@contractkit/core';
+import type { ContractRootNode, OpRootNode, ContractKitPlugin } from '@contractkit/core';
 import { loadConfig, mergeConfig, type PluginEntry } from './config.js';
-import { loadCache, saveCache, computeHash } from './cache.js';
+import { CacheService, computeHash } from './cache.js';
 import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist } from './plugin.js';
-import { resolvePluginFiles } from './resolve-plugin-files.js';
+import { resolvePluginExtensions } from './resolve-plugin-extensions.js';
 import type { FileHashMap } from './cache.js';
 
 // ─── Arg parsing ───────────────────────────────────────────────────────────
@@ -216,7 +216,8 @@ async function main() {
         const diag = new DiagnosticCollector();
         const resolvedBase = resolve(config.rootDir);
         const cacheEnabled = config.cache.enabled && !config.force;
-        const cache: FileHashMap = cacheEnabled ? loadCache(resolvedBase, config.cache.filename) : {};
+        const cacheService = new CacheService(resolvedBase, { enabled: cacheEnabled, dir: config.cache.dir });
+        const cache: FileHashMap = cacheService.loadBuildCache();
         const newCache: FileHashMap = {};
 
         // ── Parse all .ck files ────────────────────────────────────────
@@ -262,8 +263,37 @@ async function main() {
             if (op.routes.length > 0) allOps.push(op);
         }
 
-        // ── Resolve plugin file references ────────────────────────────
-        resolvePluginFiles(allOps, resolvedBase, diag);
+        // ── Resolve plugin extension URL references (file:// and http(s)://) ──
+        await resolvePluginExtensions(allOps, resolvedBase, diag, { httpCache: cacheService.httpCache() });
+
+        // ── Per-plugin extension validation ───────────────────────────
+        const validatorsByName = new Map<string, NonNullable<ContractKitPlugin['validateExtension']>>();
+        for (const { plugin } of plugins) {
+            if (plugin.validateExtension) validatorsByName.set(plugin.name, plugin.validateExtension);
+        }
+        for (const root of allOps) {
+            for (const route of root.routes) {
+                for (const op of route.operations) {
+                    if (!op.pluginExtensions) continue;
+                    for (const [name, value] of Object.entries(op.pluginExtensions)) {
+                        const validator = validatorsByName.get(name);
+                        if (!validator) continue;
+                        const result = validator(value);
+                        if (!result) continue;
+                        if (result.errors) {
+                            for (const msg of result.errors) {
+                                diag.error(root.file, op.loc.line, `plugins.${name}: ${msg}`);
+                            }
+                        }
+                        if (result.warnings) {
+                            for (const msg of result.warnings) {
+                                diag.warn(root.file, op.loc.line, `plugins.${name}: ${msg}`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // ── Compute cross-file semantics ───────────────────────────────
         // modelsWithInput: which model names need an Input variant (have readonly/writeonly
@@ -363,7 +393,7 @@ async function main() {
 
         // Save cache
         if (config.cache.enabled) {
-            saveCache(resolvedBase, newCache, config.cache.filename);
+            cacheService.saveBuildCache(newCache);
         }
 
         // Report all collected warnings/errors after file writes so they

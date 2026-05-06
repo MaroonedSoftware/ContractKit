@@ -67,7 +67,7 @@ Create `contractkit.config.json` at your project root:
 
 ## Incremental cache
 
-When `"cache": true`, the CLI hashes each `.ck` file plus the resolved plugin config and skips files whose inputs haven't changed since the last run. The cache lives at `.contractkit-cache.json` (or the path you provide). Use `--force` to bypass it.
+When `"cache": true`, the CLI hashes each `.ck` file plus the resolved plugin config and skips files whose inputs haven't changed since the last run. Caches live under `.contractkit/cache/` (override the directory by passing a string for `cache`): `build.json` for build hashes, and `http/<sha256(url)>` for any fetched plugin extension HTTP responses. Use `--force` to bypass everything.
 
 ## Built-in plugins
 

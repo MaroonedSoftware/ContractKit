@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateOpenCollection, sanitizePath, MANIFEST_FILENAME, parseManifest, mergePluginFile } from '../src/codegen-bruno.js';
+import { validateBrunoExtension } from '../src/index.js';
 import {
     opRoot,
     opRoute,
@@ -1116,7 +1117,7 @@ describe('plugin file merges', () => {
             opRoute('/users', [
                 opOperation('get', {
                     responses: [opResponse(200, 'User')],
-                    pluginFiles: { bruno: 'runtime:\n  script:\n    req: |\n      console.log("pre");\n' },
+                    pluginExtensions: { bruno: { template: 'runtime:\n  script:\n    req: |\n      console.log("pre");\n' } },
                 }),
             ]),
         ]);
@@ -1134,17 +1135,19 @@ describe('plugin file merges', () => {
             opRoute('/users', [
                 opOperation('get', {
                     responses: [opResponse(200)],
-                    pluginFiles: {
-                        bruno: [
-                            'runtime:',
-                            '  assertions:',
-                            '    - expression: res.status',
-                            '      operator: eq',
-                            '      value: "200"',
-                            '    - expression: res.headers["x-request-id"]',
-                            '      operator: isDefined',
-                            '      value: ""',
-                        ].join('\n'),
+                    pluginExtensions: {
+                        bruno: {
+                            template: [
+                                'runtime:',
+                                '  assertions:',
+                                '    - expression: res.status',
+                                '      operator: eq',
+                                '      value: "200"',
+                                '    - expression: res.headers["x-request-id"]',
+                                '      operator: isDefined',
+                                '      value: ""',
+                            ].join('\n'),
+                        },
                     },
                 }),
             ]),
@@ -1161,7 +1164,7 @@ describe('plugin file merges', () => {
             opRoute('/users', [
                 opOperation('get', {
                     responses: [opResponse(200)],
-                    pluginFiles: { bruno: 'runtime:\n  script:\n    req: |\n      // pre\n' },
+                    pluginExtensions: { bruno: { template: 'runtime:\n  script:\n    req: |\n      // pre\n' } },
                 }),
             ]),
         ]);
@@ -1172,13 +1175,13 @@ describe('plugin file merges', () => {
         expect(req.content).toContain('url:');
     });
 
-    it('leaves generated content unchanged when pluginFiles is absent', () => {
+    it('leaves generated content unchanged when pluginExtensions is absent', () => {
         const withoutOverride = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200)] })])]);
         const withOverride = opRoot([
             opRoute('/users', [
                 opOperation('get', {
                     responses: [opResponse(200)],
-                    pluginFiles: {},
+                    pluginExtensions: {},
                 }),
             ]),
         ]);
@@ -1193,7 +1196,7 @@ describe('plugin file merges', () => {
             opRoute('/users', [
                 opOperation('get', {
                     responses: [opResponse(200)],
-                    pluginFiles: { bruno: 'just a scalar string' },
+                    pluginExtensions: { bruno: { template: 'just a scalar string' } },
                 }),
             ]),
         ]);
@@ -1206,7 +1209,7 @@ describe('plugin file merges', () => {
         const root = opRoot([
             opRoute('/users', [
                 opOperation('get', {
-                    pluginFiles: { bruno: 'info:\n  name: Custom Name\n' },
+                    pluginExtensions: { bruno: { template: 'info:\n  name: Custom Name\n' } },
                 }),
             ]),
         ]);
@@ -1250,6 +1253,36 @@ describe('mergePluginFile', () => {
         const result = mergePluginFile(base, override);
         expect(result).toContain('method: GET');
         expect(result).toContain('script:');
+    });
+});
+
+describe('validateBrunoExtension', () => {
+    it('accepts an empty object', () => {
+        expect(validateBrunoExtension({})).toBeUndefined();
+    });
+
+    it('accepts { template: <string> }', () => {
+        expect(validateBrunoExtension({ template: 'runtime: {}' })).toBeUndefined();
+    });
+
+    it('rejects a non-object value', () => {
+        const result = validateBrunoExtension('foo') as { errors: string[] };
+        expect(result.errors[0]).toContain('expected an object');
+    });
+
+    it('rejects an array value', () => {
+        const result = validateBrunoExtension(['x']) as { errors: string[] };
+        expect(result.errors[0]).toContain('array');
+    });
+
+    it('rejects template that is not a string', () => {
+        const result = validateBrunoExtension({ template: 7 }) as { errors: string[] };
+        expect(result.errors[0]).toContain("'template' must be a string");
+    });
+
+    it('rejects unknown fields', () => {
+        const result = validateBrunoExtension({ template: 'x', other: 'y' }) as { errors: string[] };
+        expect(result.errors[0]).toContain("unknown field 'other'");
     });
 });
 

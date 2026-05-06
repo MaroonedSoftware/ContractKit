@@ -1,4 +1,4 @@
-import type { CkRootNode, ContractRootNode, OpRootNode } from './ast.js';
+import type { CkRootNode, ContractRootNode, OpRootNode, PluginValue } from './ast.js';
 
 export interface PluginContext {
     /** Absolute resolved rootDir from config. */
@@ -40,6 +40,14 @@ export interface ContractKitPlugin {
      * Called once per .ck file, before validateRefs/validateOp.
      */
     validate?: (ast: CkRootNode, ctx: PluginContext) => Promise<void>;
+
+    /**
+     * Validate an operation's `pluginExtensions[name]` entry, where `name` matches this
+     * plugin's `name`. Called after `file://` URL resolution, once per matching entry.
+     * Return `errors` to fail compilation, `warnings` to log without failing. Both arrays
+     * are joined into single diagnostic messages prefixed with `plugins.<name>:`.
+     */
+    validateExtension?: (value: PluginValue) => { errors?: string[]; warnings?: string[] } | void;
 
     /**
      * Primary codegen hook — called once after ALL files are parsed and

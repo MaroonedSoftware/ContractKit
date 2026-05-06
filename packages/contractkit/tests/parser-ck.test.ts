@@ -1300,17 +1300,32 @@ operation /users: {
     // ─── plugins block ───────────────────────────────────────────────
 
     describe('plugins block', () => {
-        it('parses plugins block with a single entry', () => {
-            const { root } = parse('operation /auth/token: { post: { plugins: { bruno: "request-token.yml" } } }');
+        it('parses plugins block with a single object entry', () => {
+            const { root } = parse('operation /auth/token: { post: { plugins: { bruno: { template: "file://request-token.yml" } } } }');
             const op = root.routes[0]!.operations[0]!;
-            expect(op.plugins).toEqual({ bruno: 'request-token.yml' });
-            expect(op.pluginFiles).toBeUndefined();
+            expect(op.plugins).toEqual({ bruno: { template: 'file://request-token.yml' } });
+            expect(op.pluginExtensions).toBeUndefined();
         });
 
         it('parses plugins block with multiple entries', () => {
-            const { root } = parse('operation /users: { post: { plugins: { bruno: "create-user.yml"\n  typescript: "stub.ts" } } }');
+            const { root } = parse('operation /users: { post: { plugins: { bruno: { template: "file://create-user.yml" }\n  typescript: { stub: "file://stub.ts" } } } }');
             const op = root.routes[0]!.operations[0]!;
-            expect(op.plugins).toEqual({ bruno: 'create-user.yml', typescript: 'stub.ts' });
+            expect(op.plugins).toEqual({
+                bruno: { template: 'file://create-user.yml' },
+                typescript: { stub: 'file://stub.ts' },
+            });
+        });
+
+        it('parses scalar plugin values', () => {
+            const { root } = parse('operation /users: { get: { plugins: { stringy: "x"\n  numy: 7\n  booly: true\n  nully: null } } }');
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.plugins).toEqual({ stringy: 'x', numy: 7, booly: true, nully: null });
+        });
+
+        it('parses arrays and nested objects in plugin values', () => {
+            const { root } = parse('operation /users: { get: { plugins: { bruno: { tags: ["a" "b"]\n  meta: { x: 1 } } } } }');
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.plugins).toEqual({ bruno: { tags: ['a', 'b'], meta: { x: 1 } } });
         });
 
         it('parses empty plugins block', () => {
@@ -1320,9 +1335,9 @@ operation /users: {
         });
 
         it('plugins block does not affect other fields', () => {
-            const { root } = parse('operation /users: { post: { plugins: { bruno: "stub.yml" }\n  response: { 201: } } }');
+            const { root } = parse('operation /users: { post: { plugins: { bruno: { template: "file://stub.yml" } }\n  response: { 201: } } }');
             const op = root.routes[0]!.operations[0]!;
-            expect(op.plugins).toEqual({ bruno: 'stub.yml' });
+            expect(op.plugins).toEqual({ bruno: { template: 'file://stub.yml' } });
             expect(op.responses[0]!.statusCode).toBe(201);
         });
 
