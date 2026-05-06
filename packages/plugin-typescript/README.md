@@ -104,6 +104,7 @@ Output paths support the following variables:
 | `{filename}` | Base name of the `.ck` source file (without extension) |
 | `{dir}` | Relative directory of the `.ck` source file |
 | `{area}` | Value of the `area` key from the `options` block |
+| `{subarea}` | Value of the `subarea` key from the `options` block |
 | `{name}` | The `name` option from the SDK sub-config |
 
 ## What gets generated
@@ -124,7 +125,15 @@ Each operation file generates one Koa router. Request bodies and path/query para
 
 ### SDK client shape (from `operation`)
 
-Each operation file generates one client class. The aggregator SDK class (in `output.sdk`) instantiates all clients and exposes them as properties.
+Operation files cluster on the SDK based on `keys.area` and `keys.subarea` (set in each file's `options { keys: { ... } }` block):
+
+| File metadata | Generated layout |
+| --- | --- |
+| `area: identity, subarea: invitations` | leaf `IdentityInvitationsClient` emitted as `<output.clients>` (path can use `{subarea}`); aggregator wires it as `sdk.identity.invitations` |
+| `area: identity` (no subarea) | methods inlined directly on `IdentityClient` (no standalone `*.client.ts`); exposed as `sdk.identity.<method>` |
+| neither | flat `<Filename>Client` exposed as `sdk.<filename>` (legacy behavior) |
+
+Multiple files mapping to the same `(area, subarea)` are merged into one leaf class. Multiple area-level files merge into a single `<Area>Client`; duplicate method names across them throw at codegen — disambiguate with `sdk:` or move one into a subarea.
 
 Method names follow this priority:
 

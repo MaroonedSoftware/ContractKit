@@ -8,7 +8,12 @@ import {
     generateSdkAggregator,
     deriveClientClassName,
     deriveClientPropertyName,
+    deriveSubareaClientClassName,
+    deriveSubareaPropertyName,
+    getAreaSubarea,
     hasPublicOperations,
+    type SdkClientInfo,
+    type SdkAreaInfo,
 } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
 import {
@@ -64,9 +69,9 @@ export interface SdkConfig {
     output?: {
         /** Path template for the SDK aggregator file. Supports {name}. Default: `sdk.ts`. */
         sdk?: string;
-        /** Path template for SDK type files. Supports {filename}, {dir}, {area}. */
+        /** Path template for SDK type files. Supports {filename}, {dir}, {area}, {subarea}. */
         types?: string;
-        /** Path template for client class files. Supports {filename}, {dir}, {area}. */
+        /** Path template for client class files. Supports {filename}, {dir}, {area}, {subarea}. */
         clients?: string;
     };
     /**
@@ -233,20 +238,62 @@ function runSdkGeneration(
     }
 
     // ── SDK clients ──
+    // Group opRoots by (area, subarea):
+    //   - area + subarea  → leaf client emitted as <Area><Subarea>Client in its own file
+    //   - area only       → no standalone file; methods inlined into <Area>Client in sdk.ts
+    //   - neither         → flat top-level client (legacy behavior)
+    interface AreaBucket {
+        leaves: { ast: typeof inputs.opRoots[number]; outPath: string; subarea: string }[];
+        inlineRoots: typeof inputs.opRoots[number][];
+    }
+    const areaBuckets = new Map<string, AreaBucket>();
+    const topLevelEntries: { ast: typeof inputs.opRoots[number]; outPath: string }[] = [];
+
     if (config.output?.clients) {
         for (const ast of inputs.opRoots) {
             const sdkOutPath = computeSdkOutPath(ast.file, sdkBase, config.output.clients, ckCommonRoot, ast.meta);
             if (!sdkOutPath || !hasPublicOperations(ast, config.includeInternal)) continue;
-            sdkClientInfos.push({
-                outPath: sdkOutPath,
-                className: deriveClientClassName(ast.file),
-                propertyName: deriveClientPropertyName(ast.file),
-            });
+
+            const { area, subarea } = getAreaSubarea(ast);
+            if (area && subarea) {
+                const bucket = areaBuckets.get(area) ?? { leaves: [], inlineRoots: [] };
+                bucket.leaves.push({ ast, outPath: sdkOutPath, subarea });
+                areaBuckets.set(area, bucket);
+            } else if (area) {
+                const bucket = areaBuckets.get(area) ?? { leaves: [], inlineRoots: [] };
+                bucket.inlineRoots.push(ast);
+                areaBuckets.set(area, bucket);
+            } else {
+                topLevelEntries.push({ ast, outPath: sdkOutPath });
+            }
+        }
+
+        // Emit per-file clients for leaves (subarea) and top-level (no area). Area-only files are inlined later.
+        for (const { ast, outPath, subarea } of [...areaBuckets.entries()].flatMap(([area, b]) => b.leaves.map(l => ({ ...l, area })))) {
+            const className = deriveSubareaClientClassName((ast.meta?.area as string) ?? '', subarea);
+            sdkClientInfos.push({ outPath, className, propertyName: deriveSubareaPropertyName(subarea) });
             emitFile(
-                sdkOutPath,
+                outPath,
                 generateSdk(ast, {
                     typeImportPathTemplate: undefined,
-                    outPath: sdkOutPath,
+                    outPath,
+                    modelOutPaths: sdkModelOutPaths,
+                    sdkOptionsPath,
+                    modelsWithInput,
+                    modelsWithOutput,
+                    includeInternal: config.includeInternal,
+                    clientClassName: className,
+                }),
+            );
+        }
+        for (const { ast, outPath } of topLevelEntries) {
+            const className = deriveClientClassName(ast.file);
+            sdkClientInfos.push({ outPath, className, propertyName: deriveClientPropertyName(ast.file) });
+            emitFile(
+                outPath,
+                generateSdk(ast, {
+                    typeImportPathTemplate: undefined,
+                    outPath,
                     modelOutPaths: sdkModelOutPaths,
                     sdkOptionsPath,
                     modelsWithInput,
@@ -261,21 +308,70 @@ function runSdkGeneration(
     emitFile(sdkOptionsPath, generateSdkOptions());
 
     // ── sdk.ts aggregator ──
-    if (sdkClientInfos.length > 0) {
+    const hasAnything = sdkClientInfos.length > 0 || areaBuckets.size > 0;
+    if (hasAnything) {
         const sdkEntryDir = dirname(sdkEntryPath);
-        const clients = sdkClientInfos.map(c => {
-            let rel = relative(sdkEntryDir, c.outPath).replace(/\.ts$/, '.js');
-            if (!rel.startsWith('.')) rel = './' + rel;
-            return { className: c.className, propertyName: c.propertyName, importPath: rel };
-        });
         const sdkOptionsRel = relative(sdkEntryDir, sdkOptionsPath).replace(/\.ts$/, '.js');
+        const sdkOptionsImportPath = sdkOptionsRel.startsWith('.') ? sdkOptionsRel : './' + sdkOptionsRel;
         const sdkClassName = sdkName
             ? sdkName
                   .split(/[-._\s]+/)
                   .map(s => s.charAt(0).toUpperCase() + s.slice(1))
                   .join('') + 'Sdk'
             : 'Sdk';
-        emitFile(sdkEntryPath, generateSdkAggregator(clients, sdkOptionsRel.startsWith('.') ? sdkOptionsRel : './' + sdkOptionsRel, sdkClassName));
+
+        const toClientImport = (info: { outPath: string; className: string; propertyName: string }): SdkClientInfo => {
+            let rel = relative(sdkEntryDir, info.outPath).replace(/\.ts$/, '.js');
+            if (!rel.startsWith('.')) rel = './' + rel;
+            return { className: info.className, propertyName: info.propertyName, importPath: rel };
+        };
+
+        const topLevelClients: SdkClientInfo[] = topLevelEntries.map(e => ({
+            className: deriveClientClassName(e.ast.file),
+            propertyName: deriveClientPropertyName(e.ast.file),
+            importPath: (() => {
+                const rel = relative(sdkEntryDir, e.outPath).replace(/\.ts$/, '.js');
+                return rel.startsWith('.') ? rel : './' + rel;
+            })(),
+        }));
+
+        const areas: SdkAreaInfo[] = [...areaBuckets.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([area, bucket]) => ({
+                area,
+                inlineFiles: bucket.inlineRoots.map(root => ({
+                    root,
+                    codegenOptions: {
+                        typeImportPathTemplate: undefined,
+                        outPath: sdkEntryPath,
+                        modelOutPaths: sdkModelOutPaths,
+                        sdkOptionsPath,
+                        modelsWithInput,
+                        modelsWithOutput,
+                        includeInternal: config.includeInternal,
+                    },
+                })),
+                subareaClients: bucket.leaves
+                    .sort((a, b) => a.subarea.localeCompare(b.subarea))
+                    .map(l => ({
+                        propertyName: deriveSubareaPropertyName(l.subarea),
+                        client: toClientImport({
+                            outPath: l.outPath,
+                            className: deriveSubareaClientClassName(area, l.subarea),
+                            propertyName: deriveSubareaPropertyName(l.subarea),
+                        }),
+                    })),
+            }));
+
+        emitFile(
+            sdkEntryPath,
+            generateSdkAggregator({
+                topLevelClients,
+                areas,
+                sdkOptionsImportPath,
+                sdkClassName,
+            }),
+        );
     }
 
     // ── Barrel files ──
@@ -284,7 +380,7 @@ function runSdkGeneration(
     for (const barrel of sdkTypeBarrels) emitFile(barrel.outPath, barrel.content);
 
     const rootExports: string[] = [`export * from './${basename(sdkOptionsPath).replace(/\.ts$/, '.js')}';`];
-    if (sdkClientInfos.length > 0) {
+    if (hasAnything) {
         rootExports.push(`export * from './${basename(sdkEntryPath).replace(/\.ts$/, '.js')}';`);
     }
     for (const c of sdkClientInfos) {
@@ -403,6 +499,11 @@ export default plugin;
 
 // ─── Factory: for programmatic use with explicit config ────────────────────
 
+/**
+ * Build a `@contractkit/plugin-typescript` instance with explicit configuration, for
+ * programmatic use (tests, custom build scripts). Prefer the default export when loading
+ * via `contractkit.config.json`.
+ */
 export function createTypescriptPlugin(config: TypescriptPluginConfig, rootDir: string): ContractKitPlugin {
     return {
         name: 'typescript',

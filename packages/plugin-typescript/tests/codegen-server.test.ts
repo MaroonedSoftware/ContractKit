@@ -190,3 +190,101 @@ describe('createTypescriptPlugin (server)', () => {
         });
     });
 });
+
+// ─── SDK pipeline: area / subarea grouping ─────────────────────────────────
+
+describe('createTypescriptPlugin (sdk) — area / subarea grouping', () => {
+    function findEmitted(emitted: Map<string, string>, suffix: string): string | undefined {
+        for (const [path, content] of emitted) {
+            if (path.endsWith(suffix)) return content;
+        }
+        return undefined;
+    }
+
+    it('emits a leaf <Area><Subarea>Client and nests it under <Area>Client in sdk.ts', async () => {
+        const plugin = createTypescriptPlugin({ sdk: { output: { sdk: 'sdk.ts', clients: '{area}/{subarea}.client.ts' } } }, '/project');
+        const ctx = makeCtx('/project');
+        const root = opRoot(
+            [opRoute('/identity/invitations', [opOperation('post', { sdk: 'createInvitation', responses: [opResponse(201)] })])],
+            '/project/contracts/identity-invitations.ck',
+            { area: 'identity', subarea: 'invitations' },
+        );
+        await plugin.generateTargets!(inputs([root]), ctx);
+
+        // Leaf client emitted at the {area}/{subarea}.client.ts path
+        const leaf = findEmitted(ctx.emitted, 'identity/invitations.client.ts');
+        expect(leaf).toBeDefined();
+        expect(leaf!).toContain('export class IdentityInvitationsClient');
+        expect(leaf!).toContain('async createInvitation');
+
+        // Aggregator declares IdentityClient + Sdk wiring
+        const sdk = findEmitted(ctx.emitted, '/sdk.ts');
+        expect(sdk).toBeDefined();
+        expect(sdk!).toContain('class IdentityClient {');
+        expect(sdk!).toContain('readonly invitations: IdentityInvitationsClient');
+        expect(sdk!).toContain('this.invitations = new IdentityInvitationsClient(fetch)');
+        expect(sdk!).toContain('export class Sdk {');
+        expect(sdk!).toContain('readonly identity: IdentityClient');
+        expect(sdk!).toContain('this.identity = new IdentityClient(sdkFetch)');
+    });
+
+    it('does NOT emit a standalone client file for an area-level (no-subarea) input — methods inline into sdk.ts', async () => {
+        const plugin = createTypescriptPlugin({ sdk: { output: { sdk: 'sdk.ts', clients: '{area}/{filename}.client.ts' } } }, '/project');
+        const ctx = makeCtx('/project');
+        const root = opRoot(
+            [opRoute('/me', [opOperation('get', { sdk: 'getCurrentUser', responses: [opResponse(200)] })])],
+            '/project/contracts/identity-me.ck',
+            { area: 'identity' },
+        );
+        await plugin.generateTargets!(inputs([root]), ctx);
+
+        // No per-file leaf for the area-level input
+        for (const path of ctx.emitted.keys()) {
+            expect(path).not.toMatch(/identity[/-]me\.client\.ts$/);
+        }
+
+        // Methods land directly on IdentityClient inside sdk.ts
+        const sdk = findEmitted(ctx.emitted, '/sdk.ts');
+        expect(sdk).toBeDefined();
+        expect(sdk!).toContain('class IdentityClient {');
+        expect(sdk!).toContain('async getCurrentUser');
+    });
+
+    it('mixes area-level inline methods with subarea property wiring on the same area client', async () => {
+        const plugin = createTypescriptPlugin({ sdk: { output: { sdk: 'sdk.ts', clients: '{area}/{filename}.client.ts' } } }, '/project');
+        const ctx = makeCtx('/project');
+        const me = opRoot(
+            [opRoute('/me', [opOperation('get', { sdk: 'getCurrentUser', responses: [opResponse(200)] })])],
+            '/project/contracts/identity-me.ck',
+            { area: 'identity' },
+        );
+        const invitations = opRoot(
+            [opRoute('/identity/invitations', [opOperation('post', { sdk: 'createInvitation', responses: [opResponse(201)] })])],
+            '/project/contracts/identity-invitations.ck',
+            { area: 'identity', subarea: 'invitations' },
+        );
+        await plugin.generateTargets!(inputs([me, invitations]), ctx);
+
+        const sdk = findEmitted(ctx.emitted, '/sdk.ts')!;
+        expect(sdk).toContain('class IdentityClient {');
+        expect(sdk).toContain('readonly invitations: IdentityInvitationsClient');
+        expect(sdk).toContain('async getCurrentUser');
+    });
+
+    it('preserves legacy flat wiring for files with no area', async () => {
+        const plugin = createTypescriptPlugin({ sdk: { output: { sdk: 'sdk.ts', clients: '{filename}.client.ts' } } }, '/project');
+        const ctx = makeCtx('/project');
+        const root = opRoot(
+            [opRoute('/webhooks', [opOperation('post', { sdk: 'sendWebhook', responses: [opResponse(202)] })])],
+            '/project/contracts/webhooks.ck',
+        );
+        await plugin.generateTargets!(inputs([root]), ctx);
+
+        const sdk = findEmitted(ctx.emitted, '/sdk.ts')!;
+        // No <Area>Client wrapper; flat property on Sdk
+        expect(sdk).toContain('export class Sdk {');
+        expect(sdk).toContain('readonly webhooks: WebhooksClient');
+        expect(sdk).toContain('this.webhooks = new WebhooksClient(sdkFetch)');
+        expect(sdk).not.toMatch(/class \w+Client \{/m);
+    });
+});

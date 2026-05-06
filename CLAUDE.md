@@ -157,9 +157,19 @@ The `@contractkit/plugin-typescript` plugin handles all TypeScript output via su
 }
 ```
 
-Each sub-config is optional. `zod: true` makes `output.types` emit Zod schemas (via `generateContract`) instead of plain TypeScript interfaces. Path templates support `{filename}`, `{dir}`, `{area}`, and `{name}`.
+Each sub-config is optional. `zod: true` makes `output.types` emit Zod schemas (via `generateContract`) instead of plain TypeScript interfaces. Path templates support `{filename}`, `{dir}`, `{area}`, `{subarea}`, and `{name}`.
 
 SDK method names follow this priority: `sdk:` field → `name:` field (converted to camelCase) → inferred from HTTP method + path. The Python SDK plugin uses the same priority but converts to `snake_case`.
+
+### TS SDK subclient grouping
+
+`keys.area` and `keys.subarea` cluster operations on the generated SDK:
+
+- `(area + subarea)` files emit a leaf `<Area><Subarea>Client` in `output.clients` (path can use `{subarea}`); the aggregator wires it as `sdk.<area>.<subarea>`.
+- `(area only)` files do **NOT** emit a standalone `*.client.ts`. Their methods are inlined directly into a synthesized `<Area>Client` class declared inside the SDK aggregator file (`sdk.ts`). Surfaced as `sdk.<area>.<method>`.
+- `(neither)` files keep the legacy flat shape: per-file `<Filename>Client` exposed as `sdk.<filename>`.
+
+Multiple area-level files merge into one `<Area>Client`. Duplicate method names within that merge throw at codegen — disambiguate with `sdk:` or split into a subarea. The aggregator collects type imports across all inline files and re-emits them at the top of `sdk.ts`. See `generateSdkAggregator` in `packages/plugin-typescript/src/codegen-sdk.ts` for the full input shape.
 
 The SDK emits a shared `sdk-options.ts` alongside the client files. It contains `SdkOptions`, `createSdkFetch`, `buildQueryString`, `parseJson<T>`, and bigint JSON helpers. Void operations (no response body) skip body consumption entirely.
 

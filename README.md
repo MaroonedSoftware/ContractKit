@@ -1112,7 +1112,7 @@ This is the escape hatch for cases where a plugin's generated output needs to be
 
 ## SDK Generation
 
-The TypeScript SDK is produced by the `sdk` sub-config of `@contractkit/plugin-typescript`. Each operation `.ck` file becomes a client class; an aggregator class, barrel exports, and a shared `sdk-options.ts` runtime helper are emitted automatically.
+The TypeScript SDK is produced by the `sdk` sub-config of `@contractkit/plugin-typescript`. The aggregator class, barrel exports, and a shared `sdk-options.ts` runtime helper are emitted automatically.
 
 ```typescript
 import { MyappSdk } from '@myapp/sdk';
@@ -1120,6 +1120,20 @@ import { MyappSdk } from '@myapp/sdk';
 const sdk = new MyappSdk({ baseUrl: 'https://api.example.com' });
 const users = await sdk.users.list({ query: { page: 1 } });
 ```
+
+### Subclient grouping
+
+`keys.area` and `keys.subarea` (set in a file's `options { keys: { ... } }` block) drive how operations cluster on the generated SDK:
+
+| File metadata | Generated layout |
+| --- | --- |
+| `area: identity, subarea: invitations` | `IdentityInvitationsClient` emitted as a leaf file; exposed as `sdk.identity.invitations.<method>` |
+| `area: identity` (no subarea) | methods inlined directly on `IdentityClient` (no standalone `*.client.ts`); exposed as `sdk.identity.<method>` |
+| neither | flat top-level property — `sdk.<filename>.<method>` (legacy behavior) |
+
+Multiple files mapping to the same `(area, subarea)` are merged into one client. Multiple area-level files contributing methods that collide on name fail at codegen time with a clear error — disambiguate with `sdk:` or move one into a subarea.
+
+`{subarea}` is available as a path-template variable on `output.clients` and `output.types` alongside `{area}`, `{filename}`, and `{dir}`. Example: `output.clients: "src/{area}/{subarea}.client.ts"` produces `src/identity/invitations.client.ts`.
 
 A Python SDK with the same operation coverage is available via `@contractkit/plugin-python`.
 
