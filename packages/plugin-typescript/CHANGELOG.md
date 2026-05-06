@@ -1,5 +1,12 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.17.5
+
+### Patch Changes
+
+- Updated dependencies [a9e9ec0]
+    - @contractkit/core@0.14.0
+
 ## 0.17.4
 
 ### Patch Changes

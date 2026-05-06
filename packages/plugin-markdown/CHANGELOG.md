@@ -1,5 +1,12 @@
 # @contractkit/contractkit-plugin-markdown
 
+## 0.8.4
+
+### Patch Changes
+
+- Updated dependencies [a9e9ec0]
+    - @contractkit/core@0.14.0
+
 ## 0.8.3
 
 ### Patch Changes
