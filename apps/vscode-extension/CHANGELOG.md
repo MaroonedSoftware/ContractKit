@@ -1,5 +1,12 @@
 # @contractkit/vscode-extension
 
+## 0.8.2
+
+### Patch Changes
+
+- Updated dependencies [a9e9ec0]
+    - @contractkit/core@0.14.0
+
 ## 0.8.1
 
 ### Patch Changes
