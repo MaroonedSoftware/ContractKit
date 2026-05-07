@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/prettier-plugin",
-    "version": "0.9.5",
+    "version": "0.9.6",
     "description": "Prettier plugin for ContractKit DSL",
     "author": {
         "name": "Marooned Software",

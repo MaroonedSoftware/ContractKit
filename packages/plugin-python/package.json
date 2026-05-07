@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-python",
-    "version": "0.10.1",
+    "version": "0.11.0",
     "description": "ContractKit built-in plugin: Python SDK client generation (Pydantic v2 + httpx)",
     "author": {
         "name": "Marooned Software",
