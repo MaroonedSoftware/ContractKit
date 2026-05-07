@@ -1,5 +1,12 @@
 # @contractkit/prettier-plugin-contractkit
 
+## 0.9.6
+
+### Patch Changes
+
+- Updated dependencies [4ac6d4d]
+    - @contractkit/core@0.16.0
+
 ## 0.9.5
 
 ### Patch Changes
