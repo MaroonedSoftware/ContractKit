@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { generateOpenCollection, sanitizePath, MANIFEST_FILENAME, parseManifest, mergePluginFile } from '../src/codegen-bruno.js';
+import {
+    generateOpenCollection,
+    generateOpenCollectionIncremental,
+    emptyManifest,
+    sanitizePath,
+    MANIFEST_FILENAME,
+    parseManifest,
+    mergePluginFile,
+} from '../src/codegen-bruno.js';
 import { validateBrunoExtension } from '../src/index.js';
 import {
     opRoot,
@@ -987,7 +995,7 @@ describe('generateOpenCollection', () => {
         const files = generateOpenCollection([root], { collectionName: 'API' });
         const manifest = files.find(f => f.relativePath === MANIFEST_FILENAME);
         expect(manifest).toBeDefined();
-        const tracked = parseManifest(manifest!.content);
+        const tracked = parseManifest(manifest!.content).files;
         expect(tracked).toContain('opencollection.yml');
         expect(tracked).toContain('environments/local.yml');
         expect(tracked).toContain('users/folder.yml');
@@ -996,11 +1004,19 @@ describe('generateOpenCollection', () => {
         expect(tracked).toContain(MANIFEST_FILENAME);
     });
 
-    it('parseManifest returns [] for malformed input', () => {
-        expect(parseManifest('not json')).toEqual([]);
-        expect(parseManifest('{}')).toEqual([]);
-        expect(parseManifest('{"files": "nope"}')).toEqual([]);
-        expect(parseManifest('{"files": [1, 2, 3]}')).toEqual([]);
+    it('parseManifest returns an empty manifest for malformed input', () => {
+        expect(parseManifest('not json').files).toEqual([]);
+        expect(parseManifest('not json').units).toEqual({});
+        expect(parseManifest('{}').files).toEqual([]);
+        expect(parseManifest('{"files": "nope"}').files).toEqual([]);
+        expect(parseManifest('{"files": [1, 2, 3]}').files).toEqual([]);
+    });
+
+    it('parseManifest accepts v1 manifest shape and returns no per-op entries', () => {
+        const v1 = JSON.stringify({ files: ['opencollection.yml', 'users/get-users.yml'] });
+        const parsed = parseManifest(v1);
+        expect(parsed.files).toEqual(['opencollection.yml', 'users/get-users.yml']);
+        expect(parsed.units).toEqual({});
     });
 
     // ─── randomExamples ───────────────────────────────────────────────────
@@ -1283,6 +1299,97 @@ describe('validateBrunoExtension', () => {
     it('rejects unknown fields', () => {
         const result = validateBrunoExtension({ template: 'x', other: 'y' }) as { errors: string[] };
         expect(result.errors[0]).toContain("unknown field 'other'");
+    });
+});
+
+describe('generateOpenCollectionIncremental', () => {
+    function rootWithTwoOps() {
+        return opRoot([opRoute('/users', [opOperation('get'), opOperation('post')])], 'users.op');
+    }
+
+    it('produces the same files as a full regen on the first run (empty manifest)', () => {
+        const root = rootWithTwoOps();
+        const full = generateOpenCollection([root], { collectionName: 'API' });
+        const incremental = generateOpenCollectionIncremental([root], { collectionName: 'API' }, emptyManifest());
+        expect(incremental.skippedOpCount).toBe(0);
+        expect(incremental.deletedPaths).toEqual([]);
+        // Both runs should write the same set of paths.
+        expect(new Set(incremental.filesToWrite.map(f => f.relativePath))).toEqual(new Set(full.map(f => f.relativePath)));
+    });
+
+    it('skips re-rendering ops whose fingerprint matches the prior manifest', () => {
+        const root = rootWithTwoOps();
+        const first = generateOpenCollectionIncremental([root], { collectionName: 'API' }, emptyManifest());
+        const second = generateOpenCollectionIncremental([root], { collectionName: 'API' }, first.manifest);
+
+        expect(second.skippedOpCount).toBe(2);
+        // Only global files (collection root + env file + folder.yml) and the manifest are re-emitted.
+        const opFiles = second.filesToWrite.filter(f => f.relativePath.endsWith('.yml') && f.relativePath.startsWith('users/') && f.relativePath !== 'users/folder.yml');
+        expect(opFiles).toEqual([]);
+        expect(second.deletedPaths).toEqual([]);
+    });
+
+    it('re-renders only the op whose request shape changed', () => {
+        const rootA = opRoot(
+            [opRoute('/users', [opOperation('get'), opOperation('post', { request: opRequest(scalarType('string')) })])],
+            'users.op',
+        );
+        const first = generateOpenCollectionIncremental([rootA], { collectionName: 'API' }, emptyManifest());
+
+        // Change only the POST body type — GET op should remain cached.
+        const rootB = opRoot(
+            [opRoute('/users', [opOperation('get'), opOperation('post', { request: opRequest(scalarType('int')) })])],
+            'users.op',
+        );
+        const second = generateOpenCollectionIncremental([rootB], { collectionName: 'API' }, first.manifest);
+
+        expect(second.skippedOpCount).toBe(1);
+        const writtenOpPaths = second.filesToWrite.map(f => f.relativePath).filter(p => p.startsWith('users/') && p !== 'users/folder.yml');
+        expect(writtenOpPaths).toEqual(['users/post-users.yml']);
+    });
+
+    it('invalidates ops that reference a model whose definition changed', () => {
+        const v1 = model('User', [field('name', scalarType('string'))]);
+        const v2 = model('User', [field('name', scalarType('string')), field('email', scalarType('string'))]);
+        const route = () => opRoute('/users', [opOperation('post', { request: opRequest('User') })]);
+        const root = opRoot([route()], 'users.op');
+
+        const first = generateOpenCollectionIncremental([root], { collectionName: 'API', contractRoots: [contractRoot([v1])] }, emptyManifest());
+        const second = generateOpenCollectionIncremental([root], { collectionName: 'API', contractRoots: [contractRoot([v2])] }, first.manifest);
+
+        expect(second.skippedOpCount).toBe(0);
+        expect(second.filesToWrite.map(f => f.relativePath)).toContain('users/post-users.yml');
+    });
+
+    it('regenerates an op whose previously-emitted file is missing on disk', () => {
+        const root = rootWithTwoOps();
+        const first = generateOpenCollectionIncremental([root], { collectionName: 'API' }, emptyManifest());
+        // Simulate that users/get-users.yml was deleted.
+        const second = generateOpenCollectionIncremental(
+            [root],
+            { collectionName: 'API' },
+            first.manifest,
+            relPath => relPath !== 'users/get-users.yml',
+        );
+        expect(second.skippedOpCount).toBe(1);
+        expect(second.filesToWrite.map(f => f.relativePath)).toContain('users/get-users.yml');
+    });
+
+    it('lists removed ops in deletedPaths', () => {
+        const before = opRoot([opRoute('/users', [opOperation('get'), opOperation('post')])], 'users.op');
+        const after = opRoot([opRoute('/users', [opOperation('get')])], 'users.op');
+        const first = generateOpenCollectionIncremental([before], { collectionName: 'API' }, emptyManifest());
+        const second = generateOpenCollectionIncremental([after], { collectionName: 'API' }, first.manifest);
+        expect(second.deletedPaths).toContain('users/post-users.yml');
+        expect(second.skippedOpCount).toBe(1); // get-users still cached
+    });
+
+    it('treats a v1 manifest as a full cache miss but still cleans up its tracked files', () => {
+        const root = rootWithTwoOps();
+        const v1Manifest = parseManifest(JSON.stringify({ files: ['legacy/old-file.yml', 'opencollection.yml'] }));
+        const result = generateOpenCollectionIncremental([root], { collectionName: 'API' }, v1Manifest);
+        expect(result.skippedOpCount).toBe(0);
+        expect(result.deletedPaths).toContain('legacy/old-file.yml');
     });
 });
 

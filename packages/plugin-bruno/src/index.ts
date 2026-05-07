@@ -1,8 +1,8 @@
 import { resolve, basename, dirname } from 'node:path';
 import { existsSync, readFileSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
-import { generateOpenCollection, MANIFEST_FILENAME, parseManifest } from './codegen-bruno.js';
+import { generateOpenCollectionIncremental, MANIFEST_FILENAME, parseManifest, emptyManifest } from './codegen-bruno.js';
 import type { BrunoSecurityScheme } from './codegen-bruno.js';
-import type { ContractKitPlugin, PluginValue } from '@contractkit/core';
+import type { ContractKitPlugin, PluginContext, PluginValue, OpRootNode, ContractRootNode, IncrementalManifest } from '@contractkit/core';
 
 /** Configuration accepted by the Bruno plugin, both via `contractkit.config.json` and `createBrunoPlugin`. */
 export interface BrunoPluginConfig {
@@ -67,27 +67,10 @@ function describe(value: PluginValue): string {
 
 const plugin: ContractKitPlugin = {
     name: 'bruno',
-    cacheKey: 'bruno',
     validateExtension: validateBrunoExtension,
     async generateTargets({ opRoots, contractRoots }, ctx) {
         const { auth, ...config } = ctx.options as BrunoPluginOptions;
-        const base = config.baseDir ? resolve(ctx.rootDir, config.baseDir) : ctx.rootDir;
-        const outDir = resolve(base, config.output ?? 'bruno-collection');
-        const collectionName = config.collectionName ?? basename(ctx.rootDir);
-
-        cleanupTrackedFiles(outDir);
-
-        const files = generateOpenCollection(opRoots, {
-            collectionName,
-            contractRoots,
-            auth,
-            randomExamples: config.randomExamples ?? true,
-            includeInternal: config.includeInternal,
-            environments: config.environments,
-        });
-        for (const { relativePath, content } of files) {
-            ctx.emitFile(resolve(outDir, relativePath), content);
-        }
+        await runBrunoCodegen(opRoots, contractRoots, ctx, config, auth);
     },
 };
 
@@ -112,58 +95,83 @@ export function createBrunoPlugin(
 ): ContractKitPlugin {
     return {
         name: 'bruno',
-        cacheKey: `bruno:${JSON.stringify(config)}`,
         validateExtension: validateBrunoExtension,
         async generateTargets({ opRoots, contractRoots }, ctx) {
-            const base = config.baseDir ? resolve(rootDir, config.baseDir) : rootDir;
-            const outDir = resolve(base, config.output ?? 'bruno-collection');
-            const collectionName = config.collectionName ?? basename(rootDir);
-
-            cleanupTrackedFiles(outDir);
-
-            const files = generateOpenCollection(opRoots, {
-                collectionName,
-                contractRoots,
-                auth,
-                randomExamples: config.randomExamples ?? true,
-                includeInternal: config.includeInternal,
-                environments: config.environments,
-            });
-            for (const { relativePath, content } of files) {
-                ctx.emitFile(resolve(outDir, relativePath), content);
-            }
+            // The factory captures rootDir at creation time; ctx.rootDir may differ when the
+            // plugin is loaded via a config file, so respect the explicit one passed in here.
+            await runBrunoCodegen(opRoots, contractRoots, { ...ctx, rootDir }, config, auth);
         },
     };
 }
 
 /**
- * Delete files this plugin generated on the previous run, leaving anything
- * the user added (custom .bru files, scripts, secrets, etc.) untouched.
+ * Shared orchestration used by both the default export and {@link createBrunoPlugin}.
  *
- * On first run — or after manual deletion of the manifest — nothing is
- * removed; stale files from prior versions linger until manually cleaned.
+ * Reads the prior manifest, runs the cache-aware codegen, deletes any files that
+ * are no longer produced, and emits the changed files plus the new manifest. When
+ * `ctx.cacheEnabled` is `false` (e.g. `--force`) the prior manifest is ignored so
+ * every op regenerates.
  */
-function cleanupTrackedFiles(outDir: string): void {
-    const manifestPath = resolve(outDir, MANIFEST_FILENAME);
-    if (!existsSync(manifestPath)) return;
+async function runBrunoCodegen(
+    opRoots: OpRootNode[],
+    contractRoots: ContractRootNode[],
+    ctx: PluginContext,
+    config: BrunoPluginConfig,
+    auth: BrunoPluginOptions['auth'],
+): Promise<void> {
+    const base = config.baseDir ? resolve(ctx.rootDir, config.baseDir) : ctx.rootDir;
+    const outDir = resolve(base, config.output ?? 'bruno-collection');
+    const collectionName = config.collectionName ?? basename(ctx.rootDir);
 
-    let tracked: string[];
-    try {
-        tracked = parseManifest(readFileSync(manifestPath, 'utf-8'));
-    } catch {
-        return;
+    const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(outDir) : emptyManifest();
+
+    const result = generateOpenCollectionIncremental(
+        opRoots,
+        {
+            collectionName,
+            contractRoots,
+            auth,
+            randomExamples: config.randomExamples ?? true,
+            includeInternal: config.includeInternal,
+            environments: config.environments,
+        },
+        prevManifest,
+        relPath => existsSync(resolve(outDir, relPath)),
+    );
+
+    deleteStalePaths(outDir, result.deletedPaths);
+
+    for (const { relativePath, content } of result.filesToWrite) {
+        ctx.emitFile(resolve(outDir, relativePath), content);
     }
+}
 
+/** Read the previous run's manifest. Returns an empty manifest when the file is missing or unreadable so the next run safely starts from scratch. */
+function readManifest(outDir: string): IncrementalManifest {
+    const manifestPath = resolve(outDir, MANIFEST_FILENAME);
+    if (!existsSync(manifestPath)) return emptyManifest();
+    try {
+        return parseManifest(readFileSync(manifestPath, 'utf-8'));
+    } catch {
+        return emptyManifest();
+    }
+}
+
+/**
+ * Delete files that the previous run tracked but the current run doesn't produce, then
+ * walk back up each affected directory and remove it if it's now empty (stopping at outDir).
+ * Anything user-added survives because the manifest only ever lists plugin-generated paths.
+ */
+function deleteStalePaths(outDir: string, relPaths: string[]): void {
+    if (relPaths.length === 0) return;
     const removedDirs = new Set<string>();
-    for (const rel of tracked) {
+    for (const rel of relPaths) {
         const abs = resolve(outDir, rel);
         if (existsSync(abs)) {
             rmSync(abs, { force: true });
             removedDirs.add(dirname(abs));
         }
     }
-
-    // Walk up from each affected directory and remove it if empty, stopping at outDir.
     for (const dir of removedDirs) {
         let current = dir;
         while (current.startsWith(outDir) && current !== outDir) {
@@ -180,3 +188,4 @@ function cleanupTrackedFiles(outDir: string): void {
         }
     }
 }
+

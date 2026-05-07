@@ -10,6 +10,7 @@ function makeCtx(rootDir = '/project', options: Record<string, unknown> = {}): P
     return {
         rootDir,
         options,
+        cacheEnabled: true,
         emitFile: (outPath: string, content: string) => {
             emitted.set(outPath, content);
         },
@@ -63,7 +64,8 @@ describe('createTypescriptPlugin (server)', () => {
                 ]),
                 ctx,
             );
-            expect(ctx.emitted.size).toBe(2);
+            const routeFiles = [...ctx.emitted.keys()].filter(p => p.endsWith('.router.ts'));
+            expect(routeFiles.length).toBe(2);
         });
 
         it('emits type files alongside routes when output.types is configured', async () => {

@@ -5,6 +5,14 @@ export interface PluginContext {
     rootDir: string;
     /** The plugin's own `options` from config (empty object if not set). */
     options: Record<string, unknown>;
+    /**
+     * Whether plugin-internal caches should be honored. Set to `false` when the user
+     * passes `--force` or when `cache: false` is configured. Plugins that maintain
+     * their own incremental-build state (e.g. per-op manifests) should bypass it
+     * when this is `false`. The CLI-level plugin cache is governed separately by
+     * the plugin's `cacheKey`.
+     */
+    cacheEnabled: boolean;
     /** Register a file to be written to disk. Only available in generateTargets. */
     emitFile(outPath: string, content: string): void;
 }

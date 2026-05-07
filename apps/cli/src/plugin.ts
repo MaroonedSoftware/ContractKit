@@ -37,10 +37,23 @@ export async function loadPlugins(entries: PluginEntry[], configDir: string): Pr
     return loaded;
 }
 
-export function makePluginContext(entry: PluginEntry, config: ResolvedConfig, emitFile?: (outPath: string, content: string) => void): PluginContext {
+/**
+ * Build the {@link PluginContext} a plugin sees inside its hooks. `emitFile` is
+ * only meaningful during `generateTargets`; the default implementation throws if
+ * called from `validate` / `transform`. Pass `cacheEnabled=false` (computed by the
+ * CLI from `--force` / `cache: false`) so the plugin can bypass its own incremental
+ * caches.
+ */
+export function makePluginContext(
+    entry: PluginEntry,
+    config: ResolvedConfig,
+    cacheEnabled: boolean,
+    emitFile?: (outPath: string, content: string) => void,
+): PluginContext {
     return {
         rootDir: config.rootDir,
         options: entry.options ?? {},
+        cacheEnabled,
         emitFile:
             emitFile ??
             (() => {

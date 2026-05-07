@@ -1,7 +1,25 @@
 import { resolve, join, relative, dirname, basename } from 'node:path';
+import { existsSync, readFileSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
 import { generateContract } from './codegen-contract.js';
 import { generateOp } from './codegen-operation.js';
-import type { ContractKitPlugin } from '@contractkit/core';
+import type {
+    ContractKitPlugin,
+    PluginContext,
+    ContractRootNode,
+    OpRootNode,
+    ModelNode,
+    IncrementalManifest,
+    IncrementalUnit,
+    IncrementalOutputFile,
+} from '@contractkit/core';
+import {
+    runIncrementalCodegen,
+    parseIncrementalManifest,
+    emptyIncrementalManifest,
+    hashFingerprint,
+    collectTransitiveModelRefs,
+    collectTypeRefs,
+} from '@contractkit/core';
 import {
     generateSdk,
     generateSdkOptions,
@@ -33,149 +51,313 @@ import {
 export interface ServerConfig {
     /** Directory (relative to rootDir) where server files are written. Default: rootDir. */
     baseDir?: string;
-    /**
-     * When true, `output.types` emits Zod schema files (via `generateContract`).
-     * When false/omitted, `output.types` emits plain TypeScript interfaces.
-     */
+    /** When true, `output.types` emits Zod schema files (via `generateContract`). When false/omitted, emits plain TypeScript. */
     zod?: boolean;
     output?: {
-        /** Path template for Koa router files. Supports {filename}, {dir}, {area}. Default: `{filename}.router.ts`. */
+        /** Path template for Koa router files. Supports {filename}, {dir}, {area}. */
         routes?: string;
-        /**
-         * Path template for type/schema files. Supports {filename}, {dir}, {area}.
-         * Generates Zod schemas when `zod: true`, otherwise plain TypeScript interfaces.
-         */
+        /** Path template for type/schema files. Supports {filename}, {dir}, {area}. */
         types?: string;
     };
-    /** Import path template for service implementations. Supports {module}. */
+    /** Import path template for service implementations. */
     servicePathTemplate?: string;
-    /**
-     * Whether to emit handlers for operations marked `internal`. Defaults to `true` —
-     * the server still needs routes for internal endpoints. Set to `false` to omit them.
-     */
+    /** Whether to emit handlers for `internal` operations. Default true. */
     includeInternal?: boolean;
 }
 
 export interface SdkConfig {
-    /** Directory (relative to rootDir) where SDK files are written. Default: rootDir. */
     baseDir?: string;
-    /** Name used for the aggregator SDK class (e.g. "homegrown" → `HomegrownSdk`). */
     name?: string;
-    /**
-     * When true, `output.types` emits Zod schema files (via `generateContract`).
-     * When false/omitted, `output.types` emits plain TypeScript interfaces.
-     */
     zod?: boolean;
     output?: {
-        /** Path template for the SDK aggregator file. Supports {name}. Default: `sdk.ts`. */
         sdk?: string;
-        /** Path template for SDK type files. Supports {filename}, {dir}, {area}, {subarea}. */
         types?: string;
-        /** Path template for client class files. Supports {filename}, {dir}, {area}, {subarea}. */
         clients?: string;
     };
-    /**
-     * Whether to emit SDK methods for operations marked `internal`. Defaults to `false` —
-     * internal ops are omitted from the SDK so consumers don't pick them up. Set to `true`
-     * for an internal-use SDK that should expose them.
-     */
     includeInternal?: boolean;
 }
 
 export interface ZodConfig {
-    /** Directory (relative to rootDir) where Zod schema files are written. Default: rootDir. */
     baseDir?: string;
-    /** Output path template. Supports {filename}, {dir}. Default: `{filename}.schema.ts` alongside source. */
     output?: string;
 }
 
 export interface TypesConfig {
-    /** Directory (relative to rootDir) where plain TypeScript type files are written. Default: rootDir. */
     baseDir?: string;
-    /** Output path template. Supports {filename}, {dir}. Default: `{filename}.types.ts` alongside source. */
     output?: string;
 }
 
 export interface TypescriptPluginConfig {
-    /** Generate Koa router files from `operation` declarations. */
     server?: ServerConfig;
-    /** Generate TypeScript SDK client files from `operation` declarations. */
     sdk?: SdkConfig;
-    /** Generate Zod schema files from `contract` declarations. */
     zod?: ZodConfig;
-    /** Generate plain TypeScript interface/type files from `contract` declarations (no Zod runtime). */
     types?: TypesConfig;
 }
 
-// ─── Server generation ─────────────────────────────────────────────────────
+// ─── Caching constants ─────────────────────────────────────────────────────
 
-function runServerGeneration(
+/** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
+export const TYPESCRIPT_CODEGEN_VERSION = '1';
+
+const MANIFEST_FILENAME = '.contractkit-typescript-manifest.json';
+
+// ─── Plugin entry points ──────────────────────────────────────────────────
+
+const plugin: ContractKitPlugin = {
+    name: 'typescript',
+    async generateTargets(inputs, ctx) {
+        const config = ctx.options as TypescriptPluginConfig;
+        await runTypescriptCodegen(inputs, ctx, config, ctx.rootDir);
+    },
+};
+
+export default plugin;
+
+/** Build a `@contractkit/plugin-typescript` instance with explicit configuration, for programmatic use. */
+export function createTypescriptPlugin(config: TypescriptPluginConfig, rootDir: string): ContractKitPlugin {
+    return {
+        name: 'typescript',
+        async generateTargets(inputs, ctx) {
+            await runTypescriptCodegen(inputs, ctx, config, rootDir);
+        },
+    };
+}
+
+/**
+ * Shared orchestration. Each sub-generator (server / sdk / zod / types) contributes a
+ * set of cacheable units (per-file fingerprints) plus a set of always-regenerated global
+ * files (aggregators, barrels, sdk-options). Units share a single manifest so the cache
+ * survives cross-cutting reads — the manifest lives at `<rootDir>/.contractkit-typescript-manifest.json`.
+ *
+ * Honors `ctx.cacheEnabled` — `--force` bypasses the manifest entirely.
+ */
+async function runTypescriptCodegen(
+    inputs: Parameters<NonNullable<ContractKitPlugin['generateTargets']>>[0],
+    ctx: PluginContext,
+    config: TypescriptPluginConfig,
+    rootDir: string,
+): Promise<void> {
+    const manifestPath = resolve(rootDir, MANIFEST_FILENAME);
+    const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(manifestPath) : emptyIncrementalManifest(TYPESCRIPT_CODEGEN_VERSION);
+
+    const units: IncrementalUnit[] = [];
+    const globalFiles: IncrementalOutputFile[] = [];
+
+    if (config.server) collectServerOutput(config.server, rootDir, inputs, units);
+    if (config.sdk) collectSdkOutput(config.sdk, rootDir, inputs, units, globalFiles);
+    if (config.zod) collectZodOutput(config.zod, rootDir, inputs, units);
+    if (config.types) collectTypesOutput(config.types, rootDir, inputs, units);
+
+    const result = runIncrementalCodegen({
+        codegenVersion: TYPESCRIPT_CODEGEN_VERSION,
+        manifestFilename: manifestPath,
+        prevManifest,
+        globalFiles,
+        units,
+        // Paths are absolute, so existsSync works directly.
+        fileExists: existsSync,
+    });
+
+    deleteStalePaths(result.deletedPaths);
+
+    for (const { relativePath, content } of result.filesToWrite) {
+        ctx.emitFile(relativePath, content);
+    }
+}
+
+// ─── Cross-file dependency analysis ────────────────────────────────────────
+
+/** Build a quick lookup from model name → its definition. */
+function buildModelMap(contractRoots: readonly ContractRootNode[]): Map<string, ModelNode> {
+    const map = new Map<string, ModelNode>();
+    for (const root of contractRoots) {
+        for (const model of root.models) map.set(model.name, model);
+    }
+    return map;
+}
+
+/** Collect every model referenced by this contract root (own models' fields + bases). Used to slice cross-file fingerprint inputs to just what this file actually depends on. */
+function collectContractRootRefs(root: ContractRootNode, modelMap: Map<string, ModelNode>): Set<string> {
+    const seeds: Parameters<typeof collectTypeRefs>[0][] = [];
+    for (const m of root.models) {
+        if (m.type) seeds.push(m.type);
+        for (const f of m.fields) seeds.push(f.type);
+        if (m.bases) {
+            for (const b of m.bases) seeds.push({ kind: 'ref', name: b } as Parameters<typeof collectTypeRefs>[0]);
+        }
+    }
+    return collectTransitiveModelRefs(seeds, modelMap);
+}
+
+/** Collect every model referenced by an op root's routes/operations (transitive). */
+function collectOpRootRefs(root: OpRootNode, modelMap: Map<string, ModelNode>): Set<string> {
+    const seeds: Parameters<typeof collectTypeRefs>[0][] = [];
+    for (const route of root.routes) {
+        if (route.params) seeds.push(...paramSourceTypes(route.params));
+        for (const op of route.operations) {
+            if (op.query) seeds.push(...paramSourceTypes(op.query));
+            if (op.headers) seeds.push(...paramSourceTypes(op.headers));
+            if (op.request) {
+                for (const body of op.request.bodies) seeds.push(body.bodyType);
+            }
+            for (const resp of op.responses) {
+                if (resp.bodyType) seeds.push(resp.bodyType);
+                if (resp.headers) {
+                    for (const h of resp.headers) seeds.push(h.type);
+                }
+            }
+        }
+    }
+    return collectTransitiveModelRefs(seeds, modelMap);
+}
+
+function paramSourceTypes(src: NonNullable<OpRootNode['routes'][number]['params']>): Parameters<typeof collectTypeRefs>[0][] {
+    const out: Parameters<typeof collectTypeRefs>[0][] = [];
+    if (src.kind === 'params') {
+        for (const n of src.nodes) out.push(n.type);
+    } else if (src.kind === 'ref') {
+        out.push({ kind: 'ref', name: src.name } as Parameters<typeof collectTypeRefs>[0]);
+    } else if (src.kind === 'type') {
+        out.push(src.node);
+    }
+    return out;
+}
+
+/** Build a sorted, JSON-stable record of (modelName -> outPath) for refs this unit depends on. */
+function sliceOutPathMap(refs: Set<string>, modelOutPaths: Map<string, string>, modelsWithInput: Set<string>, modelsWithOutput: Set<string>): Record<string, string> {
+    const slice: Record<string, string> = {};
+    for (const ref of [...refs].sort()) {
+        const p = modelOutPaths.get(ref);
+        if (p) slice[ref] = p;
+        if (modelsWithInput.has(ref)) {
+            const ip = modelOutPaths.get(`${ref}Input`);
+            if (ip) slice[`${ref}Input`] = ip;
+        }
+        if (modelsWithOutput.has(ref)) {
+            const op = modelOutPaths.get(`${ref}Output`);
+            if (op) slice[`${ref}Output`] = op;
+        }
+    }
+    return slice;
+}
+
+/** Slice modelsWithInput/Output to only the names relevant to this unit. */
+function sliceModelSet(refs: Set<string>, ownNames: Set<string>, set: Set<string>): string[] {
+    const result: string[] = [];
+    for (const name of set) {
+        if (refs.has(name) || ownNames.has(name)) result.push(name);
+    }
+    return result.sort();
+}
+
+// ─── Server sub-generator ──────────────────────────────────────────────────
+
+function collectServerOutput(
     config: ServerConfig,
     rootDir: string,
     inputs: Parameters<NonNullable<ContractKitPlugin['generateTargets']>>[0],
-    emitFile: (outPath: string, content: string) => void,
+    units: IncrementalUnit[],
 ): void {
     const serverBase = resolve(rootDir, config.baseDir ?? '.');
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
     const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
+    const modelMap = buildModelMap(inputs.contractRoots);
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
+    const subConfigKey = stableSubConfig(config);
 
-    // ── Types / Zod output ──
-    // When output.types is configured we generate type files ourselves and build a
-    // local modelOutPaths map so the router generator can resolve import paths.
-    let serverModelOutPaths = new Map<string, string>();
-
+    // Pre-pass: register all model → outPath. Cross-file refs need to resolve correctly,
+    // which means we need the COMPLETE map (not a slice) — even though each unit's fingerprint
+    // only includes its own slice.
+    const serverModelOutPaths = new Map<string, string>();
+    const typeEntries: { ast: ContractRootNode; typeOutPath: string }[] = [];
     if (config.output?.types) {
-        serverModelOutPaths = new Map();
-
-        // Pass 1: register all model → outPath entries before generating content,
-        // so cross-file type refs resolve correctly.
-        const typeEntries: { ast: (typeof inputs.contractRoots)[number]; typeOutPath: string }[] = [];
         for (const ast of inputs.contractRoots) {
             const typeOutPath = computeContractOutPath(ast.file, serverBase, config.output.types, '.ts', commonRoot, ast.meta);
             typeEntries.push({ ast, typeOutPath });
             for (const model of ast.models) {
                 serverModelOutPaths.set(model.name, typeOutPath);
-                if (modelsWithInput.has(model.name)) {
-                    serverModelOutPaths.set(`${model.name}Input`, typeOutPath);
-                }
-                if (modelsWithOutput.has(model.name)) {
-                    serverModelOutPaths.set(`${model.name}Output`, typeOutPath);
-                }
+                if (modelsWithInput.has(model.name)) serverModelOutPaths.set(`${model.name}Input`, typeOutPath);
+                if (modelsWithOutput.has(model.name)) serverModelOutPaths.set(`${model.name}Output`, typeOutPath);
             }
-        }
-
-        // Pass 2: emit type files.
-        for (const { ast, typeOutPath } of typeEntries) {
-            const ctx = { modelOutPaths: serverModelOutPaths, currentOutPath: typeOutPath, modelsWithInput, modelsWithOutput };
-            const content = config.zod ? generateContract(ast, ctx) : generatePlainTypes(ast, ctx);
-            emitFile(typeOutPath, content);
         }
     }
 
-    // ── Routes output ──
+    // ── Per-contract-root types unit ──
+    for (const { ast, typeOutPath } of typeEntries) {
+        const refs = collectContractRootRefs(ast, modelMap);
+        const ownNames = new Set(ast.models.map(m => m.name));
+        const fingerprint = hashFingerprint({
+            kind: 'server-types',
+            v: TYPESCRIPT_CODEGEN_VERSION,
+            outPath: typeOutPath,
+            root: ast,
+            outPathSlice: sliceOutPathMap(refs, serverModelOutPaths, modelsWithInput, modelsWithOutput),
+            modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
+            modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
+            sub: subConfigKey,
+        });
+        units.push({
+            key: `server-types::${typeOutPath}`,
+            fingerprint,
+            render: () => {
+                const renderCtx = {
+                    modelOutPaths: serverModelOutPaths,
+                    currentOutPath: typeOutPath,
+                    modelsWithInput,
+                    modelsWithOutput,
+                };
+                const content = config.zod ? generateContract(ast, renderCtx) : generatePlainTypes(ast, renderCtx);
+                return [{ relativePath: typeOutPath, content }];
+            },
+        });
+    }
+
+    // ── Per-op-root router unit ──
     for (const ast of inputs.opRoots) {
         const outPath = computeOpOutPath(ast.file, serverBase, config.output?.routes, '.router.ts', commonRoot, ast.meta);
-        const content = generateOp(ast, {
-            servicePathTemplate: config.servicePathTemplate,
+        const refs = collectOpRootRefs(ast, modelMap);
+        const fingerprint = hashFingerprint({
+            kind: 'server-router',
+            v: TYPESCRIPT_CODEGEN_VERSION,
             outPath,
-            modelOutPaths: serverModelOutPaths,
-            modelsWithInput,
-            modelsWithOutput,
-            includeInternal: config.includeInternal,
+            root: ast,
+            // The router imports types from each contract root's type file; the slice covers exactly that.
+            outPathSlice: sliceOutPathMap(refs, serverModelOutPaths, modelsWithInput, modelsWithOutput),
+            modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
+            modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
+            servicePathTemplate: config.servicePathTemplate ?? null,
+            includeInternal: config.includeInternal ?? true,
+            sub: subConfigKey,
         });
-        emitFile(outPath, content);
+        units.push({
+            key: `server-router::${outPath}`,
+            fingerprint,
+            render: () => [
+                {
+                    relativePath: outPath,
+                    content: generateOp(ast, {
+                        servicePathTemplate: config.servicePathTemplate,
+                        outPath,
+                        modelOutPaths: serverModelOutPaths,
+                        modelsWithInput,
+                        modelsWithOutput,
+                        includeInternal: config.includeInternal,
+                    }),
+                },
+            ],
+        });
     }
 }
 
-// ─── SDK generation ────────────────────────────────────────────────────────
+// ─── SDK sub-generator ─────────────────────────────────────────────────────
 
-function runSdkGeneration(
+function collectSdkOutput(
     config: SdkConfig,
     rootDir: string,
     inputs: Parameters<NonNullable<ContractKitPlugin['generateTargets']>>[0],
-    emitFile: (outPath: string, content: string) => void,
+    units: IncrementalUnit[],
+    globalFiles: IncrementalOutputFile[],
 ): void {
     const sdkBase = config.baseDir ? resolve(rootDir, config.baseDir) : rootDir;
     const sdkName = config.name;
@@ -184,22 +366,22 @@ function runSdkGeneration(
         ? join(sdkBase, TEMPLATE_VAR_RE.test(sdkOutput) ? resolveTemplate(sdkOutput, { name: sdkName ?? 'sdk' }) : sdkOutput)
         : join(sdkBase, 'sdk.ts');
     const sdkOptionsPath = join(dirname(sdkEntryPath), 'sdk-options.ts');
+    const subConfigKey = stableSubConfig(config);
 
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
     const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
+    const modelMap = buildModelMap(inputs.contractRoots);
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const ckCommonRoot = commonDir(allFiles, rootDir);
 
-    let sdkModelOutPaths = new Map<string, string>();
+    const sdkModelOutPaths = new Map<string, string>();
     const sdkTypePaths: string[] = [];
     const sdkClientInfos: { outPath: string; className: string; propertyName: string }[] = [];
 
-    // ── SDK types ──
+    // ── Pre-pass: SDK type files ──
+    const sdkContractEntries: { ast: ContractRootNode; typeOutPath: string }[] = [];
     if (config.output?.types) {
-        sdkModelOutPaths = new Map<string, string>();
         const publicTypes = computePubliclyReachableTypes(inputs.opRoots, inputs.contractRoots, modelsWithInput, modelsWithOutput);
-
-        const sdkContractEntries: { ast: (typeof inputs.contractRoots)[number]; typeOutPath: string }[] = [];
         for (const ast of inputs.contractRoots) {
             const typeOutPath = computeSdkTypeOutPath(ast.file, sdkBase, config.output.types, ckCommonRoot, ast.meta);
             if (!typeOutPath) continue;
@@ -212,48 +394,63 @@ function runSdkGeneration(
                 if (modelsWithOutput.has(model.name)) sdkModelOutPaths.set(`${model.name}Output`, typeOutPath);
             }
         }
-
-        for (const { ast, typeOutPath } of sdkContractEntries) {
-            let content: string;
-            if (config.zod) {
-                content = generateContract(ast, {
-                    modelOutPaths: sdkModelOutPaths,
-                    currentOutPath: typeOutPath,
-                    modelsWithInput,
-                    modelsWithOutput,
-                });
-            } else {
-                let rel = relative(dirname(typeOutPath), sdkOptionsPath).replace(/\.ts$/, '.js');
-                if (!rel.startsWith('.')) rel = './' + rel;
-                content = generatePlainTypes(ast, {
-                    modelOutPaths: sdkModelOutPaths,
-                    currentOutPath: typeOutPath,
-                    modelsWithInput,
-                    modelsWithOutput,
-                    jsonValueImportPath: rel,
-                });
-            }
-            emitFile(typeOutPath, content);
-        }
     }
 
-    // ── SDK clients ──
-    // Group opRoots by (area, subarea):
-    //   - area + subarea  → leaf client emitted as <Area><Subarea>Client in its own file
-    //   - area only       → no standalone file; methods inlined into <Area>Client in sdk.ts
-    //   - neither         → flat top-level client (legacy behavior)
+    // ── SDK type units ──
+    for (const { ast, typeOutPath } of sdkContractEntries) {
+        const refs = collectContractRootRefs(ast, modelMap);
+        const ownNames = new Set(ast.models.map(m => m.name));
+        const fingerprint = hashFingerprint({
+            kind: 'sdk-types',
+            v: TYPESCRIPT_CODEGEN_VERSION,
+            outPath: typeOutPath,
+            root: ast,
+            outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
+            modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
+            modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
+            sdkOptionsPath,
+            sub: subConfigKey,
+        });
+        units.push({
+            key: `sdk-types::${typeOutPath}`,
+            fingerprint,
+            render: () => {
+                let content: string;
+                if (config.zod) {
+                    content = generateContract(ast, {
+                        modelOutPaths: sdkModelOutPaths,
+                        currentOutPath: typeOutPath,
+                        modelsWithInput,
+                        modelsWithOutput,
+                    });
+                } else {
+                    let rel = relative(dirname(typeOutPath), sdkOptionsPath).replace(/\.ts$/, '.js');
+                    if (!rel.startsWith('.')) rel = './' + rel;
+                    content = generatePlainTypes(ast, {
+                        modelOutPaths: sdkModelOutPaths,
+                        currentOutPath: typeOutPath,
+                        modelsWithInput,
+                        modelsWithOutput,
+                        jsonValueImportPath: rel,
+                    });
+                }
+                return [{ relativePath: typeOutPath, content }];
+            },
+        });
+    }
+
+    // ── Bucket op roots by area/subarea ──
     interface AreaBucket {
-        leaves: { ast: typeof inputs.opRoots[number]; outPath: string; subarea: string }[];
-        inlineRoots: typeof inputs.opRoots[number][];
+        leaves: { ast: OpRootNode; outPath: string; subarea: string }[];
+        inlineRoots: OpRootNode[];
     }
     const areaBuckets = new Map<string, AreaBucket>();
-    const topLevelEntries: { ast: typeof inputs.opRoots[number]; outPath: string }[] = [];
+    const topLevelEntries: { ast: OpRootNode; outPath: string }[] = [];
 
     if (config.output?.clients) {
         for (const ast of inputs.opRoots) {
             const sdkOutPath = computeSdkOutPath(ast.file, sdkBase, config.output.clients, ckCommonRoot, ast.meta);
             if (!sdkOutPath || !hasPublicOperations(ast, config.includeInternal)) continue;
-
             const { area, subarea } = getAreaSubarea(ast);
             if (area && subarea) {
                 const bucket = areaBuckets.get(area) ?? { leaves: [], inlineRoots: [] };
@@ -268,46 +465,91 @@ function runSdkGeneration(
             }
         }
 
-        // Emit per-file clients for leaves (subarea) and top-level (no area). Area-only files are inlined later.
-        for (const { ast, outPath, subarea } of [...areaBuckets.entries()].flatMap(([area, b]) => b.leaves.map(l => ({ ...l, area })))) {
-            const className = deriveSubareaClientClassName((ast.meta?.area as string) ?? '', subarea);
-            sdkClientInfos.push({ outPath, className, propertyName: deriveSubareaPropertyName(subarea) });
-            emitFile(
-                outPath,
-                generateSdk(ast, {
-                    typeImportPathTemplate: undefined,
-                    outPath,
-                    modelOutPaths: sdkModelOutPaths,
+        // ── Per-leaf-client (area+subarea) units ──
+        for (const [area, bucket] of areaBuckets.entries()) {
+            for (const leaf of bucket.leaves) {
+                const className = deriveSubareaClientClassName(area, leaf.subarea);
+                sdkClientInfos.push({ outPath: leaf.outPath, className, propertyName: deriveSubareaPropertyName(leaf.subarea) });
+                const refs = collectOpRootRefs(leaf.ast, modelMap);
+                const fingerprint = hashFingerprint({
+                    kind: 'sdk-leaf-client',
+                    v: TYPESCRIPT_CODEGEN_VERSION,
+                    outPath: leaf.outPath,
+                    root: leaf.ast,
+                    outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
+                    modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
+                    modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
                     sdkOptionsPath,
-                    modelsWithInput,
-                    modelsWithOutput,
-                    includeInternal: config.includeInternal,
-                    clientClassName: className,
-                }),
-            );
+                    className,
+                    includeInternal: config.includeInternal ?? false,
+                    sub: subConfigKey,
+                });
+                units.push({
+                    key: `sdk-leaf-client::${leaf.outPath}`,
+                    fingerprint,
+                    render: () => [
+                        {
+                            relativePath: leaf.outPath,
+                            content: generateSdk(leaf.ast, {
+                                typeImportPathTemplate: undefined,
+                                outPath: leaf.outPath,
+                                modelOutPaths: sdkModelOutPaths,
+                                sdkOptionsPath,
+                                modelsWithInput,
+                                modelsWithOutput,
+                                includeInternal: config.includeInternal,
+                                clientClassName: className,
+                            }),
+                        },
+                    ],
+                });
+            }
         }
+
+        // ── Top-level (no area) client units ──
         for (const { ast, outPath } of topLevelEntries) {
             const className = deriveClientClassName(ast.file);
             sdkClientInfos.push({ outPath, className, propertyName: deriveClientPropertyName(ast.file) });
-            emitFile(
+            const refs = collectOpRootRefs(ast, modelMap);
+            const fingerprint = hashFingerprint({
+                kind: 'sdk-top-client',
+                v: TYPESCRIPT_CODEGEN_VERSION,
                 outPath,
-                generateSdk(ast, {
-                    typeImportPathTemplate: undefined,
-                    outPath,
-                    modelOutPaths: sdkModelOutPaths,
-                    sdkOptionsPath,
-                    modelsWithInput,
-                    modelsWithOutput,
-                    includeInternal: config.includeInternal,
-                }),
-            );
+                root: ast,
+                outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
+                modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
+                modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
+                sdkOptionsPath,
+                includeInternal: config.includeInternal ?? false,
+                sub: subConfigKey,
+            });
+            units.push({
+                key: `sdk-top-client::${outPath}`,
+                fingerprint,
+                render: () => [
+                    {
+                        relativePath: outPath,
+                        content: generateSdk(ast, {
+                            typeImportPathTemplate: undefined,
+                            outPath,
+                            modelOutPaths: sdkModelOutPaths,
+                            sdkOptionsPath,
+                            modelsWithInput,
+                            modelsWithOutput,
+                            includeInternal: config.includeInternal,
+                        }),
+                    },
+                ],
+            });
         }
     }
 
-    // ── sdk-options.ts ──
-    emitFile(sdkOptionsPath, generateSdkOptions());
+    // ── Global files: sdk-options, aggregator, barrels, root index ──
+    // The aggregator inlines area-only op roots, so its content depends on each inline root's
+    // full AST. Caching it gains little — the codegen is fast and any inline-root change rebuilds
+    // the file anyway. Same for barrels (one line per imported file). Always regenerate.
+    globalFiles.push({ relativePath: sdkOptionsPath, content: generateSdkOptions() });
 
-    // ── sdk.ts aggregator ──
     const hasAnything = sdkClientInfos.length > 0 || areaBuckets.size > 0;
     if (hasAnything) {
         const sdkEntryDir = dirname(sdkEntryPath);
@@ -363,26 +605,18 @@ function runSdkGeneration(
                     })),
             }));
 
-        emitFile(
-            sdkEntryPath,
-            generateSdkAggregator({
-                topLevelClients,
-                areas,
-                sdkOptionsImportPath,
-                sdkClassName,
-            }),
-        );
+        globalFiles.push({
+            relativePath: sdkEntryPath,
+            content: generateSdkAggregator({ topLevelClients, areas, sdkOptionsImportPath, sdkClassName }),
+        });
     }
 
-    // ── Barrel files ──
     const sdkSrcDir = dirname(sdkEntryPath);
     const sdkTypeBarrels = generateBarrelFiles(sdkTypePaths);
-    for (const barrel of sdkTypeBarrels) emitFile(barrel.outPath, barrel.content);
+    for (const barrel of sdkTypeBarrels) globalFiles.push({ relativePath: barrel.outPath, content: barrel.content });
 
     const rootExports: string[] = [`export * from './${basename(sdkOptionsPath).replace(/\.ts$/, '.js')}';`];
-    if (hasAnything) {
-        rootExports.push(`export * from './${basename(sdkEntryPath).replace(/\.ts$/, '.js')}';`);
-    }
+    if (hasAnything) rootExports.push(`export * from './${basename(sdkEntryPath).replace(/\.ts$/, '.js')}';`);
     for (const c of sdkClientInfos) {
         let rel = relative(sdkSrcDir, c.outPath).replace(/\.ts$/, '.js');
         if (!rel.startsWith('.')) rel = './' + rel;
@@ -393,26 +627,30 @@ function runSdkGeneration(
         if (!rel.startsWith('.')) rel = './' + rel;
         rootExports.push(`export * from '${rel}';`);
     }
-    emitFile(join(sdkSrcDir, 'index.ts'), `// Auto-generated barrel file\n${rootExports.sort().join('\n')}\n`);
+    globalFiles.push({
+        relativePath: join(sdkSrcDir, 'index.ts'),
+        content: `// Auto-generated barrel file\n${rootExports.sort().join('\n')}\n`,
+    });
 }
 
-// ─── Zod generation ────────────────────────────────────────────────────────
+// ─── Zod sub-generator ─────────────────────────────────────────────────────
 
-function runZodGeneration(
+function collectZodOutput(
     config: ZodConfig,
     rootDir: string,
     inputs: Parameters<NonNullable<ContractKitPlugin['generateTargets']>>[0],
-    emitFile: (outPath: string, content: string) => void,
+    units: IncrementalUnit[],
 ): void {
     const zodBase = resolve(rootDir, config.baseDir ?? '.');
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
     const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
+    const modelMap = buildModelMap(inputs.contractRoots);
+    const subConfigKey = stableSubConfig(config);
 
-    // Pre-pass: register all model → outPath before generating, so cross-file imports resolve.
     const modelOutPaths = new Map<string, string>();
-    const entries: { ast: (typeof inputs.contractRoots)[number]; outPath: string }[] = [];
+    const entries: { ast: ContractRootNode; outPath: string }[] = [];
     for (const ast of inputs.contractRoots) {
         const outPath = computeContractOutPath(ast.file, zodBase, config.output, '.schema.ts', commonRoot, ast.meta);
         entries.push({ ast, outPath });
@@ -424,33 +662,49 @@ function runZodGeneration(
     }
 
     for (const { ast, outPath } of entries) {
-        const content = generateContract(ast, {
-            modelOutPaths,
-            currentOutPath: outPath,
-            modelsWithInput,
-            modelsWithOutput,
+        const refs = collectContractRootRefs(ast, modelMap);
+        const ownNames = new Set(ast.models.map(m => m.name));
+        const fingerprint = hashFingerprint({
+            kind: 'zod',
+            v: TYPESCRIPT_CODEGEN_VERSION,
+            outPath,
+            root: ast,
+            outPathSlice: sliceOutPathMap(refs, modelOutPaths, modelsWithInput, modelsWithOutput),
+            modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
+            modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
+            sub: subConfigKey,
         });
-        emitFile(outPath, content);
+        units.push({
+            key: `zod::${outPath}`,
+            fingerprint,
+            render: () => [
+                {
+                    relativePath: outPath,
+                    content: generateContract(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput, modelsWithOutput }),
+                },
+            ],
+        });
     }
 }
 
-// ─── Types generation ──────────────────────────────────────────────────────
+// ─── Plain types sub-generator ─────────────────────────────────────────────
 
-function runTypesGeneration(
+function collectTypesOutput(
     config: TypesConfig,
     rootDir: string,
     inputs: Parameters<NonNullable<ContractKitPlugin['generateTargets']>>[0],
-    emitFile: (outPath: string, content: string) => void,
+    units: IncrementalUnit[],
 ): void {
     const typesBase = resolve(rootDir, config.baseDir ?? '.');
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
     const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
+    const modelMap = buildModelMap(inputs.contractRoots);
+    const subConfigKey = stableSubConfig(config);
 
-    // Pre-pass: register all model → outPath before generating.
     const modelOutPaths = new Map<string, string>();
-    const entries: { ast: (typeof inputs.contractRoots)[number]; outPath: string }[] = [];
+    const entries: { ast: ContractRootNode; outPath: string }[] = [];
     for (const ast of inputs.contractRoots) {
         const outPath = computeContractOutPath(ast.file, typesBase, config.output, '.types.ts', commonRoot, ast.meta);
         entries.push({ ast, outPath });
@@ -462,65 +716,70 @@ function runTypesGeneration(
     }
 
     for (const { ast, outPath } of entries) {
-        const content = generatePlainTypes(ast, {
-            modelOutPaths,
-            currentOutPath: outPath,
-            modelsWithInput,
-            modelsWithOutput,
+        const refs = collectContractRootRefs(ast, modelMap);
+        const ownNames = new Set(ast.models.map(m => m.name));
+        const fingerprint = hashFingerprint({
+            kind: 'plain-types',
+            v: TYPESCRIPT_CODEGEN_VERSION,
+            outPath,
+            root: ast,
+            outPathSlice: sliceOutPathMap(refs, modelOutPaths, modelsWithInput, modelsWithOutput),
+            modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
+            modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
+            sub: subConfigKey,
         });
-        emitFile(outPath, content);
+        units.push({
+            key: `plain-types::${outPath}`,
+            fingerprint,
+            render: () => [
+                {
+                    relativePath: outPath,
+                    content: generatePlainTypes(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput, modelsWithOutput }),
+                },
+            ],
+        });
     }
 }
 
-// ─── Combined plugin ────────────────────────────────────────────────────────
+// ─── Manifest IO + cleanup ─────────────────────────────────────────────────
 
-const plugin: ContractKitPlugin = {
-    name: 'typescript',
-    cacheKey: 'typescript',
-    async generateTargets(inputs, ctx) {
-        const config = ctx.options as TypescriptPluginConfig;
+function readManifest(manifestPath: string): IncrementalManifest {
+    if (!existsSync(manifestPath)) return emptyIncrementalManifest(TYPESCRIPT_CODEGEN_VERSION);
+    try {
+        return parseIncrementalManifest(readFileSync(manifestPath, 'utf-8'));
+    } catch {
+        return emptyIncrementalManifest(TYPESCRIPT_CODEGEN_VERSION);
+    }
+}
 
-        if (config.server) {
-            runServerGeneration(config.server, ctx.rootDir, inputs, ctx.emitFile.bind(ctx));
+function deleteStalePaths(absPaths: string[]): void {
+    if (absPaths.length === 0) return;
+    const removedDirs = new Set<string>();
+    for (const abs of absPaths) {
+        if (existsSync(abs)) {
+            rmSync(abs, { force: true });
+            removedDirs.add(dirname(abs));
         }
-        if (config.sdk) {
-            runSdkGeneration(config.sdk, ctx.rootDir, inputs, ctx.emitFile.bind(ctx));
+    }
+    // Walk up affected dirs and remove if empty. Bounded — stops at filesystem root or first non-empty dir.
+    for (const dir of removedDirs) {
+        let current = dir;
+        while (current.length > 1) {
+            try {
+                if (readdirSync(current).length === 0) {
+                    rmdirSync(current);
+                    current = dirname(current);
+                } else {
+                    break;
+                }
+            } catch {
+                break;
+            }
         }
-        if (config.zod) {
-            runZodGeneration(config.zod, ctx.rootDir, inputs, ctx.emitFile.bind(ctx));
-        }
-        if (config.types) {
-            runTypesGeneration(config.types, ctx.rootDir, inputs, ctx.emitFile.bind(ctx));
-        }
-    },
-};
+    }
+}
 
-export default plugin;
-
-// ─── Factory: for programmatic use with explicit config ────────────────────
-
-/**
- * Build a `@contractkit/plugin-typescript` instance with explicit configuration, for
- * programmatic use (tests, custom build scripts). Prefer the default export when loading
- * via `contractkit.config.json`.
- */
-export function createTypescriptPlugin(config: TypescriptPluginConfig, rootDir: string): ContractKitPlugin {
-    return {
-        name: 'typescript',
-        cacheKey: `typescript:${JSON.stringify(config)}`,
-        async generateTargets(inputs, ctx) {
-            if (config.server) {
-                runServerGeneration(config.server, rootDir, inputs, ctx.emitFile.bind(ctx));
-            }
-            if (config.sdk) {
-                runSdkGeneration(config.sdk, rootDir, inputs, ctx.emitFile.bind(ctx));
-            }
-            if (config.zod) {
-                runZodGeneration(config.zod, rootDir, inputs, ctx.emitFile.bind(ctx));
-            }
-            if (config.types) {
-                runTypesGeneration(config.types, rootDir, inputs, ctx.emitFile.bind(ctx));
-            }
-        },
-    };
+/** Stringify a sub-config so it can participate in fingerprints. JSON.stringify gives stable output for typical config shapes. */
+function stableSubConfig(config: unknown): string {
+    return JSON.stringify(config ?? null);
 }

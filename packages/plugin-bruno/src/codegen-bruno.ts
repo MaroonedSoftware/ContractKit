@@ -8,8 +8,21 @@ import type {
     ContractRootNode,
     ModelNode,
     FieldNode,
+    IncrementalManifest,
+    IncrementalUnit,
+    IncrementalResult as IncrementalResultBase,
 } from '@contractkit/core';
-import { resolveSecurity, resolveModifiers, SECURITY_NONE } from '@contractkit/core';
+import {
+    resolveSecurity,
+    resolveModifiers,
+    SECURITY_NONE,
+    collectTransitiveModelRefs,
+    runIncrementalCodegen,
+    parseIncrementalManifest,
+    emptyIncrementalManifest,
+    hashFingerprint,
+    INCREMENTAL_MANIFEST_VERSION,
+} from '@contractkit/core';
 import { basename } from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
@@ -21,6 +34,13 @@ export interface OpenCollectionFile {
 
 /** Manifest filename — tracks which files this plugin previously generated so subsequent runs can clean up only those, leaving any user-added files alone. */
 export const MANIFEST_FILENAME = '.contractkit-bruno-manifest.json';
+
+/**
+ * Bumped whenever the codegen output shape changes in a way that should bust
+ * every per-op fingerprint. Mixed into the per-op fingerprint so a plugin
+ * upgrade forces full regeneration even when source `.ck` files are unchanged.
+ */
+export const BRUNO_CODEGEN_VERSION = '1';
 
 /** Subset of a security scheme sufficient for Bruno auth generation (non-HMAC). */
 export interface BrunoSecurityScheme {
@@ -68,28 +88,76 @@ export interface OpenCollectionOptions {
     environments?: Record<string, Record<string, unknown>>;
 }
 
+/** Per-operation bookkeeping computed up front: where the file lives, what to call it, and the YAML inputs needed to render or fingerprint it. */
+interface OpEntry {
+    /** Stable identifier across runs — `<file>::<METHOD> <path>`. */
+    opKey: string;
+    /** Output path relative to the collection root (e.g. `users/get-user.yml`). */
+    relativePath: string;
+    /** Display name used inside the YAML `info:` block (alphabetized within its folder). */
+    requestName: string;
+    /** 1-based sequence within the request's containing folder, drives Bruno's UI ordering. */
+    seq: number;
+    route: OpRouteNode;
+    op: OpOperationNode;
+    root: OpRootNode;
+}
+
+/**
+ * @deprecated Use {@link IncrementalManifest} from `@contractkit/core`. Re-exported here for backwards compatibility.
+ */
+export type BrunoManifest = IncrementalManifest;
+
+/** Result of {@link generateOpenCollectionIncremental}. Renamed `skippedOpCount` for Bruno-specific clarity but otherwise the shared {@link IncrementalResultBase}. */
+export interface IncrementalResult extends Omit<IncrementalResultBase, 'skippedUnitCount'> {
+    /** Number of ops whose codegen was skipped because their fingerprint matched. */
+    skippedOpCount: number;
+}
+
 /**
  * Generates an OpenCollection (https://spec.opencollection.com/) API collection
  * from a set of operation roots. Produces opencollection.yml, an environment
  * file, and one .yml request file per operation.
+ *
+ * This is the full-regeneration entry point — every file is rebuilt from scratch.
+ * For cache-aware incremental builds, use {@link generateOpenCollectionIncremental}.
  */
 export function generateOpenCollection(roots: OpRootNode[], options: OpenCollectionOptions): OpenCollectionFile[] {
-    const files: OpenCollectionFile[] = [];
+    const result = generateOpenCollectionIncremental(roots, options, emptyManifest());
+    return result.filesToWrite;
+}
 
+/**
+ * Cache-aware variant of {@link generateOpenCollection}. Skips re-rendering YAML
+ * for any op whose fingerprint matches the entry in `prevManifest`. The caller is
+ * responsible for emitting `filesToWrite`, deleting `deletedPaths`, and persisting
+ * `manifest` so the next run can match against it.
+ *
+ * Global files (collection root, env files, folder.yml) are always regenerated —
+ * they're cheap and depend on options the manifest doesn't fingerprint.
+ */
+export function generateOpenCollectionIncremental(
+    roots: OpRootNode[],
+    options: OpenCollectionOptions,
+    prevManifest: IncrementalManifest,
+    fileExists: (relativePath: string) => boolean = () => true,
+): IncrementalResult {
     const modelMap = buildModelMap(options.contractRoots ?? []);
     const authOpts = options.auth;
     const defaultScheme = authOpts?.defaultScheme ? authOpts.schemes?.[authOpts.defaultScheme] : undefined;
     const randomExamples = options.randomExamples ?? false;
     const includeInternal = options.includeInternal ?? true;
 
-    files.push({ relativePath: 'opencollection.yml', content: generateCollectionRoot(options.collectionName, defaultScheme) });
+    // ── Global files (collection root + env files + folder.yml per area/subarea) ──
+    const globalFiles: OpenCollectionFile[] = [];
+    globalFiles.push({
+        relativePath: 'opencollection.yml',
+        content: generateCollectionRoot(options.collectionName, defaultScheme),
+    });
     for (const envFile of generateEnvFiles(options.environments, defaultScheme)) {
-        files.push(envFile);
+        globalFiles.push(envFile);
     }
-    // Manifest is appended at the end so it lists every generated path including itself.
 
-    // Roots are sorted by their top-level folder display name (then by subarea) so the
-    // emitted `seq:` numbers — which drive Bruno's UI ordering — line up alphabetically.
     const sortedRoots = [...roots].sort((a, b) => {
         const aArea = a.meta['area'] ?? deriveFolderName(a.file);
         const bArea = b.meta['area'] ?? deriveFolderName(b.file);
@@ -98,12 +166,12 @@ export function generateOpenCollection(roots: OpRootNode[], options: OpenCollect
         return (a.meta['subarea'] ?? '').localeCompare(b.meta['subarea'] ?? '');
     });
 
+    const units: IncrementalUnit[] = [];
     for (let rootIdx = 0; rootIdx < sortedRoots.length; rootIdx++) {
         const root = sortedRoots[rootIdx]!;
         const folder = root.meta['area'] ? slugifyName(root.meta['area']) : deriveFolderName(root.file);
         const displayName = (root.meta['area'] ?? folder).charAt(0).toUpperCase() + (root.meta['area'] ?? folder).slice(1);
-
-        files.push({ relativePath: `${folder}/folder.yml`, content: generateFolderFile(displayName, rootIdx + 1) });
+        globalFiles.push({ relativePath: `${folder}/folder.yml`, content: generateFolderFile(displayName, rootIdx + 1) });
 
         const subarea = root.meta['subarea'];
         const subareaSlug = subarea ? slugifyName(subarea) : undefined;
@@ -111,55 +179,180 @@ export function generateOpenCollection(roots: OpRootNode[], options: OpenCollect
 
         if (subareaSlug) {
             const subareaDisplayName = subarea!.charAt(0).toUpperCase() + subarea!.slice(1);
-            files.push({ relativePath: `${requestDir}/folder.yml`, content: generateFolderFile(subareaDisplayName, 1) });
+            globalFiles.push({ relativePath: `${requestDir}/folder.yml`, content: generateFolderFile(subareaDisplayName, 1) });
         }
 
-        // Flatten and alphabetize within this folder before assigning `seq:`.
-        const requests: Array<{ route: typeof root.routes[number]; op: typeof root.routes[number]['operations'][number]; requestName: string }> = [];
-        for (const route of root.routes) {
-            for (const op of route.operations) {
-                if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
-                requests.push({ route, op, requestName: op.name ?? route.path });
-            }
-        }
-        requests.sort((a, b) => a.requestName.localeCompare(b.requestName));
-
-        let seq = 1;
-        for (const { route, op, requestName } of requests) {
-            const fileName = op.name ? `${slugifyName(op.name)}.yml` : `${op.method}-${sanitizePath(route.path)}.yml`;
-            let content = generateRequestFile(route, op, requestName, seq, modelMap, root, defaultScheme, randomExamples);
-            const brunoExt = op.pluginExtensions?.['bruno'];
-            const pluginOverride = brunoExt && typeof brunoExt === 'object' && !Array.isArray(brunoExt)
-                ? brunoExt['template']
-                : undefined;
-            if (typeof pluginOverride === 'string') {
-                content = mergePluginFile(content, pluginOverride);
-            }
-            files.push({ relativePath: `${requestDir}/${fileName}`, content });
-            seq++;
+        for (const entry of buildOpEntries(root, requestDir, includeInternal)) {
+            units.push({
+                key: entry.opKey,
+                fingerprint: computeOpFingerprint(entry, modelMap, defaultScheme, randomExamples),
+                render: () => [renderOpFile(entry, modelMap, defaultScheme, randomExamples)],
+            });
         }
     }
 
-    const trackedPaths = [...files.map(f => f.relativePath), MANIFEST_FILENAME].sort();
-    files.push({
-        relativePath: MANIFEST_FILENAME,
-        content: JSON.stringify({ files: trackedPaths }, null, 2) + '\n',
+    const result = runIncrementalCodegen({
+        codegenVersion: BRUNO_CODEGEN_VERSION,
+        manifestFilename: MANIFEST_FILENAME,
+        prevManifest,
+        globalFiles,
+        units,
+        fileExists,
     });
 
-    return files;
+    return {
+        filesToWrite: result.filesToWrite,
+        manifest: result.manifest,
+        deletedPaths: result.deletedPaths,
+        skippedOpCount: result.skippedUnitCount,
+    };
 }
 
-/** Parse a previously-written manifest. Returns the list of relative paths to clean up. Returns [] if missing or unreadable so a stale/garbled manifest never blocks regeneration. */
-export function parseManifest(content: string): string[] {
+/** Build the ordered, alphabetized op entries for a single root. seq numbers are assigned in alphabetical order so the Bruno UI shows requests sorted by display name. */
+function buildOpEntries(root: OpRootNode, requestDir: string, includeInternal: boolean): OpEntry[] {
+    const requests: Array<{ route: OpRouteNode; op: OpOperationNode; requestName: string }> = [];
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
+            requests.push({ route, op, requestName: op.name ?? route.path });
+        }
+    }
+    requests.sort((a, b) => a.requestName.localeCompare(b.requestName));
+
+    const entries: OpEntry[] = [];
+    let seq = 1;
+    for (const { route, op, requestName } of requests) {
+        const fileName = op.name ? `${slugifyName(op.name)}.yml` : `${op.method}-${sanitizePath(route.path)}.yml`;
+        entries.push({
+            opKey: `${root.file}::${op.method.toUpperCase()} ${route.path}`,
+            relativePath: `${requestDir}/${fileName}`,
+            requestName,
+            seq,
+            route,
+            op,
+            root,
+        });
+        seq++;
+    }
+    return entries;
+}
+
+/** Render a single op's request file (including any plugin-extension YAML override). */
+function renderOpFile(
+    entry: OpEntry,
+    modelMap: Map<string, ModelNode>,
+    defaultScheme: BrunoSecurityScheme | undefined,
+    randomExamples: boolean,
+): OpenCollectionFile {
+    let content = generateRequestFile(entry.route, entry.op, entry.requestName, entry.seq, modelMap, entry.root, defaultScheme, randomExamples);
+    const brunoExt = entry.op.pluginExtensions?.['bruno'];
+    const pluginOverride = brunoExt && typeof brunoExt === 'object' && !Array.isArray(brunoExt) ? brunoExt['template'] : undefined;
+    if (typeof pluginOverride === 'string') {
+        content = mergePluginFile(content, pluginOverride);
+    }
+    return { relativePath: entry.relativePath, content };
+}
+
+/** Compute a fingerprint covering every input that affects this op's rendered file. Stable across runs given identical inputs. */
+function computeOpFingerprint(
+    entry: OpEntry,
+    modelMap: Map<string, ModelNode>,
+    defaultScheme: BrunoSecurityScheme | undefined,
+    randomExamples: boolean,
+): string {
+    const referencedModels = collectTransitiveModelRefs(collectOpTypeNodes(entry.route, entry.op), modelMap);
+    const modelSnapshot: Record<string, unknown> = {};
+    for (const name of [...referencedModels].sort()) {
+        const m = modelMap.get(name);
+        if (m) modelSnapshot[name] = m;
+    }
+    // Only include the route fields this op actually depends on. We deliberately exclude
+    // `route.operations` so a change to a sibling op doesn't invalidate this op's cache.
+    const routeShape = {
+        path: entry.route.path,
+        params: entry.route.params ?? null,
+        modifiers: entry.route.modifiers ?? null,
+        security: entry.route.security ?? null,
+        description: entry.route.description ?? null,
+    };
+    return hashFingerprint({
+        v: BRUNO_CODEGEN_VERSION,
+        opKey: entry.opKey,
+        relativePath: entry.relativePath,
+        requestName: entry.requestName,
+        seq: entry.seq,
+        route: routeShape,
+        op: entry.op,
+        rootMeta: entry.root.meta,
+        rootFile: entry.root.file,
+        defaultScheme: defaultScheme ?? null,
+        randomExamples,
+        models: modelSnapshot,
+    });
+}
+
+/** Collect every ContractTypeNode that contributes to this op's rendered output. Used as the seed set for transitive model collection in {@link computeOpFingerprint}. */
+function collectOpTypeNodes(route: OpRouteNode, op: OpOperationNode): ContractTypeNode[] {
+    const out: ContractTypeNode[] = [];
+    pushFromParamSource(route.params, out);
+    pushFromParamSource(op.query, out);
+    pushFromParamSource(op.headers, out);
+    if (op.request) {
+        for (const body of op.request.bodies) out.push(body.bodyType);
+    }
+    for (const resp of op.responses) {
+        if (resp.bodyType) out.push(resp.bodyType);
+        if (resp.headers) {
+            for (const h of resp.headers) out.push(h.type);
+        }
+    }
+    return out;
+}
+
+function pushFromParamSource(src: ParamSource | undefined, out: ContractTypeNode[]): void {
+    if (!src) return;
+    if (src.kind === 'params') {
+        for (const n of src.nodes) out.push(n.type);
+    } else if (src.kind === 'ref') {
+        out.push({ kind: 'ref', name: src.name } as ContractTypeNode);
+    } else if (src.kind === 'type') {
+        out.push(src.node);
+    }
+}
+
+/** Empty-state manifest, used when none has been written yet (or when the cache is being bypassed). */
+export function emptyManifest(): IncrementalManifest {
+    return emptyIncrementalManifest(BRUNO_CODEGEN_VERSION);
+}
+
+/**
+ * Parse a previously-written manifest. Accepts both v1 (`{ files: string[] }`) and v2
+ * (full {@link IncrementalManifest}) shapes. v1 manifests are returned with an empty
+ * `units` map so the next run treats every op as a cache miss while still cleaning up
+ * the tracked file list.
+ *
+ * Returns an empty manifest on any parse error so a stale/garbled file never blocks
+ * regeneration.
+ */
+export function parseManifest(content: string): IncrementalManifest {
+    const parsed = parseIncrementalManifest(content);
+    // The shared parser handles v2. If v2 parsing produced an empty manifest, fall
+    // through to a v1 shape ({ files: [...] }) and migrate it for cleanup purposes.
+    if (parsed.files.length > 0 || Object.keys(parsed.units).length > 0) return parsed;
     try {
-        const parsed = JSON.parse(content);
-        if (Array.isArray(parsed?.files) && parsed.files.every((f: unknown) => typeof f === 'string')) {
-            return parsed.files as string[];
+        const raw = JSON.parse(content);
+        if (Array.isArray(raw?.files) && raw.files.every((f: unknown) => typeof f === 'string')) {
+            return {
+                version: INCREMENTAL_MANIFEST_VERSION,
+                codegenVersion: '',
+                files: raw.files as string[],
+                units: {},
+            };
         }
     } catch {
         // fall through
     }
-    return [];
+    return emptyManifest();
 }
 
 // ─── Plugin file merge ─────────────────────────────────────────────────────

@@ -150,6 +150,45 @@ function collectTypeNodeRefs(type: ContractTypeNode, out: Set<string>): void {
     }
 }
 
+/**
+ * Walk the model graph from a set of seed types and return every transitively
+ * referenced model name. Bases are followed; aliased model `type` and field types
+ * are queued. Useful for cache fingerprinting — gives the slice of the model
+ * universe a particular op or contract root depends on.
+ *
+ * Models referenced by name but not present in `modelMap` are still included in
+ * the result (so a fingerprint that mentions them will detect when they appear
+ * later), but no further traversal happens through them.
+ */
+export function collectTransitiveModelRefs(seedTypes: ContractTypeNode[], modelMap: Map<string, ModelNode>): Set<string> {
+    const found = new Set<string>();
+    const queue: ContractTypeNode[] = [...seedTypes];
+    while (queue.length > 0) {
+        const t = queue.pop()!;
+        const refs = new Set<string>();
+        collectTypeRefs(t, refs);
+        for (const ref of refs) {
+            if (found.has(ref)) continue;
+            found.add(ref);
+            const m = modelMap.get(ref);
+            if (!m) continue;
+            if (m.type) queue.push(m.type);
+            for (const f of m.fields) queue.push(f.type);
+            if (m.bases) {
+                for (const base of m.bases) {
+                    if (found.has(base)) continue;
+                    found.add(base);
+                    const bm = modelMap.get(base);
+                    if (!bm) continue;
+                    if (bm.type) queue.push(bm.type);
+                    for (const f of bm.fields) queue.push(f.type);
+                }
+            }
+        }
+    }
+    return found;
+}
+
 export function collectTypeRefs(type: ContractTypeNode, out: Set<string>): void {
     switch (type.kind) {
         case 'ref':

@@ -109,7 +109,41 @@ export function createMyPlugin(options: MyOptions = {}): ContractKitPlugin {
 }
 ```
 
-`PluginContext` exposes `options`, `rootDir`, `emitFile`, `emitFileIfChanged`, and the `Diagnostics` collector.
+`PluginContext` exposes `options`, `rootDir`, `emitFile`, and `cacheEnabled`. `cacheEnabled` is `false` when the user passes `--force` or sets `cache: false`; plugins that maintain incremental-build state should bypass it then.
+
+### Incremental codegen helper
+
+Plugins that emit many files (one per operation, one per contract root, etc.) can opt into per-output caching via `runIncrementalCodegen`. The plugin defines cacheable "units" with a stable `key` and `fingerprint`; on subsequent runs, units whose fingerprint matches the persisted manifest skip their renderer entirely. Files in the prior manifest that aren't produced this run are reported in `deletedPaths` so the plugin can clean them up.
+
+```typescript
+import {
+    runIncrementalCodegen,
+    parseIncrementalManifest,
+    emptyIncrementalManifest,
+    hashFingerprint,
+    type IncrementalManifest,
+} from '@contractkit/core';
+
+const prev: IncrementalManifest = ctx.cacheEnabled ? readManifestFromDisk(outDir) : emptyIncrementalManifest('1');
+
+const result = runIncrementalCodegen({
+    codegenVersion: '1', // bump to bust every per-unit cache
+    manifestFilename: '.my-plugin-manifest.json',
+    prevManifest: prev,
+    globalFiles: [/* always-regenerated outputs */],
+    units: roots.map(root => ({
+        key: root.file,
+        fingerprint: hashFingerprint({ root, options: ctx.options }),
+        render: () => [{ relativePath: outPathFor(root), content: render(root) }],
+    })),
+    fileExists: relPath => existsSync(resolve(outDir, relPath)),
+});
+
+deleteFromDisk(result.deletedPaths);
+for (const f of result.filesToWrite) ctx.emitFile(resolve(outDir, f.relativePath), f.content);
+```
+
+Companion helpers: `hashFingerprint(value)` for stable sha256 hashing, `stableStringify(value)` for deterministic JSON, `collectTransitiveModelRefs(seedTypes, modelMap)` for slicing cross-file model dependencies into per-unit fingerprints.
 
 ### Per-operation plugin files
 
@@ -168,3 +202,4 @@ applyOptionsDefaults(root);
 | `src/diagnostics.ts` | Error/warning collector |
 | `src/validate-refs.ts` / `src/validate-inheritance.ts` / `src/validate-operation.ts` | Validation passes |
 | `src/plugin.ts` | `ContractKitPlugin` and `PluginContext` interface types |
+| `src/incremental.ts` | Shared per-output caching helper (`runIncrementalCodegen`, manifest types) used by Bruno / Python / TypeScript plugins |
