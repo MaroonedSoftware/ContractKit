@@ -241,7 +241,7 @@ async function main() {
 
             // Plugin: validate + transform hooks (run before decompose and cross-file validation)
             for (const { plugin, entry } of plugins) {
-                const ctx = makePluginContext(entry, config, cacheEnabled);
+                const ctx = makePluginContext(entry, config, cacheEnabled, cacheService.root);
                 if (plugin.validate) {
                     try {
                         await plugin.validate(ckAst, ctx);
@@ -343,7 +343,7 @@ async function main() {
             }
 
             const pluginEmitted: { outPath: string; content: string }[] = [];
-            const ctx = makePluginContext(entry, config, cacheEnabled, (outPath, content) => {
+            const ctx = makePluginContext(entry, config, cacheEnabled, cacheService.root, (outPath, content) => {
                 pluginEmitted.push({ outPath, content });
             });
 

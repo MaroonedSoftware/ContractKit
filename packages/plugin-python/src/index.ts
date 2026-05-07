@@ -1,5 +1,5 @@
-import { resolve, join, relative } from 'node:path';
-import { existsSync, readFileSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
+import { resolve, join, relative, dirname } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
 import type {
     ContractKitPlugin,
     PluginContext,
@@ -13,6 +13,7 @@ import {
     runIncrementalCodegen,
     parseIncrementalManifest,
     emptyIncrementalManifest,
+    serializeIncrementalManifest,
     hashFingerprint,
     collectTransitiveModelRefs,
     collectTypeRefs,
@@ -48,7 +49,8 @@ export interface PythonSdkPluginConfig {
  */
 export const PYTHON_CODEGEN_VERSION = '1';
 
-const MANIFEST_FILENAME = '.contractkit-python-manifest.json';
+/** Filename for the persisted Python manifest under the CLI cache directory. */
+const CACHE_MANIFEST_FILENAME = 'python-manifest.json';
 
 const plugin: ContractKitPlugin = {
     name: 'python-sdk',
@@ -85,6 +87,7 @@ async function runPythonCodegen(
     const { contractRoots, opRoots } = inputs;
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
     const outDir = resolve(rootDir, config.baseDir ?? 'python-sdk');
+    const manifestPath = resolve(ctx.cacheDir, CACHE_MANIFEST_FILENAME);
 
     // ── Build cross-file lookup tables ───────────────────────────────────────
     const modelModulePaths = new Map<string, string>();
@@ -107,7 +110,7 @@ async function runPythonCodegen(
     // intersection with each unit's referenced names ends up in its fingerprint.
     const modelsWithInputArray = [...modelsWithInput].sort();
 
-    const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(outDir) : emptyIncrementalManifest(PYTHON_CODEGEN_VERSION);
+    const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(manifestPath) : emptyIncrementalManifest(PYTHON_CODEGEN_VERSION);
     const units: IncrementalUnit[] = [];
 
     // ── Per-contract-root model files ────────────────────────────────────────
@@ -247,7 +250,6 @@ async function runPythonCodegen(
 
     const result = runIncrementalCodegen({
         codegenVersion: PYTHON_CODEGEN_VERSION,
-        manifestFilename: MANIFEST_FILENAME,
         prevManifest,
         globalFiles,
         units,
@@ -259,6 +261,8 @@ async function runPythonCodegen(
     for (const { relativePath, content } of result.filesToWrite) {
         ctx.emitFile(resolve(outDir, relativePath), content);
     }
+
+    writeManifest(manifestPath, result.manifest);
     // Suppress unused import warning — `relative` is reserved for future use.
     void relative;
 }
@@ -311,14 +315,23 @@ function paramSourceTypes(src: NonNullable<OpRootNode['routes'][number]['params'
     return out;
 }
 
-/** Read the previous run's manifest. Returns an empty manifest when missing or unreadable. */
-function readManifest(outDir: string): IncrementalManifest {
-    const manifestPath = resolve(outDir, MANIFEST_FILENAME);
+/** Read the previous run's manifest from `manifestPath`. Returns an empty manifest when missing or unreadable. */
+function readManifest(manifestPath: string): IncrementalManifest {
     if (!existsSync(manifestPath)) return emptyIncrementalManifest(PYTHON_CODEGEN_VERSION);
     try {
         return parseIncrementalManifest(readFileSync(manifestPath, 'utf-8'));
     } catch {
         return emptyIncrementalManifest(PYTHON_CODEGEN_VERSION);
+    }
+}
+
+/** Write the manifest to `manifestPath`. Creates parent dirs as needed. Errors are swallowed so a broken cache never blocks the build. */
+function writeManifest(manifestPath: string, manifest: IncrementalManifest): void {
+    try {
+        mkdirSync(dirname(manifestPath), { recursive: true });
+        writeFileSync(manifestPath, serializeIncrementalManifest(manifest), 'utf-8');
+    } catch {
+        // best-effort
     }
 }
 

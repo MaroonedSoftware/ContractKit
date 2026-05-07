@@ -13,6 +13,13 @@ export interface PluginContext {
      * the plugin's `cacheKey`.
      */
     cacheEnabled: boolean;
+    /**
+     * Absolute path to the build-cache directory (default `<rootDir>/.contractkit/cache`,
+     * configurable via `config.cache.dir`). Plugins that persist incremental-build state
+     * across runs should write their manifest here so it co-locates with the rest of the
+     * CLI's cache and is ignored by source control alongside it.
+     */
+    cacheDir: string;
     /** Register a file to be written to disk. Only available in generateTargets. */
     emitFile(outPath: string, content: string): void;
 }

@@ -1,5 +1,5 @@
 import { resolve, join, relative, dirname, basename } from 'node:path';
-import { existsSync, readFileSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
 import { generateContract } from './codegen-contract.js';
 import { generateOp } from './codegen-operation.js';
 import type {
@@ -16,6 +16,7 @@ import {
     runIncrementalCodegen,
     parseIncrementalManifest,
     emptyIncrementalManifest,
+    serializeIncrementalManifest,
     hashFingerprint,
     collectTransitiveModelRefs,
     collectTypeRefs,
@@ -99,7 +100,8 @@ export interface TypescriptPluginConfig {
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
 export const TYPESCRIPT_CODEGEN_VERSION = '1';
 
-const MANIFEST_FILENAME = '.contractkit-typescript-manifest.json';
+/** Filename for the persisted TypeScript manifest under the CLI cache directory. */
+const CACHE_MANIFEST_FILENAME = 'typescript-manifest.json';
 
 // ─── Plugin entry points ──────────────────────────────────────────────────
 
@@ -137,7 +139,7 @@ async function runTypescriptCodegen(
     config: TypescriptPluginConfig,
     rootDir: string,
 ): Promise<void> {
-    const manifestPath = resolve(rootDir, MANIFEST_FILENAME);
+    const manifestPath = resolve(ctx.cacheDir, CACHE_MANIFEST_FILENAME);
     const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(manifestPath) : emptyIncrementalManifest(TYPESCRIPT_CODEGEN_VERSION);
 
     const units: IncrementalUnit[] = [];
@@ -150,7 +152,6 @@ async function runTypescriptCodegen(
 
     const result = runIncrementalCodegen({
         codegenVersion: TYPESCRIPT_CODEGEN_VERSION,
-        manifestFilename: manifestPath,
         prevManifest,
         globalFiles,
         units,
@@ -163,6 +164,8 @@ async function runTypescriptCodegen(
     for (const { relativePath, content } of result.filesToWrite) {
         ctx.emitFile(relativePath, content);
     }
+
+    writeManifest(manifestPath, result.manifest);
 }
 
 // ─── Cross-file dependency analysis ────────────────────────────────────────
@@ -749,6 +752,16 @@ function readManifest(manifestPath: string): IncrementalManifest {
         return parseIncrementalManifest(readFileSync(manifestPath, 'utf-8'));
     } catch {
         return emptyIncrementalManifest(TYPESCRIPT_CODEGEN_VERSION);
+    }
+}
+
+/** Write the manifest to `manifestPath`. Creates parent dirs as needed. Errors are swallowed so a broken cache never blocks the build. */
+function writeManifest(manifestPath: string, manifest: IncrementalManifest): void {
+    try {
+        mkdirSync(dirname(manifestPath), { recursive: true });
+        writeFileSync(manifestPath, serializeIncrementalManifest(manifest), 'utf-8');
+    } catch {
+        // best-effort
     }
 }
 

@@ -11,6 +11,7 @@ function makeCtx(rootDir = '/project', options: Record<string, unknown> = {}): P
         rootDir,
         options,
         cacheEnabled: true,
+        cacheDir: `${rootDir}/.contractkit/cache`,
         emitFile: (outPath: string, content: string) => {
             emitted.set(outPath, content);
         },

@@ -97,21 +97,22 @@ describe('runIncrementalCodegen', () => {
     it('renders every unit on first run (empty manifest)', () => {
         const result = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: emptyIncrementalManifest('1'),
             globalFiles: [],
             units: [unit('a', 'fp-a', [{ relativePath: 'a.ts', content: 'A' }])],
             fileExists: () => true,
         });
         expect(result.skippedUnitCount).toBe(0);
-        expect(result.filesToWrite.map(f => f.relativePath).sort()).toEqual(['a.ts', 'manifest.json']);
+        // Manifest is returned separately (not included in filesToWrite) so callers can
+        // persist it under the CLI cache dir rather than the plugin's output dir.
+        expect(result.filesToWrite.map(f => f.relativePath)).toEqual(['a.ts']);
+        expect(result.manifest.units['a']?.files).toEqual(['a.ts']);
         expect(result.deletedPaths).toEqual([]);
     });
 
     it('skips units whose fingerprint matches and whose files still exist', () => {
         const first = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: emptyIncrementalManifest('1'),
             globalFiles: [],
             units: [unit('a', 'fp', [{ relativePath: 'a.ts', content: 'A' }])],
@@ -120,7 +121,6 @@ describe('runIncrementalCodegen', () => {
         let renderCalls = 0;
         const second = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: first.manifest,
             globalFiles: [],
             units: [
@@ -137,13 +137,12 @@ describe('runIncrementalCodegen', () => {
         });
         expect(second.skippedUnitCount).toBe(1);
         expect(renderCalls).toBe(0);
-        expect(second.filesToWrite.map(f => f.relativePath)).toEqual(['manifest.json']);
+        expect(second.filesToWrite).toEqual([]);
     });
 
     it('regenerates a unit whose fingerprint changed', () => {
         const first = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: emptyIncrementalManifest('1'),
             globalFiles: [],
             units: [unit('a', 'fp1', [{ relativePath: 'a.ts', content: 'old' }])],
@@ -151,7 +150,6 @@ describe('runIncrementalCodegen', () => {
         });
         const second = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: first.manifest,
             globalFiles: [],
             units: [unit('a', 'fp2', [{ relativePath: 'a.ts', content: 'new' }])],
@@ -164,7 +162,6 @@ describe('runIncrementalCodegen', () => {
     it('regenerates a unit whose previously-emitted file is missing on disk', () => {
         const first = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: emptyIncrementalManifest('1'),
             globalFiles: [],
             units: [unit('a', 'fp', [{ relativePath: 'a.ts', content: 'A' }])],
@@ -172,7 +169,6 @@ describe('runIncrementalCodegen', () => {
         });
         const second = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: first.manifest,
             globalFiles: [],
             units: [unit('a', 'fp', [{ relativePath: 'a.ts', content: 'A' }])],
@@ -185,7 +181,6 @@ describe('runIncrementalCodegen', () => {
     it('treats every unit as a miss when codegenVersion changes', () => {
         const first = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: emptyIncrementalManifest('1'),
             globalFiles: [],
             units: [unit('a', 'fp', [{ relativePath: 'a.ts', content: 'A' }])],
@@ -193,7 +188,6 @@ describe('runIncrementalCodegen', () => {
         });
         const second = runIncrementalCodegen({
             codegenVersion: '2',
-            manifestFilename: 'manifest.json',
             prevManifest: first.manifest,
             globalFiles: [],
             units: [unit('a', 'fp', [{ relativePath: 'a.ts', content: 'A' }])],
@@ -205,7 +199,6 @@ describe('runIncrementalCodegen', () => {
     it('reports paths in the prior manifest but not in the new run as deletedPaths', () => {
         const first = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: emptyIncrementalManifest('1'),
             globalFiles: [],
             units: [
@@ -216,7 +209,6 @@ describe('runIncrementalCodegen', () => {
         });
         const second = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: first.manifest,
             globalFiles: [],
             units: [unit('a', 'fp-a', [{ relativePath: 'a.ts', content: 'A' }])],
@@ -228,7 +220,6 @@ describe('runIncrementalCodegen', () => {
     it('always writes global files, even when every unit is cached', () => {
         const first = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: emptyIncrementalManifest('1'),
             globalFiles: [{ relativePath: 'aggregator.ts', content: 'old' }],
             units: [unit('a', 'fp', [{ relativePath: 'a.ts', content: 'A' }])],
@@ -236,7 +227,6 @@ describe('runIncrementalCodegen', () => {
         });
         const second = runIncrementalCodegen({
             codegenVersion: '1',
-            manifestFilename: 'manifest.json',
             prevManifest: first.manifest,
             globalFiles: [{ relativePath: 'aggregator.ts', content: 'new' }],
             units: [unit('a', 'fp', [{ relativePath: 'a.ts', content: 'A' }])],

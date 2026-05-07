@@ -42,18 +42,21 @@ export async function loadPlugins(entries: PluginEntry[], configDir: string): Pr
  * only meaningful during `generateTargets`; the default implementation throws if
  * called from `validate` / `transform`. Pass `cacheEnabled=false` (computed by the
  * CLI from `--force` / `cache: false`) so the plugin can bypass its own incremental
- * caches.
+ * caches. `cacheDir` is the absolute path the CLI uses for its build cache —
+ * plugins that persist incremental state should write their manifest there.
  */
 export function makePluginContext(
     entry: PluginEntry,
     config: ResolvedConfig,
     cacheEnabled: boolean,
+    cacheDir: string,
     emitFile?: (outPath: string, content: string) => void,
 ): PluginContext {
     return {
         rootDir: config.rootDir,
         options: entry.options ?? {},
         cacheEnabled,
+        cacheDir,
         emitFile:
             emitFile ??
             (() => {

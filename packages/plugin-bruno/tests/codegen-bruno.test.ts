@@ -1001,7 +1001,9 @@ describe('generateOpenCollection', () => {
         expect(tracked).toContain('users/folder.yml');
         expect(tracked).toContain('users/get-users.yml');
         expect(tracked).toContain('users/post-users.yml');
-        expect(tracked).toContain(MANIFEST_FILENAME);
+        // The manifest itself lives outside the bruno output dir (under the CLI cache
+        // dir), so it is no longer self-referenced in the tracked-files list.
+        expect(tracked).not.toContain(MANIFEST_FILENAME);
     });
 
     it('parseManifest returns an empty manifest for malformed input', () => {
@@ -1313,8 +1315,11 @@ describe('generateOpenCollectionIncremental', () => {
         const incremental = generateOpenCollectionIncremental([root], { collectionName: 'API' }, emptyManifest());
         expect(incremental.skippedOpCount).toBe(0);
         expect(incremental.deletedPaths).toEqual([]);
-        // Both runs should write the same set of paths.
-        expect(new Set(incremental.filesToWrite.map(f => f.relativePath))).toEqual(new Set(full.map(f => f.relativePath)));
+        // generateOpenCollection bundles the manifest into its files list (for one-shot
+        // callers); the incremental path returns the manifest separately. Compare paths
+        // ignoring the manifest entry.
+        const fullPaths = new Set(full.map(f => f.relativePath).filter(p => p !== MANIFEST_FILENAME));
+        expect(new Set(incremental.filesToWrite.map(f => f.relativePath))).toEqual(fullPaths);
     });
 
     it('skips re-rendering ops whose fingerprint matches the prior manifest', () => {

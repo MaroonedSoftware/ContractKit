@@ -45,13 +45,13 @@ export interface IncrementalUnit {
     render: () => IncrementalOutputFile[];
 }
 
-/** What {@link runIncrementalCodegen} produces — files the caller must write, the new manifest, paths that should be deleted, and a count of skipped units (useful for logging). */
+/** What {@link runIncrementalCodegen} produces — output files the caller must write, the new manifest the caller must persist (separately, typically in the build cache directory), paths that should be deleted, and a count of skipped units (useful for logging). */
 export interface IncrementalResult {
-    /** Files the caller should write (changed/new units' files plus global files plus the new manifest). */
+    /** Output files the caller should write (changed/new units' files plus global files). The manifest is **not** included — persist it separately via {@link IncrementalResult.manifest}. */
     filesToWrite: IncrementalOutputFile[];
-    /** New manifest the caller should persist. Already included in `filesToWrite`. */
+    /** New manifest the caller should persist (typically as JSON to a path under the build cache directory). */
     manifest: IncrementalManifest;
-    /** Relative paths from the prior run that no longer appear in the new manifest. The caller should delete these from disk. */
+    /** Relative paths from the prior run that no longer appear in the new run. The caller should delete these from disk. */
     deletedPaths: string[];
     /** Number of units whose codegen was skipped because their fingerprint matched. */
     skippedUnitCount: number;
@@ -130,14 +130,14 @@ export function stableStringify(value: unknown): string {
  * regenerate (aggregators, barrels, constants).
  *
  * The caller is responsible for:
- * 1. Writing every `filesToWrite` entry.
- * 2. Deleting every `deletedPaths` entry.
- * 3. Persisting `manifest` to the manifest file path (already included in `filesToWrite`).
+ * 1. Writing every `filesToWrite` entry to disk.
+ * 2. Deleting every `deletedPaths` entry from disk.
+ * 3. Persisting `manifest` to its own location (typically `<cacheDir>/<plugin>-manifest.json`).
+ *    The manifest is NOT in `filesToWrite` — it's deliberately separate so plugins can
+ *    place build state under the CLI cache dir rather than mixing it with output files.
  */
 export function runIncrementalCodegen(args: {
     codegenVersion: string;
-    /** Relative path within the plugin's output dir where the manifest will be written. */
-    manifestFilename: string;
     prevManifest: IncrementalManifest;
     /** Files always written, regardless of cache state — typically aggregators or constants. */
     globalFiles: IncrementalOutputFile[];
@@ -146,7 +146,7 @@ export function runIncrementalCodegen(args: {
     /** Returns `true` if the given relative path currently exists on disk. Used to invalidate cache entries when a previously-emitted file was deleted. */
     fileExists: (relativePath: string) => boolean;
 }): IncrementalResult {
-    const { codegenVersion, manifestFilename, prevManifest, globalFiles, units, fileExists } = args;
+    const { codegenVersion, prevManifest, globalFiles, units, fileExists } = args;
     const filesToWrite: IncrementalOutputFile[] = [];
     const trackedPaths = new Set<string>();
     const newUnits: Record<string, IncrementalUnitRecord> = {};
@@ -181,7 +181,6 @@ export function runIncrementalCodegen(args: {
         newUnits[unit.key] = { fingerprint: unit.fingerprint, files: renderedPaths };
     }
 
-    trackedPaths.add(manifestFilename);
     const sortedFiles = [...trackedPaths].sort();
     const manifest: IncrementalManifest = {
         version: INCREMENTAL_MANIFEST_VERSION,
@@ -189,8 +188,12 @@ export function runIncrementalCodegen(args: {
         files: sortedFiles,
         units: newUnits,
     };
-    filesToWrite.push({ relativePath: manifestFilename, content: JSON.stringify(manifest, null, 2) + '\n' });
 
     const deletedPaths = prevManifest.files.filter(p => !trackedPaths.has(p));
     return { filesToWrite, manifest, deletedPaths, skippedUnitCount };
+}
+
+/** Serialize a manifest to the JSON form persisted on disk. */
+export function serializeIncrementalManifest(manifest: IncrementalManifest): string {
+    return JSON.stringify(manifest, null, 2) + '\n';
 }

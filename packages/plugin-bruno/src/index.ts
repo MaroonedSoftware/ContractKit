@@ -1,8 +1,12 @@
 import { resolve, basename, dirname } from 'node:path';
-import { existsSync, readFileSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
-import { generateOpenCollectionIncremental, MANIFEST_FILENAME, parseManifest, emptyManifest } from './codegen-bruno.js';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
+import { generateOpenCollectionIncremental, parseManifest, emptyManifest } from './codegen-bruno.js';
 import type { BrunoSecurityScheme } from './codegen-bruno.js';
+import { serializeIncrementalManifest } from '@contractkit/core';
 import type { ContractKitPlugin, PluginContext, PluginValue, OpRootNode, ContractRootNode, IncrementalManifest } from '@contractkit/core';
+
+/** Filename for the persisted Bruno manifest under the CLI cache directory. */
+const CACHE_MANIFEST_FILENAME = 'bruno-manifest.json';
 
 /** Configuration accepted by the Bruno plugin, both via `contractkit.config.json` and `createBrunoPlugin`. */
 export interface BrunoPluginConfig {
@@ -122,8 +126,9 @@ async function runBrunoCodegen(
     const base = config.baseDir ? resolve(ctx.rootDir, config.baseDir) : ctx.rootDir;
     const outDir = resolve(base, config.output ?? 'bruno-collection');
     const collectionName = config.collectionName ?? basename(ctx.rootDir);
+    const manifestPath = resolve(ctx.cacheDir, CACHE_MANIFEST_FILENAME);
 
-    const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(outDir) : emptyManifest();
+    const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(manifestPath) : emptyManifest();
 
     const result = generateOpenCollectionIncremental(
         opRoots,
@@ -144,16 +149,28 @@ async function runBrunoCodegen(
     for (const { relativePath, content } of result.filesToWrite) {
         ctx.emitFile(resolve(outDir, relativePath), content);
     }
+
+    // Persist the manifest under the CLI cache dir, separate from the bruno output.
+    writeManifest(manifestPath, result.manifest);
 }
 
-/** Read the previous run's manifest. Returns an empty manifest when the file is missing or unreadable so the next run safely starts from scratch. */
-function readManifest(outDir: string): IncrementalManifest {
-    const manifestPath = resolve(outDir, MANIFEST_FILENAME);
+/** Read the previous run's manifest from `manifestPath`. Returns an empty manifest when missing or unreadable. */
+function readManifest(manifestPath: string): IncrementalManifest {
     if (!existsSync(manifestPath)) return emptyManifest();
     try {
         return parseManifest(readFileSync(manifestPath, 'utf-8'));
     } catch {
         return emptyManifest();
+    }
+}
+
+/** Write the manifest to `manifestPath`. Creates parent dirs as needed. Errors are swallowed so a broken cache never blocks the build. */
+function writeManifest(manifestPath: string, manifest: IncrementalManifest): void {
+    try {
+        mkdirSync(dirname(manifestPath), { recursive: true });
+        writeFileSync(manifestPath, serializeIncrementalManifest(manifest), 'utf-8');
+    } catch {
+        // best-effort
     }
 }
 

@@ -109,26 +109,31 @@ export function createMyPlugin(options: MyOptions = {}): ContractKitPlugin {
 }
 ```
 
-`PluginContext` exposes `options`, `rootDir`, `emitFile`, and `cacheEnabled`. `cacheEnabled` is `false` when the user passes `--force` or sets `cache: false`; plugins that maintain incremental-build state should bypass it then.
+`PluginContext` exposes `options`, `rootDir`, `cacheDir`, `cacheEnabled`, and `emitFile`. `cacheEnabled` is `false` when the user passes `--force` or sets `cache: false`; plugins that maintain incremental-build state should bypass it then. `cacheDir` is the absolute path to the CLI's build-cache directory (default `<rootDir>/.contractkit/cache`) — plugins should persist their manifests there rather than mixing them with output files.
 
 ### Incremental codegen helper
 
-Plugins that emit many files (one per operation, one per contract root, etc.) can opt into per-output caching via `runIncrementalCodegen`. The plugin defines cacheable "units" with a stable `key` and `fingerprint`; on subsequent runs, units whose fingerprint matches the persisted manifest skip their renderer entirely. Files in the prior manifest that aren't produced this run are reported in `deletedPaths` so the plugin can clean them up.
+Plugins that emit many files (one per operation, one per contract root, etc.) can opt into per-output caching via `runIncrementalCodegen`. The plugin defines cacheable "units" with a stable `key` and `fingerprint`; on subsequent runs, units whose fingerprint matches the persisted manifest skip their renderer entirely. Files in the prior manifest that aren't produced this run are reported in `deletedPaths` so the plugin can clean them up. The manifest is returned separately from `filesToWrite` so plugins can persist it under `ctx.cacheDir` rather than alongside their outputs.
 
 ```typescript
 import {
     runIncrementalCodegen,
     parseIncrementalManifest,
+    serializeIncrementalManifest,
     emptyIncrementalManifest,
     hashFingerprint,
     type IncrementalManifest,
 } from '@contractkit/core';
+import { resolve } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
-const prev: IncrementalManifest = ctx.cacheEnabled ? readManifestFromDisk(outDir) : emptyIncrementalManifest('1');
+const manifestPath = resolve(ctx.cacheDir, 'my-plugin-manifest.json');
+const prev: IncrementalManifest = ctx.cacheEnabled && existsSync(manifestPath)
+    ? parseIncrementalManifest(readFileSync(manifestPath, 'utf-8'))
+    : emptyIncrementalManifest('1');
 
 const result = runIncrementalCodegen({
     codegenVersion: '1', // bump to bust every per-unit cache
-    manifestFilename: '.my-plugin-manifest.json',
     prevManifest: prev,
     globalFiles: [/* always-regenerated outputs */],
     units: roots.map(root => ({
@@ -141,9 +146,13 @@ const result = runIncrementalCodegen({
 
 deleteFromDisk(result.deletedPaths);
 for (const f of result.filesToWrite) ctx.emitFile(resolve(outDir, f.relativePath), f.content);
+
+// Persist the manifest under the CLI cache dir.
+mkdirSync(ctx.cacheDir, { recursive: true });
+writeFileSync(manifestPath, serializeIncrementalManifest(result.manifest), 'utf-8');
 ```
 
-Companion helpers: `hashFingerprint(value)` for stable sha256 hashing, `stableStringify(value)` for deterministic JSON, `collectTransitiveModelRefs(seedTypes, modelMap)` for slicing cross-file model dependencies into per-unit fingerprints.
+Companion helpers: `hashFingerprint(value)` for stable sha256 hashing, `stableStringify(value)` for deterministic JSON (handles bigint and undefined), `collectTransitiveModelRefs(seedTypes, modelMap)` for slicing cross-file model dependencies into per-unit fingerprints.
 
 ### Per-operation plugin files
 

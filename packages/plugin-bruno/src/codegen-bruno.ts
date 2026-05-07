@@ -20,6 +20,7 @@ import {
     runIncrementalCodegen,
     parseIncrementalManifest,
     emptyIncrementalManifest,
+    serializeIncrementalManifest,
     hashFingerprint,
     INCREMENTAL_MANIFEST_VERSION,
 } from '@contractkit/core';
@@ -117,14 +118,19 @@ export interface IncrementalResult extends Omit<IncrementalResultBase, 'skippedU
 /**
  * Generates an OpenCollection (https://spec.opencollection.com/) API collection
  * from a set of operation roots. Produces opencollection.yml, an environment
- * file, and one .yml request file per operation.
+ * file, one .yml request file per operation, and the tracking manifest.
  *
  * This is the full-regeneration entry point — every file is rebuilt from scratch.
  * For cache-aware incremental builds, use {@link generateOpenCollectionIncremental}.
+ *
+ * The manifest appears in the returned list (under {@link MANIFEST_FILENAME}) for
+ * convenience — single-shot callers can write the entire array as-is. The plugin's
+ * incremental path persists the manifest separately (under the CLI cache dir), so
+ * its `filesToWrite` does not include the manifest.
  */
 export function generateOpenCollection(roots: OpRootNode[], options: OpenCollectionOptions): OpenCollectionFile[] {
     const result = generateOpenCollectionIncremental(roots, options, emptyManifest());
-    return result.filesToWrite;
+    return [...result.filesToWrite, { relativePath: MANIFEST_FILENAME, content: serializeIncrementalManifest(result.manifest) }];
 }
 
 /**
@@ -193,7 +199,6 @@ export function generateOpenCollectionIncremental(
 
     const result = runIncrementalCodegen({
         codegenVersion: BRUNO_CODEGEN_VERSION,
-        manifestFilename: MANIFEST_FILENAME,
         prevManifest,
         globalFiles,
         units,
