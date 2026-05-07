@@ -25,8 +25,11 @@ import {
     generateSdk,
     generateSdkOptions,
     generateSdkAggregator,
+    generateAreaClient,
     deriveClientClassName,
     deriveClientPropertyName,
+    deriveAreaClientClassName,
+    deriveAreaPropertyName,
     deriveSubareaClientClassName,
     deriveSubareaPropertyName,
     getAreaSubarea,
@@ -42,6 +45,7 @@ import {
     computeOpOutPath,
     computeContractOutPath,
     computeSdkOutPath,
+    computeSdkAreaClientOutPath,
     computeSdkTypeOutPath,
     generateBarrelFiles,
     computePubliclyReachableTypes,
@@ -548,12 +552,13 @@ function collectSdkOutput(
     }
 
     // ── Global files: sdk-options, aggregator, barrels, root index ──
-    // The aggregator inlines area-only op roots, so its content depends on each inline root's
-    // full AST. Caching it gains little — the codegen is fast and any inline-root change rebuilds
-    // the file anyway. Same for barrels (one line per imported file). Always regenerate.
+    // sdk-options.ts is a constant; the aggregator is small (just imports + a wrapper class)
+    // and depends on the cross-cutting client list, so it's cheap to regenerate every run.
+    // Per-area `<area>.client.ts` files are cached as their own units below.
     globalFiles.push({ relativePath: sdkOptionsPath, content: generateSdkOptions() });
 
     const hasAnything = sdkClientInfos.length > 0 || areaBuckets.size > 0;
+    const areaClientOutPaths = new Map<string, string>(); // area → absolute outPath of <area>.client.ts
     if (hasAnything) {
         const sdkEntryDir = dirname(sdkEntryPath);
         const sdkOptionsRel = relative(sdkEntryDir, sdkOptionsPath).replace(/\.ts$/, '.js');
@@ -565,52 +570,104 @@ function collectSdkOutput(
                   .join('') + 'Sdk'
             : 'Sdk';
 
-        const toClientImport = (info: { outPath: string; className: string; propertyName: string }): SdkClientInfo => {
-            let rel = relative(sdkEntryDir, info.outPath).replace(/\.ts$/, '.js');
+        const toClientImport = (sourceDir: string, info: { outPath: string; className: string; propertyName: string }): SdkClientInfo => {
+            let rel = relative(sourceDir, info.outPath).replace(/\.ts$/, '.js');
             if (!rel.startsWith('.')) rel = './' + rel;
             return { className: info.className, propertyName: info.propertyName, importPath: rel };
         };
 
-        const topLevelClients: SdkClientInfo[] = topLevelEntries.map(e => ({
-            className: deriveClientClassName(e.ast.file),
-            propertyName: deriveClientPropertyName(e.ast.file),
-            importPath: (() => {
-                const rel = relative(sdkEntryDir, e.outPath).replace(/\.ts$/, '.js');
-                return rel.startsWith('.') ? rel : './' + rel;
-            })(),
-        }));
+        const topLevelClients: SdkClientInfo[] = topLevelEntries.map(e =>
+            toClientImport(sdkEntryDir, {
+                outPath: e.outPath,
+                className: deriveClientClassName(e.ast.file),
+                propertyName: deriveClientPropertyName(e.ast.file),
+            }),
+        );
 
-        const areas: SdkAreaInfo[] = [...areaBuckets.entries()]
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([area, bucket]) => ({
-                area,
-                inlineFiles: bucket.inlineRoots.map(root => ({
-                    root,
-                    codegenOptions: {
-                        typeImportPathTemplate: undefined,
-                        outPath: sdkEntryPath,
-                        modelOutPaths: sdkModelOutPaths,
-                        sdkOptionsPath,
-                        modelsWithInput,
-                        modelsWithOutput,
-                        includeInternal: config.includeInternal,
-                    },
-                })),
-                subareaClients: bucket.leaves
-                    .sort((a, b) => a.subarea.localeCompare(b.subarea))
-                    .map(l => ({
+        // ── Per-area `<area>.client.ts` units ──
+        const areaInfos: SdkAreaInfo[] = [];
+        const sortedAreas = [...areaBuckets.entries()].sort(([a], [b]) => a.localeCompare(b));
+        for (const [area, bucket] of sortedAreas) {
+            const areaClientOutPath = computeSdkAreaClientOutPath(area, sdkBase, config.output!.clients);
+            areaClientOutPaths.set(area, areaClientOutPath);
+            const areaClassName = deriveAreaClientClassName(area);
+            const areaPropertyName = deriveAreaPropertyName(area);
+            sdkClientInfos.push({ outPath: areaClientOutPath, className: areaClassName, propertyName: areaPropertyName });
+
+            const subareaClients = bucket.leaves
+                .sort((a, b) => a.subarea.localeCompare(b.subarea))
+                .map(l => ({
+                    propertyName: deriveSubareaPropertyName(l.subarea),
+                    client: toClientImport(dirname(areaClientOutPath), {
+                        outPath: l.outPath,
+                        className: deriveSubareaClientClassName(area, l.subarea),
                         propertyName: deriveSubareaPropertyName(l.subarea),
-                        client: toClientImport({
-                            outPath: l.outPath,
-                            className: deriveSubareaClientClassName(area, l.subarea),
-                            propertyName: deriveSubareaPropertyName(l.subarea),
-                        }),
-                    })),
+                    }),
+                }));
+
+            // Fingerprint covers every input the area client depends on:
+            //  - all inline roots (full AST)
+            //  - subarea client metadata (className / propertyName / import path)
+            //  - the modelOutPaths slice for refs across all inline roots
+            //  - modelsWithInput/Output slices
+            const allInlineRefs = new Set<string>();
+            for (const r of bucket.inlineRoots) {
+                for (const ref of collectOpRootRefs(r, modelMap)) allInlineRefs.add(ref);
+            }
+            const fingerprint = hashFingerprint({
+                kind: 'sdk-area-client',
+                v: TYPESCRIPT_CODEGEN_VERSION,
+                outPath: areaClientOutPath,
+                area,
+                inlineRoots: bucket.inlineRoots,
+                subareaClients,
+                outPathSlice: sliceOutPathMap(allInlineRefs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
+                modelsWithInput: sliceModelSet(allInlineRefs, new Set(), modelsWithInput),
+                modelsWithOutput: sliceModelSet(allInlineRefs, new Set(), modelsWithOutput),
+                sdkOptionsPath,
+                includeInternal: config.includeInternal ?? false,
+                sub: subConfigKey,
+            });
+
+            const inlineFilesForGen = bucket.inlineRoots.map(root => ({
+                root,
+                codegenOptions: {
+                    typeImportPathTemplate: undefined,
+                    outPath: areaClientOutPath,
+                    modelOutPaths: sdkModelOutPaths,
+                    sdkOptionsPath,
+                    modelsWithInput,
+                    modelsWithOutput,
+                    includeInternal: config.includeInternal,
+                },
             }));
+
+            units.push({
+                key: `sdk-area-client::${areaClientOutPath}`,
+                fingerprint,
+                render: () => [
+                    {
+                        relativePath: areaClientOutPath,
+                        content: generateAreaClient({
+                            area,
+                            outPath: areaClientOutPath,
+                            inlineFiles: inlineFilesForGen,
+                            subareaClients,
+                            sdkOptionsPath,
+                        }),
+                    },
+                ],
+            });
+
+            areaInfos.push({
+                area,
+                client: toClientImport(sdkEntryDir, { outPath: areaClientOutPath, className: areaClassName, propertyName: areaPropertyName }),
+            });
+        }
 
         globalFiles.push({
             relativePath: sdkEntryPath,
-            content: generateSdkAggregator({ topLevelClients, areas, sdkOptionsImportPath, sdkClassName }),
+            content: generateSdkAggregator({ topLevelClients, areas: areaInfos, sdkOptionsImportPath, sdkClassName }),
         });
     }
 

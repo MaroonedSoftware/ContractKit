@@ -165,11 +165,13 @@ SDK method names follow this priority: `sdk:` field → `name:` field (converted
 
 `keys.area` and `keys.subarea` cluster operations on the generated SDK:
 
-- `(area + subarea)` files emit a leaf `<Area><Subarea>Client` in `output.clients` (path can use `{subarea}`); the aggregator wires it as `sdk.<area>.<subarea>`.
-- `(area only)` files do **NOT** emit a standalone `*.client.ts`. Their methods are inlined directly into a synthesized `<Area>Client` class declared inside the SDK aggregator file (`sdk.ts`). Surfaced as `sdk.<area>.<method>`.
+- `(area + subarea)` files emit a leaf `<Area><Subarea>Client` in `output.clients` (path can use `{subarea}`); the area's `<Area>Client` (in `<area>.client.ts`) wires it as `sdk.<area>.<subarea>`.
+- `(area only)` files do **NOT** emit a standalone `*.client.ts`. Their methods are merged into the area's synthesized `<Area>Client` (emitted to `<area>.client.ts` next to the leaves). Surfaced as `sdk.<area>.<method>`.
 - `(neither)` files keep the legacy flat shape: per-file `<Filename>Client` exposed as `sdk.<filename>`.
 
-Multiple area-level files merge into one `<Area>Client`. Duplicate method names within that merge throw at codegen — disambiguate with `sdk:` or split into a subarea. The aggregator collects type imports across all inline files and re-emits them at the top of `sdk.ts`. See `generateSdkAggregator` in `packages/plugin-typescript/src/codegen-sdk.ts` for the full input shape.
+Every area gets its own `<area>.client.ts` file (path derived from the `output.clients` template via `computeSdkAreaClientOutPath` — `{filename}` and `{area}` resolve to the area name, `{subarea}` resolves to empty). The SDK aggregator (`sdk.ts`) just imports each `<Area>Client` and wires it onto the `Sdk` class — it no longer declares any client classes itself.
+
+Multiple area-level files merge into one `<Area>Client`. Duplicate method names within that merge throw at codegen — disambiguate with `sdk:` or split into a subarea. See `generateAreaClient` and `generateSdkAggregator` in `packages/plugin-typescript/src/codegen-sdk.ts` for the codegen entry points.
 
 The SDK emits a shared `sdk-options.ts` alongside the client files. It contains `SdkOptions`, `createSdkFetch`, `buildQueryString`, `parseJson<T>`, and bigint JSON helpers. Void operations (no response body) skip body consumption entirely.
 

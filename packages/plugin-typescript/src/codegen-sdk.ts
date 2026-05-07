@@ -972,23 +972,25 @@ export interface SdkClientInfo {
 }
 
 /**
- * One area-level (no-subarea) `.ck` file whose methods are inlined directly into the
- * generated `<Area>Client` class instead of getting a standalone `*.client.ts`.
+ * One area-level (no-subarea) `.ck` file whose methods are merged into the area's
+ * `<Area>Client` (emitted to its own `<area>.client.ts`).
  */
 export interface SdkAreaInlineFile {
     /** Parsed AST. */
     root: OpRootNode;
-    /** Codegen options for this file (must have `outPath` pointing at the SDK aggregator file so type-import paths resolve correctly). */
+    /** Codegen options for this file (must have `outPath` pointing at the area client file so type-import paths resolve correctly). */
     codegenOptions: SdkCodegenOptions;
 }
 
 /** A grouping of files that share the same `keys.area`. */
 export interface SdkAreaInfo {
     area: string;
-    /** Files for which all methods are inlined into the area client (no subarea). */
-    inlineFiles: SdkAreaInlineFile[];
-    /** Per-file leaf clients exposed as named properties on the area client. */
-    subareaClients: { propertyName: string; client: SdkClientInfo }[];
+    /**
+     * Reference to the `<Area>Client` class — the file that holds it lives at
+     * `client.importPath` (relative to `sdk.ts`) and is generated separately by
+     * {@link generateAreaClient}. The aggregator just imports it.
+     */
+    client: SdkClientInfo;
 }
 
 export interface SdkAggregatorInput {
@@ -1002,88 +1004,105 @@ export interface SdkAggregatorInput {
     sdkClassName?: string;
 }
 
-/**
- * Generate the SDK aggregator (`sdk.ts`) — the entry-point file consumers import.
- *
- * Emits one `<Area>Client` class per area (combining inlined area-level methods with
- * subarea property wiring), one `class Sdk` exposing area properties + flat top-level
- * properties, plus all imports needed by the inlined methods.
- *
- * @throws if two area-level files in the same area produce the same method name.
- */
-export function generateSdkAggregator(input: SdkAggregatorInput): string {
-    const sdkOptionsImportPath = input.sdkOptionsImportPath ?? './sdk-options.js';
-    const sdkClassName = input.sdkClassName ?? 'Sdk';
+/** Inputs to {@link generateAreaClient}. */
+export interface AreaClientInput {
+    /** Area name (e.g. `payments`). Drives the generated class name (`PaymentsClient`). */
+    area: string;
+    /** Output path of the generated `<area>.client.ts` file. Used to resolve relative type / leaf-client / sdk-options imports. */
+    outPath: string;
+    /** Files contributing inlined methods to the area client (typically area-level files with no subarea). */
+    inlineFiles: SdkAreaInlineFile[];
+    /** Subarea leaf clients exposed as named properties on the area client. */
+    subareaClients: { propertyName: string; client: SdkClientInfo }[];
+    /** Path to `sdk-options.ts`, used for `SdkFetch` and runtime helpers. */
+    sdkOptionsPath: string;
+}
 
-    // ── Pre-render inline method blocks per area (also collects type/runtime needs) ──
-    const inlinedByArea = new Map<string, { lines: string[]; methodNames: Set<string> }>();
-    const typesByImportPath = new Map<string, Set<string>>(); // path → set of type names
+/**
+ * Generate a complete `<area>.client.ts` file: the `<Area>Client` class with
+ * subarea property fields, a constructor that wires them, and inlined methods
+ * merged from every area-level file in `inlineFiles`.
+ *
+ * Emitted by the plugin alongside the per-leaf `*.client.ts` files. The SDK
+ * aggregator just imports the resulting class — see {@link generateSdkAggregator}.
+ *
+ * @throws if two area-level files contribute the same method name to the area —
+ * disambiguate via `sdk:` on the operation, or move one into a subarea.
+ */
+export function generateAreaClient(input: AreaClientInput): string {
+    const { area, outPath, inlineFiles, subareaClients, sdkOptionsPath } = input;
+    const className = deriveAreaClientClassName(area);
+
+    // ── Merge inputs across all inline files ────────────────────────────────
+    const collectedMethodLines: string[] = [];
+    const seenMethods = new Set<string>();
+    const typesByImportPath = new Map<string, Set<string>>();
     const unresolvedTypes = new Set<string>();
     let needsJson = false;
     let needsBigIntReplacer = false;
     let needsBigIntReviver = false;
     let needsQueryString = false;
 
-    for (const area of input.areas) {
-        const collected: string[] = [];
-        const seenMethods = new Set<string>();
-        for (const inline of area.inlineFiles) {
-            const includeInternal = inline.codegenOptions.includeInternal ?? false;
-            // Collect method names + source lines
-            const { lines: methodLines, methodNames } = generateClientMethods(inline.root, inline.codegenOptions);
-            for (const name of methodNames) {
-                if (seenMethods.has(name)) {
-                    throw new Error(
-                        `[sdk] duplicate method '${name}' in area '${area.area}': two area-level files contribute the same method. Disambiguate via 'sdk:' or move one into a subarea.`,
-                    );
-                }
-                seenMethods.add(name);
+    for (const inline of inlineFiles) {
+        const includeInternal = inline.codegenOptions.includeInternal ?? false;
+        const { lines: methodLines, methodNames } = generateClientMethods(inline.root, inline.codegenOptions);
+        for (const name of methodNames) {
+            if (seenMethods.has(name)) {
+                throw new Error(
+                    `[sdk] duplicate method '${name}' in area '${area}': two area-level files contribute the same method. Disambiguate via 'sdk:' or move one into a subarea.`,
+                );
             }
-            collected.push(...methodLines);
-            // Side info for imports
-            if (sdkNeedsJson(inline.root, includeInternal)) needsJson = true;
-            if (sdkNeedsBigIntReplacer(inline.root, includeInternal)) needsBigIntReplacer = true;
-            if (sdkNeedsBigIntReviver(inline.root, includeInternal)) needsBigIntReviver = true;
-            if (sdkNeedsQueryString(inline.root, includeInternal)) needsQueryString = true;
-            // Type imports: rebuild what generateTypeImports would produce, but key by import path so multiple files merge
-            const typesForFile = collectTypes(inline.root, inline.codegenOptions.modelsWithInput, inline.codegenOptions.modelsWithOutput, includeInternal);
-            const { modelOutPaths, outPath } = inline.codegenOptions;
-            if (modelOutPaths && outPath) {
-                const fromDir = dirname(outPath);
-                for (const t of typesForFile) {
-                    const typeOutPath = modelOutPaths.get(t);
-                    if (typeOutPath) {
-                        let rel = relative(fromDir, typeOutPath).replace(/\.ts$/, '.js');
-                        if (!rel.startsWith('.')) rel = './' + rel;
-                        const set = typesByImportPath.get(rel) ?? new Set();
-                        set.add(t);
-                        typesByImportPath.set(rel, set);
-                    } else {
-                        unresolvedTypes.add(t);
-                    }
+            seenMethods.add(name);
+        }
+        collectedMethodLines.push(...methodLines);
+        if (sdkNeedsJson(inline.root, includeInternal)) needsJson = true;
+        if (sdkNeedsBigIntReplacer(inline.root, includeInternal)) needsBigIntReplacer = true;
+        if (sdkNeedsBigIntReviver(inline.root, includeInternal)) needsBigIntReviver = true;
+        if (sdkNeedsQueryString(inline.root, includeInternal)) needsQueryString = true;
+
+        // Resolve each file's type refs against THIS file's modelOutPaths, but
+        // produce import paths relative to the area client's outPath (not the
+        // contributing file's outPath, which pointed at the now-defunct sdk.ts).
+        const typesForFile = collectTypes(
+            inline.root,
+            inline.codegenOptions.modelsWithInput,
+            inline.codegenOptions.modelsWithOutput,
+            includeInternal,
+        );
+        const { modelOutPaths } = inline.codegenOptions;
+        if (modelOutPaths) {
+            const fromDir = dirname(outPath);
+            for (const t of typesForFile) {
+                const typeOutPath = modelOutPaths.get(t);
+                if (typeOutPath) {
+                    let rel = relative(fromDir, typeOutPath).replace(/\.ts$/, '.js');
+                    if (!rel.startsWith('.')) rel = './' + rel;
+                    const set = typesByImportPath.get(rel) ?? new Set();
+                    set.add(t);
+                    typesByImportPath.set(rel, set);
+                } else {
+                    unresolvedTypes.add(t);
                 }
             }
         }
-        inlinedByArea.set(area.area, { lines: collected, methodNames: seenMethods });
     }
 
-    // ── Imports ──
+    // ── Imports ─────────────────────────────────────────────────────────────
+    let sdkOptionsRel = relative(dirname(outPath), sdkOptionsPath).replace(/\.ts$/, '.js');
+    if (!sdkOptionsRel.startsWith('.')) sdkOptionsRel = './' + sdkOptionsRel;
+
     const lines: string[] = [];
     const jsonImport = needsJson ? ', JsonValue' : '';
-    lines.push(`import type { SdkFetch${jsonImport} } from '${sdkOptionsImportPath}';`);
+    lines.push(`import type { SdkFetch${jsonImport} } from '${sdkOptionsRel}';`);
     const valueImports: string[] = [];
     if (needsBigIntReplacer) valueImports.push('bigIntReplacer');
     if (needsBigIntReviver) valueImports.push('parseJson');
     if (needsQueryString) valueImports.push('buildQueryString');
     if (valueImports.length > 0) {
-        lines.push(`import { ${valueImports.join(', ')} } from '${sdkOptionsImportPath}';`);
+        lines.push(`import { ${valueImports.join(', ')} } from '${sdkOptionsRel}';`);
     }
-    lines.push(`import type { SdkOptions } from '${sdkOptionsImportPath}';`);
-    lines.push(`import { createSdkFetch } from '${sdkOptionsImportPath}';`);
 
-    // Type imports inlined from area-level files
-    const typeImportPaths = [...typesByImportPath.keys()].sort();
-    for (const path of typeImportPaths) {
+    for (const path of [...typesByImportPath.keys()].sort()) {
         const names = [...typesByImportPath.get(path)!].sort();
         lines.push(`import type { ${names.join(', ')} } from '${path}';`);
     }
@@ -1091,7 +1110,52 @@ export function generateSdkAggregator(input: SdkAggregatorInput): string {
         lines.push(`import type { ${t} } from './${pascalToDotCase(t)}.js';`);
     }
 
-    // Leaf client imports (top-level + subarea)
+    // Leaf client imports (subareas only — top-level clients live next to sdk.ts).
+    const importedClients = new Set<string>();
+    for (const sc of subareaClients) {
+        const key = `${sc.client.className}|${sc.client.importPath}`;
+        if (importedClients.has(key)) continue;
+        importedClients.add(key);
+        lines.push(`import { ${sc.client.className} } from '${sc.client.importPath}';`);
+    }
+    lines.push('');
+
+    // ── <Area>Client class ──────────────────────────────────────────────────
+    lines.push(`export class ${className} {`);
+    for (const sc of subareaClients) {
+        lines.push(`    readonly ${sc.propertyName}: ${sc.client.className};`);
+    }
+    if (subareaClients.length > 0) lines.push('');
+    if (collectedMethodLines.length > 0 || subareaClients.length > 0) {
+        const fetchModifier = collectedMethodLines.length > 0 ? 'private ' : '';
+        lines.push(`    constructor(${fetchModifier}fetch: SdkFetch) {`);
+        for (const sc of subareaClients) {
+            lines.push(`        this.${sc.propertyName} = new ${sc.client.className}(fetch);`);
+        }
+        lines.push('    }');
+    }
+    for (const ln of collectedMethodLines) lines.push(ln);
+    lines.push('}');
+    lines.push('');
+
+    return lines.join('\n');
+}
+
+/**
+ * Generate the SDK aggregator (`sdk.ts`) — the entry-point file consumers import.
+ *
+ * Imports every `<Area>Client` (one per area, generated by {@link generateAreaClient}
+ * to its own `<area>.client.ts`) and every leaf top-level client, then emits a
+ * `class Sdk` that exposes them as properties.
+ */
+export function generateSdkAggregator(input: SdkAggregatorInput): string {
+    const sdkOptionsImportPath = input.sdkOptionsImportPath ?? './sdk-options.js';
+    const sdkClassName = input.sdkClassName ?? 'Sdk';
+
+    const lines: string[] = [];
+    lines.push(`import type { SdkOptions } from '${sdkOptionsImportPath}';`);
+    lines.push(`import { createSdkFetch } from '${sdkOptionsImportPath}';`);
+
     const importedClients = new Set<string>();
     const pushClientImport = (c: SdkClientInfo): void => {
         const key = `${c.className}|${c.importPath}`;
@@ -1099,41 +1163,14 @@ export function generateSdkAggregator(input: SdkAggregatorInput): string {
         importedClients.add(key);
         lines.push(`import { ${c.className} } from '${c.importPath}';`);
     };
+    // Areas first, then top-level — keeps the aggregator's import order stable.
+    for (const area of input.areas) pushClientImport(area.client);
     for (const c of input.topLevelClients) pushClientImport(c);
-    for (const area of input.areas) {
-        for (const sc of area.subareaClients) pushClientImport(sc.client);
-    }
     lines.push('');
 
-    // ── <Area>Client classes ──
-    for (const area of input.areas) {
-        const areaClassName = deriveAreaClientClassName(area.area);
-        const inlined = inlinedByArea.get(area.area)!;
-        lines.push(`class ${areaClassName} {`);
-        // Subarea property declarations
-        for (const sc of area.subareaClients) {
-            lines.push(`    readonly ${sc.propertyName}: ${sc.client.className};`);
-        }
-        if (area.subareaClients.length > 0) lines.push('');
-        // Constructor
-        if (inlined.lines.length > 0 || area.subareaClients.length > 0) {
-            const fetchModifier = inlined.lines.length > 0 ? 'private ' : '';
-            lines.push(`    constructor(${fetchModifier}fetch: SdkFetch) {`);
-            for (const sc of area.subareaClients) {
-                lines.push(`        this.${sc.propertyName} = new ${sc.client.className}(fetch);`);
-            }
-            lines.push('    }');
-        }
-        // Inlined methods (already class-body indented)
-        for (const ln of inlined.lines) lines.push(ln);
-        lines.push('}');
-        lines.push('');
-    }
-
-    // ── Sdk aggregator ──
     lines.push(`export class ${sdkClassName} {`);
     for (const area of input.areas) {
-        lines.push(`    readonly ${deriveAreaPropertyName(area.area)}: ${deriveAreaClientClassName(area.area)};`);
+        lines.push(`    readonly ${deriveAreaPropertyName(area.area)}: ${area.client.className};`);
     }
     for (const c of input.topLevelClients) {
         lines.push(`    readonly ${c.propertyName}: ${c.className};`);
@@ -1142,7 +1179,7 @@ export function generateSdkAggregator(input: SdkAggregatorInput): string {
     lines.push('    constructor(options: SdkOptions) {');
     lines.push('        const sdkFetch = options.fetch ?? createSdkFetch(options);');
     for (const area of input.areas) {
-        lines.push(`        this.${deriveAreaPropertyName(area.area)} = new ${deriveAreaClientClassName(area.area)}(sdkFetch);`);
+        lines.push(`        this.${deriveAreaPropertyName(area.area)} = new ${area.client.className}(sdkFetch);`);
     }
     for (const c of input.topLevelClients) {
         lines.push(`        this.${c.propertyName} = new ${c.className}(sdkFetch);`);

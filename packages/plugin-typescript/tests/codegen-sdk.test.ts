@@ -3,6 +3,7 @@ import {
     generateSdk,
     generateSdkOptions,
     generateSdkAggregator,
+    generateAreaClient,
     deriveClientClassName,
     deriveClientPropertyName,
     deriveAreaClientClassName,
@@ -1536,60 +1537,83 @@ describe('area + subarea name derivation', () => {
 // ─── generateSdkAggregator — area + subarea wiring ────────────────────────
 
 describe('generateSdkAggregator — area + subarea', () => {
-    it('emits one <Area>Client per area with subarea property wiring', () => {
+    it('imports each area client and exposes it on Sdk', () => {
         const out = generateSdkAggregator({
             topLevelClients: [],
             areas: [
                 {
                     area: 'identity',
-                    inlineFiles: [],
-                    subareaClients: [
-                        {
-                            propertyName: 'invitations',
-                            client: { className: 'IdentityInvitationsClient', propertyName: 'invitations', importPath: './identity/invitations.client.js' },
-                        },
-                        {
-                            propertyName: 'users',
-                            client: { className: 'IdentityUsersClient', propertyName: 'users', importPath: './identity/users.client.js' },
-                        },
-                    ],
+                    client: { className: 'IdentityClient', propertyName: 'identity', importPath: './identity/identity.client.js' },
                 },
             ],
         });
-        expect(out).toContain("import { IdentityInvitationsClient } from './identity/invitations.client.js'");
-        expect(out).toContain("import { IdentityUsersClient } from './identity/users.client.js'");
-        expect(out).toContain('class IdentityClient {');
+        expect(out).toContain("import { IdentityClient } from './identity/identity.client.js'");
+        expect(out).toContain('export class Sdk {');
+        expect(out).toContain('readonly identity: IdentityClient');
+        expect(out).toContain('this.identity = new IdentityClient(sdkFetch)');
+        // The aggregator no longer declares the IdentityClient itself.
+        expect(out).not.toContain('class IdentityClient {');
+    });
+
+    it('mixes area clients with top-level (no-area) clients', () => {
+        const out = generateSdkAggregator({
+            topLevelClients: [{ className: 'WebhooksClient', propertyName: 'webhooks', importPath: './webhooks.client.js' }],
+            areas: [
+                {
+                    area: 'payments',
+                    client: { className: 'PaymentsClient', propertyName: 'payments', importPath: './payments/payments.client.js' },
+                },
+            ],
+        });
+        expect(out).toContain('readonly payments: PaymentsClient');
+        expect(out).toContain('readonly webhooks: WebhooksClient');
+        expect(out).toContain('this.payments = new PaymentsClient(sdkFetch)');
+        expect(out).toContain('this.webhooks = new WebhooksClient(sdkFetch)');
+    });
+});
+
+describe('generateAreaClient — <Area>Client emission', () => {
+    it('emits one <Area>Client class with subarea property wiring', () => {
+        const out = generateAreaClient({
+            area: 'identity',
+            outPath: '/out/identity/identity.client.ts',
+            inlineFiles: [],
+            subareaClients: [
+                {
+                    propertyName: 'invitations',
+                    client: { className: 'IdentityInvitationsClient', propertyName: 'invitations', importPath: './invitations.client.js' },
+                },
+                {
+                    propertyName: 'users',
+                    client: { className: 'IdentityUsersClient', propertyName: 'users', importPath: './users.client.js' },
+                },
+            ],
+            sdkOptionsPath: '/out/sdk-options.ts',
+        });
+        expect(out).toContain("import { IdentityInvitationsClient } from './invitations.client.js'");
+        expect(out).toContain("import { IdentityUsersClient } from './users.client.js'");
+        expect(out).toContain('export class IdentityClient {');
         expect(out).toContain('readonly invitations: IdentityInvitationsClient');
         expect(out).toContain('readonly users: IdentityUsersClient');
         expect(out).toContain('this.invitations = new IdentityInvitationsClient(fetch)');
         expect(out).toContain('this.users = new IdentityUsersClient(fetch)');
-        // Sdk wires the area property
-        expect(out).toContain('export class Sdk {');
-        expect(out).toContain('readonly identity: IdentityClient');
-        expect(out).toContain('this.identity = new IdentityClient(sdkFetch)');
     });
 
-    it('inlines methods from area-level (no-subarea) files into <Area>Client', () => {
+    it('inlines methods from area-level (no-subarea) files into the area client', () => {
         const root = opRoot(
             [opRoute('/me', [opOperation('get', { sdk: 'getCurrentUser', responses: [opResponse(200, 'User', 'application/json')] })])],
             'identity.ck',
             { area: 'identity' },
         );
-        const out = generateSdkAggregator({
-            topLevelClients: [],
-            areas: [
-                {
-                    area: 'identity',
-                    inlineFiles: [{ root, codegenOptions: { outPath: '/out/sdk.ts', sdkOptionsPath: '/out/sdk-options.ts' } }],
-                    subareaClients: [],
-                },
-            ],
+        const out = generateAreaClient({
+            area: 'identity',
+            outPath: '/out/identity/identity.client.ts',
+            inlineFiles: [{ root, codegenOptions: { outPath: '/out/identity/identity.client.ts', sdkOptionsPath: '/out/sdk-options.ts' } }],
+            subareaClients: [],
+            sdkOptionsPath: '/out/sdk-options.ts',
         });
-        expect(out).toContain('class IdentityClient {');
+        expect(out).toContain('export class IdentityClient {');
         expect(out).toContain('async getCurrentUser(');
-        // No subarea property declarations on this client
-        expect(out).not.toMatch(/readonly \w+: \w+;[\s\S]*async getCurrentUser/);
-        // The fetch arg is captured as `private fetch` since methods reference `this.fetch`
         expect(out).toContain('constructor(private fetch: SdkFetch)');
     });
 
@@ -1599,20 +1623,17 @@ describe('generateSdkAggregator — area + subarea', () => {
             'identity.ck',
             { area: 'identity' },
         );
-        const out = generateSdkAggregator({
-            topLevelClients: [],
-            areas: [
+        const out = generateAreaClient({
+            area: 'identity',
+            outPath: '/out/identity/identity.client.ts',
+            inlineFiles: [{ root: inlineRoot, codegenOptions: { outPath: '/out/identity/identity.client.ts', sdkOptionsPath: '/out/sdk-options.ts' } }],
+            subareaClients: [
                 {
-                    area: 'identity',
-                    inlineFiles: [{ root: inlineRoot, codegenOptions: { outPath: '/out/sdk.ts', sdkOptionsPath: '/out/sdk-options.ts' } }],
-                    subareaClients: [
-                        {
-                            propertyName: 'invitations',
-                            client: { className: 'IdentityInvitationsClient', propertyName: 'invitations', importPath: './identity/invitations.client.js' },
-                        },
-                    ],
+                    propertyName: 'invitations',
+                    client: { className: 'IdentityInvitationsClient', propertyName: 'invitations', importPath: './invitations.client.js' },
                 },
             ],
+            sdkOptionsPath: '/out/sdk-options.ts',
         });
         expect(out).toContain('readonly invitations: IdentityInvitationsClient');
         expect(out).toContain('async getCurrentUser(');
@@ -1631,42 +1652,16 @@ describe('generateSdkAggregator — area + subarea', () => {
             { area: 'identity' },
         );
         expect(() =>
-            generateSdkAggregator({
-                topLevelClients: [],
-                areas: [
-                    {
-                        area: 'identity',
-                        inlineFiles: [
-                            { root: a, codegenOptions: { outPath: '/out/sdk.ts', sdkOptionsPath: '/out/sdk-options.ts' } },
-                            { root: b, codegenOptions: { outPath: '/out/sdk.ts', sdkOptionsPath: '/out/sdk-options.ts' } },
-                        ],
-                        subareaClients: [],
-                    },
+            generateAreaClient({
+                area: 'identity',
+                outPath: '/out/identity/identity.client.ts',
+                inlineFiles: [
+                    { root: a, codegenOptions: { outPath: '/out/identity/identity.client.ts', sdkOptionsPath: '/out/sdk-options.ts' } },
+                    { root: b, codegenOptions: { outPath: '/out/identity/identity.client.ts', sdkOptionsPath: '/out/sdk-options.ts' } },
                 ],
+                subareaClients: [],
+                sdkOptionsPath: '/out/sdk-options.ts',
             }),
         ).toThrow(/duplicate method 'getCurrentUser' in area 'identity'/);
-    });
-
-    it('mixes area clients with top-level (no-area) clients', () => {
-        const out = generateSdkAggregator({
-            topLevelClients: [{ className: 'WebhooksClient', propertyName: 'webhooks', importPath: './webhooks.client.js' }],
-            areas: [
-                {
-                    area: 'payments',
-                    inlineFiles: [],
-                    subareaClients: [
-                        {
-                            propertyName: 'transfers',
-                            client: { className: 'PaymentsTransfersClient', propertyName: 'transfers', importPath: './payments/transfers.client.js' },
-                        },
-                    ],
-                },
-            ],
-        });
-        // Sdk has both an area property AND a top-level property
-        expect(out).toContain('readonly payments: PaymentsClient');
-        expect(out).toContain('readonly webhooks: WebhooksClient');
-        expect(out).toContain('this.payments = new PaymentsClient(sdkFetch)');
-        expect(out).toContain('this.webhooks = new WebhooksClient(sdkFetch)');
     });
 });

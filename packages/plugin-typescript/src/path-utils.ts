@@ -96,6 +96,38 @@ export function computeSdkOutPath(
     return join(baseOutDir, relDir, defaultOutName);
 }
 
+/**
+ * Resolve the output path for a synthesized `<area>.client.ts` — the file holding the
+ * `<Area>Client` class that aggregates an area's inlined methods and subarea wiring.
+ *
+ * Uses the same `output.clients` template as leaf clients, with `{filename}` and `{area}`
+ * substituted to the area name and `{subarea}` substituted to the empty string. Resulting
+ * double-slashes from the empty substitution are collapsed, and a final segment that
+ * would otherwise begin with a dot (e.g. `.client.ts` from `{subarea}.client.ts`) is
+ * prefixed with the area so the file isn't hidden.
+ */
+export function computeSdkAreaClientOutPath(area: string, rootDir: string, clientOutput: string | undefined): string {
+    const filename = area;
+    const baseOutDir = resolve(rootDir);
+    const fixHiddenSegment = (path: string): string => {
+        const segments = path.split('/');
+        const last = segments[segments.length - 1] ?? '';
+        if (last.startsWith('.')) segments[segments.length - 1] = `${filename}${last}`;
+        return segments.join('/');
+    };
+    if (clientOutput && TEMPLATE_VAR_RE.test(clientOutput)) {
+        const resolved = resolveTemplate(clientOutput, { filename, dir: '', ext: 'ck', area, subarea: '' });
+        const cleaned = fixHiddenSegment(resolved.replace(/\/+/g, '/').replace(/^\//, ''));
+        if (includesFilename(cleaned)) return join(baseOutDir, cleaned);
+        return join(baseOutDir, cleaned, `${filename}.client.ts`);
+    }
+    if (clientOutput) {
+        if (includesFilename(clientOutput)) return join(baseOutDir, clientOutput);
+        return join(baseOutDir, clientOutput, `${filename}.client.ts`);
+    }
+    return join(baseOutDir, `${filename}.client.ts`);
+}
+
 export function computeSdkTypeOutPath(
     filePath: string,
     rootDir: string,
