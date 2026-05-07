@@ -1,5 +1,11 @@
 # @contractkit/core
 
+## 0.15.1
+
+### Patch Changes
+
+- 130d53b: Fix `stableStringify` (and therefore `hashFingerprint` / `runIncrementalCodegen`) crashing with "Do not know how to serialize a BigInt" when an AST payload contains a `bigint` default or literal. Bigints now serialize as a tagged string `"<bigint:VALUE>"` so they're stable in fingerprints and distinguishable from plain strings. `undefined` is also normalized to `null` so `{a: undefined}` and `{}` don't collide.
+
 ## 0.15.0
 
 ### Minor Changes

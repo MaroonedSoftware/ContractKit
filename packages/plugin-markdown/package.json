@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-markdown",
-    "version": "0.8.5",
+    "version": "0.8.6",
     "description": "ContractKit built-in plugin: Markdown API reference generation",
     "author": {
         "name": "Marooned Software",
