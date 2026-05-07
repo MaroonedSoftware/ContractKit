@@ -1,5 +1,14 @@
 # @contractkit/cli
 
+## 0.9.1
+
+### Patch Changes
+
+- 10ca07b: Add per-output incremental caching to the Bruno, Python, and TypeScript plugins. Editing a single contract or operation no longer regenerates every output file — only the units whose transitive inputs actually changed are re-rendered, with the rest reused from a per-plugin manifest. `@contractkit/core` exposes the shared utility (`runIncrementalCodegen`, `parseIncrementalManifest`, `hashFingerprint`, `collectTransitiveModelRefs`, manifest types) for plugin authors. `PluginContext` gains a `cacheEnabled` flag so plugins can honor `--force` / `cache: false`.
+- Updated dependencies [10ca07b]
+    - @contractkit/core@0.15.0
+    - @contractkit/openapi-to-ck@0.7.5
+
 ## 0.9.0
 
 ### Minor Changes
