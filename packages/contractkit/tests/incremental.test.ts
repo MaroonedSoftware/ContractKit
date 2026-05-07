@@ -34,6 +34,19 @@ describe('stableStringify', () => {
         expect(stableStringify('s')).toBe('"s"');
         expect(stableStringify(42)).toBe('42');
     });
+
+    it('serializes bigint values as a tagged string', () => {
+        // Native JSON.stringify throws "Do not know how to serialize a BigInt" — our
+        // wrapper has to handle them so AST nodes carrying bigint defaults can be hashed.
+        expect(stableStringify(1n)).toBe('"<bigint:1>"');
+        expect(stableStringify({ default: 42n })).toBe('{"default":"<bigint:42>"}');
+        // 1n and "1" must hash differently — keep the tag distinguishable.
+        expect(stableStringify(1n)).not.toBe(stableStringify('1'));
+    });
+
+    it('treats undefined as null so its presence is fingerprinted', () => {
+        expect(stableStringify({ a: undefined })).toBe('{"a":null}');
+    });
 });
 
 describe('parseIncrementalManifest', () => {

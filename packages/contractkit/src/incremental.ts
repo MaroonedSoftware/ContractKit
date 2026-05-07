@@ -98,8 +98,19 @@ export function hashFingerprint(value: unknown): string {
     return createHash('sha256').update(stableStringify(value)).digest('hex');
 }
 
-/** JSON.stringify variant that sorts object keys recursively, so structurally equivalent values always serialize identically. */
+/**
+ * JSON.stringify variant that sorts object keys recursively, so structurally
+ * equivalent values always serialize identically.
+ *
+ * Handles `bigint` values (which native `JSON.stringify` rejects) by emitting
+ * them as a tagged string `"<bigint:VALUE>"`. Tagging — rather than coercing to
+ * a plain string or number — keeps `1n` and `"1"` distinguishable in fingerprints.
+ * `undefined` is normalized to `null` (stable) instead of being dropped (which
+ * would make `{a: undefined}` and `{}` collide).
+ */
 export function stableStringify(value: unknown): string {
+    if (value === undefined) return 'null';
+    if (typeof value === 'bigint') return JSON.stringify(`<bigint:${value.toString()}>`);
     if (value === null || typeof value !== 'object') return JSON.stringify(value);
     if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
     const keys = Object.keys(value as Record<string, unknown>).sort();
