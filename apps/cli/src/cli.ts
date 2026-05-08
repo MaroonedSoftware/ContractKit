@@ -5,7 +5,7 @@
 // to the first plugin whose command.name matches argv[2].
 import { default as importOpenApiPlugin } from '@contractkit/openapi-to-ck/plugin';
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { glob } from 'glob';
 import {
@@ -385,10 +385,13 @@ async function main() {
         // ── Write output files ──────────────────────────────────────
         mkdirSync(resolvedBase, { recursive: true });
 
+        let writtenCount = 0;
         for (const { outPath, content } of results) {
+            if (existsSync(outPath) && readFileSync(outPath, 'utf-8') === content) continue;
             mkdirSync(dirname(outPath), { recursive: true });
             writeFileSync(outPath, content, 'utf-8');
             console.log(`  ✓  ${outPath}`);
+            writtenCount++;
         }
 
         // Save cache
@@ -400,7 +403,7 @@ async function main() {
         // appear at the bottom of the output and are easy to spot.
         diag.report();
 
-        console.log(`\nCompiled ${results.length} file(s).`);
+        console.log(`\nCompiled ${results.length} file(s) (${writtenCount} written, ${results.length - writtenCount} unchanged).`);
     };
 
     await run();
