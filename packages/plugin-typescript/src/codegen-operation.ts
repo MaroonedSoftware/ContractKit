@@ -125,6 +125,7 @@ export interface OpCodegenOptions {
     includeInternal?: boolean;
 }
 
+/** Generate a Koa router module for every operation in `root`, including the imports, type aliases, and handler list. */
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
     // Collect all referenced types across all routes
     const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput);
@@ -240,8 +241,8 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     // Middleware list
     const middlewares: string[] = [];
     if (effectiveSecurity !== SECURITY_NONE) {
-        const roles = effectiveSecurity && effectiveSecurity.roles?.length ? `roles: [${effectiveSecurity.roles.map(r => `'${r}'`).join(', ')}]` : '';
-        middlewares.push(`requireSecurity({ ${roles} })`);
+        const args = effectiveSecurity && effectiveSecurity.requireMfa !== undefined ? `{ requireMfa: ${effectiveSecurity.requireMfa} }` : '';
+        middlewares.push(`requireSecurity(${args})`);
     }
     if (hasBody) {
         const parserTokens = Array.from(new Set(bodies.map(b => bodyParserToken(b.contentType))));

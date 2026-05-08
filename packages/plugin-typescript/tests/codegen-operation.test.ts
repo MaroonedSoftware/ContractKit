@@ -807,9 +807,9 @@ describe('generateOp — route modifiers JSDoc', () => {
             expect(out).toContain('anonymous access, no security required');
         });
 
-        it('emits no annotation for security with roles', () => {
+        it('emits no annotation for security with requireMfa', () => {
             const op = opOperation('get', {
-                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+                security: { requireMfa: true, loc: { file: 'test.op', line: 1 } },
             });
             const root = opRoot([opRoute('/users', [op])]);
             const out = generateOp(root);
@@ -867,7 +867,7 @@ describe('generateOp — route modifiers JSDoc', () => {
 
         it('does not import requireSignature when no signature is set', () => {
             const op = opOperation('get', {
-                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+                security: { requireMfa: true, loc: { file: 'test.op', line: 1 } },
             });
             const root = opRoot([opRoute('/users', [op])]);
             const out = generateOp(root);
@@ -876,7 +876,7 @@ describe('generateOp — route modifiers JSDoc', () => {
         });
     });
 
-    // ─── Security (roles) middleware ────────────────────────────────
+    // ─── Security (requireMfa) middleware ───────────────────────────
 
     describe('security middleware', () => {
         it('injects requireSecurity() with no args for unannotated routes', () => {
@@ -884,27 +884,26 @@ describe('generateOp — route modifiers JSDoc', () => {
             const root = opRoot([opRoute('/users', [op])]);
             const out = generateOp(root);
             expect(out).toContain(`import { ServerKitRouter, bodyParserMiddleware, requireSecurity }`);
-            expect(out).toContain(`requireSecurity({  })`);
+            expect(out).toContain(`requireSecurity()`);
         });
 
-        it('injects requireSecurity with roles when roles are set', () => {
+        it('injects requireSecurity with requireMfa: true when set', () => {
             const op = opOperation('get', {
-                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+                security: { requireMfa: true, loc: { file: 'test.op', line: 1 } },
             });
             const root = opRoot([opRoute('/users', [op])]);
             const out = generateOp(root);
-            expect(out).toContain(`requireSecurity({ roles: ['admin'] })`);
+            expect(out).toContain(`requireSecurity({ requireMfa: true })`);
         });
 
-        it('passes multiple roles as an array', () => {
+        it('injects requireSecurity with requireMfa: false when set', () => {
             const op = opOperation('get', {
-                security: { roles: ['admin', 'support'], loc: { file: 'test.op', line: 1 } },
+                security: { requireMfa: false, loc: { file: 'test.op', line: 1 } },
             });
-            const root = opRoot([opRoute('/users', [op])]);
-            const routeLine = generateOp(root)
+            const routeLine = generateOp(opRoot([opRoute('/users', [op])]))
                 .split('\n')
                 .find(l => l.includes('.get('));
-            expect(routeLine).toContain(`requireSecurity({ roles: ['admin', 'support'] })`);
+            expect(routeLine).toContain(`requireSecurity({ requireMfa: false })`);
         });
 
         it('does not inject requireSecurity for public (security: none) routes', () => {
@@ -924,7 +923,7 @@ describe('generateOp — route modifiers JSDoc', () => {
 
         it('places requireSecurity before bodyParserMiddleware in the route line', () => {
             const op = opOperation('post', {
-                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+                security: { requireMfa: true, loc: { file: 'test.op', line: 1 } },
                 request: opRequest('Payload'),
             });
             const root = opRoot([opRoute('/users', [op])]);
@@ -941,7 +940,7 @@ describe('generateOp — route modifiers JSDoc', () => {
         it('places requireSecurity before requireSignature when both are set', () => {
             const op = opOperation('post', {
                 signature: 'MY_KEY',
-                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+                security: { requireMfa: true, loc: { file: 'test.op', line: 1 } },
                 request: opRequest('Payload'),
             });
             const root = opRoot([opRoute('/webhooks', [op])]);
@@ -958,7 +957,7 @@ describe('generateOp — route modifiers JSDoc', () => {
         it('imports both requireSecurity and requireSignature when both are set', () => {
             const op = opOperation('post', {
                 signature: 'MY_KEY',
-                security: { roles: ['admin'], loc: { file: 'test.op', line: 1 } },
+                security: { requireMfa: true, loc: { file: 'test.op', line: 1 } },
                 request: opRequest('Payload'),
             });
             const root = opRoot([opRoute('/webhooks', [op])]);
@@ -966,13 +965,13 @@ describe('generateOp — route modifiers JSDoc', () => {
             expect(out).toContain(`import { ServerKitRouter, bodyParserMiddleware, requireSecurity, requireSignature }`);
         });
 
-        it('works with route-level roles security', () => {
+        it('works with route-level requireMfa security', () => {
             const op = opOperation('get');
             const route = opRoute('/users', [op]);
-            route.security = { roles: ['admin'], loc: { file: 'test.op', line: 1 } };
+            route.security = { requireMfa: true, loc: { file: 'test.op', line: 1 } };
             const root = opRoot([route]);
             const out = generateOp(root);
-            expect(out).toContain(`requireSecurity({ roles: ['admin'] })`);
+            expect(out).toContain(`requireSecurity({ requireMfa: true })`);
         });
     });
 });

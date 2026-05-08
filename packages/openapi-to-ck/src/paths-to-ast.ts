@@ -315,21 +315,9 @@ function convertSecurity(security: Record<string, string[]>[]): SecurityNode {
         return 'none';
     }
 
-    // The DSL's security model is simpler — extract roles if present
-    // For most security schemes, just note that security is required
-    const allScopes: string[] = [];
-    for (const requirement of security) {
-        for (const scopes of Object.values(requirement)) {
-            allScopes.push(...scopes);
-        }
-    }
-
-    if (allScopes.length > 0) {
-        return { roles: allScopes, loc: LOC };
-    }
-
-    // Security required but no specific scopes/roles
-    return { roles: [], loc: LOC };
+    // The DSL's security model is simpler — OpenAPI scopes/roles don't map onto requireMfa,
+    // so any non-empty security requirement is collapsed to "authenticated, no MFA".
+    return { loc: LOC };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────

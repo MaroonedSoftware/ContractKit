@@ -1078,9 +1078,9 @@ export function createSemantics(grammar: Grammar) {
                 const child = items.child(i);
                 if (child.ctorName === 'comment') continue;
                 const result = child.toAst(file, this.args.diag);
-                if (result._type === 'roles') {
-                    fields.roles = result.roles;
-                    if (result.description) fields.rolesDescription = result.description;
+                if (result._type === 'requireMfa') {
+                    fields.requireMfa = result.value;
+                    if (result.description) fields.requireMfaDescription = result.description;
                 }
             }
 
@@ -1091,20 +1091,13 @@ export function createSemantics(grammar: Grammar) {
             return child.toAst(this.args.file, this.args.diag);
         },
 
-        SecurityRolesLine(_rolesKw, _colon, roleNodes, commentOpt) {
-            const roles: string[] = [];
-            for (let i = 0; i < roleNodes.numChildren; i++) {
-                roles.push(roleNodes.child(i).sourceString.trim());
-            }
+        SecurityRequireMfaLine(_kw, _colon, valueNode, commentOpt) {
+            const value = valueNode.sourceString === 'true';
             let description: string | undefined;
             if ((commentOpt as IterationNode).numChildren > 0) {
                 description = (commentOpt as IterationNode).child(0).sourceString.replace(/^#\s?/, '').trimEnd();
             }
-            return { _type: 'roles', roles, description };
-        },
-
-        RoleName(identNode) {
-            return identNode.sourceString;
+            return { _type: 'requireMfa', value, description };
         },
 
         SecuritySignatureLine(_signatureKw, _colon, valueNode, _commentOpt) {

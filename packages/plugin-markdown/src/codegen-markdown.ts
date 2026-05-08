@@ -489,8 +489,8 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
         lines.push('> Security: public');
     } else if (effectiveSecurity !== undefined) {
         const parts: string[] = [];
-        if (effectiveSecurity.roles && effectiveSecurity.roles.length > 0) {
-            parts.push(`roles: ${effectiveSecurity.roles.join(', ')}`);
+        if (effectiveSecurity.requireMfa !== undefined) {
+            parts.push(`requireMfa: ${effectiveSecurity.requireMfa}`);
         }
         if (op.signature) {
             parts.push(`signature: ${op.signature}`);

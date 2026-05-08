@@ -584,23 +584,23 @@
                             "include": "#comment"
                         },
                         {
-                            "include": "#security-roles-line"
+                            "include": "#security-require-mfa-line"
                         }
                     ]
                 }
             ]
         },
-        "security-roles-line": {
-            "match": "\\b(roles)\\s*(:)\\s*([a-zA-Z_][a-zA-Z0-9_ ]*)",
+        "security-require-mfa-line": {
+            "match": "\\b(requireMfa)\\s*(:)\\s*(true|false)\\b",
             "captures": {
                 "1": {
-                    "name": "keyword.control.security.roles.ck"
+                    "name": "keyword.control.security.require-mfa.ck"
                 },
                 "2": {
                     "name": "punctuation.separator.colon.ck"
                 },
                 "3": {
-                    "name": "string.unquoted.ck"
+                    "name": "constant.language.boolean.ck"
                 }
             }
         },

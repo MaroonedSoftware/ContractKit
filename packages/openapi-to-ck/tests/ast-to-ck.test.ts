@@ -327,12 +327,12 @@ describe('route serialization', () => {
         expect(result).toContain('        security: none');
     });
 
-    it('serializes security with roles', () => {
+    it('serializes security with requireMfa', () => {
         const root = ckRoot({
             routes: [
                 opRoute('/admin', [
                     opOperation('get', {
-                        security: { roles: ['admin', 'superadmin'], loc: { file: 'test.ck', line: 1 } },
+                        security: { requireMfa: true, loc: { file: 'test.ck', line: 1 } },
                         responses: [opResponse(200, refType('Data'), 'application/json')],
                     }),
                 ]),
@@ -340,7 +340,7 @@ describe('route serialization', () => {
         });
         const result = astToCk(root);
         expect(result).toContain('        security: {');
-        expect(result).toContain('            roles: [admin, superadmin]');
+        expect(result).toContain('            requireMfa: true');
     });
 
     it('serializes service and sdk fields', () => {

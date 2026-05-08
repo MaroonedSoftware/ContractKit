@@ -175,12 +175,12 @@ export interface ContractRootNode {
 
 // ─── Operations AST (.op) ──────────────────────────────────────────────────
 
-/** Constrained security declaration — roles-only auth fields. */
+/** Constrained security declaration. */
 export interface SecurityFields {
-    /** Allowlisted role names required for this endpoint (e.g. `["admin", "moderator"]`). */
-    roles?: string[];
-    /** Inline comment attached to the `roles:` line. */
-    rolesDescription?: string;
+    /** Whether this endpoint requires MFA. */
+    requireMfa?: boolean;
+    /** Inline comment attached to the `requireMfa:` line. */
+    requireMfaDescription?: string;
     loc: SourceLocation;
 }
 

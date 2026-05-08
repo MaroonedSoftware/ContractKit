@@ -1235,28 +1235,28 @@ operation /users: {
             expect(root.routes[0]!.security).toBe(SECURITY_NONE);
         });
 
-        it('parses security: { roles: admin } with single role', () => {
-            const { root } = parse('operation /users: { get: { security: { roles: admin } } }');
-            expect((root.routes[0]!.operations[0]!.security as any).roles).toEqual(['admin']);
+        it('parses security: { requireMfa: true }', () => {
+            const { root } = parse('operation /users: { get: { security: { requireMfa: true } } }');
+            expect((root.routes[0]!.operations[0]!.security as any).requireMfa).toBe(true);
         });
 
-        it('parses security: { roles: admin moderator editor } with multiple roles', () => {
-            const { root } = parse('operation /users: { get: { security: { roles: admin moderator editor } } }');
-            expect((root.routes[0]!.operations[0]!.security as any).roles).toEqual(['admin', 'moderator', 'editor']);
+        it('parses security: { requireMfa: false }', () => {
+            const { root } = parse('operation /users: { get: { security: { requireMfa: false } } }');
+            expect((root.routes[0]!.operations[0]!.security as any).requireMfa).toBe(false);
         });
 
-        it('parses roles comment description in security block', () => {
-            const { root, diag } = parse('operation /users: { get: { security: { roles: admin moderator # authorized roles\n} } }');
+        it('parses requireMfa comment description in security block', () => {
+            const { root, diag } = parse('operation /users: { get: { security: { requireMfa: true # step-up auth\n} } }');
             expect(diag.hasErrors()).toBe(false);
             const sec = root.routes[0]!.operations[0]!.security as any;
-            expect(sec.roles).toEqual(['admin', 'moderator']);
-            expect(sec.rolesDescription).toBe('authorized roles');
+            expect(sec.requireMfa).toBe(true);
+            expect(sec.requireMfaDescription).toBe('step-up auth');
         });
 
         it('parses SecuritySignatureLine inside security block', () => {
-            const { root, diag } = parse('operation /hooks: { post: { security: { signature: "hmac-key"\n  roles: admin } } }');
+            const { root, diag } = parse('operation /hooks: { post: { security: { signature: "hmac-key"\n  requireMfa: true } } }');
             expect(diag.hasErrors()).toBe(false);
-            expect((root.routes[0]!.operations[0]!.security as any).roles).toEqual(['admin']);
+            expect((root.routes[0]!.operations[0]!.security as any).requireMfa).toBe(true);
         });
 
         it('parses signature: "key" as operation-level field', () => {
@@ -1269,30 +1269,30 @@ operation /users: {
             expect(root.routes[0]!.operations[0]!.signature).toBe('MODERN_TREASURY_WEBHOOK');
         });
 
-        it('parses signature: alongside security: { roles }', () => {
-            const { root } = parse('operation /users: { post: { signature: "hmac-sha256"\n  security: { roles: admin } } }');
+        it('parses signature: alongside security: { requireMfa }', () => {
+            const { root } = parse('operation /users: { post: { signature: "hmac-sha256"\n  security: { requireMfa: true } } }');
             expect(root.routes[0]!.operations[0]!.signature).toBe('hmac-sha256');
-            expect((root.routes[0]!.operations[0]!.security as any).roles).toEqual(['admin']);
+            expect((root.routes[0]!.operations[0]!.security as any).requireMfa).toBe(true);
         });
 
-        it('parses route-level security: { roles: admin }', () => {
-            const { root } = parse('operation /users: { security: { roles: admin }\n  get: {} }');
-            expect((root.routes[0]!.security as any).roles).toEqual(['admin']);
+        it('parses route-level security: { requireMfa: true }', () => {
+            const { root } = parse('operation /users: { security: { requireMfa: true }\n  get: {} }');
+            expect((root.routes[0]!.security as any).requireMfa).toBe(true);
         });
 
         it('resolveSecurity: op-level wins over route-level', () => {
-            const { root } = parse('operation /users: { security: { roles: admin }\n  get: { security: none } }');
+            const { root } = parse('operation /users: { security: { requireMfa: true }\n  get: { security: none } }');
             expect(resolveSecurity(root.routes[0]!, root.routes[0]!.operations[0]!)).toBe(SECURITY_NONE);
         });
 
         it('resolveSecurity: falls back to route-level when op has no security', () => {
-            const { root } = parse('operation /users: { security: { roles: admin }\n  get: {} }');
-            expect((resolveSecurity(root.routes[0]!, root.routes[0]!.operations[0]!) as any).roles).toEqual(['admin']);
+            const { root } = parse('operation /users: { security: { requireMfa: true }\n  get: {} }');
+            expect((resolveSecurity(root.routes[0]!, root.routes[0]!.operations[0]!) as any).requireMfa).toBe(true);
         });
 
         it('security: { ... } does not break subsequent fields', () => {
-            const { root } = parse('operation /users: { get: { security: { roles: admin }\n  response: { 200: } } }');
-            expect((root.routes[0]!.operations[0]!.security as any).roles).toEqual(['admin']);
+            const { root } = parse('operation /users: { get: { security: { requireMfa: true }\n  response: { 200: } } }');
+            expect((root.routes[0]!.operations[0]!.security as any).requireMfa).toBe(true);
             expect(root.routes[0]!.operations[0]!.responses[0]!.statusCode).toBe(200);
         });
     });
@@ -1452,12 +1452,12 @@ operation /capital: { get: {} }`);
         const { root, diag } = parse(`\
 options {
     security: {
-        roles: admin
+        requireMfa: true
     }
 }
 operation /users: { get: {} }`);
         expect(diag.hasErrors()).toBe(false);
-        expect((root.security as any).roles).toEqual(['admin']);
+        expect((root.security as any).requireMfa).toBe(true);
     });
 
     it('parses empty options block', () => {

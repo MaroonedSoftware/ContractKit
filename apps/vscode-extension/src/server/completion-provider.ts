@@ -37,9 +37,8 @@ const OBJECT_MODES: Array<{ label: string; insertText: string; detail: string }>
 ];
 
 const SECURITY_SCHEMES: Array<{ label: string; detail: string }> = [
-    { label: 'bearer', detail: 'Bearer token (Authorization: Bearer <token>)' },
-    { label: 'apiKey', detail: 'API key via header/query/cookie' },
-    { label: 'oauth2', detail: 'OAuth 2.0' },
+    { label: 'requireMfa', detail: 'Require multi-factor authentication for this endpoint' },
+    { label: 'signature', detail: 'Verify request signature with the named key' },
 ];
 
 // 'none' is only valid in `security: none` form, not inside a block

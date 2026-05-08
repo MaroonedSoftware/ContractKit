@@ -128,7 +128,7 @@ describe('printCk — route and operation modifiers combined', () => {
 
 // ─── Security printing ────────────────────────────────────────────────────────
 
-function makeSecFields(fields: Partial<Pick<SecurityFields, 'roles'>>): SecurityFields {
+function makeSecFields(fields: Partial<Pick<SecurityFields, 'requireMfa'>>): SecurityFields {
     return { ...fields, loc: makeLoc() };
 }
 
@@ -138,17 +138,17 @@ describe('printCk — security', () => {
         expect(printCk(ast)).toContain('        security: none');
     });
 
-    it('prints security block with roles only', () => {
-        const ast = makeRoot([makeRoute('/users', [makeOp('get', { security: makeSecFields({ roles: ['admin'] }) })])]);
+    it('prints security block with requireMfa: true', () => {
+        const ast = makeRoot([makeRoute('/users', [makeOp('get', { security: makeSecFields({ requireMfa: true }) })])]);
         const out = printCk(ast);
         expect(out).toContain('        security: {');
-        expect(out).toContain('            roles: admin');
+        expect(out).toContain('            requireMfa: true');
         expect(out).toContain('        }');
     });
 
-    it('prints security block with multiple roles space-separated', () => {
-        const ast = makeRoot([makeRoute('/users', [makeOp('get', { security: makeSecFields({ roles: ['admin', 'moderator'] }) })])]);
-        expect(printCk(ast)).toContain('            roles: admin moderator');
+    it('prints security block with requireMfa: false', () => {
+        const ast = makeRoot([makeRoute('/users', [makeOp('get', { security: makeSecFields({ requireMfa: false }) })])]);
+        expect(printCk(ast)).toContain('            requireMfa: false');
     });
 
     it('prints operation-level signature as its own keyword', () => {
@@ -164,10 +164,10 @@ describe('printCk — security', () => {
     });
 
     it('prints route-level security with shallower indentation', () => {
-        const ast = makeRoot([makeRoute('/users', [makeOp('get')], { security: makeSecFields({ roles: ['admin'] }) })]);
+        const ast = makeRoot([makeRoute('/users', [makeOp('get')], { security: makeSecFields({ requireMfa: true }) })]);
         const out = printCk(ast);
         expect(out).toContain('    security: {');
-        expect(out).toContain('        roles: admin');
+        expect(out).toContain('        requireMfa: true');
     });
 
     it('prints route-level security: none', () => {

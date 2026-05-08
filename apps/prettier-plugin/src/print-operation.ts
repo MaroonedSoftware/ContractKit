@@ -222,16 +222,21 @@ function formatSignatureValue(value: string): string {
     return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(value) ? value : `"${value}"`;
 }
 
-// indent: indentation for the `security` keyword line
-// innerIndent: indentation for field lines inside the block
+/**
+ * Print a `security:` declaration. Returns `["${indent}security: none"]` for the public-endpoint
+ * sentinel, a multi-line block when `requireMfa` is set, or an empty array when there's nothing
+ * meaningful to emit.
+ *
+ * @param indent indentation for the `security` keyword line
+ * @param innerIndent indentation for field lines inside the block
+ */
 export function printSecurity(security: SecurityNode, indent = I2, innerIndent = I3): string[] {
     if (security === SECURITY_NONE) return [`${indent}security: none`];
     const fields = security as SecurityFields;
-    const hasRoles = fields.roles && fields.roles.length > 0;
-    if (!hasRoles) return [];
+    if (fields.requireMfa === undefined) return [];
     const lines = [`${indent}security: {`];
-    const comment = fields.rolesDescription ? ` # ${fields.rolesDescription}` : '';
-    lines.push(`${innerIndent}roles: ${fields.roles!.join(' ')}${comment}`);
+    const comment = fields.requireMfaDescription ? ` # ${fields.requireMfaDescription}` : '';
+    lines.push(`${innerIndent}requireMfa: ${fields.requireMfa}${comment}`);
     lines.push(`${indent}}`);
     return lines;
 }

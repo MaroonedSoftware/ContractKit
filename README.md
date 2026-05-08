@@ -229,7 +229,7 @@ options {
         }
     }
     security: {
-        roles: admin
+        requireMfa: true
     }
 }
 ```
@@ -985,23 +985,12 @@ post: {
 }
 ```
 
-**Require specific roles** (for RBAC schemes):
+**Require multi-factor auth** (step-up authentication):
 
 ```
 get: {
     security: {
-        roles: admin editor
-    }
-    ...
-}
-```
-
-**Named scheme** (references a scheme defined in config):
-
-```
-post: {
-    security: {
-        webhookAuth
+        requireMfa: true
     }
     ...
 }
@@ -1012,16 +1001,14 @@ Route-level security applies to all operations in the route unless overridden:
 ```
 operation /admin/users: {
     security: {
-        roles: admin
+        requireMfa: true
     }
 
-    get: { ... }     # requires admin role
-    post: { ... }    # requires admin role
+    get: { ... }     # requires MFA
+    post: { ... }    # requires MFA
 
     delete: {
-        security: {
-            roles: superadmin   # overridden — requires superadmin
-        }
+        security: none   # overridden — public
         ...
     }
 }
