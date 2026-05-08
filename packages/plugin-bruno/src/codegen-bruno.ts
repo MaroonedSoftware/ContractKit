@@ -173,19 +173,33 @@ export function generateOpenCollectionIncremental(
     });
 
     const units: IncrementalUnit[] = [];
-    for (let rootIdx = 0; rootIdx < sortedRoots.length; rootIdx++) {
-        const root = sortedRoots[rootIdx]!;
+    // Track which folder.yml paths we've already emitted so multiple roots sharing
+    // an area (the area's own root + its subarea roots) don't each push the
+    // area-level folder.yml — that produced N near-duplicate emits per area, only
+    // the last of which survived on disk.
+    const emittedFolders = new Set<string>();
+    let areaSeq = 0;
+    for (const root of sortedRoots) {
         const folder = root.meta['area'] ? slugifyName(root.meta['area']) : deriveFolderName(root.file);
-        const displayName = (root.meta['area'] ?? folder).charAt(0).toUpperCase() + (root.meta['area'] ?? folder).slice(1);
-        globalFiles.push({ relativePath: `${folder}/folder.yml`, content: generateFolderFile(displayName, rootIdx + 1) });
+        const folderRel = `${folder}/folder.yml`;
+        if (!emittedFolders.has(folderRel)) {
+            const displayName = (root.meta['area'] ?? folder).charAt(0).toUpperCase() + (root.meta['area'] ?? folder).slice(1);
+            areaSeq++;
+            globalFiles.push({ relativePath: folderRel, content: generateFolderFile(displayName, areaSeq) });
+            emittedFolders.add(folderRel);
+        }
 
         const subarea = root.meta['subarea'];
         const subareaSlug = subarea ? slugifyName(subarea) : undefined;
         const requestDir = subareaSlug ? `${folder}/${subareaSlug}` : folder;
 
         if (subareaSlug) {
-            const subareaDisplayName = subarea!.charAt(0).toUpperCase() + subarea!.slice(1);
-            globalFiles.push({ relativePath: `${requestDir}/folder.yml`, content: generateFolderFile(subareaDisplayName, 1) });
+            const subareaRel = `${requestDir}/folder.yml`;
+            if (!emittedFolders.has(subareaRel)) {
+                const subareaDisplayName = subarea!.charAt(0).toUpperCase() + subarea!.slice(1);
+                globalFiles.push({ relativePath: subareaRel, content: generateFolderFile(subareaDisplayName, 1) });
+                emittedFolders.add(subareaRel);
+            }
         }
 
         for (const entry of buildOpEntries(root, requestDir, includeInternal)) {

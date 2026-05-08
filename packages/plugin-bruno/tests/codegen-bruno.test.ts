@@ -170,6 +170,24 @@ describe('generateOpenCollection', () => {
         expect(files.some(f => f.relativePath === 'capital/folder.yml')).toBe(true);
     });
 
+    it('emits the area-level folder.yml exactly once even when many roots share the area', () => {
+        const top = opRoot([opRoute('/identity', [opOperation('get')])], 'identity.op', { area: 'identity' });
+        const a = opRoot([opRoute('/businesses', [opOperation('get')])], 'identity-businesses.op', { area: 'identity', subarea: 'businesses' });
+        const b = opRoot([opRoute('/persons', [opOperation('get')])], 'identity-persons.op', { area: 'identity', subarea: 'persons' });
+        const files = generateOpenCollection([top, a, b], { collectionName: 'API' });
+        const areaFolders = files.filter(f => f.relativePath === 'identity/folder.yml');
+        expect(areaFolders.length).toBe(1);
+    });
+
+    it('numbers area folder.yml seq by area position, not by root index', () => {
+        const aTop = opRoot([opRoute('/a', [opOperation('get')])], 'a.op', { area: 'a' });
+        const bTop = opRoot([opRoute('/b', [opOperation('get')])], 'b.op', { area: 'b' });
+        const bSub = opRoot([opRoute('/x', [opOperation('get')])], 'b-sub.op', { area: 'b', subarea: 'sub' });
+        const files = generateOpenCollection([aTop, bTop, bSub], { collectionName: 'API' });
+        expect(files.find(f => f.relativePath === 'a/folder.yml')!.content).toContain('seq: 1');
+        expect(files.find(f => f.relativePath === 'b/folder.yml')!.content).toContain('seq: 2');
+    });
+
     it('slugifies subarea for the folder path', () => {
         const root = opRoot([opRoute('/offers', [opOperation('get')])], 'capital.op', { subarea: 'Expansion Capital' });
         const files = generateOpenCollection([root], { collectionName: 'API' });
