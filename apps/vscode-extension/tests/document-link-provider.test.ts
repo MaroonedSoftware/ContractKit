@@ -1,8 +1,13 @@
+import { parseCk, DiagnosticCollector } from '@contractkit/core';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { getDocumentLinks } from '../src/server/document-link-provider.js';
 
 function makeDoc(uri: string, content: string) {
     return TextDocument.create(uri, 'contract-ck', 1, content);
+}
+
+function parsed(uri: string, text: string) {
+    return { ast: parseCk(text, uri.replace('file://', ''), new DiagnosticCollector()), version: 1 };
 }
 
 describe('getDocumentLinks', () => {
@@ -39,6 +44,29 @@ describe('getDocumentLinks', () => {
         const doc = makeDoc('file:///x.ck', 'contract M: { mode(strict) }');
         const links = getDocumentLinks({ textDocument: { uri: doc.uri } }, doc);
         expect(links).toEqual([]);
+    });
+
+    it('expands `{{var}}` placeholders from the file\'s options.keys before linking', () => {
+        const src = `\
+options {
+    keys: {
+        bruno: "/Users/me/api/bruno"
+    }
+}
+
+operation /a: { get: { plugins: { bruno: { template: "file://{{bruno}}/auth.yml" } } } }
+`;
+        const doc = makeDoc('file:///Users/me/api/api.ck', src);
+        const links = getDocumentLinks({ textDocument: { uri: doc.uri } }, doc, parsed(doc.uri, src));
+        expect(links.find(l => l.target === 'file:///Users/me/api/bruno/auth.yml')).toBeDefined();
+    });
+
+    it('drops the link when a `{{var}}` placeholder cannot be resolved', () => {
+        const src = 'operation /a: { get: { plugins: { bruno: { template: "file://{{missing}}/auth.yml" } } } }\n';
+        const doc = makeDoc('file:///Users/me/api/api.ck', src);
+        const links = getDocumentLinks({ textDocument: { uri: doc.uri } }, doc, parsed(doc.uri, src));
+        // No link emitted for the placeholder string — better than a broken file:// URL.
+        expect(links.find(l => typeof l.target === 'string' && l.target.includes('{{'))).toBeUndefined();
     });
 
     it('link range covers the string contents (excluding quotes)', () => {

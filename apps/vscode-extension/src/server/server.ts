@@ -140,7 +140,8 @@ connection.onDocumentFormatting(params => {
 connection.onDocumentLinks(params => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return [];
-    return getDocumentLinks(params, document);
+    const parsed = documentManager.getDocument(params.textDocument.uri);
+    return getDocumentLinks(params, document, parsed);
 });
 
 // Folding ranges
