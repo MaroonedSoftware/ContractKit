@@ -24,6 +24,9 @@ import { getReferences, getDocumentHighlights } from './references-provider.js';
 import { getCodeLenses, resolveCodeLens } from './codelens-provider.js';
 import { prepareRename, getRenameEdits } from './rename-provider.js';
 import { getCodeActions } from './code-action-provider.js';
+import { getSignatureHelp } from './signature-help-provider.js';
+import { getInlayHints } from './inlay-hint-provider.js';
+import { getSemanticTokens, SEMANTIC_TOKENS_LEGEND } from './semantic-tokens-provider.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -58,6 +61,13 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
             codeLensProvider: { resolveProvider: true },
             renameProvider: { prepareProvider: true },
             codeActionProvider: { codeActionKinds: ['quickfix'] },
+            signatureHelpProvider: { triggerCharacters: ['(', ','] },
+            inlayHintProvider: { resolveProvider: false },
+            semanticTokensProvider: {
+                legend: SEMANTIC_TOKENS_LEGEND,
+                full: true,
+                range: false,
+            },
         },
     };
 });
@@ -181,6 +191,29 @@ connection.onCodeAction(params => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return [];
     return getCodeActions(params, document, workspaceIndex);
+});
+
+// Signature help — show parameter docs inside `string(...)`, `int(...)`, etc.
+connection.onSignatureHelp(params => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return null;
+    return getSignatureHelp(params, document);
+});
+
+// Inlay hints — show inherited fields next to the model declaration.
+connection.languages.inlayHint.on(params => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+    const parsed = documentManager.getDocument(params.textDocument.uri);
+    if (!parsed) return [];
+    return getInlayHints(params, parsed, workspaceIndex, document.getText());
+});
+
+// Semantic tokens — precise highlighting of types, modifiers, and identifiers.
+connection.languages.semanticTokens.on(params => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return { data: [] };
+    return getSemanticTokens(params, document, workspaceIndex);
 });
 
 documents.listen(connection);

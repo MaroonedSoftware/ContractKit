@@ -17,6 +17,9 @@ Language support for ContractKit `.ck` contract files in VS Code and Cursor. Inc
 - **CodeLens reference counts** — every model and service declaration shows a "N references" lens that opens the references peek view on click
 - **Rename Symbol** (F2) — renames a model or service across every file in the workspace. Validates the new name is a legal ContractKit identifier and rejects collisions with existing symbols.
 - **Code Actions** — quick-fixes for `missing-override` (insert `override`), `spurious-override` (remove `override`), and `unknown-model` (offer fuzzy-matched name suggestions) diagnostics
+- **Signature help** — parameter docs inside scalar constraint calls like `string(min=...)`, `int(min, max)`, `discriminated(by=...)`
+- **Inlay hints** — show inherited field names next to a model declaration that has bases (e.g. `contract Admin: User & {` displays `+ name, email` inline)
+- **Semantic tokens** — precise classification of keywords, modifiers, scalar types, model names (as `class`), and service names (as `interface`) for richer highlighting
 - **Live diagnostics** — parser errors and warnings as you type, now with stable diagnostic codes that quick-fixes dispatch on
 - **Cross-file model index** — referenced models from other open `.ck` files participate in completion and hover
 
@@ -60,6 +63,9 @@ The extension is split into a thin client and a Language Server, communicating o
 | `src/server/codelens-provider.ts` | "N references" CodeLens above each model and service declaration |
 | `src/server/rename-provider.ts` | F2-rename for models and services across the workspace |
 | `src/server/code-action-provider.ts` | Quick-fixes dispatched off `Diagnostic.code` |
+| `src/server/signature-help-provider.ts` | Parameter help inside scalar constraint calls |
+| `src/server/inlay-hint-provider.ts` | Inherited-field hints next to model declarations |
+| `src/server/semantic-tokens-provider.ts` | Semantic-token classification for richer highlighting |
 | `src/server/diagnostics-adapter.ts` | Converts `@contractkit/core` `Diagnostics` to LSP diagnostics |
 
 ## Maintaining the syntax grammar
