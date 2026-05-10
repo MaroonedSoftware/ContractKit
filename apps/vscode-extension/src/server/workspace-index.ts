@@ -53,8 +53,16 @@ export class WorkspaceIndex {
         return this.serviceDecls.get(name);
     }
 
+    getAllServiceDeclNames(): string[] {
+        return [...this.serviceDecls.keys()];
+    }
+
     getRoute(routePath: string): RouteEntry | undefined {
         return this.routes.get(routePath);
+    }
+
+    getAllRoutePaths(): string[] {
+        return [...this.routes.keys()];
     }
 
     async indexWorkspace(workspaceFolders: string[]): Promise<void> {

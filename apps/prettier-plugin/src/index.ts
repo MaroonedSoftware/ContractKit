@@ -44,3 +44,4 @@ const plugin: Plugin<CkRootNode> = {
 };
 
 export default plugin;
+export { printCk, DEFAULT_PRINT_WIDTH } from './print-ck.js';

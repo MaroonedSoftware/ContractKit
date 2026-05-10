@@ -16,6 +16,10 @@ import { getDocumentSymbols } from './symbol-provider.js';
 import { getDefinition } from './definition-provider.js';
 import { getHover } from './hover-provider.js';
 import { getCompletions } from './completion-provider.js';
+import { getWorkspaceSymbols } from './workspace-symbol-provider.js';
+import { getFormattingEdits } from './formatting-provider.js';
+import { getDocumentLinks } from './document-link-provider.js';
+import { getFoldingRanges } from './folding-provider.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -41,6 +45,10 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
             hoverProvider: true,
             definitionProvider: true,
             documentSymbolProvider: true,
+            workspaceSymbolProvider: true,
+            documentFormattingProvider: true,
+            documentLinkProvider: { resolveProvider: false },
+            foldingRangeProvider: true,
         },
     };
 });
@@ -95,6 +103,32 @@ connection.onCompletion(params => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return [];
     return getCompletions(params, document, workspaceIndex);
+});
+
+// Workspace symbols (Cmd+T)
+connection.onWorkspaceSymbol(params => {
+    return getWorkspaceSymbols(params, workspaceIndex);
+});
+
+// Document formatting (Format Document)
+connection.onDocumentFormatting(params => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+    return getFormattingEdits(params, document);
+});
+
+// Document links (Cmd+click on file:// / https:// strings)
+connection.onDocumentLinks(params => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+    return getDocumentLinks(params, document);
+});
+
+// Folding ranges
+connection.onFoldingRanges(params => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+    return getFoldingRanges(params, document);
 });
 
 documents.listen(connection);

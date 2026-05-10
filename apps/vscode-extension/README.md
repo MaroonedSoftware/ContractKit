@@ -9,6 +9,10 @@ Language support for ContractKit `.ck` contract files in VS Code and Cursor. Inc
 - **Hover information** for built-in types and referenced models
 - **Go-to-definition** — jumps from a model reference to its `contract` declaration, or from a `service:` reference (e.g. `PaymentsService.foo`) to its entry in the file's `options { services { ... } }` block. Resolves across any indexed `.ck` file in the workspace.
 - **Document symbols** outline — `contract` and `operation` declarations show in the breadcrumb / outline panel
+- **Workspace symbols** (Cmd+T) — jump to any contract, route, or service declaration across the workspace, filtered by query
+- **Document formatting** — Format Document runs the ContractKit prettier printer over the file
+- **Document links** — Cmd+click on `https://`, `file://`, and relative `./` paths inside string literals (e.g. plugin extension templates)
+- **Folding ranges** — collapse `contract`, `operation`, `options`, and inline object blocks; consecutive comment lines fold as a region
 - **Live diagnostics** — parser errors and warnings as you type
 - **Cross-file model index** — referenced models from other open `.ck` files participate in completion and hover
 
@@ -44,6 +48,10 @@ The extension is split into a thin client and a Language Server, communicating o
 | `src/server/hover-provider.ts` | Hover info for types and model refs |
 | `src/server/definition-provider.ts` | Go-to-definition on identifiers |
 | `src/server/symbol-provider.ts` | Document symbols (outline) |
+| `src/server/workspace-symbol-provider.ts` | Workspace symbols (Cmd+T) — models, routes, service declarations |
+| `src/server/formatting-provider.ts` | Document formatting via `@contractkit/prettier-plugin` |
+| `src/server/document-link-provider.ts` | Cmd+clickable URLs and relative paths inside string literals |
+| `src/server/folding-provider.ts` | Folding ranges for brace-delimited blocks and comment runs |
 | `src/server/diagnostics-adapter.ts` | Converts `@contractkit/core` `Diagnostics` to LSP diagnostics |
 
 ## Maintaining the syntax grammar
