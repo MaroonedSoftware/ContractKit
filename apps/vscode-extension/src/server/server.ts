@@ -20,6 +20,8 @@ import { getWorkspaceSymbols } from './workspace-symbol-provider.js';
 import { getFormattingEdits } from './formatting-provider.js';
 import { getDocumentLinks } from './document-link-provider.js';
 import { getFoldingRanges } from './folding-provider.js';
+import { getReferences, getDocumentHighlights } from './references-provider.js';
+import { getCodeLenses, resolveCodeLens } from './codelens-provider.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -49,6 +51,9 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
             documentFormattingProvider: true,
             documentLinkProvider: { resolveProvider: false },
             foldingRangeProvider: true,
+            referencesProvider: true,
+            documentHighlightProvider: true,
+            codeLensProvider: { resolveProvider: true },
         },
     };
 });
@@ -130,6 +135,29 @@ connection.onFoldingRanges(params => {
     if (!document) return [];
     return getFoldingRanges(params, document);
 });
+
+// Find all references
+connection.onReferences(params => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+    return getReferences(params, document, workspaceIndex);
+});
+
+// Document highlights (in-file occurrences for the identifier under the cursor)
+connection.onDocumentHighlight(params => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+    return getDocumentHighlights(params, document, workspaceIndex);
+});
+
+// CodeLens — reference counts above each declaration
+connection.onCodeLens(params => {
+    const parsed = documentManager.getDocument(params.textDocument.uri);
+    if (!parsed) return [];
+    return getCodeLenses(params, parsed, workspaceIndex);
+});
+
+connection.onCodeLensResolve(lens => resolveCodeLens(lens, workspaceIndex));
 
 documents.listen(connection);
 connection.listen();

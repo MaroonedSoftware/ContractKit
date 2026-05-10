@@ -119,6 +119,76 @@ options {
         });
     });
 
+    describe('reference index', () => {
+        it('records cross-file model references with line/column', () => {
+            const index = new WorkspaceIndex();
+            index.indexFromSource('file:///user.ck', 'contract User: { name: string }');
+            index.indexFromSource('file:///main.ck', 'contract M: {\n    u: User\n}\n');
+            const refs = index.getModelReferences('User');
+            expect(refs).toHaveLength(1);
+            expect(refs[0]).toMatchObject({ uri: 'file:///main.ck', line: 2, length: 4 });
+            expect(refs[0]!.column).toBe('    u: '.length);
+        });
+
+        it('flags the declaration site and excludes it by default', () => {
+            const index = new WorkspaceIndex();
+            index.indexFromSource('file:///user.ck', 'contract User: { name: string }\ncontract M: { u: User }');
+            expect(index.getModelReferences('User')).toHaveLength(1);
+            const all = index.getModelReferences('User', true);
+            expect(all.some(r => r.isDeclaration)).toBe(true);
+        });
+
+        it('does not record references inside string literals or after `#`', () => {
+            const index = new WorkspaceIndex();
+            const src = `\
+contract User: { name: string }
+contract M: {
+    note: string = "User in a string"
+    # not a User reference here
+}
+`;
+            index.indexFromSource('file:///main.ck', src);
+            const refs = index.getModelReferences('User');
+            expect(refs).toEqual([]);
+        });
+
+        it('records service references and excludes the declaration', () => {
+            const index = new WorkspaceIndex();
+            const src = `\
+options {
+    services: {
+        Svc: "#x.js"
+    }
+}
+
+operation /a: { get: { service: Svc.list } }
+operation /b: { get: { service: Svc.find } }
+`;
+            index.indexFromSource('file:///ops.ck', src);
+            const refs = index.getServiceReferences('Svc');
+            expect(refs).toHaveLength(2);
+        });
+
+        it('drops references for a removed file', () => {
+            const index = new WorkspaceIndex();
+            index.indexFromSource('file:///user.ck', 'contract User: { name: string }');
+            index.indexFromSource('file:///main.ck', 'contract M: { u: User }');
+            expect(index.getModelReferences('User')).toHaveLength(1);
+            index.removeFile('file:///main.ck');
+            expect(index.getModelReferences('User')).toEqual([]);
+        });
+
+        it('bumps version on every index/remove', () => {
+            const index = new WorkspaceIndex();
+            const v0 = index.version();
+            index.indexFromSource('file:///x.ck', 'contract X: { f: string }');
+            expect(index.version()).toBeGreaterThan(v0);
+            const v1 = index.version();
+            index.removeFile('file:///x.ck');
+            expect(index.version()).toBeGreaterThan(v1);
+        });
+    });
+
     describe('handles invalid source gracefully', () => {
         it('does not crash on malformed source', () => {
             const index = new WorkspaceIndex();
