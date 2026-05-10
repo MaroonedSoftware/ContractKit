@@ -23,7 +23,7 @@ export function validateRefs(contractRoots: ContractRootNode[], opRoots: OpRootN
             if (model.bases) {
                 for (const base of model.bases) {
                     if (!modelNames.has(base)) {
-                        diag.warn(model.loc.file, model.loc.line, `Base model "${base}" is not defined in any contract file`);
+                        diag.warn(model.loc.file, model.loc.line, `Base model "${base}" is not defined in any contract file`, 'unknown-model');
                     }
                 }
             }
@@ -66,7 +66,7 @@ function checkTypeRefs(type: ContractTypeNode, file: string, line: number, model
     switch (type.kind) {
         case 'ref':
             if (!models.has(type.name)) {
-                diag.warn(file, line, `Referenced model "${type.name}" is not defined in any contract file`);
+                diag.warn(file, line, `Referenced model "${type.name}" is not defined in any contract file`, 'unknown-model');
             }
             break;
         case 'array':
@@ -210,6 +210,6 @@ function checkParamSourceRefs(
 
 function checkNameRef(name: string, file: string, line: number, models: Set<string>, diag: DiagnosticCollector): void {
     if (/^[A-Z]/.test(name) && !models.has(name)) {
-        diag.warn(file, line, `Referenced type "${name}" is not defined in any contract file`);
+        diag.warn(file, line, `Referenced type "${name}" is not defined in any contract file`, 'unknown-model');
     }
 }

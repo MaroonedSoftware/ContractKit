@@ -3,17 +3,19 @@ export interface Diagnostic {
     line: number;
     message: string;
     severity: 'error' | 'warning';
+    /** Optional stable identifier — consumed by editor tooling to dispatch quick-fixes. */
+    code?: string;
 }
 
 export class DiagnosticCollector {
     private diagnostics: Diagnostic[] = [];
 
-    error(file: string, line: number, message: string): void {
-        this.diagnostics.push({ file, line, message, severity: 'error' });
+    error(file: string, line: number, message: string, code?: string): void {
+        this.diagnostics.push({ file, line, message, severity: 'error', code });
     }
 
-    warn(file: string, line: number, message: string): void {
-        this.diagnostics.push({ file, line, message, severity: 'warning' });
+    warn(file: string, line: number, message: string, code?: string): void {
+        this.diagnostics.push({ file, line, message, severity: 'warning', code });
     }
 
     hasErrors(): boolean {

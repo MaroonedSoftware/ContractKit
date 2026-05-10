@@ -22,6 +22,8 @@ import { getDocumentLinks } from './document-link-provider.js';
 import { getFoldingRanges } from './folding-provider.js';
 import { getReferences, getDocumentHighlights } from './references-provider.js';
 import { getCodeLenses, resolveCodeLens } from './codelens-provider.js';
+import { prepareRename, getRenameEdits } from './rename-provider.js';
+import { getCodeActions } from './code-action-provider.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -54,6 +56,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
             referencesProvider: true,
             documentHighlightProvider: true,
             codeLensProvider: { resolveProvider: true },
+            renameProvider: { prepareProvider: true },
+            codeActionProvider: { codeActionKinds: ['quickfix'] },
         },
     };
 });
@@ -158,6 +162,26 @@ connection.onCodeLens(params => {
 });
 
 connection.onCodeLensResolve(lens => resolveCodeLens(lens, workspaceIndex));
+
+// Rename — prepare confirms the cursor is on a renameable symbol; the rename request emits edits.
+connection.onPrepareRename(params => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return null;
+    return prepareRename(params, document, workspaceIndex);
+});
+
+connection.onRenameRequest(params => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return null;
+    return getRenameEdits(params, document, workspaceIndex);
+});
+
+// Code actions — quick-fix dispatch on diagnostic codes.
+connection.onCodeAction(params => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+    return getCodeActions(params, document, workspaceIndex);
+});
 
 documents.listen(connection);
 connection.listen();

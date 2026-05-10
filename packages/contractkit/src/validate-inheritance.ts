@@ -135,6 +135,7 @@ function checkModel(model: ModelNode, modelMap: Map<string, ModelNode>, cycleNod
                 model.loc.file,
                 model.loc.line,
                 `Field '${name}' is declared by ${sources} with different shapes — redeclare in '${model.name}' with 'override'`,
+                'missing-override',
             );
             continue;
         }
@@ -144,6 +145,7 @@ function checkModel(model: ModelNode, modelMap: Map<string, ModelNode>, cycleNod
                 local.loc.file,
                 local.loc.line,
                 `Field '${name}' conflicts across bases ${sources} — mark as 'override'`,
+                'missing-override',
             );
         }
     }
@@ -152,7 +154,12 @@ function checkModel(model: ModelNode, modelMap: Map<string, ModelNode>, cycleNod
     for (const f of model.fields) {
         if (!f.override) continue;
         if (!baseFieldsByName.has(f.name)) {
-            diag.error(f.loc.file, f.loc.line, `Field '${f.name}' has 'override' but is not declared in any base of '${model.name}'`);
+            diag.error(
+                f.loc.file,
+                f.loc.line,
+                `Field '${f.name}' has 'override' but is not declared in any base of '${model.name}'`,
+                'spurious-override',
+            );
         }
     }
 }

@@ -15,7 +15,9 @@ Language support for ContractKit `.ck` contract files in VS Code and Cursor. Inc
 - **Folding ranges** — collapse `contract`, `operation`, `options`, and inline object blocks; consecutive comment lines fold as a region
 - **Find all references / Document highlights** — right-click → Find All References, or Cmd+F2 to highlight every occurrence of a model or service name in the current document
 - **CodeLens reference counts** — every model and service declaration shows a "N references" lens that opens the references peek view on click
-- **Live diagnostics** — parser errors and warnings as you type
+- **Rename Symbol** (F2) — renames a model or service across every file in the workspace. Validates the new name is a legal ContractKit identifier and rejects collisions with existing symbols.
+- **Code Actions** — quick-fixes for `missing-override` (insert `override`), `spurious-override` (remove `override`), and `unknown-model` (offer fuzzy-matched name suggestions) diagnostics
+- **Live diagnostics** — parser errors and warnings as you type, now with stable diagnostic codes that quick-fixes dispatch on
 - **Cross-file model index** — referenced models from other open `.ck` files participate in completion and hover
 
 Requires VS Code or Cursor 1.105.1+.
@@ -56,6 +58,8 @@ The extension is split into a thin client and a Language Server, communicating o
 | `src/server/folding-provider.ts` | Folding ranges for brace-delimited blocks and comment runs |
 | `src/server/references-provider.ts` | Find references and document highlights, backed by `WorkspaceIndex`'s textual reference scan |
 | `src/server/codelens-provider.ts` | "N references" CodeLens above each model and service declaration |
+| `src/server/rename-provider.ts` | F2-rename for models and services across the workspace |
+| `src/server/code-action-provider.ts` | Quick-fixes dispatched off `Diagnostic.code` |
 | `src/server/diagnostics-adapter.ts` | Converts `@contractkit/core` `Diagnostics` to LSP diagnostics |
 
 ## Maintaining the syntax grammar
