@@ -6,13 +6,21 @@ export function getDefinition(params: TextDocumentPositionParams, document: Text
     const word = getWordAtPosition(document, params.position.line, params.position.character);
     if (!word) return null;
 
-    // Look up model by name
     const modelEntry = index.getModel(word);
     if (modelEntry) {
         const line = Math.max(0, modelEntry.line - 1);
         return {
             uri: modelEntry.uri,
-            range: Range.create(line, 0, line, word.length),
+            range: Range.create(line, modelEntry.column, line, modelEntry.column + word.length),
+        };
+    }
+
+    const serviceDecl = index.getServiceDecl(word);
+    if (serviceDecl) {
+        const line = Math.max(0, serviceDecl.line - 1);
+        return {
+            uri: serviceDecl.uri,
+            range: Range.create(line, serviceDecl.column, line, serviceDecl.column + word.length),
         };
     }
 
@@ -27,7 +35,6 @@ function getWordAtPosition(document: TextDocument, line: number, character: numb
     const lineText = lines[line]!;
     if (character >= lineText.length) return null;
 
-    // Find word boundaries
     let start = character;
     while (start > 0 && /[a-zA-Z0-9_$]/.test(lineText[start - 1]!)) {
         start--;

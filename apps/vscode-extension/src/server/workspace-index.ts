@@ -7,6 +7,8 @@ import type { ModelNode, OpRouteNode } from '@contractkit/core';
 export interface ModelEntry {
     uri: string;
     line: number;
+    /** Zero-based column where the model name starts on its declaration line. */
+    column: number;
     model: ModelNode;
 }
 
@@ -22,10 +24,18 @@ export interface ServiceEntry {
     serviceName: string;
 }
 
+/** Location of a service declaration inside an `options { services { ... } }` block. */
+export interface ServiceDeclEntry {
+    uri: string;
+    line: number;
+    column: number;
+}
+
 export class WorkspaceIndex {
     private models = new Map<string, ModelEntry>();
     private routes = new Map<string, RouteEntry>();
     private services: ServiceEntry[] = [];
+    private serviceDecls = new Map<string, ServiceDeclEntry>();
 
     getModel(name: string): ModelEntry | undefined {
         return this.models.get(name);
@@ -37,6 +47,10 @@ export class WorkspaceIndex {
 
     getAllServiceNames(): string[] {
         return [...new Set(this.services.map(s => s.serviceName))];
+    }
+
+    getServiceDecl(name: string): ServiceDeclEntry | undefined {
+        return this.serviceDecls.get(name);
     }
 
     getRoute(routePath: string): RouteEntry | undefined {
@@ -80,8 +94,10 @@ export class WorkspaceIndex {
         const diag = new DiagnosticCollector();
         try {
             const ast = parseCk(text, filePath, diag);
+            const lines = text.split('\n');
             for (const model of ast.models) {
-                this.models.set(model.name, { uri, line: model.loc.line, model });
+                const column = findIdentifierColumn(lines, model.loc.line, model.name);
+                this.models.set(model.name, { uri, line: model.loc.line, column, model });
             }
             for (const route of ast.routes) {
                 this.routes.set(route.path, { uri, line: route.loc.line, route });
@@ -92,6 +108,14 @@ export class WorkspaceIndex {
                             line: op.loc.line,
                             serviceName: op.service,
                         });
+                    }
+                }
+            }
+            if (ast.services) {
+                for (const serviceName of Object.keys(ast.services)) {
+                    const decl = findServiceDeclLocation(lines, serviceName);
+                    if (decl) {
+                        this.serviceDecls.set(serviceName, { uri, ...decl });
                     }
                 }
             }
@@ -106,6 +130,9 @@ export class WorkspaceIndex {
         }
         for (const [routePath, entry] of this.routes) {
             if (entry.uri === uri) this.routes.delete(routePath);
+        }
+        for (const [name, entry] of this.serviceDecls) {
+            if (entry.uri === uri) this.serviceDecls.delete(name);
         }
         this.services = this.services.filter(s => s.uri !== uri);
     }
@@ -140,4 +167,27 @@ function uriToFilePath(uri: string): string {
     } catch {
         return uri;
     }
+}
+
+function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Locate the zero-based column of `name` on a given 1-based line. Returns 0 if not found. */
+function findIdentifierColumn(lines: string[], line1Based: number, name: string): number {
+    const idx = line1Based - 1;
+    if (idx < 0 || idx >= lines.length) return 0;
+    const re = new RegExp(`\\b${escapeRegex(name)}\\b`);
+    const m = re.exec(lines[idx]!);
+    return m ? m.index : 0;
+}
+
+/** Find the line/column of `Name:` declarations inside an `options { services { ... } }` block. */
+function findServiceDeclLocation(lines: string[], name: string): { line: number; column: number } | undefined {
+    const re = new RegExp(`^(\\s*)${escapeRegex(name)}\\s*:\\s*["']`);
+    for (let i = 0; i < lines.length; i++) {
+        const m = re.exec(lines[i]!);
+        if (m) return { line: i + 1, column: m[1]!.length };
+    }
+    return undefined;
 }

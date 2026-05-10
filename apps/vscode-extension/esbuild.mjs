@@ -16,6 +16,12 @@ const shared = {
     sourcemap: true,
     minify: false,
     external: ['vscode'],
+    // Bundled CJS dependencies (e.g. vscode-languageserver) call `require("node:util")` etc.
+    // In ESM output esbuild routes those through a shim that throws "Dynamic require ... not supported";
+    // this banner replaces the shim with a real `require` so node: built-ins resolve normally.
+    banner: {
+        js: "import { createRequire as __createRequireForCkExt } from 'node:module'; const require = __createRequireForCkExt(import.meta.url);",
+    },
 };
 
 const clientConfig = {

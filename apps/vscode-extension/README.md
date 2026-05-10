@@ -7,7 +7,7 @@ Language support for ContractKit `.ck` contract files in VS Code and Cursor. Inc
 - **Syntax highlighting** via TextMate grammar (`syntaxes/ck.tmLanguage.json`)
 - **Auto-completion** for built-in types, modifiers, keywords, HTTP methods, content types, security blocks, and cross-file model references
 - **Hover information** for built-in types and referenced models
-- **Go-to-definition** on model references — jumps to the `contract` declaration in any open file
+- **Go-to-definition** — jumps from a model reference to its `contract` declaration, or from a `service:` reference (e.g. `PaymentsService.foo`) to its entry in the file's `options { services { ... } }` block. Resolves across any indexed `.ck` file in the workspace.
 - **Document symbols** outline — `contract` and `operation` declarations show in the breadcrumb / outline panel
 - **Live diagnostics** — parser errors and warnings as you type
 - **Cross-file model index** — referenced models from other open `.ck` files participate in completion and hover

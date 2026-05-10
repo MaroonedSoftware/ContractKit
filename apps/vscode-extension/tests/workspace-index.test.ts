@@ -30,6 +30,14 @@ contract Admin: User & { role: string }
             expect(entry!.model.name).toBe('User');
             expect(entry!.model.fields).toHaveLength(1);
         });
+
+        it('records the column where the model name starts on its declaration line', () => {
+            const index = new WorkspaceIndex();
+            index.indexFromSource('file:///user.ck', '# leading comment\ncontract User: { name: string }');
+            const entry = index.getModel('User');
+            expect(entry!.line).toBe(2);
+            expect(entry!.column).toBe('contract '.length);
+        });
     });
 
     describe('indexFromSource - operations', () => {
@@ -52,6 +60,25 @@ operation /users: {
             );
             expect(index.getAllServiceNames()).toContain('UserService.update');
         });
+
+        it('indexes service declarations from options.services', () => {
+            const index = new WorkspaceIndex();
+            index.indexFromSource(
+                'file:///test.ck',
+                `\
+options {
+    services: {
+        PaymentsService: "#src/services/payments.service.js"
+    }
+}
+`,
+            );
+            const decl = index.getServiceDecl('PaymentsService');
+            expect(decl).toBeDefined();
+            expect(decl!.uri).toBe('file:///test.ck');
+            expect(decl!.line).toBe(3);
+            expect(decl!.column).toBe(8);
+        });
     });
 
     describe('removeFile', () => {
@@ -72,6 +99,23 @@ operation /users: {
             index.removeFile('file:///test.ck');
             expect(index.getRoute('/users')).toBeUndefined();
             expect(index.getAllServiceNames()).toHaveLength(0);
+        });
+
+        it('removes service declarations on file removal', () => {
+            const index = new WorkspaceIndex();
+            index.indexFromSource(
+                'file:///test.ck',
+                `\
+options {
+    services: {
+        Svc: "#src/svc.js"
+    }
+}
+`,
+            );
+            expect(index.getServiceDecl('Svc')).toBeDefined();
+            index.removeFile('file:///test.ck');
+            expect(index.getServiceDecl('Svc')).toBeUndefined();
         });
     });
 
