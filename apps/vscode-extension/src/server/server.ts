@@ -27,17 +27,20 @@ import { getCodeActions } from './code-action-provider.js';
 import { getSignatureHelp } from './signature-help-provider.js';
 import { getInlayHints } from './inlay-hint-provider.js';
 import { getSemanticTokens, SEMANTIC_TOKENS_LEGEND } from './semantic-tokens-provider.js';
+import { loadWorkspaceFallbackKeys } from './workspace-config.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
 const documentManager = new DocumentManager(connection);
 const workspaceIndex = new WorkspaceIndex();
+let workspaceFallbackKeys: Record<string, string> = {};
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
     // Index workspace folders on startup
     const folders = params.workspaceFolders;
     if (folders) {
         const paths = folders.map(f => fileURLToPath(f.uri));
+        workspaceFallbackKeys = loadWorkspaceFallbackKeys(paths);
         workspaceIndex.indexWorkspace(paths).catch(() => {
             // Silent failure on initial indexing
         });
@@ -141,7 +144,7 @@ connection.onDocumentLinks(params => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return [];
     const parsed = documentManager.getDocument(params.textDocument.uri);
-    return getDocumentLinks(params, document, parsed);
+    return getDocumentLinks(params, document, parsed, workspaceFallbackKeys);
 });
 
 // Folding ranges

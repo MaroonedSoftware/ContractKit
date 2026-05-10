@@ -61,6 +61,18 @@ operation /a: { get: { plugins: { bruno: { template: "file://{{bruno}}/auth.yml"
         expect(links.find(l => l.target === 'file:///Users/me/api/bruno/auth.yml')).toBeDefined();
     });
 
+    it('falls back to workspace fallback keys when the file does not declare the variable', () => {
+        const src = 'operation /a: { get: { plugins: { bruno: { template: "file://{{bruno}}/auth.yml" } } } }\n';
+        const doc = makeDoc('file:///Users/me/api/api.ck', src);
+        const links = getDocumentLinks(
+            { textDocument: { uri: doc.uri } },
+            doc,
+            parsed(doc.uri, src),
+            { bruno: '/Users/me/api/contracts/bruno' },
+        );
+        expect(links.find(l => l.target === 'file:///Users/me/api/contracts/bruno/auth.yml')).toBeDefined();
+    });
+
     it('drops the link when a `{{var}}` placeholder cannot be resolved', () => {
         const src = 'operation /a: { get: { plugins: { bruno: { template: "file://{{missing}}/auth.yml" } } } }\n';
         const doc = makeDoc('file:///Users/me/api/api.ck', src);

@@ -6,7 +6,12 @@ import type { ParsedDocument } from './document-manager.js';
 
 const STRING_LITERAL = /"((?:[^"\\\n]|\\.)*)"/g;
 
-export function getDocumentLinks(params: DocumentLinkParams, document: TextDocument, parsed?: ParsedDocument): DocumentLink[] {
+export function getDocumentLinks(
+    params: DocumentLinkParams,
+    document: TextDocument,
+    parsed?: ParsedDocument,
+    workspaceFallbackKeys: Record<string, string> = {},
+): DocumentLink[] {
     const text = document.getText();
     const links: DocumentLink[] = [];
 
@@ -17,7 +22,9 @@ export function getDocumentLinks(params: DocumentLinkParams, document: TextDocum
         docDir = null;
     }
 
-    const meta = parsed?.ast.meta ?? {};
+    // Variable lookup matches the CLI's `applyVariableSubstitution`: file-local `options { keys }`
+    // wins, falling through to the workspace's `contractkit.config.json` plugin keys.
+    const meta = { ...workspaceFallbackKeys, ...(parsed?.ast.meta ?? {}) };
 
     for (const match of text.matchAll(STRING_LITERAL)) {
         const raw = match[1]!;
