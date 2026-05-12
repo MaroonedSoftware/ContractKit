@@ -1,5 +1,11 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.23.1
+
+### Patch Changes
+
+- 22c4a0b: Coerce `null` to `undefined` for optional fields in model-level `format(input=...)` / `format(output=...)` transforms, matching the existing behavior for inline objects.
+
 ## 0.23.0
 
 ### Minor Changes
