@@ -300,8 +300,17 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
         for (const field of model.fields) {
             const inputKey = applyCase(field.name, inputCase);
             const outputKey = applyCase(field.name, outputCase);
-            const val = field.optional ? `data.${inputKey} ?? undefined` : `data.${inputKey}`;
-            lines.push(`    ${quoteKey(outputKey)}: ${val},`);
+            if (field.optional) {
+                // Conditional spread keeps the field optional (`k?: T`) in the inferred
+                // z.output / z.input type, instead of widening to required-nullable (`k: T | undefined`).
+                // Consumer code built with `...(x ? { k: x } : {})` is only assignable to the optional form.
+                // When inputCase is set, the input schema uses `.nullish()` so the guard must reject both
+                // null and undefined; otherwise `.optional()` only allows undefined.
+                const guard = hasInputTransform ? `data.${inputKey} != null` : `data.${inputKey} !== undefined`;
+                lines.push(`    ...(${guard} ? { ${quoteKey(outputKey)}: data.${inputKey} } : {}),`);
+            } else {
+                lines.push(`    ${quoteKey(outputKey)}: data.${inputKey},`);
+            }
         }
         lines.push(`}));`);
         // When only outputCase is set, the developer-facing type is the schema's
@@ -739,9 +748,13 @@ function renderInlineObject(o: InlineObjectTypeNode, parseCaseTransform?: 'snake
         const transformEntries = o.fields
             .map(f => {
                 const snakeKey = camelToSnake(f.name);
-                // Optional fields use .nullish() on input; coerce null → undefined in output
-                const val = f.optional ? `data.${snakeKey} ?? undefined` : `data.${snakeKey}`;
-                return `    ${quoteKey(f.name)}: ${val},`;
+                // Optional fields use .nullish() on input. Conditional spread (instead of `?? undefined`)
+                // keeps the key optional in the inferred output type (`k?: T`) rather than widening to
+                // required-nullable (`k: T | undefined`).
+                if (f.optional) {
+                    return `    ...(data.${snakeKey} != null ? { ${quoteKey(f.name)}: data.${snakeKey} } : {}),`;
+                }
+                return `    ${quoteKey(f.name)}: data.${snakeKey},`;
             })
             .join('\n');
         return `${wrapper}({\n${joined}\n}).transform(data => ({\n${transformEntries}\n}))`;
@@ -752,8 +765,10 @@ function renderInlineObject(o: InlineObjectTypeNode, parseCaseTransform?: 'snake
         const transformEntries = o.fields
             .map(f => {
                 const pascalKey = camelToPascal(f.name);
-                const val = f.optional ? `data.${pascalKey} ?? undefined` : `data.${pascalKey}`;
-                return `    ${quoteKey(f.name)}: ${val},`;
+                if (f.optional) {
+                    return `    ...(data.${pascalKey} != null ? { ${quoteKey(f.name)}: data.${pascalKey} } : {}),`;
+                }
+                return `    ${quoteKey(f.name)}: data.${pascalKey},`;
             })
             .join('\n');
         return `${wrapper}({\n${joined}\n}).transform(data => ({\n${transformEntries}\n}))`;

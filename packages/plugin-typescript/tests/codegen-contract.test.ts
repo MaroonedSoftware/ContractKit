@@ -1060,12 +1060,15 @@ describe('generateContract', () => {
                 /export const Child = z\.strictObject\(\{[\s\S]*grant_type:[\s\S]*client_id:[\s\S]*client_secret:[\s\S]*\}\)\.transform/,
             );
             expect(output).toContain('grantType: data.grant_type');
-            expect(output).toContain('clientId: data.client_id ?? undefined');
+            expect(output).toContain('clientId: data.client_id,');
             expect(output).toContain('clientSecret: data.client_secret');
             expect(output).toContain('export type Child = z.output<typeof Child>');
         });
 
-        it('input=snake: optional fields coerce null → undefined in the transform', () => {
+        it('input=snake: optional fields use conditional spread guarded by `!= null`', () => {
+            // .nullish() on input accepts null and undefined; conditional spread keeps the field
+            // optional in the inferred output type (`k?: T`) instead of widening to required-nullable
+            // (`k: T | undefined`). The `!= null` guard omits the key for both null and undefined.
             const root = contractRoot([
                 model(
                     'User',
@@ -1076,7 +1079,40 @@ describe('generateContract', () => {
             const output = generateContract(root);
             expect(output).toContain('client_id: z.uuid().nullish()');
             expect(output).toContain('firstName: data.first_name,');
-            expect(output).toContain('clientId: data.client_id ?? undefined,');
+            expect(output).toContain('...(data.client_id != null ? { clientId: data.client_id } : {}),');
+            expect(output).not.toContain('?? undefined');
+        });
+
+        it('output=snake: optional fields use conditional spread guarded by `!== undefined`', () => {
+            // With only outputCase set, input is `.optional()` (undefined-only). Conditional spread keeps
+            // the field optional in the inferred z.input type so consumers building values with
+            // `...(x ? { k: x } : {})` are assignable.
+            const root = contractRoot([
+                model('Token', [field('accessToken', scalarType('string')), field('refreshToken', scalarType('string'), { optional: true })], {
+                    outputCase: 'snake',
+                }),
+            ]);
+            const output = generateContract(root);
+            expect(output).toContain('refreshToken: z.string().optional()');
+            expect(output).toContain('access_token: data.accessToken,');
+            expect(output).toContain('...(data.refreshToken !== undefined ? { refresh_token: data.refreshToken } : {}),');
+            expect(output).not.toContain('?? undefined');
+        });
+
+        it('input=pascal: inline-object optional fields use conditional spread guarded by `!= null`', () => {
+            const dataType = inlineObjectType([
+                field('id', scalarType('uuid')),
+                field('amount', scalarType('number'), { optional: true }),
+            ]);
+            const root = contractRoot([
+                model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { inputCase: 'pascal' }),
+            ]);
+            const output = generateContract(root);
+            // Inline object emits its own transform inside the Webhook input shape.
+            expect(output).toContain('Amount: z.coerce.number().nullish()');
+            expect(output).toContain('id: data.Id,');
+            expect(output).toContain('...(data.Amount != null ? { amount: data.Amount } : {}),');
+            expect(output).not.toContain('?? undefined');
         });
     });
 });
