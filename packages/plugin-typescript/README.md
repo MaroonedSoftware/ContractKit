@@ -143,7 +143,7 @@ Method names follow this priority:
 
 A shared `sdk-options.ts` file is emitted alongside the clients. It exports:
 
-- `SdkOptions` / `SdkFetch` / `SdkError` / `createSdkFetch` — base client primitives
+- `SdkOptions` / `SdkFetch` / `SdkError` / `createSdkFetch` — base client primitives. `SdkError` is thrown on any non-2xx response and exposes `status`, `statusText`, `body`, and `headers` (the raw `Headers` instance) for downstream use.
 - `buildQueryString(query)` — serialises a query params object to `?key=value` or `''`
 - `parseJson<T>(res)` — deserialises a `Response` body to `T`
 - `bigIntReplacer` / `bigIntReviver` — JSON replacer/reviver for `bigint` values

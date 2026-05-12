@@ -138,6 +138,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('        public readonly status: number,');
         lines.push('        public readonly statusText: string,');
         lines.push('        public readonly body: unknown,');
+        lines.push('        public readonly headers: Headers,');
         lines.push('    ) {');
         lines.push('        super(`${status} ${statusText}`);');
         lines.push("        this.name = 'SdkError';");
@@ -168,7 +169,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('            const text = await res.text();');
         lines.push('            let body: unknown;');
         lines.push('            try { body = JSON.parse(text); } catch { body = text; }');
-        lines.push('            throw new SdkError(res.status, res.statusText, body);');
+        lines.push('            throw new SdkError(res.status, res.statusText, body, res.headers);');
         lines.push('        }');
         lines.push('        return res;');
         lines.push('    };');
@@ -885,6 +886,7 @@ export function generateSdkOptions(): string {
         '        public readonly status: number,',
         '        public readonly statusText: string,',
         '        public readonly body: unknown,',
+        '        public readonly headers: Headers,',
         '    ) {',
         '        super(`${status} ${statusText}`);',
         "        this.name = 'SdkError';",
@@ -931,7 +933,7 @@ export function generateSdkOptions(): string {
         '            const text = await res.text();',
         '            let body: unknown;',
         '            try { body = JSON.parse(text); } catch { body = text; }',
-        '            throw new SdkError(res.status, res.statusText, body);',
+        '            throw new SdkError(res.status, res.statusText, body, res.headers);',
         '        }',
         '        return res;',
         '    };',

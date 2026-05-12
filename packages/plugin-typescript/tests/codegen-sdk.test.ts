@@ -648,6 +648,8 @@ describe('generateSdk', () => {
             expect(out).toContain('headers?:');
             expect(out).toContain('fetch?: SdkFetch');
             expect(out).toContain('export class SdkError extends Error');
+            expect(out).toContain('public readonly headers: Headers');
+            expect(out).toContain('throw new SdkError(res.status, res.statusText, body, res.headers)');
         });
     });
 
@@ -756,7 +758,8 @@ describe('generateSdkOptions', () => {
         expect(out).toContain('export class SdkError extends Error');
         expect(out).toContain('public readonly status: number');
         expect(out).toContain('public readonly body: unknown');
-        expect(out).toContain('throw new SdkError(');
+        expect(out).toContain('public readonly headers: Headers');
+        expect(out).toContain('throw new SdkError(res.status, res.statusText, body, res.headers)');
         expect(out).toContain('export type SdkFetch');
         expect(out).toContain('export function createSdkFetch(options: SdkOptions): SdkFetch');
         expect(out).toContain('requestIdFactory ?? (() => crypto.randomUUID())');
