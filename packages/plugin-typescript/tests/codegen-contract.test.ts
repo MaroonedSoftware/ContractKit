@@ -1060,9 +1060,23 @@ describe('generateContract', () => {
                 /export const Child = z\.strictObject\(\{[\s\S]*grant_type:[\s\S]*client_id:[\s\S]*client_secret:[\s\S]*\}\)\.transform/,
             );
             expect(output).toContain('grantType: data.grant_type');
-            expect(output).toContain('clientId: data.client_id');
+            expect(output).toContain('clientId: data.client_id ?? undefined');
             expect(output).toContain('clientSecret: data.client_secret');
             expect(output).toContain('export type Child = z.output<typeof Child>');
+        });
+
+        it('input=snake: optional fields coerce null → undefined in the transform', () => {
+            const root = contractRoot([
+                model(
+                    'User',
+                    [field('firstName', scalarType('string')), field('clientId', scalarType('uuid'), { optional: true })],
+                    { inputCase: 'snake' },
+                ),
+            ]);
+            const output = generateContract(root);
+            expect(output).toContain('client_id: z.uuid().nullish()');
+            expect(output).toContain('firstName: data.first_name,');
+            expect(output).toContain('clientId: data.client_id ?? undefined,');
         });
     });
 });

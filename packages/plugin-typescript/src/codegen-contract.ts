@@ -300,7 +300,8 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
         for (const field of model.fields) {
             const inputKey = applyCase(field.name, inputCase);
             const outputKey = applyCase(field.name, outputCase);
-            lines.push(`    ${quoteKey(outputKey)}: data.${inputKey},`);
+            const val = field.optional ? `data.${inputKey} ?? undefined` : `data.${inputKey}`;
+            lines.push(`    ${quoteKey(outputKey)}: ${val},`);
         }
         lines.push(`}));`);
         // When only outputCase is set, the developer-facing type is the schema's
