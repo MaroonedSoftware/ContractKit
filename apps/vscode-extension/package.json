@@ -2,7 +2,7 @@
     "name": "contractkit-vscode-extension",
     "displayName": "ContractKit",
     "description": "Language support for .ck contract definition files",
-    "version": "0.9.0",
+    "version": "0.10.0",
     "author": {
         "name": "Marooned Software",
         "url": "https://github.com/MaroonedSoftware/contractkit"
@@ -168,15 +168,37 @@
                 }
             ],
             "commandPalette": [
-                { "command": "contractkit.previewApi" },
-                { "command": "contractkit.refreshApiExplorer" },
-                { "command": "contractkit.setGrouping" },
-                { "command": "contractkit.filterApiExplorer" },
-                { "command": "contractkit.clearApiFilter" },
-                { "command": "contractkit.openApiItem", "when": "false" },
-                { "command": "contractkit.revealApiItemSource", "when": "false" },
-                { "command": "contractkit.copyApiItemPath", "when": "false" },
-                { "command": "contractkit.copyApiItemCurl", "when": "false" }
+                {
+                    "command": "contractkit.previewApi"
+                },
+                {
+                    "command": "contractkit.refreshApiExplorer"
+                },
+                {
+                    "command": "contractkit.setGrouping"
+                },
+                {
+                    "command": "contractkit.filterApiExplorer"
+                },
+                {
+                    "command": "contractkit.clearApiFilter"
+                },
+                {
+                    "command": "contractkit.openApiItem",
+                    "when": "false"
+                },
+                {
+                    "command": "contractkit.revealApiItemSource",
+                    "when": "false"
+                },
+                {
+                    "command": "contractkit.copyApiItemPath",
+                    "when": "false"
+                },
+                {
+                    "command": "contractkit.copyApiItemCurl",
+                    "when": "false"
+                }
             ]
         },
         "configuration": {
