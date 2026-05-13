@@ -37,7 +37,7 @@ const OBJECT_MODES: Array<{ label: string; insertText: string; detail: string }>
 ];
 
 const SECURITY_SCHEMES: Array<{ label: string; detail: string }> = [
-    { label: 'requireMfa', detail: 'Require multi-factor authentication for this endpoint' },
+    { label: 'policy', detail: 'Named policy required for this endpoint (or `none` to bypass)' },
     { label: 'signature', detail: 'Verify request signature with the named key' },
 ];
 

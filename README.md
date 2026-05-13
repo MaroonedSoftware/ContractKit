@@ -229,7 +229,7 @@ options {
         }
     }
     security: {
-        requireMfa: true
+        policy: paymentsWrite
     }
 }
 ```
@@ -985,27 +985,27 @@ post: {
 }
 ```
 
-**Require multi-factor auth** (step-up authentication):
+**Require a named policy** (e.g. for step-up auth or scope enforcement):
 
 ```
 get: {
     security: {
-        requireMfa: true
+        policy: paymentsWrite
     }
     ...
 }
 ```
 
-Route-level security applies to all operations in the route unless overridden:
+Use `policy: none` to explicitly bypass policy enforcement on an otherwise-authenticated route. Route-level security applies to all operations in the route unless overridden:
 
 ```
 operation /admin/users: {
     security: {
-        requireMfa: true
+        policy: adminWrite
     }
 
-    get: { ... }     # requires MFA
-    post: { ... }    # requires MFA
+    get: { ... }     # requires the adminWrite policy
+    post: { ... }    # requires the adminWrite policy
 
     delete: {
         security: none   # overridden — public

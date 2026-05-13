@@ -128,7 +128,7 @@ describe('printCk — route and operation modifiers combined', () => {
 
 // ─── Security printing ────────────────────────────────────────────────────────
 
-function makeSecFields(fields: Partial<Pick<SecurityFields, 'requireMfa'>>): SecurityFields {
+function makeSecFields(fields: Partial<Pick<SecurityFields, 'policy'>>): SecurityFields {
     return { ...fields, loc: makeLoc() };
 }
 
@@ -138,17 +138,17 @@ describe('printCk — security', () => {
         expect(printCk(ast)).toContain('        security: none');
     });
 
-    it('prints security block with requireMfa: true', () => {
-        const ast = makeRoot([makeRoute('/users', [makeOp('get', { security: makeSecFields({ requireMfa: true }) })])]);
+    it('prints security block with policy: <name>', () => {
+        const ast = makeRoot([makeRoute('/users', [makeOp('get', { security: makeSecFields({ policy: 'paymentsWrite' }) })])]);
         const out = printCk(ast);
         expect(out).toContain('        security: {');
-        expect(out).toContain('            requireMfa: true');
+        expect(out).toContain('            policy: paymentsWrite');
         expect(out).toContain('        }');
     });
 
-    it('prints security block with requireMfa: false', () => {
-        const ast = makeRoot([makeRoute('/users', [makeOp('get', { security: makeSecFields({ requireMfa: false }) })])]);
-        expect(printCk(ast)).toContain('            requireMfa: false');
+    it('prints security block with policy: none for explicit bypass', () => {
+        const ast = makeRoot([makeRoute('/users', [makeOp('get', { security: makeSecFields({ policy: false }) })])]);
+        expect(printCk(ast)).toContain('            policy: none');
     });
 
     it('prints operation-level signature as its own keyword', () => {
@@ -164,10 +164,10 @@ describe('printCk — security', () => {
     });
 
     it('prints route-level security with shallower indentation', () => {
-        const ast = makeRoot([makeRoute('/users', [makeOp('get')], { security: makeSecFields({ requireMfa: true }) })]);
+        const ast = makeRoot([makeRoute('/users', [makeOp('get')], { security: makeSecFields({ policy: 'paymentsWrite' }) })]);
         const out = printCk(ast);
         expect(out).toContain('    security: {');
-        expect(out).toContain('        requireMfa: true');
+        expect(out).toContain('        policy: paymentsWrite');
     });
 
     it('prints route-level security: none', () => {

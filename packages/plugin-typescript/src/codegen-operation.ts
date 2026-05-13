@@ -137,9 +137,9 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     // before deciding whether to emit the zod import.
     const body: string[] = [];
     const needsSignature = fileNeedsSignature(root);
-    const needsSecurity = fileNeedsSecurity(root);
+    const needsPolicy = fileNeedsPolicy(root);
     const koaImports = ['ServerKitRouter', 'bodyParserMiddleware'];
-    if (needsSecurity) koaImports.push('requireSecurity');
+    if (needsPolicy) koaImports.push('requirePolicy');
     if (needsSignature) koaImports.push('requireSignature');
     body.push(`import { ${koaImports.join(', ')} } from '@maroonedsoftware/koa';`);
 
@@ -241,8 +241,14 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     // Middleware list
     const middlewares: string[] = [];
     if (effectiveSecurity !== SECURITY_NONE) {
-        const args = effectiveSecurity && effectiveSecurity.requireMfa !== undefined ? `{ requireMfa: ${effectiveSecurity.requireMfa} }` : '';
-        middlewares.push(`requireSecurity(${args})`);
+        const policy = effectiveSecurity?.policy;
+        const args =
+            policy === undefined
+                ? ''
+                : policy === false
+                  ? '{ policy: false }'
+                  : `{ policy: '${policy}' }`;
+        middlewares.push(`requirePolicy(${args})`);
     }
     if (hasBody) {
         const parserTokens = Array.from(new Set(bodies.map(b => bodyParserToken(b.contentType))));
@@ -761,7 +767,7 @@ function routeNeedsValidation(root: OpRootNode): boolean {
     );
 }
 
-function fileNeedsSecurity(root: OpRootNode): boolean {
+function fileNeedsPolicy(root: OpRootNode): boolean {
     return root.routes.some(route => route.operations.some(op => resolveSecurity(route, op, root) !== SECURITY_NONE));
 }
 

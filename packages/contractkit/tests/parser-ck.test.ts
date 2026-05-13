@@ -1235,28 +1235,28 @@ operation /users: {
             expect(root.routes[0]!.security).toBe(SECURITY_NONE);
         });
 
-        it('parses security: { requireMfa: true }', () => {
-            const { root } = parse('operation /users: { get: { security: { requireMfa: true } } }');
-            expect((root.routes[0]!.operations[0]!.security as any).requireMfa).toBe(true);
+        it('parses security: { policy: someName }', () => {
+            const { root } = parse('operation /users: { get: { security: { policy: paymentsWrite } } }');
+            expect((root.routes[0]!.operations[0]!.security as any).policy).toBe('paymentsWrite');
         });
 
-        it('parses security: { requireMfa: false }', () => {
-            const { root } = parse('operation /users: { get: { security: { requireMfa: false } } }');
-            expect((root.routes[0]!.operations[0]!.security as any).requireMfa).toBe(false);
+        it('parses security: { policy: none } as explicit bypass', () => {
+            const { root } = parse('operation /users: { get: { security: { policy: none } } }');
+            expect((root.routes[0]!.operations[0]!.security as any).policy).toBe(false);
         });
 
-        it('parses requireMfa comment description in security block', () => {
-            const { root, diag } = parse('operation /users: { get: { security: { requireMfa: true # step-up auth\n} } }');
+        it('parses policy comment description in security block', () => {
+            const { root, diag } = parse('operation /users: { get: { security: { policy: paymentsWrite # write scope\n} } }');
             expect(diag.hasErrors()).toBe(false);
             const sec = root.routes[0]!.operations[0]!.security as any;
-            expect(sec.requireMfa).toBe(true);
-            expect(sec.requireMfaDescription).toBe('step-up auth');
+            expect(sec.policy).toBe('paymentsWrite');
+            expect(sec.policyDescription).toBe('write scope');
         });
 
         it('parses SecuritySignatureLine inside security block', () => {
-            const { root, diag } = parse('operation /hooks: { post: { security: { signature: "hmac-key"\n  requireMfa: true } } }');
+            const { root, diag } = parse('operation /hooks: { post: { security: { signature: "hmac-key"\n  policy: webhookIn } } }');
             expect(diag.hasErrors()).toBe(false);
-            expect((root.routes[0]!.operations[0]!.security as any).requireMfa).toBe(true);
+            expect((root.routes[0]!.operations[0]!.security as any).policy).toBe('webhookIn');
         });
 
         it('parses signature: "key" as operation-level field', () => {
@@ -1269,30 +1269,30 @@ operation /users: {
             expect(root.routes[0]!.operations[0]!.signature).toBe('MODERN_TREASURY_WEBHOOK');
         });
 
-        it('parses signature: alongside security: { requireMfa }', () => {
-            const { root } = parse('operation /users: { post: { signature: "hmac-sha256"\n  security: { requireMfa: true } } }');
+        it('parses signature: alongside security: { policy }', () => {
+            const { root } = parse('operation /users: { post: { signature: "hmac-sha256"\n  security: { policy: paymentsWrite } } }');
             expect(root.routes[0]!.operations[0]!.signature).toBe('hmac-sha256');
-            expect((root.routes[0]!.operations[0]!.security as any).requireMfa).toBe(true);
+            expect((root.routes[0]!.operations[0]!.security as any).policy).toBe('paymentsWrite');
         });
 
-        it('parses route-level security: { requireMfa: true }', () => {
-            const { root } = parse('operation /users: { security: { requireMfa: true }\n  get: {} }');
-            expect((root.routes[0]!.security as any).requireMfa).toBe(true);
+        it('parses route-level security: { policy: someName }', () => {
+            const { root } = parse('operation /users: { security: { policy: paymentsWrite }\n  get: {} }');
+            expect((root.routes[0]!.security as any).policy).toBe('paymentsWrite');
         });
 
         it('resolveSecurity: op-level wins over route-level', () => {
-            const { root } = parse('operation /users: { security: { requireMfa: true }\n  get: { security: none } }');
+            const { root } = parse('operation /users: { security: { policy: paymentsWrite }\n  get: { security: none } }');
             expect(resolveSecurity(root.routes[0]!, root.routes[0]!.operations[0]!)).toBe(SECURITY_NONE);
         });
 
         it('resolveSecurity: falls back to route-level when op has no security', () => {
-            const { root } = parse('operation /users: { security: { requireMfa: true }\n  get: {} }');
-            expect((resolveSecurity(root.routes[0]!, root.routes[0]!.operations[0]!) as any).requireMfa).toBe(true);
+            const { root } = parse('operation /users: { security: { policy: paymentsWrite }\n  get: {} }');
+            expect((resolveSecurity(root.routes[0]!, root.routes[0]!.operations[0]!) as any).policy).toBe('paymentsWrite');
         });
 
         it('security: { ... } does not break subsequent fields', () => {
-            const { root } = parse('operation /users: { get: { security: { requireMfa: true }\n  response: { 200: } } }');
-            expect((root.routes[0]!.operations[0]!.security as any).requireMfa).toBe(true);
+            const { root } = parse('operation /users: { get: { security: { policy: paymentsWrite }\n  response: { 200: } } }');
+            expect((root.routes[0]!.operations[0]!.security as any).policy).toBe('paymentsWrite');
             expect(root.routes[0]!.operations[0]!.responses[0]!.statusCode).toBe(200);
         });
     });
@@ -1452,12 +1452,12 @@ operation /capital: { get: {} }`);
         const { root, diag } = parse(`\
 options {
     security: {
-        requireMfa: true
+        policy: paymentsWrite
     }
 }
 operation /users: { get: {} }`);
         expect(diag.hasErrors()).toBe(false);
-        expect((root.security as any).requireMfa).toBe(true);
+        expect((root.security as any).policy).toBe('paymentsWrite');
     });
 
     it('parses empty options block', () => {

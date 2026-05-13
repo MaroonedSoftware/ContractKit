@@ -84,8 +84,9 @@ function serializeOptions(root: CkRootNode): string | null {
             lines.push(`${INDENT}${INDENT}none`);
         } else {
             const sec = root.security as SecurityFields;
-            if (sec.requireMfa !== undefined) {
-                lines.push(`${INDENT}${INDENT}requireMfa: ${sec.requireMfa}`);
+            if (sec.policy !== undefined) {
+                const value = sec.policy === false ? 'none' : sec.policy;
+                lines.push(`${INDENT}${INDENT}policy: ${value}`);
             }
         }
         lines.push(`${INDENT}}`);
@@ -406,10 +407,11 @@ function serializeSecurityBlock(lines: string[], security: SecurityNode, depth: 
     }
 
     const sec = security as SecurityFields;
-    if (sec.requireMfa !== undefined) {
-        const comment = ctx.includeComments && sec.requireMfaDescription ? ` # ${sec.requireMfaDescription}` : '';
+    if (sec.policy !== undefined) {
+        const comment = ctx.includeComments && sec.policyDescription ? ` # ${sec.policyDescription}` : '';
+        const value = sec.policy === false ? 'none' : sec.policy;
         lines.push(`${indent}security: {`);
-        lines.push(`${INDENT.repeat(depth + 1)}requireMfa: ${sec.requireMfa}${comment}`);
+        lines.push(`${INDENT.repeat(depth + 1)}policy: ${value}${comment}`);
         lines.push(`${indent}}`);
     } else {
         lines.push(`${indent}security: {}`);

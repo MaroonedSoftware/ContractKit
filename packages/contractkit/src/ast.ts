@@ -177,10 +177,10 @@ export interface ContractRootNode {
 
 /** Constrained security declaration. */
 export interface SecurityFields {
-    /** Whether this endpoint requires MFA. */
-    requireMfa?: boolean;
-    /** Inline comment attached to the `requireMfa:` line. */
-    requireMfaDescription?: string;
+    /** Named policy required for this endpoint, or `false` to explicitly bypass policy enforcement. */
+    policy?: string | false;
+    /** Inline comment attached to the `policy:` line. */
+    policyDescription?: string;
     loc: SourceLocation;
 }
 

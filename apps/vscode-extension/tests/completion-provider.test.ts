@@ -91,7 +91,7 @@ describe('getCompletions', () => {
             const index = new WorkspaceIndex();
             const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 2, character: 18 } }, doc, index);
             expect(items.some(i => i.label === 'none')).toBe(true);
-            expect(items.some(i => i.label === 'requireMfa')).toBe(false);
+            expect(items.some(i => i.label === 'policy')).toBe(false);
             expect(items.some(i => i.label === 'signature')).toBe(false);
         });
 
@@ -99,7 +99,7 @@ describe('getCompletions', () => {
             const doc = makeDoc('file:///test.ck', 'operation /users: {\n    get: {\n        security {\n            \n        }\n    }\n}');
             const index = new WorkspaceIndex();
             const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 3, character: 12 } }, doc, index);
-            expect(items.some(i => i.label === 'requireMfa')).toBe(true);
+            expect(items.some(i => i.label === 'policy')).toBe(true);
             expect(items.some(i => i.label === 'signature')).toBe(true);
             expect(items.some(i => i.label === 'none')).toBe(false);
         });

@@ -254,10 +254,13 @@ Contract {
   SecurityBody = noneKw                                             -- none
                | "{" (comment | SecurityField)* "}"                 -- fields
 
-  SecurityField = SecurityRequireMfaLine
+  SecurityField = SecurityPolicyLine
                 | SecuritySignatureLine
 
-  SecurityRequireMfaLine = requireMfaKw ":" booleanLit comment?
+  SecurityPolicyLine = policyKw ":" PolicyValue comment?
+
+  PolicyValue = noneKw     -- none
+              | identifier -- name
 
   SecuritySignatureLine = signatureKw ":" (stringLit | identifier) comment?
 
@@ -283,7 +286,7 @@ Contract {
   pluginsKw = "plugins" ~identPart
   noneKw = "none" ~identPart
   nullKw = "null" ~identPart
-  requireMfaKw = "requireMfa" ~identPart
+  policyKw = "policy" ~identPart
   deprecatedKw = "deprecated" ~identPart
   overrideKw = "override" ~identPart
 

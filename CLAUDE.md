@@ -200,7 +200,7 @@ Variable substitution (`{{name}}`) walks recursively into nested plugin values, 
 options {
     keys: { area: payments }
     services: { PaymentsService: "#src/services/payments.service.js" }
-    security: { requireMfa: true }
+    security: { policy: paymentsWrite }
 }
 
 # A payment record

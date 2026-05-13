@@ -315,8 +315,8 @@ function convertSecurity(security: Record<string, string[]>[]): SecurityNode {
         return 'none';
     }
 
-    // The DSL's security model is simpler — OpenAPI scopes/roles don't map onto requireMfa,
-    // so any non-empty security requirement is collapsed to "authenticated, no MFA".
+    // The DSL's security model is simpler — OpenAPI scopes/roles don't map onto named policies,
+    // so any non-empty security requirement is collapsed to "authenticated, default policy".
     return { loc: LOC };
 }
 

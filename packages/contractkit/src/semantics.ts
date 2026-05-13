@@ -1078,9 +1078,9 @@ export function createSemantics(grammar: Grammar) {
                 const child = items.child(i);
                 if (child.ctorName === 'comment') continue;
                 const result = child.toAst(file, this.args.diag);
-                if (result._type === 'requireMfa') {
-                    fields.requireMfa = result.value;
-                    if (result.description) fields.requireMfaDescription = result.description;
+                if (result._type === 'policy') {
+                    fields.policy = result.value;
+                    if (result.description) fields.policyDescription = result.description;
                 }
             }
 
@@ -1091,13 +1091,21 @@ export function createSemantics(grammar: Grammar) {
             return child.toAst(this.args.file, this.args.diag);
         },
 
-        SecurityRequireMfaLine(_kw, _colon, valueNode, commentOpt) {
-            const value = valueNode.sourceString === 'true';
+        SecurityPolicyLine(_kw, _colon, valueNode, commentOpt) {
+            const value = valueNode.toAst(this.args.file, this.args.diag) as string | false;
             let description: string | undefined;
             if ((commentOpt as IterationNode).numChildren > 0) {
                 description = (commentOpt as IterationNode).child(0).sourceString.replace(/^#\s?/, '').trimEnd();
             }
-            return { _type: 'requireMfa', value, description };
+            return { _type: 'policy', value, description };
+        },
+
+        PolicyValue_none(_noneKw) {
+            return false;
+        },
+
+        PolicyValue_name(identNode) {
+            return identNode.sourceString;
         },
 
         SecuritySignatureLine(_signatureKw, _colon, valueNode, _commentOpt) {
