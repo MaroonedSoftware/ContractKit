@@ -1,0 +1,48 @@
+{
+    "name": "@contractkit/explorer-ui",
+    "version": "0.9.0",
+    "description": "ContractKit API explorer renderer — pure HTML output, themable via CSS custom properties",
+    "author": {
+        "name": "Marooned Software",
+        "url": "https://github.com/MaroonedSoftware/contractkit"
+    },
+    "bugs": {
+        "url": "https://github.com/MaroonedSoftware/contractkit/issues"
+    },
+    "homepage": "https://github.com/MaroonedSoftware/contractkit/packages/explorer-ui#readme",
+    "keywords": [
+        "contractkit",
+        "explorer",
+        "api-docs"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/MaroonedSoftware/contractkit.git"
+    },
+    "type": "module",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": "./dist/index.js",
+        "./style.css": "./dist/assets/style.css"
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsup src/index.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration && mkdir -p dist/assets && cp src/assets/style.css dist/assets/style.css",
+        "build:ci": "eslint --max-warnings=0 && pnpm run build",
+        "lint": "eslint --fix",
+        "format": "prettier --write .",
+        "test": "vitest run",
+        "test:ci": "vitest run --coverage"
+    },
+    "dependencies": {
+        "@contractkit/core": "workspace:*"
+    },
+    "devDependencies": {
+        "@repo/config-eslint": "workspace:*",
+        "@repo/config-typescript": "workspace:*"
+    }
+}

@@ -1,0 +1,34 @@
+/* VS Code theme overrides — maps --ce-* explorer tokens onto VS Code's editor variables.
+ * Loaded after the package's base.css so these win. */
+
+:root {
+    --ce-fg: var(--vscode-foreground);
+    --ce-fg-muted: var(--vscode-descriptionForeground);
+    --ce-bg: var(--vscode-editor-background);
+    --ce-sidebar-bg: var(--vscode-sideBar-background);
+    --ce-card-bg: var(--vscode-editor-background);
+    --ce-link: var(--vscode-textLink-foreground);
+    --ce-link-active: var(--vscode-textLink-activeForeground);
+    --ce-border: var(--vscode-panel-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
+    --ce-border-strong: var(--vscode-focusBorder, rgba(128, 128, 128, 0.55));
+    --ce-code-bg: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.18));
+    --ce-badge-fg: var(--vscode-badge-foreground);
+    --ce-badge-bg: var(--vscode-badge-background);
+
+    --ce-warning-bg: var(--vscode-inputValidation-warningBackground, #4a3c00);
+    --ce-warning-fg: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+    --ce-warning-border: var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground));
+
+    --ce-font: var(--vscode-font-family);
+    --ce-mono: var(--vscode-editor-font-family);
+}
+
+body {
+    font-size: var(--vscode-font-size);
+}
+
+.ce-fields td,
+.ce-card,
+.ce-response-block {
+    border-color: var(--ce-border) !important;
+}

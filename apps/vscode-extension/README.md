@@ -22,6 +22,13 @@ Language support for ContractKit `.ck` contract files in VS Code and Cursor. Inc
 - **Semantic tokens** — precise classification of keywords, modifiers, scalar types, model names (as `class`), and service names (as `interface`) for richer highlighting
 - **Live diagnostics** — parser errors and warnings as you type, now with stable diagnostic codes that quick-fixes dispatch on
 - **Cross-file model index** — referenced models from other open `.ck` files participate in completion and hover
+- **API Explorer view** in the Explorer sidebar — browse every endpoint and model across the workspace, grouped by file/area/HTTP method (or flat). Tooltips show description, source location, and per-group warning counts.
+- **Filter & grouping** — title-bar buttons let you filter by path/name/method/sdk/service and switch the grouping mode (persisted per workspace)
+- **Right-click actions** on tree nodes — Reveal in Editor, Copy Path (`METHOD /route`), Copy as cURL
+- **API preview panel** — click any tree node to open a Stoplight-style detail panel beside the editor showing description, params, request/response schemas (with **inline-expandable** model refs), security badges, plugin extensions, and source-jump buttons. Lives refreshes on edit.
+- **Markdown in descriptions** — `description:` blocks render with paragraphs, headings, lists, fenced code, bold/italic, inline code, and http(s) links (in the preview panel and tree tooltips).
+- **Try-it-out** — every operation card includes a collapsible form prefilled with the schema's path params, query, headers, and (for JSON bodies) an editable body textarea. Send button fires the request from the extension host (Node `fetch`, full network access), shows status/headers/body in-place.
+- **Status bar** — left-aligned entry shows the API title, endpoint and model counts, and a warning badge. Click to open the preview.
 
 Requires VS Code or Cursor 1.105.1+.
 
@@ -38,6 +45,24 @@ pnpm run vscode:uninstall
 ```
 
 The install script packages the extension with `vsce`, then installs the resulting `.vsix` into the local `code` (or `cursor`) binary.
+
+## Settings
+
+| Setting | Type | Default | Description |
+| --- | --- | --- | --- |
+| `contractkit.tryItOut.baseUrl` | `string` | `""` | Base URL prefilled into the Try-it form for every operation (e.g. `https://api.example.com`). Leave blank to require manual entry per request. |
+
+## Commands
+
+| Command | Title | Notes |
+| --- | --- | --- |
+| `contractkit.previewApi` | ContractKit: Open API Preview | Reveals the tree view and opens the overview |
+| `contractkit.refreshApiExplorer` | ContractKit: Refresh API Explorer | Force re-fetch from the workspace index |
+| `contractkit.setGrouping` | ContractKit: Set Grouping… | QuickPick for `file` / `area` / `method` / `flat` (persisted per workspace) |
+| `contractkit.filterApiExplorer` | ContractKit: Filter API Explorer… | InputBox; matches path, method, name, sdk, service, group |
+| `contractkit.clearApiFilter` | ContractKit: Clear API Explorer Filter | Resets the filter |
+
+Right-click on tree nodes also surfaces **Reveal in Editor**, **Copy Path**, and **Copy as cURL** (operations only).
 
 ## Architecture
 
@@ -67,6 +92,17 @@ The extension is split into a thin client and a Language Server, communicating o
 | `src/server/inlay-hint-provider.ts` | Inherited-field hints next to model declarations |
 | `src/server/semantic-tokens-provider.ts` | Semantic-token classification for richer highlighting |
 | `src/server/diagnostics-adapter.ts` | Converts `@contractkit/core` `Diagnostics` to LSP diagnostics |
+| `src/server/preview-data-builder.ts` | Builds a `PreviewData` snapshot from the workspace index, ready for the renderer |
+| `src/shared/protocol.ts` | LSP method-name constants and shared message types for the API preview |
+| `src/client/preview-data-store.ts` | Cached, refreshable PreviewData source consumed by the tree and panel |
+| `src/client/api-tree-provider.ts` | `TreeDataProvider` for the API Explorer view (grouping, filter, warning badges) |
+| `src/client/preview-panel.ts` | Singleton webview panel showing the selected operation/model; proxies Try-it requests |
+| `src/client/webview-template.ts` | CSP-locked HTML shell loaded into the preview webview |
+| `src/client/status-bar.ts` | Left-aligned status bar entry showing API title + counts |
+| `src/client/try-it-handler.ts` | Runs Try-it requests via Node `fetch` and returns truncated, decoded responses |
+| `src/client/commands.ts` / `api-item-utils.ts` | Reveal-source / Copy-Path / Copy-cURL helpers (split for testability) |
+| `src/webview/main.ts` | Webview entry — receives `PreviewData`, calls `@contractkit/explorer-ui` `renderItemPage`, wires form submission |
+| `src/webview/style.css` | VS Code theme overrides that map `--ce-*` tokens onto `var(--vscode-*)` |
 
 ## Maintaining the syntax grammar
 

@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { parseCk, DiagnosticCollector } from '@contractkit/core';
-import type { ModelNode, OpRouteNode } from '@contractkit/core';
+import type { CkRootNode, ModelNode, OpRouteNode } from '@contractkit/core';
 
 export interface ModelEntry {
     uri: string;
@@ -53,6 +53,8 @@ export class WorkspaceIndex {
     private referencesByModel = new Map<string, Reference[]>();
     /** All reference sites for a given service name (the prefix in `service: Foo.bar`), including the decl. */
     private referencesByService = new Map<string, Reference[]>();
+    /** Retained per-file parsed AST, keyed by absolute file path. Powers the API preview's data builder. */
+    private asts = new Map<string, CkRootNode>();
     /** Bumped on every `indexSource` / `removeFile` call so consumers (e.g. CodeLens) can detect change without diffing. */
     private versionCounter = 0;
 
@@ -99,6 +101,11 @@ export class WorkspaceIndex {
     /** Monotonic counter incremented whenever the index changes. */
     version(): number {
         return this.versionCounter;
+    }
+
+    /** Every parsed AST currently held by the index, paired with its absolute file path. */
+    getAllAsts(): Array<{ filePath: string; ast: CkRootNode }> {
+        return [...this.asts].map(([filePath, ast]) => ({ filePath, ast }));
     }
 
     async indexWorkspace(workspaceFolders: string[]): Promise<void> {
@@ -160,6 +167,7 @@ export class WorkspaceIndex {
         const diag = new DiagnosticCollector();
         try {
             const ast = parseCk(text, filePath, diag);
+            this.asts.set(filePath, ast);
             const lines = text.split('\n');
             for (const model of ast.models) {
                 const column = findIdentifierColumn(lines, model.loc.line, model.name);
@@ -223,6 +231,7 @@ export class WorkspaceIndex {
     }
 
     removeFile(uri: string): void {
+        this.asts.delete(uriToFilePath(uri));
         for (const [name, entry] of this.models) {
             if (entry.uri === uri) this.models.delete(name);
         }

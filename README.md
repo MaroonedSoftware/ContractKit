@@ -1212,6 +1212,7 @@ contractkit/
     plugin-bruno/                     # @contractkit/plugin-bruno — Bruno REST collection
     plugin-python/                    # @contractkit/plugin-python — Python SDK (Pydantic v2 + httpx)
     openapi-to-ck/                    # @contractkit/openapi-to-ck — OpenAPI YAML → .ck file converter
+    explorer-ui/                      # @contractkit/explorer-ui — pure HTML renderer for the API explorer (powers the VS Code preview)
     config-typescript/                # Shared tsconfig base
     config-eslint/                    # Shared ESLint config
 ```

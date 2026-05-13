@@ -28,18 +28,32 @@ import { getSignatureHelp } from './signature-help-provider.js';
 import { getInlayHints } from './inlay-hint-provider.js';
 import { getSemanticTokens, SEMANTIC_TOKENS_LEGEND } from './semantic-tokens-provider.js';
 import { WorkspaceConfigCache } from './workspace-config.js';
+import { buildPreviewData } from './preview-data-builder.js';
+import { PREVIEW_DATA_CHANGED_NOTIFICATION, PREVIEW_DATA_REQUEST } from '../shared/protocol.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
 const documentManager = new DocumentManager(connection);
 const workspaceIndex = new WorkspaceIndex();
 const workspaceConfigCache = new WorkspaceConfigCache();
+let workspaceRoot: string | undefined;
+
+let previewChangeTimer: NodeJS.Timeout | undefined;
+const PREVIEW_DEBOUNCE_MS = 250;
+function schedulePreviewChanged(): void {
+    if (previewChangeTimer) clearTimeout(previewChangeTimer);
+    previewChangeTimer = setTimeout(() => {
+        previewChangeTimer = undefined;
+        void connection.sendNotification(PREVIEW_DATA_CHANGED_NOTIFICATION);
+    }, PREVIEW_DEBOUNCE_MS);
+}
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
     // Index workspace folders on startup
     const folders = params.workspaceFolders;
-    if (folders) {
+    if (folders && folders.length > 0) {
         const paths = folders.map(f => fileURLToPath(f.uri));
+        workspaceRoot = paths[0];
         workspaceIndex.indexWorkspace(paths).catch(() => {
             // Silent failure on initial indexing
         });
@@ -79,6 +93,7 @@ documents.onDidChangeContent(change => {
     documentManager.scheduleReparse(change.document);
     // Also update workspace index with latest source
     workspaceIndex.indexFromSource(change.document.uri, change.document.getText());
+    schedulePreviewChanged();
 });
 
 // Clean up on document close
@@ -102,7 +117,11 @@ connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
         }
     }
     if (configChanged) workspaceConfigCache.clear();
+    schedulePreviewChanged();
 });
+
+// API preview: request handler returns a fully-resolved PreviewData snapshot.
+connection.onRequest(PREVIEW_DATA_REQUEST, () => buildPreviewData(workspaceIndex, workspaceConfigCache, workspaceRoot));
 
 // Document symbols (Outline panel)
 connection.onDocumentSymbol(params => {

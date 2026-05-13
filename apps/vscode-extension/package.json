@@ -31,7 +31,10 @@
         "Programming Languages"
     ],
     "activationEvents": [
-        "onLanguage:contract-ck"
+        "onLanguage:contract-ck",
+        "onCommand:contractkit.previewApi",
+        "onView:contractkit.apiExplorer",
+        "workspaceContains:**/*.ck"
     ],
     "main": "./dist/client/extension.js",
     "contributes": {
@@ -55,6 +58,137 @@
                 "path": "./syntaxes/ck.tmLanguage.json"
             }
         ],
+        "views": {
+            "explorer": [
+                {
+                    "id": "contractkit.apiExplorer",
+                    "name": "API Explorer",
+                    "icon": "$(book)",
+                    "contextualTitle": "ContractKit"
+                }
+            ]
+        },
+        "commands": [
+            {
+                "command": "contractkit.previewApi",
+                "title": "Open API Preview",
+                "category": "ContractKit",
+                "icon": "$(preview)"
+            },
+            {
+                "command": "contractkit.openApiItem",
+                "title": "Open API Item",
+                "category": "ContractKit"
+            },
+            {
+                "command": "contractkit.refreshApiExplorer",
+                "title": "Refresh API Explorer",
+                "category": "ContractKit",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "contractkit.setGrouping",
+                "title": "Set Grouping…",
+                "category": "ContractKit",
+                "icon": "$(group-by-ref-type)"
+            },
+            {
+                "command": "contractkit.filterApiExplorer",
+                "title": "Filter API Explorer…",
+                "category": "ContractKit",
+                "icon": "$(filter)"
+            },
+            {
+                "command": "contractkit.clearApiFilter",
+                "title": "Clear API Explorer Filter",
+                "category": "ContractKit",
+                "icon": "$(filter-filled)"
+            },
+            {
+                "command": "contractkit.revealApiItemSource",
+                "title": "Reveal in Editor",
+                "category": "ContractKit"
+            },
+            {
+                "command": "contractkit.copyApiItemPath",
+                "title": "Copy Path",
+                "category": "ContractKit"
+            },
+            {
+                "command": "contractkit.copyApiItemCurl",
+                "title": "Copy as cURL",
+                "category": "ContractKit"
+            }
+        ],
+        "menus": {
+            "editor/title": [
+                {
+                    "when": "resourceLangId == contract-ck",
+                    "command": "contractkit.previewApi",
+                    "group": "navigation"
+                }
+            ],
+            "view/title": [
+                {
+                    "command": "contractkit.filterApiExplorer",
+                    "when": "view == contractkit.apiExplorer",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "contractkit.setGrouping",
+                    "when": "view == contractkit.apiExplorer",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "contractkit.refreshApiExplorer",
+                    "when": "view == contractkit.apiExplorer",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "contractkit.clearApiFilter",
+                    "when": "view == contractkit.apiExplorer",
+                    "group": "1_filter"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "contractkit.revealApiItemSource",
+                    "when": "view == contractkit.apiExplorer && (viewItem == operation || viewItem == model)",
+                    "group": "1_open@1"
+                },
+                {
+                    "command": "contractkit.copyApiItemPath",
+                    "when": "view == contractkit.apiExplorer && (viewItem == operation || viewItem == model)",
+                    "group": "2_copy@1"
+                },
+                {
+                    "command": "contractkit.copyApiItemCurl",
+                    "when": "view == contractkit.apiExplorer && viewItem == operation",
+                    "group": "2_copy@2"
+                }
+            ],
+            "commandPalette": [
+                { "command": "contractkit.previewApi" },
+                { "command": "contractkit.refreshApiExplorer" },
+                { "command": "contractkit.setGrouping" },
+                { "command": "contractkit.filterApiExplorer" },
+                { "command": "contractkit.clearApiFilter" },
+                { "command": "contractkit.openApiItem", "when": "false" },
+                { "command": "contractkit.revealApiItemSource", "when": "false" },
+                { "command": "contractkit.copyApiItemPath", "when": "false" },
+                { "command": "contractkit.copyApiItemCurl", "when": "false" }
+            ]
+        },
+        "configuration": {
+            "title": "ContractKit",
+            "properties": {
+                "contractkit.tryItOut.baseUrl": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Base URL prefilled into the Try-it form for every operation (e.g. https://api.example.com). Leave blank to require manual entry per request."
+                }
+            }
+        },
         "configurationDefaults": {
             "editor.tokenColorCustomizations": {
                 "textMateRules": [
@@ -96,6 +230,7 @@
     },
     "dependencies": {
         "@contractkit/core": "workspace:*",
+        "@contractkit/explorer-ui": "workspace:*",
         "@contractkit/prettier-plugin": "workspace:*",
         "vscode-languageclient": "^9.0.1",
         "vscode-languageserver": "^9.0.1",
