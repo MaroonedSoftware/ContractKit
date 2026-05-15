@@ -1,5 +1,20 @@
 # @contractkit/core
 
+## 0.20.0
+
+### Minor Changes
+
+- bdebb9c: cli: orphan cleanup + compiler-version cache invalidation; core: shared validateProject
+    - The CLI now deletes generated files whose owning plugin no longer claims them (plugin removed from config, renamed, or output set shrank). Cleanup is best-effort and never deletes a file emitted under another plugin in the same run.
+    - Build cache is now stamped with a fingerprint of `@contractkit/cli`, `@contractkit/core`, and every loaded plugin's package version. A mismatch on load drops the cache, so a `pnpm update` of any codegen-affecting package forces a full rebuild instead of silently serving stale `.ts`.
+    - `computePluginFingerprint` accepts an optional plugin version so a single plugin upgrade invalidates only its slice when the top-level fingerprint changes are noisy.
+    - New `validateProject` helper in `@contractkit/core` runs parse + options-defaults + variable-substitution + decompose + cross-file `validateRefs`/`validateInheritance`/`validateOp` in one call. Designed to be the single source of truth for CLI and LSP semantics. The LSP can adopt it incrementally to surface cross-file diagnostics in the editor; the CLI keeps its inline pipeline for now so plugin `validate`/`transform` hooks continue to run between normalization and validation.
+
+- 90f45ff: LSP cross-file diagnostics; CLI compiler-fingerprint helpers extracted
+    - VS Code extension now surfaces cross-file diagnostics (unknown model refs, multi-base inheritance conflicts, operation-validation errors, options-block normalization warnings) directly in the editor. A new `ProjectValidator` debounces project-wide validation across all parsed `.ck` ASTs and merges its results with per-document parse diagnostics. Multi-config workspaces are supported via the existing `WorkspaceConfigCache`.
+    - `@contractkit/core` `validateProject` accepts a new optional `getKeysForFile(filePath)` resolver so each file can use its own `contractkit.config.json` fallback keys. Falls through to the workspace-wide `fallbackKeys` when the resolver returns `undefined`. Strictly additive.
+    - `@contractkit/cli` extracts the compiler-fingerprint helpers (`readNearestPackageVersion`, `computeCompilerFingerprint`) into a dedicated module with direct unit-test coverage. No behavior change.
+
 ## 0.19.0
 
 ### Minor Changes
