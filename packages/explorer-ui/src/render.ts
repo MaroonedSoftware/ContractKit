@@ -5,6 +5,13 @@ import type { PreviewData, ResolvedOperation } from './types.js';
 
 const METHOD_ORDER = ['get', 'post', 'put', 'patch', 'delete'] as const;
 
+const SIDEBAR_MARKER_SVG =
+    '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">' +
+    '<circle cx="8" cy="8" r="6.25" />' +
+    '<circle cx="8" cy="8" r="3.25" />' +
+    '<circle cx="8" cy="8" r="0.75" fill="currentColor" />' +
+    '</svg>';
+
 /**
  * Renders the complete API explorer as an HTML fragment. Drop the result into a container
  * element (e.g. `root.innerHTML = renderApp(data)`) and pair with the package's `style.css`.
@@ -59,13 +66,14 @@ function renderSidebar(data: PreviewData): string {
         .map(key => {
             const items = groups
                 .get(key)!
-                .map(
-                    op =>
-                        `<li><a href="#${escapeHtml(operationAnchor(op))}">
-                            <span class="ce-method ce-method-${escapeHtml(op.method)}">${escapeHtml(op.method.toUpperCase())}</span>
-                            <span class="ce-sidebar-path">${escapeHtml(op.routePath)}</span>
-                        </a></li>`,
-                )
+                .map(op => {
+                    const name = op.op.name ?? op.op.sdk ?? op.routePath;
+                    return `<li><a class="ce-sidebar-row" href="#${escapeHtml(operationAnchor(op))}">
+                        <span class="ce-sidebar-marker" aria-hidden="true">${SIDEBAR_MARKER_SVG}</span>
+                        <span class="ce-sidebar-name">${escapeHtml(name)}</span>
+                        <span class="ce-sidebar-method ce-method-text-${escapeHtml(op.method)}">${escapeHtml(op.method.toUpperCase())}</span>
+                    </a></li>`;
+                })
                 .join('');
             return `<details open class="ce-sidebar-group">
                 <summary>${escapeHtml(key)}</summary>

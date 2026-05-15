@@ -26,10 +26,14 @@
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {
-        ".": "./dist/index.js"
+        ".": "./dist/index.js",
+        "./type-utils": {
+            "types": "./dist/type-utils.d.ts",
+            "default": "./dist/type-utils.js"
+        }
     },
     "scripts": {
-        "build": "tsup src/index.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration && cp src/contractkit.ohm dist/",
+        "build": "tsup src/index.ts src/type-utils.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration && cp src/contractkit.ohm dist/",
         "build:ci": "eslint --max-warnings=0 && pnpm run build",
         "lint": "eslint --fix",
         "format": "prettier --write .",

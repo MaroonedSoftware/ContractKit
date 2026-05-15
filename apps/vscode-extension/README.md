@@ -22,7 +22,7 @@ Language support for ContractKit `.ck` contract files in VS Code and Cursor. Inc
 - **Semantic tokens** — precise classification of keywords, modifiers, scalar types, model names (as `class`), and service names (as `interface`) for richer highlighting
 - **Live diagnostics** — parser errors and warnings as you type, now with stable diagnostic codes that quick-fixes dispatch on
 - **Cross-file model index** — referenced models from other open `.ck` files participate in completion and hover
-- **API Explorer view** in the Explorer sidebar — browse every endpoint and model across the workspace, grouped by file/area/HTTP method (or flat). Tooltips show description, source location, and per-group warning counts.
+- **ContractKit Explorer view** in the Explorer sidebar — browse every endpoint and model across the workspace, grouped by file/area/HTTP method (or flat). Tooltips show description, source location, and per-group warning counts.
 - **Filter & grouping** — title-bar buttons let you filter by path/name/method/sdk/service and switch the grouping mode (persisted per workspace)
 - **Right-click actions** on tree nodes — Reveal in Editor, Copy Path (`METHOD /route`), Copy as cURL
 - **API preview panel** — click any tree node to open a Stoplight-style detail panel beside the editor showing description, params, request/response schemas (with **inline-expandable** model refs), security badges, plugin extensions, and source-jump buttons. Lives refreshes on edit.
@@ -57,10 +57,10 @@ The install script packages the extension with `vsce`, then installs the resulti
 | Command | Title | Notes |
 | --- | --- | --- |
 | `contractkit.previewApi` | ContractKit: Open API Preview | Reveals the tree view and opens the overview |
-| `contractkit.refreshApiExplorer` | ContractKit: Refresh API Explorer | Force re-fetch from the workspace index |
+| `contractkit.refreshExplorer` | ContractKit: Refresh Explorer | Force re-fetch from the workspace index |
 | `contractkit.setGrouping` | ContractKit: Set Grouping… | QuickPick for `file` / `area` / `method` / `flat` (persisted per workspace) |
-| `contractkit.filterApiExplorer` | ContractKit: Filter API Explorer… | InputBox; matches path, method, name, sdk, service, group |
-| `contractkit.clearApiFilter` | ContractKit: Clear API Explorer Filter | Resets the filter |
+| `contractkit.filterExplorer` | ContractKit: Filter Explorer… | InputBox; matches path, method, name, sdk, service, group |
+| `contractkit.clearExplorerFilter` | ContractKit: Clear Explorer Filter | Resets the filter |
 
 Right-click on tree nodes also surfaces **Reveal in Editor**, **Copy Path**, and **Copy as cURL** (operations only).
 
@@ -95,7 +95,7 @@ The extension is split into a thin client and a Language Server, communicating o
 | `src/server/preview-data-builder.ts` | Builds a `PreviewData` snapshot from the workspace index, ready for the renderer |
 | `src/shared/protocol.ts` | LSP method-name constants and shared message types for the API preview |
 | `src/client/preview-data-store.ts` | Cached, refreshable PreviewData source consumed by the tree and panel |
-| `src/client/api-tree-provider.ts` | `TreeDataProvider` for the API Explorer view (grouping, filter, warning badges) |
+| `src/client/api-tree-provider.ts` | `TreeDataProvider` for the Explorer view (grouping, filter, warning badges) |
 | `src/client/preview-panel.ts` | Singleton webview panel showing the selected operation/model; proxies Try-it requests |
 | `src/client/webview-template.ts` | CSP-locked HTML shell loaded into the preview webview |
 | `src/client/status-bar.ts` | Left-aligned status bar entry showing API title + counts |

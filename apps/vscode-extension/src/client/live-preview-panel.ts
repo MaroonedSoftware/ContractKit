@@ -1,7 +1,6 @@
 import * as crypto from 'node:crypto';
 import * as vscode from 'vscode';
 import type { ItemSelection } from '@contractkit/explorer-ui';
-import { operationId } from '@contractkit/explorer-ui';
 import type { RevealMessage } from '../shared/protocol.js';
 import type { PreviewDataStore } from './preview-data-store.js';
 import { getTryItBaseUrl, performTryIt, type TryItRequest } from './try-it-handler.js';
@@ -24,28 +23,32 @@ interface SendRequestMessage {
 type IncomingMessage = RevealMessage | OpenModelMessage | ReadyMessage | SendRequestMessage;
 
 /**
- * One webview panel per unique selection (operation / model / overview). Clicking a different
- * item in the tree opens its own dedicated panel — like opening multiple editor tabs. Clicking
- * the same item again reveals its existing panel instead of duplicating it. Ref-link clicks
- * inside a panel also spawn a new panel for the linked model rather than navigating in place.
+ * Singleton live-preview panel that follows the active text editor — matches the VS Code
+ * Markdown "Open Preview to the Side" UX. When the user focuses a `.ck` file the panel shows
+ * every operation and model declared in that file; when they focus a non-ck file the panel
+ * holds the last-rendered view (so the docs don't disappear while you tab over to a service
+ * file to look something up). Always one of these exists at most.
+ *
+ * Per-item panels (operation/model detail tabs spawned from tree clicks) live in PreviewPanel
+ * and remain independent of this one.
  */
-export class PreviewPanel {
-    private static panels = new Map<string, PreviewPanel>();
+export class LivePreviewPanel {
+    private static current: LivePreviewPanel | undefined;
 
-    static createOrShow(
-        context: vscode.ExtensionContext,
-        store: PreviewDataStore,
-        selection: ItemSelection,
-    ): void {
-        const key = selectionKey(selection);
-        const existing = PreviewPanel.panels.get(key);
-        if (existing) {
-            existing.panel.reveal(undefined, true);
+    /**
+     * Reveals the live-preview panel, creating it if one isn't already open. After revealing,
+     * the panel re-syncs to the currently focused editor so it shows whichever `.ck` file is
+     * active when the command runs.
+     */
+    static createOrShow(context: vscode.ExtensionContext, store: PreviewDataStore): void {
+        if (LivePreviewPanel.current) {
+            LivePreviewPanel.current.panel.reveal(undefined, true);
+            LivePreviewPanel.current.syncToActiveEditor();
             return;
         }
         const panel = vscode.window.createWebviewPanel(
-            'contractkitPreviewApi',
-            resolveTitle(selection, store),
+            'contractkitLivePreview',
+            'ContractKit Preview',
             { viewColumn: preferredColumn(), preserveFocus: true },
             {
                 enableScripts: true,
@@ -53,21 +56,22 @@ export class PreviewPanel {
                 localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')],
             },
         );
-        const previewPanel = new PreviewPanel(panel, context, store, selection);
-        PreviewPanel.panels.set(key, previewPanel);
+        LivePreviewPanel.current = new LivePreviewPanel(panel, context, store);
     }
 
+    private currentSelection: ItemSelection = { kind: 'overview' };
     private webviewReady = false;
     private readonly disposables: vscode.Disposable[] = [];
 
     private constructor(
         private readonly panel: vscode.WebviewPanel,
-        private readonly context: vscode.ExtensionContext,
+        context: vscode.ExtensionContext,
         private readonly store: PreviewDataStore,
-        private readonly selection: ItemSelection,
     ) {
         const nonce = crypto.randomBytes(16).toString('hex');
         panel.webview.html = getWebviewHtml(panel.webview, context.extensionUri, nonce);
+
+        this.syncToActiveEditor();
 
         this.disposables.push(
             panel.webview.onDidReceiveMessage((message: unknown) => this.handleWebviewMessage(message)),
@@ -75,21 +79,33 @@ export class PreviewPanel {
             vscode.workspace.onDidChangeConfiguration(e => {
                 if (e.affectsConfiguration('contractkit.tryItOut')) this.postCurrent();
             }),
+            // Track the active editor — switch the preview to whichever `.ck` file is focused.
+            vscode.window.onDidChangeActiveTextEditor(() => this.syncToActiveEditor()),
             panel.onDidDispose(() => this.dispose()),
         );
+    }
+
+    private syncToActiveEditor(): void {
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document.languageId === 'contract-ck') {
+            const path = editor.document.uri.fsPath;
+            // Skip re-posting if we're already showing this file.
+            if (this.currentSelection.kind === 'file' && this.currentSelection.path === path) return;
+            this.currentSelection = { kind: 'file', path };
+            this.panel.title = `Preview: ${path.split('/').pop() ?? path}`;
+            this.postCurrent();
+        }
+        // Non-ck editor focused: hold the last view rather than blanking the panel.
     }
 
     private postCurrent(): void {
         if (!this.webviewReady) return;
         const data = this.store.getData();
         if (!data) return;
-        // Refresh the tab title now that we have data — at panel-creation time the store may
-        // not have loaded yet, leaving operations to fall back to their stable id.
-        this.panel.title = resolveTitle(this.selection, this.store);
         this.panel.webview.postMessage({
             type: 'render',
             data,
-            selection: this.selection,
+            selection: this.currentSelection,
             tryItBaseUrl: getTryItBaseUrl(),
         });
     }
@@ -100,18 +116,23 @@ export class PreviewPanel {
         switch (msg.type) {
             case 'ready':
                 this.webviewReady = true;
-                // Post cached data immediately if we have any so the user isn't stuck on
-                // Loading…. The cache is only built post-indexing (server side), so this is
-                // safe. The refresh below keeps it fresh.
+                // Post whatever's cached so the user sees content immediately (cache is only
+                // built from data the server returned AFTER indexing, so it's reliable).
                 if (this.store.getData()) this.postCurrent();
+                // Refresh anyway to pick up any changes since the cache was populated. The
+                // onDidChangeData listener re-renders with the fresh snapshot when it arrives.
                 void this.store.refresh();
                 return;
             case 'reveal':
                 void this.revealSource(msg);
                 return;
             case 'openModel':
-                // Open the linked model in its own panel — reveals if already open.
-                PreviewPanel.createOrShow(this.context, this.store, { kind: 'model', name: msg.name });
+                // Ref link → spawn a dedicated per-item panel (handled by PreviewPanel elsewhere
+                // to keep the live preview anchored to the file).
+                void vscode.commands.executeCommand('contractkit.openApiItem', {
+                    kind: 'model',
+                    name: msg.name,
+                });
                 return;
             case 'sendRequest':
                 void this.handleTryIt(msg.request);
@@ -140,40 +161,12 @@ export class PreviewPanel {
     }
 
     private dispose(): void {
-        const key = selectionKey(this.selection);
-        if (PreviewPanel.panels.get(key) === this) PreviewPanel.panels.delete(key);
+        if (LivePreviewPanel.current === this) LivePreviewPanel.current = undefined;
         for (const d of this.disposables) d.dispose();
     }
 }
 
-/** Stable key per selection so reopening the same item reveals its existing panel. */
-function selectionKey(selection: ItemSelection): string {
-    switch (selection.kind) {
-        case 'overview': return 'overview';
-        case 'operation': return `op:${selection.id}`;
-        case 'model': return `model:${selection.name}`;
-    }
-}
-
-/**
- * Best-effort human title for the tab. For operations, looks up the resolved op in the store
- * to display `METHOD /path` or the op's name. Falls back to the selection id when data is
- * unavailable (e.g. the store hasn't loaded yet at panel creation time).
- */
-function resolveTitle(selection: ItemSelection, store: PreviewDataStore): string {
-    if (selection.kind === 'overview') return 'ContractKit Overview';
-    if (selection.kind === 'model') return selection.name;
-    const data = store.getData();
-    const op = data?.operations.find(o => operationId(o) === selection.id);
-    if (!op) return selection.id;
-    return op.op.name ?? `${op.method.toUpperCase()} ${op.routePath}`;
-}
-
-/**
- * Pick the column to open the preview in. If a text editor is active, split beside it so the
- * code and the docs sit side-by-side. Otherwise open in column One so the panel fills the
- * editor area instead of creating an empty group beside an invisible "active" column.
- */
+/** Open beside the active editor; fall back to column Two when no editor is open. */
 function preferredColumn(): vscode.ViewColumn {
-    return vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
+    return vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.Two;
 }

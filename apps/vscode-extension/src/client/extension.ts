@@ -6,23 +6,31 @@ import { operationId } from '@contractkit/explorer-ui';
 import { PREVIEW_DATA_CHANGED_NOTIFICATION } from '../shared/protocol.js';
 import { ApiTreeProvider, type GroupingMode } from './api-tree-provider.js';
 import { buildCurl, revealSelectionSource } from './commands.js';
+import { LivePreviewPanel } from './live-preview-panel.js';
 import { PreviewDataStore } from './preview-data-store.js';
 import { PreviewPanel } from './preview-panel.js';
 import { createApiStatusBar } from './status-bar.js';
 import { getTryItBaseUrl } from './try-it-handler.js';
 
-const GROUPING_STATE_KEY = 'contractkit.apiExplorer.grouping';
+const GROUPING_STATE_KEY = 'contractkit.explorer.grouping';
 const GROUPING_LABELS: Record<GroupingMode, string> = {
     file: 'Group by file',
     area: 'Group by service area',
     method: 'Group by HTTP method',
     flat: 'No grouping',
 };
+const DETECTION_GLOB = '{**/*.ck,**/contractkit.config.json}';
+const DETECTION_EXCLUDE = '**/node_modules/**';
 
 let client: LanguageClient | undefined;
 
+async function probeDetected(): Promise<boolean> {
+    const matches = await vscode.workspace.findFiles(DETECTION_GLOB, DETECTION_EXCLUDE, 1);
+    return matches.length > 0;
+}
+
 /**
- * Activates the ContractKit extension. Starts the LSP client, wires the API Explorer tree view,
+ * Activates the ContractKit extension. Starts the LSP client, wires the Explorer tree view,
  * status bar, status notifications, and all `contractkit.*` commands. Resolves after the LSP
  * client is fully started so command handlers can issue requests immediately.
  */
@@ -46,34 +54,68 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     await client.start();
 
+    let detected: boolean | undefined;
+    const setDetected = async (value: boolean): Promise<void> => {
+        if (detected === value) return;
+        detected = value;
+        await vscode.commands.executeCommand('setContext', 'contractkit.detected', value);
+    };
+
+    await setDetected(await probeDetected());
+
+    const watcher = vscode.workspace.createFileSystemWatcher(DETECTION_GLOB, false, true, false);
+    watcher.onDidCreate(() => void setDetected(true));
+    watcher.onDidDelete(async () => {
+        await setDetected(await probeDetected());
+    });
+
     const store = new PreviewDataStore(client);
     const treeProvider = new ApiTreeProvider(store);
 
     const persistedGrouping = context.workspaceState.get<GroupingMode>(GROUPING_STATE_KEY);
     if (persistedGrouping) treeProvider.setGrouping(persistedGrouping);
 
-    const treeView = vscode.window.createTreeView('contractkit.apiExplorer', {
+    const treeView = vscode.window.createTreeView('contractkit.explorer', {
         treeDataProvider: treeProvider,
         showCollapseAll: true,
+    });
+
+    const visibilitySubscription = treeView.onDidChangeVisibility(e => {
+        if (e.visible) void store.refresh();
     });
 
     const statusBar = createApiStatusBar(store);
 
     context.subscriptions.push(
         treeView,
+        visibilitySubscription,
         statusBar,
+        watcher,
 
         vscode.commands.registerCommand('contractkit.openApiItem', (selection?: ItemSelection) => {
             const target: ItemSelection = selection ?? { kind: 'overview' };
+            // Don't pre-check existence here — the cached store can be stale relative to the
+            // workspace, and a false negative would block opening a panel for a model that's
+            // really there. The PreviewPanel listens for store updates after creation and will
+            // render the model as soon as it appears (or show its own missing-model state).
             PreviewPanel.createOrShow(context, store, target);
         }),
 
-        vscode.commands.registerCommand('contractkit.previewApi', async () => {
-            await vscode.commands.executeCommand('contractkit.apiExplorer.focus');
+        vscode.commands.registerCommand('contractkit.previewApi', () => {
+            // "Open Preview to the Side" — singleton panel that follows the active `.ck` editor.
+            LivePreviewPanel.createOrShow(context, store);
+        }),
+
+        vscode.commands.registerCommand('contractkit.openOverview', async () => {
+            try {
+                await vscode.commands.executeCommand('contractkit.explorer.focus');
+            } catch {
+                // ignore — the panel still opens below.
+            }
             PreviewPanel.createOrShow(context, store, { kind: 'overview' });
         }),
 
-        vscode.commands.registerCommand('contractkit.refreshApiExplorer', () => {
+        vscode.commands.registerCommand('contractkit.refreshExplorer', () => {
             void store.refresh();
         }),
 
@@ -114,9 +156,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await context.workspaceState.update(GROUPING_STATE_KEY, pick.id);
         }),
 
-        vscode.commands.registerCommand('contractkit.filterApiExplorer', async () => {
+        vscode.commands.registerCommand('contractkit.filterExplorer', async () => {
             const value = await vscode.window.showInputBox({
-                prompt: 'Filter API Explorer (path, name, sdk, service, method)',
+                prompt: 'Filter Explorer (path, name, sdk, service, method)',
                 placeHolder: 'e.g. payments, GET, getPayment',
                 value: treeProvider.getFilter(),
             });
@@ -124,7 +166,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             treeProvider.setFilter(value);
         }),
 
-        vscode.commands.registerCommand('contractkit.clearApiFilter', () => {
+        vscode.commands.registerCommand('contractkit.clearExplorerFilter', () => {
             treeProvider.setFilter('');
         }),
     );

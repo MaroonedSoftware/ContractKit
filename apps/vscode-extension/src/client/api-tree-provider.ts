@@ -98,10 +98,9 @@ export class ApiTreeProvider implements vscode.TreeDataProvider<Node> {
                 return item;
             }
             case 'operation': {
-                const label = `${node.op.method.toUpperCase()}  ${node.op.routePath}`;
+                const label = node.op.op.name ?? node.op.op.sdk ?? node.op.routePath;
                 const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-                item.iconPath = new vscode.ThemeIcon('symbol-method');
-                item.description = node.op.op.name ?? node.op.op.sdk;
+                item.description = node.op.method.toUpperCase();
                 item.tooltip = buildOperationTooltip(node.op);
                 item.contextValue = 'operation';
                 item.command = {
@@ -240,8 +239,7 @@ function groupIcon(mode: GroupingMode): string {
 
 function buildOperationTooltip(op: ResolvedOperation): vscode.MarkdownString {
     const md = new vscode.MarkdownString();
-    md.appendMarkdown(`**${op.method.toUpperCase()} \`${op.routePath}\`**\n\n`);
-    if (op.op.name) md.appendMarkdown(`${op.op.name}\n\n`);
+    md.appendMarkdown(`**${op.method.toUpperCase()}** \`${op.routePath}\`\n\n`);
     if (op.op.description) md.appendMarkdown(`${op.op.description}\n\n`);
     md.appendMarkdown(`\`${op.filePath}:${op.op.loc.line}\``);
     return md;

@@ -39,7 +39,8 @@
         "test:ci": "vitest run --coverage"
     },
     "dependencies": {
-        "@contractkit/core": "workspace:*"
+        "@contractkit/core": "workspace:*",
+        "@faker-js/faker": "^9.7.0"
     },
     "devDependencies": {
         "@repo/config-eslint": "workspace:*",

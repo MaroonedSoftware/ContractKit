@@ -33,8 +33,10 @@
     "activationEvents": [
         "onLanguage:contract-ck",
         "onCommand:contractkit.previewApi",
-        "onView:contractkit.apiExplorer",
-        "workspaceContains:**/*.ck"
+        "onCommand:contractkit.openOverview",
+        "onView:contractkit.explorer",
+        "workspaceContains:**/*.ck",
+        "workspaceContains:**/contractkit.config.json"
     ],
     "main": "./dist/client/extension.js",
     "contributes": {
@@ -61,19 +63,26 @@
         "views": {
             "explorer": [
                 {
-                    "id": "contractkit.apiExplorer",
-                    "name": "API Explorer",
+                    "id": "contractkit.explorer",
+                    "name": "ContractKit Explorer",
                     "icon": "$(book)",
-                    "contextualTitle": "ContractKit"
+                    "contextualTitle": "ContractKit",
+                    "when": "contractkit.detected"
                 }
             ]
         },
         "commands": [
             {
                 "command": "contractkit.previewApi",
-                "title": "Open API Preview",
+                "title": "Open Preview to the Side",
                 "category": "ContractKit",
-                "icon": "$(preview)"
+                "icon": "$(open-preview)"
+            },
+            {
+                "command": "contractkit.openOverview",
+                "title": "Open API Overview",
+                "category": "ContractKit",
+                "icon": "$(book)"
             },
             {
                 "command": "contractkit.openApiItem",
@@ -81,8 +90,8 @@
                 "category": "ContractKit"
             },
             {
-                "command": "contractkit.refreshApiExplorer",
-                "title": "Refresh API Explorer",
+                "command": "contractkit.refreshExplorer",
+                "title": "Refresh Explorer",
                 "category": "ContractKit",
                 "icon": "$(refresh)"
             },
@@ -93,14 +102,14 @@
                 "icon": "$(group-by-ref-type)"
             },
             {
-                "command": "contractkit.filterApiExplorer",
-                "title": "Filter API Explorer…",
+                "command": "contractkit.filterExplorer",
+                "title": "Filter Explorer…",
                 "category": "ContractKit",
                 "icon": "$(filter)"
             },
             {
-                "command": "contractkit.clearApiFilter",
-                "title": "Clear API Explorer Filter",
+                "command": "contractkit.clearExplorerFilter",
+                "title": "Clear Explorer Filter",
                 "category": "ContractKit",
                 "icon": "$(filter-filled)"
             },
@@ -130,40 +139,40 @@
             ],
             "view/title": [
                 {
-                    "command": "contractkit.filterApiExplorer",
-                    "when": "view == contractkit.apiExplorer",
+                    "command": "contractkit.filterExplorer",
+                    "when": "view == contractkit.explorer",
                     "group": "navigation@1"
                 },
                 {
                     "command": "contractkit.setGrouping",
-                    "when": "view == contractkit.apiExplorer",
+                    "when": "view == contractkit.explorer",
                     "group": "navigation@2"
                 },
                 {
-                    "command": "contractkit.refreshApiExplorer",
-                    "when": "view == contractkit.apiExplorer",
+                    "command": "contractkit.refreshExplorer",
+                    "when": "view == contractkit.explorer",
                     "group": "navigation@3"
                 },
                 {
-                    "command": "contractkit.clearApiFilter",
-                    "when": "view == contractkit.apiExplorer",
+                    "command": "contractkit.clearExplorerFilter",
+                    "when": "view == contractkit.explorer",
                     "group": "1_filter"
                 }
             ],
             "view/item/context": [
                 {
                     "command": "contractkit.revealApiItemSource",
-                    "when": "view == contractkit.apiExplorer && (viewItem == operation || viewItem == model)",
+                    "when": "view == contractkit.explorer && (viewItem == operation || viewItem == model)",
                     "group": "1_open@1"
                 },
                 {
                     "command": "contractkit.copyApiItemPath",
-                    "when": "view == contractkit.apiExplorer && (viewItem == operation || viewItem == model)",
+                    "when": "view == contractkit.explorer && (viewItem == operation || viewItem == model)",
                     "group": "2_copy@1"
                 },
                 {
                     "command": "contractkit.copyApiItemCurl",
-                    "when": "view == contractkit.apiExplorer && viewItem == operation",
+                    "when": "view == contractkit.explorer && viewItem == operation",
                     "group": "2_copy@2"
                 }
             ],
@@ -172,16 +181,19 @@
                     "command": "contractkit.previewApi"
                 },
                 {
-                    "command": "contractkit.refreshApiExplorer"
+                    "command": "contractkit.openOverview"
+                },
+                {
+                    "command": "contractkit.refreshExplorer"
                 },
                 {
                     "command": "contractkit.setGrouping"
                 },
                 {
-                    "command": "contractkit.filterApiExplorer"
+                    "command": "contractkit.filterExplorer"
                 },
                 {
-                    "command": "contractkit.clearApiFilter"
+                    "command": "contractkit.clearExplorerFilter"
                 },
                 {
                     "command": "contractkit.openApiItem",

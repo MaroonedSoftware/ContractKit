@@ -3,6 +3,8 @@ export { renderOperation, operationAnchor } from './render-operation.js';
 export { renderTryIt } from './render-tryit.js';
 export { renderModel, renderFieldRows, modelAnchor } from './render-model.js';
 export { renderType } from './render-type.js';
+export { renderSchemaTree } from './render-schema.js';
+export { renderCodeSamples } from './render-code-samples.js';
 export { renderItemPage, listSelections, operationId, modelId } from './render-item.js';
 export type { ItemSelection } from './render-item.js';
 export { constraintSummary } from './constraints.js';

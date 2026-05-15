@@ -8,12 +8,14 @@ import type { PreviewData, PreviewServer, RenderContext, ResolvedModel, Resolved
 export type ItemSelection =
     | { kind: 'operation'; id: string }
     | { kind: 'model'; name: string }
-    | { kind: 'overview' };
+    | { kind: 'overview' }
+    | { kind: 'file'; path: string };
 
 /**
  * Renders a single-item detail page intended for a focused webview. Wraps `renderOperation` /
- * `renderModel` / an Overview block in a minimal shell — no sidebar (the consumer provides
- * navigation via a native tree view).
+ * `renderModel` / a file page (all operations + models declared in one source file) / an
+ * Overview block in a minimal shell — no sidebar (the consumer provides navigation via a
+ * native tree view).
  */
 /** Options for {@link renderItemPage}. */
 export interface RenderItemOptions {
@@ -37,9 +39,46 @@ function renderBody(data: PreviewData, selection: ItemSelection, options: Render
         return renderOperation(op, { tryItBaseUrl: options.tryItBaseUrl, ctx });
     }
 
+    if (selection.kind === 'file') {
+        return renderFilePage(data, selection.path, options, ctx);
+    }
+
     const model = data.models.find(m => m.model.name === selection.name);
-    if (!model) return renderMissing(`Model \`${selection.name}\` is not in the current workspace.`);
+    if (!model) {
+        return renderMissing(
+            `Model \`${selection.name}\` isn't defined in any indexed \`.ck\` file. ` +
+            `It's referenced from another contract but not declared anywhere in the workspace — ` +
+            `check that the file containing \`contract ${selection.name}: { ... }\` (or its type alias) ` +
+            `is present and saved. ${data.models.length} model${data.models.length === 1 ? '' : 's'} loaded.`,
+        );
+    }
     return renderModel(model, ctx);
+}
+
+/**
+ * Renders every operation and model declared in a single source file. Used by the live-preview
+ * panel that follows the active editor — operations stack first, then models.
+ */
+function renderFilePage(
+    data: PreviewData,
+    path: string,
+    options: RenderItemOptions,
+    ctx: RenderContext,
+): string {
+    const ops = data.operations.filter(o => o.filePath === path);
+    const models = data.models.filter(m => m.filePath === path);
+    if (ops.length === 0 && models.length === 0) {
+        return renderMissing(`No contracts or operations found in \`${path}\`.`);
+    }
+    const opsHtml = ops.map(o => renderOperation(o, { tryItBaseUrl: options.tryItBaseUrl, ctx })).join('');
+    const modelsHtml = models.map(m => renderModel(m, ctx)).join('');
+    const fileLabel = path.split('/').pop() ?? path;
+    return html`<section class="ce-section">
+        <h1>${fileLabel}</h1>
+        <p class="ce-version"><code>${path}</code></p>
+        ${raw(ops.length > 0 ? `<section class="ce-section"><h1 id="endpoints">Endpoints</h1>${opsHtml}</section>` : '')}
+        ${raw(models.length > 0 ? `<section class="ce-section"><h1 id="models">Models</h1>${modelsHtml}</section>` : '')}
+    </section>`;
 }
 
 function buildModelMap(data: PreviewData): Map<string, ResolvedModel> {

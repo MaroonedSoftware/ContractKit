@@ -8,6 +8,8 @@ import type {
 } from '@contractkit/core';
 import { escapeHtml, html, raw } from './html.js';
 import { renderMarkdown } from './markdown.js';
+import { renderCodeSamples } from './render-code-samples.js';
+import { renderSchemaTree } from './render-schema.js';
 import { renderTryIt } from './render-tryit.js';
 import { renderType } from './render-type.js';
 import type { RenderContext, ResolvedOperation } from './types.js';
@@ -51,20 +53,21 @@ export function renderOperation(op: ResolvedOperation, options: RenderOperationO
           }</p>`
         : '';
 
-    const pathParams = renderParamSection('Path params', op.routeParams, ctx);
-    const queryParams = renderParamSection('Query', op.op.query, ctx);
-    const headerParams = renderParamSection('Headers', op.op.headers, ctx);
+    const pathParams = renderParamSection('Path Parameters', op.routeParams, ctx);
+    const queryParams = renderParamSection('Query Parameters', op.op.query, ctx);
+    const headerParams = renderParamSection('Request Headers', op.op.headers, ctx);
     const requestBody = renderRequest(op.op.request, ctx);
     const responses = renderResponses(op.op.responses, ctx);
     const pluginExt = renderPluginExtensions(op.op.pluginExtensions);
-    const tryIt = options.tryItBaseUrl !== undefined ? renderTryIt(op, options.tryItBaseUrl) : '';
+    const tryIt = options.tryItBaseUrl !== undefined ? renderTryIt(op, options.tryItBaseUrl, ctx) : '';
+    const codeSamples = renderCodeSamples(op, options.tryItBaseUrl ?? '', ctx);
+
+    const title = op.op.name ?? op.op.sdk ?? `${op.method.toUpperCase()} ${op.routePath}`;
 
     return html`<section id="${raw(operationAnchor(op))}" class="ce-card ce-op-card">
         <header class="ce-card-header">
-            <h2>
-                <span class="ce-method ce-method-${raw(op.method)}">${op.method.toUpperCase()}</span>
-                <code class="ce-path">${op.routePath}</code>
-                ${raw(badges.join(''))}
+            <div class="ce-op-title-row">
+                <h1 class="ce-op-title">${title}</h1>
                 <button
                     class="ce-jump"
                     data-jump-file="${op.filePath}"
@@ -74,26 +77,38 @@ export function renderOperation(op: ResolvedOperation, options: RenderOperationO
                 >
                     ↗
                 </button>
-            </h2>
-            ${op.op.name ? raw(`<p class="ce-op-name">${escapeHtml(op.op.name)}</p>`) : ''}
+            </div>
+            <div class="ce-endpoint-row">
+                <span class="ce-method ce-method-${raw(op.method)}">${op.method.toUpperCase()}</span>
+                <code class="ce-path">${op.routePath}</code>
+                ${raw(badges.length > 0 ? `<span class="ce-badge-row">${badges.join('')}</span>` : '')}
+            </div>
         </header>
-        ${raw(description)}
-        ${raw(service)}
-        ${raw(signature)}
-        ${raw(pathParams)}
-        ${raw(queryParams)}
-        ${raw(headerParams)}
-        ${raw(requestBody)}
-        ${raw(responses)}
-        ${raw(pluginExt)}
-        ${raw(tryIt)}
+        <div class="ce-op-body">
+            <div class="ce-op-main">
+                ${raw(description)}
+                ${raw(service)}
+                ${raw(signature)}
+                ${raw(pathParams)}
+                ${raw(queryParams)}
+                ${raw(headerParams)}
+                ${raw(requestBody)}
+                ${raw(responses)}
+                ${raw(pluginExt)}
+            </div>
+            <div class="ce-op-resize" data-resize-handle role="separator" aria-orientation="vertical" aria-label="Resize columns" tabindex="0"></div>
+            <aside class="ce-op-rail">
+                ${raw(tryIt)}
+                ${raw(codeSamples)}
+            </aside>
+        </div>
     </section>`;
 }
 
 function renderSecurityBadge(security: SecurityNode | undefined): string {
-    if (!security) return '';
+    if (security === undefined) return badge('security: secured', 'security-secured');
     if (security === 'none') return badge('security: none', 'security-none');
-    if (security.policy === false) return badge('security: bypassed', 'security-bypassed');
+    if (security.policy === false) return badge('security: no policy', 'security-no-policy');
     if (typeof security.policy === 'string') return badge(`policy: ${security.policy}`, 'security-policy');
     return '';
 }
@@ -110,12 +125,12 @@ function renderParamSection(label: string, source: ParamSource | undefined, ctx:
     if (source.kind === 'ref') {
         return html`<section class="ce-subsection">
             <h3>${label}</h3>
-            <div>${raw(renderType({ kind: 'ref', name: source.name }, ctx))}</div>
+            ${raw(renderSchemaTree({ kind: 'ref', name: source.name }, ctx, { exclude: 'readonly' }))}
         </section>`;
     }
     return html`<section class="ce-subsection">
         <h3>${label}</h3>
-        <div>${raw(renderType(source.node, ctx))}</div>
+        ${raw(renderSchemaTree(source.node, ctx, { exclude: 'readonly' }))}
     </section>`;
 }
 
@@ -139,31 +154,50 @@ function renderRequest(request: { bodies: OpRequestBodyNode[] } | undefined, ctx
     if (!request || request.bodies.length === 0) return '';
     const blocks = request.bodies.map(body => {
         return `<div class="ce-body-block">
-            <p class="ce-content-type"><code>${escapeHtml(body.contentType)}</code></p>
-            <div>${renderType(body.bodyType, ctx)}</div>
+            <div class="ce-body-header">
+                <span class="ce-body-title">Body</span>
+                <span class="ce-content-type"><code>${escapeHtml(body.contentType)}</code></span>
+            </div>
+            ${renderSchemaTree(body.bodyType, ctx, { exclude: 'readonly' })}
         </div>`;
     });
-    return `<section class="ce-subsection"><h3>Request body</h3>${blocks.join('')}</section>`;
+    return `<section class="ce-subsection"><h3>Request</h3>${blocks.join('')}</section>`;
 }
 
 function renderResponses(responses: OpResponseNode[], ctx: RenderContext): string {
     if (responses.length === 0) return '';
+    // Only show the at-a-glance status pill row when there's more than one response — for a
+    // single response the row would just duplicate the response block header right below it.
+    const summary = responses.length > 1
+        ? responses
+              .map(r => {
+                  const statusClass = `ce-status-${Math.floor(r.statusCode / 100)}xx`;
+                  return `<a class="ce-status ${statusClass}" href="#response-${r.statusCode}">${r.statusCode}</a>`;
+              })
+              .join('')
+        : '';
     const blocks = responses.map(r => renderResponse(r, ctx));
-    return `<section class="ce-subsection"><h3>Responses</h3>${blocks.join('')}</section>`;
+    return `<section class="ce-subsection">
+        <h3>Responses</h3>
+        ${summary ? `<div class="ce-status-summary">${summary}</div>` : ''}
+        ${blocks.join('')}
+    </section>`;
 }
 
 function renderResponse(response: OpResponseNode, ctx: RenderContext): string {
     const statusClass = `ce-status-${Math.floor(response.statusCode / 100)}xx`;
     const contentTypeHtml = response.contentType
-        ? `<p class="ce-content-type"><code>${escapeHtml(response.contentType)}</code></p>`
+        ? `<span class="ce-content-type"><code>${escapeHtml(response.contentType)}</code></span>`
         : '';
     const bodyHtml = response.bodyType
-        ? `<div>${renderType(response.bodyType, ctx)}</div>`
-        : '<p class="ce-empty">No body.</p>';
+        ? renderSchemaTree(response.bodyType, ctx, { exclude: 'writeonly' })
+        : '<p class="ce-empty">No response body.</p>';
     const headersHtml = renderResponseHeaders(response.headers, ctx);
-    return `<div class="ce-response-block">
-        <h4><span class="ce-status ${statusClass}">${response.statusCode}</span></h4>
-        ${contentTypeHtml}
+    return `<div class="ce-response-block" id="response-${response.statusCode}">
+        <div class="ce-body-header">
+            <span class="ce-status ${statusClass}">${response.statusCode}</span>
+            ${contentTypeHtml}
+        </div>
         ${bodyHtml}
         ${headersHtml}
     </div>`;

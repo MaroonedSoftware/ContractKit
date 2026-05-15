@@ -89,11 +89,13 @@ The renderer expects **pre-resolved** data — the consumer is responsible for r
 | --- | --- | --- |
 | `renderApp(data)` | HTML string | Full layout: sidebar nav + detail pane |
 | `renderItemPage(data, selection, options?)` | HTML string | Single-item detail page (operation / model / overview) |
-| `renderOperation(op, options?)` | HTML string | Operation card with Try-it form when `tryItBaseUrl` is set |
+| `renderOperation(op, options?)` | HTML string | Operation card with header, parameters, request/response schemas, and an optional Try-it form. `options.ctx` enables inline-ref expansion |
 | `renderModel(resolvedModel, ctx?)` | HTML string | Model card with badges and field table |
 | `renderFieldRows(fields, ctx?)` | HTML string | Just the field table — exported for reuse in inline-object rendering |
 | `renderType(type, ctx?)` | HTML string | Recursive type rendering; `ctx.models` enables inline ref expansion |
-| `renderTryIt(op, baseUrl)` | HTML string | Standalone Try-it form (already included by `renderOperation` when configured) |
+| `renderSchemaTree(type, ctx?, options?)` | HTML string | Indented schema field tree with constraints and defaults; supports `exclude` to drop readonly/writeonly fields |
+| `renderCodeSamples(op, baseUrl, ctx?)` | HTML string | Curl request + synthesized JSON response example for the right rail; deterministically seeded per operation |
+| `renderTryIt(op, baseUrl, ctx?)` | HTML string | Standalone Try-it form, pre-filled with deterministic faker-generated samples (already included by `renderOperation` when configured) |
 | `renderMarkdown(input)` | HTML string | Tiny safe Markdown renderer (paragraphs, headings, lists, code, bold/italic, http links) |
 | `operationId(op)` / `modelId(name)` | string | Stable anchor ids used by `ItemSelection` |
 | `listSelections(data)` | array | Flat list of every selectable item (useful for building a picker) |
@@ -125,4 +127,4 @@ See [`apps/vscode-extension/src/webview/main.ts`](../../apps/vscode-extension/sr
 
 - **Isomorphic.** Same output in a webview, a static-site generator, a server response, or a test snapshot.
 - **No runtime dependencies in consumers.** The webview bundle stays at ~20 KB; a static-site generator emits `index.html` and is done.
-- **Easy to snapshot-test.** All 54 tests in this package work on plain strings.
+- **Easy to snapshot-test.** All 96 tests in this package work on plain strings.

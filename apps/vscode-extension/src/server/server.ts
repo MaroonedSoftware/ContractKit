@@ -37,6 +37,12 @@ const documentManager = new DocumentManager(connection);
 const workspaceIndex = new WorkspaceIndex();
 const workspaceConfigCache = new WorkspaceConfigCache();
 let workspaceRoot: string | undefined;
+/**
+ * Resolves after the initial workspace scan completes. `PREVIEW_DATA_REQUEST` awaits this so a
+ * client that asks for the preview snapshot before indexing finishes doesn't receive an empty
+ * `{ operations: [], models: [] }` payload (which surfaces as "0 models loaded" in the UI).
+ */
+let initialIndexing: Promise<void> | undefined;
 
 let previewChangeTimer: NodeJS.Timeout | undefined;
 const PREVIEW_DEBOUNCE_MS = 250;
@@ -49,14 +55,25 @@ function schedulePreviewChanged(): void {
 }
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
-    // Index workspace folders on startup
+    // Index workspace folders on startup. Prefer `workspaceFolders`; fall back to the
+    // deprecated `rootUri` / `rootPath` for clients that don't pass folders.
     const folders = params.workspaceFolders;
+    const rootPaths: string[] = [];
     if (folders && folders.length > 0) {
-        const paths = folders.map(f => fileURLToPath(f.uri));
-        workspaceRoot = paths[0];
-        workspaceIndex.indexWorkspace(paths).catch(() => {
-            // Silent failure on initial indexing
-        });
+        for (const f of folders) rootPaths.push(fileURLToPath(f.uri));
+    } else if (params.rootUri) {
+        rootPaths.push(fileURLToPath(params.rootUri));
+    } else if (params.rootPath) {
+        rootPaths.push(params.rootPath);
+    }
+    if (rootPaths.length > 0) {
+        workspaceRoot = rootPaths[0];
+        initialIndexing = workspaceIndex.indexWorkspace(rootPaths)
+            .catch(() => undefined)
+            .then(() => {
+                // Notify clients that the snapshot has changed now that indexing is complete.
+                schedulePreviewChanged();
+            });
     }
 
     return {
@@ -120,8 +137,12 @@ connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
     schedulePreviewChanged();
 });
 
-// API preview: request handler returns a fully-resolved PreviewData snapshot.
-connection.onRequest(PREVIEW_DATA_REQUEST, () => buildPreviewData(workspaceIndex, workspaceConfigCache, workspaceRoot));
+// API preview: request handler returns a fully-resolved PreviewData snapshot. Awaits the
+// initial workspace scan so the very first request after startup doesn't race the indexer.
+connection.onRequest(PREVIEW_DATA_REQUEST, async () => {
+    if (initialIndexing) await initialIndexing;
+    return buildPreviewData(workspaceIndex, workspaceConfigCache, workspaceRoot);
+});
 
 // Document symbols (Outline panel)
 connection.onDocumentSymbol(params => {

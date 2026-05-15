@@ -45,7 +45,13 @@ interface PersistedState {
     data?: PreviewData;
     selection?: ItemSelection;
     tryItBaseUrl?: string;
+    /** Operation-card column split: 0..1 = fraction of width given to the main column. */
+    resizeRatio?: number;
 }
+
+const MIN_MAIN_RATIO = 0.25;
+const MAX_MAIN_RATIO = 0.85;
+const DEFAULT_MAIN_RATIO = 0.6;
 
 if (root) {
     root.innerHTML = '<p style="padding:24px;opacity:0.6;">Loading…</p>';
@@ -114,6 +120,8 @@ if (root) {
         }
     });
 
+    attachResizeHandler(root);
+
     vscode.postMessage({ type: 'ready' });
 }
 
@@ -122,9 +130,74 @@ function render(data: PreviewData, selection: ItemSelection, tryItBaseUrl: strin
     try {
         root.innerHTML = renderItemPage(data, selection, { tryItBaseUrl });
         window.scrollTo(0, 0);
+        applyPersistedResizeRatio();
     } catch (err) {
         root.innerHTML = `<pre style="padding:16px;color:#cf222e;white-space:pre-wrap;">Render error: ${esc((err as Error).message)}\n${esc((err as Error).stack ?? '')}</pre>`;
     }
+}
+
+function getResizeRatio(): number {
+    const ratio = (vscode.getState() as PersistedState | undefined)?.resizeRatio;
+    return typeof ratio === 'number' && ratio > 0 ? clamp(ratio, MIN_MAIN_RATIO, MAX_MAIN_RATIO) : DEFAULT_MAIN_RATIO;
+}
+
+function applyPersistedResizeRatio(): void {
+    if (!root) return;
+    const ratio = getResizeRatio();
+    for (const body of Array.from(root.querySelectorAll<HTMLElement>('.ce-op-body'))) {
+        setBodyRatio(body, ratio);
+    }
+}
+
+function setBodyRatio(body: HTMLElement, ratio: number): void {
+    const clamped = clamp(ratio, MIN_MAIN_RATIO, MAX_MAIN_RATIO);
+    body.style.setProperty('--ce-op-main-fr', `${clamped * 100}fr`);
+    body.style.setProperty('--ce-op-rail-fr', `${(1 - clamped) * 100}fr`);
+}
+
+function clamp(value: number, lo: number, hi: number): number {
+    return Math.min(hi, Math.max(lo, value));
+}
+
+function persistResizeRatio(ratio: number): void {
+    const state = (vscode.getState() as PersistedState | undefined) ?? {};
+    vscode.setState({ ...state, resizeRatio: clamp(ratio, MIN_MAIN_RATIO, MAX_MAIN_RATIO) });
+}
+
+function attachResizeHandler(rootEl: HTMLElement): void {
+    rootEl.addEventListener('pointerdown', event => {
+        const target = event.target as HTMLElement | null;
+        const handle = target?.closest('[data-resize-handle]') as HTMLElement | null;
+        if (!handle) return;
+        const body = handle.closest('.ce-op-body') as HTMLElement | null;
+        if (!body) return;
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        handle.classList.add('is-dragging');
+        document.body.style.cursor = 'col-resize';
+
+        const onMove = (e: PointerEvent): void => {
+            const rect = body.getBoundingClientRect();
+            if (rect.width <= 0) return;
+            const ratio = (e.clientX - rect.left) / rect.width;
+            setBodyRatio(body, ratio);
+        };
+        const onUp = (e: PointerEvent): void => {
+            handle.releasePointerCapture(e.pointerId);
+            handle.classList.remove('is-dragging');
+            document.body.style.cursor = '';
+            handle.removeEventListener('pointermove', onMove);
+            handle.removeEventListener('pointerup', onUp);
+            handle.removeEventListener('pointercancel', onUp);
+            // Read back the applied ratio from the inline style and persist it.
+            const fr = body.style.getPropertyValue('--ce-op-main-fr');
+            const num = parseFloat(fr);
+            if (Number.isFinite(num) && num > 0) persistResizeRatio(num / 100);
+        };
+        handle.addEventListener('pointermove', onMove);
+        handle.addEventListener('pointerup', onUp);
+        handle.addEventListener('pointercancel', onUp);
+    });
 }
 
 function sendTryIt(operationId: string, sendBtn: HTMLButtonElement): void {

@@ -1,5 +1,108 @@
-import type { ContractTypeNode, ContractRootNode, ModelNode, OpRootNode, ParamSource } from './ast.js';
+import type { ContractTypeNode, ContractRootNode, FieldNode, ModelNode, OpRootNode, ParamSource } from './ast.js';
 import { resolveModifiers } from './ast.js';
+
+// ─── Effective-field resolution ────────────────────────────────────────────
+
+/** Result of `resolveEffectiveFields` — the flattened field set plus any refs that
+ * couldn't be resolved against the supplied model index. */
+export interface EffectiveFields {
+    fields: FieldNode[];
+    /** Model names that the resolution touched but couldn't find in the index. */
+    unresolved: string[];
+}
+
+/**
+ * Flattens a type or model name into an effective field list, following all forms of
+ * composition recognized by the contractkit language:
+ *
+ * - `contract Foo: { a: int }` → own fields
+ * - `contract Foo: A & B & { c: int }` → bases (`A`, `B`) contribute, own fields appended
+ * - `Foo: A & B` (no `{ ... }`) → type alias to intersection; both members contribute
+ * - Alias chains (`Foo: SomeOther`), nested intersections, inline objects, and `lazy` wrappers
+ * - Multi-base inheritance with diamond dedup (later declarations override earlier)
+ * - Cycle protection (`A: B`, `B: A` → resolved once, no infinite loop)
+ *
+ * Shapes that can't contribute named fields (scalars, unions, enums, arrays, records,
+ * tuples) yield an empty field list — they're meant to be rendered as their own thing,
+ * not flattened. Unresolved refs are captured for the caller to surface as a diagnostic.
+ */
+export function resolveEffectiveFields(
+    target: string | ContractTypeNode,
+    modelIndex: ReadonlyMap<string, ModelNode>,
+): EffectiveFields {
+    const unresolved: string[] = [];
+    const visited = new Set<string>();
+
+    const recordUnresolved = (name: string): void => {
+        if (!unresolved.includes(name)) unresolved.push(name);
+    };
+
+    const fromName = (name: string): FieldNode[] => {
+        if (visited.has(name)) return [];
+        visited.add(name);
+        const model = modelIndex.get(name);
+        if (!model) {
+            recordUnresolved(name);
+            return [];
+        }
+        if (model.type) return fromType(model.type);
+        return collectModelFields(model);
+    };
+
+    const collectModelFields = (model: ModelNode): FieldNode[] => {
+        const merged: FieldNode[] = [];
+        const index = new Map<string, number>();
+        const push = (f: FieldNode): void => {
+            const existing = index.get(f.name);
+            if (existing !== undefined) merged[existing] = f;
+            else {
+                index.set(f.name, merged.length);
+                merged.push(f);
+            }
+        };
+        if (model.bases) {
+            for (const base of model.bases) {
+                for (const f of fromName(base)) push(f);
+            }
+        }
+        for (const f of model.fields) push(f);
+        return merged;
+    };
+
+    const fromType = (type: ContractTypeNode): FieldNode[] => {
+        switch (type.kind) {
+            case 'inlineObject': return type.fields;
+            case 'ref': return fromName(type.name);
+            case 'intersection': {
+                const merged: FieldNode[] = [];
+                const index = new Map<string, number>();
+                for (const member of type.members) {
+                    for (const f of fromType(member)) {
+                        const existing = index.get(f.name);
+                        if (existing !== undefined) merged[existing] = f;
+                        else {
+                            index.set(f.name, merged.length);
+                            merged.push(f);
+                        }
+                    }
+                }
+                return merged;
+            }
+            case 'lazy': return fromType(type.inner);
+            default: return [];
+        }
+    };
+
+    const fields = typeof target === 'string' ? fromName(target) : fromType(target);
+    return { fields, unresolved };
+}
+
+/** Builds a lookup map suitable for {@link resolveEffectiveFields}. */
+export function buildModelIndex(models: readonly ModelNode[]): Map<string, ModelNode> {
+    const out = new Map<string, ModelNode>();
+    for (const m of models) out.set(m.name, m);
+    return out;
+}
 
 // ─── Type collection ──────────────────────────────────────────────────────
 

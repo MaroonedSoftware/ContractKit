@@ -31,6 +31,15 @@ describe('renderApp', () => {
         expect(html).toContain('href="#model-User"');
     });
 
+    it('renders sidebar rows with name + method-colored label', () => {
+        const html = renderApp(data);
+        expect(html).toContain('class="ce-sidebar-row"');
+        expect(html).toContain('class="ce-sidebar-marker"');
+        expect(html).toContain('class="ce-sidebar-name">listPayments</span>');
+        expect(html).toContain('ce-method-text-get">GET</span>');
+        expect(html).toContain('ce-method-text-post">POST</span>');
+    });
+
     it('renders the overview section', () => {
         const html = renderApp(data);
         expect(html).toContain('id="overview"');
