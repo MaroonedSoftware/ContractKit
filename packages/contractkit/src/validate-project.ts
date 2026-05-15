@@ -20,8 +20,14 @@ export interface ProjectFile {
 /** Options accepted by {@link validateProject}. */
 export interface ValidateProjectOptions {
     files: ProjectFile[];
-    /** Fallback `{{key}}` substitutions applied workspace-wide. Passed through to {@link applyVariableSubstitution}. */
+    /** Fallback `{{key}}` substitutions applied workspace-wide. Passed through to {@link applyVariableSubstitution}. Ignored for any file that matches `getKeysForFile`. */
     fallbackKeys?: Record<string, string>;
+    /**
+     * Per-file fallback keys resolver, used when different files in the same project resolve
+     * different `contractkit.config.json` files (e.g. an LSP serving a workspace with multiple
+     * configs). Returning `undefined` falls back to `fallbackKeys`.
+     */
+    getKeysForFile?: (filePath: string) => Record<string, string> | undefined;
     /** Existing collector to append into. A fresh one is created when omitted. */
     diag?: DiagnosticCollector;
 }
@@ -75,7 +81,8 @@ export const validateProject = (options: ValidateProjectOptions): ValidateProjec
         }
 
         applyOptionsDefaults(ast, diag);
-        applyVariableSubstitution(ast, diag, fallbackKeys);
+        const keysForFile = options.getKeysForFile?.(file.filePath) ?? fallbackKeys;
+        applyVariableSubstitution(ast, diag, keysForFile);
         asts.push({ filePath: file.filePath, ast });
 
         const { contract, op } = decomposeCk(ast);

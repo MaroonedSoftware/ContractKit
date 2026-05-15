@@ -29,6 +29,7 @@ import { getInlayHints } from './inlay-hint-provider.js';
 import { getSemanticTokens, SEMANTIC_TOKENS_LEGEND } from './semantic-tokens-provider.js';
 import { WorkspaceConfigCache } from './workspace-config.js';
 import { buildPreviewData } from './preview-data-builder.js';
+import { ProjectValidator } from './project-validator.js';
 import { PREVIEW_DATA_CHANGED_NOTIFICATION, PREVIEW_DATA_REQUEST } from '../shared/protocol.js';
 
 const connection = createConnection(ProposedFeatures.all);
@@ -36,6 +37,12 @@ const documents = new TextDocuments(TextDocument);
 const documentManager = new DocumentManager(connection);
 const workspaceIndex = new WorkspaceIndex();
 const workspaceConfigCache = new WorkspaceConfigCache();
+const projectValidator = new ProjectValidator(connection, documentManager, workspaceIndex, workspaceConfigCache, {
+    getOpenDocumentText: uri => documents.get(uri)?.getText(),
+});
+// After each parse, refresh cross-file diagnostics so the editor sees ref/inheritance errors that
+// involve the just-changed file.
+documentManager.setOnParsed(() => projectValidator.schedule());
 let workspaceRoot: string | undefined;
 /**
  * Resolves after the initial workspace scan completes. `PREVIEW_DATA_REQUEST` awaits this so a
@@ -73,6 +80,9 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
             .then(() => {
                 // Notify clients that the snapshot has changed now that indexing is complete.
                 schedulePreviewChanged();
+                // Run cross-file validation across the initial snapshot so any pre-existing
+                // ref/inheritance errors surface without waiting for the first edit.
+                projectValidator.schedule();
             });
     }
 
@@ -135,6 +145,7 @@ connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
     }
     if (configChanged) workspaceConfigCache.clear();
     schedulePreviewChanged();
+    projectValidator.schedule();
 });
 
 // API preview: request handler returns a fully-resolved PreviewData snapshot. Awaits the

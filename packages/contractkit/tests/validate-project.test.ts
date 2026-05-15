@@ -63,4 +63,41 @@ describe('validateProject', () => {
         expect(errors(result.diag)).toHaveLength(0);
         expect(result.asts[0]!.ast.services?.Foo).toBe('https://example.com/foo');
     });
+
+    it('honors per-file fallbackKeys via getKeysForFile', () => {
+        const result = validateProject({
+            files: [
+                {
+                    filePath: '/projects/payments/contracts/a.ck',
+                    source: `options { services: { Foo: "{{api}}/a" } }\noperation /a: { get: { response: { 200: } } }`,
+                },
+                {
+                    filePath: '/projects/billing/contracts/b.ck',
+                    source: `options { services: { Bar: "{{api}}/b" } }\noperation /b: { get: { response: { 200: } } }`,
+                },
+            ],
+            getKeysForFile: filePath =>
+                filePath.includes('/payments/') ? { api: 'https://payments.example.com' } : { api: 'https://billing.example.com' },
+        });
+        expect(errors(result.diag)).toHaveLength(0);
+        const a = result.asts.find(x => x.filePath.includes('/payments/'));
+        const b = result.asts.find(x => x.filePath.includes('/billing/'));
+        expect(a?.ast.services?.Foo).toBe('https://payments.example.com/a');
+        expect(b?.ast.services?.Bar).toBe('https://billing.example.com/b');
+    });
+
+    it('falls back to fallbackKeys when getKeysForFile returns undefined', () => {
+        const result = validateProject({
+            files: [
+                {
+                    filePath: '/known.ck',
+                    source: `options { services: { Foo: "{{api}}/x" } }\noperation /x: { get: { response: { 200: } } }`,
+                },
+            ],
+            fallbackKeys: { api: 'https://fallback.example.com' },
+            getKeysForFile: () => undefined,
+        });
+        expect(errors(result.diag)).toHaveLength(0);
+        expect(result.asts[0]!.ast.services?.Foo).toBe('https://fallback.example.com/x');
+    });
 });

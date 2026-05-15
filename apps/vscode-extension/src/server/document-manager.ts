@@ -2,7 +2,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath } from 'node:url';
 import { Connection, Diagnostic as LspDiagnostic } from 'vscode-languageserver';
 import { parseCk, DiagnosticCollector } from '@contractkit/core';
-import type { CkRootNode } from '@contractkit/core';
+import type { CkRootNode, Diagnostic } from '@contractkit/core';
 import { toLspDiagnostics } from './diagnostics-adapter.js';
 
 /** Cached parse of a single open document. `version` matches the `TextDocument` version at parse time. */
@@ -13,8 +13,23 @@ export type ParsedDocument = { ast: CkRootNode; version: number };
 export class DocumentManager {
     private cache = new Map<string, ParsedDocument>();
     private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    /** Parse diagnostics from the most recent successful parse of each URI. */
+    private parseDiagnostics = new Map<string, Diagnostic[]>();
+    /** Optional listener fired after `parseAndPublish` finishes (used by the project validator to re-run cross-file checks). */
+    private onParsedListener?: (uri: string) => void;
 
     constructor(private connection: Connection) {}
+
+    /** Register a callback fired whenever a document finishes parsing. Used by the project validator
+     * to refresh cross-file diagnostics on every parse. Pass `undefined` to clear. */
+    setOnParsed(listener: ((uri: string) => void) | undefined): void {
+        this.onParsedListener = listener;
+    }
+
+    /** Parse-time diagnostics for `uri`, or `[]` if the document has never been parsed. */
+    getParseDiagnostics(uri: string): Diagnostic[] {
+        return this.parseDiagnostics.get(uri) ?? [];
+    }
 
     /** Latest successfully parsed AST for `uri`, or `undefined` if the document hasn't parsed yet. */
     getDocument(uri: string): ParsedDocument | undefined {
@@ -56,13 +71,17 @@ export class DocumentManager {
             // If parsing crashes entirely, still report collected diagnostics
         }
 
-        const lspDiagnostics: LspDiagnostic[] = toLspDiagnostics(diag.getAll(), text);
+        const parseDiags = diag.getAll();
+        this.parseDiagnostics.set(uri, parseDiags);
+        const lspDiagnostics: LspDiagnostic[] = toLspDiagnostics(parseDiags, text);
         this.connection.sendDiagnostics({ uri, diagnostics: lspDiagnostics });
+        this.onParsedListener?.(uri);
     }
 
     /** Drop cached state for `uri` (called on document close) and clear its diagnostics in the client. */
     removeDocument(uri: string): void {
         this.cache.delete(uri);
+        this.parseDiagnostics.delete(uri);
         const timer = this.debounceTimers.get(uri);
         if (timer) {
             clearTimeout(timer);

@@ -7,8 +7,6 @@ import { default as importOpenApiPlugin } from '@contractkit/openapi-to-ck/plugi
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
 import { glob } from 'glob';
 import {
     DiagnosticCollector,
@@ -25,7 +23,8 @@ import {
 import type { ContractRootNode, OpRootNode, ContractKitPlugin } from '@contractkit/core';
 import { loadConfig, mergeConfig, type PluginEntry } from './config.js';
 import { CacheService, COMPILER_FINGERPRINT_KEY, computeHash } from './cache.js';
-import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist, type LoadedPlugin } from './plugin.js';
+import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist } from './plugin.js';
+import { computeCompilerFingerprintFromImportMeta } from './compiler-fingerprint.js';
 import { resolvePluginExtensions } from './resolve-plugin-extensions.js';
 import type { FileHashMap } from './cache.js';
 
@@ -126,48 +125,6 @@ function collectFallbackKeys(entries: PluginEntry[], builtins: Record<string, st
     return merged;
 }
 
-// ─── Compiler fingerprint ──────────────────────────────────────────────────
-
-/** Walk up from a file path looking for the nearest `package.json` and return its `version`, or `''` if unavailable. */
-function readNearestPackageVersion(startPath: string): string {
-    try {
-        let dir = dirname(startPath);
-        for (let i = 0; i < 10; i++) {
-            const candidate = join(dir, 'package.json');
-            if (existsSync(candidate)) {
-                const pkg = JSON.parse(readFileSync(candidate, 'utf-8')) as { version?: string };
-                return pkg.version ?? '';
-            }
-            const parent = dirname(dir);
-            if (parent === dir) return '';
-            dir = parent;
-        }
-    } catch {
-        // best-effort
-    }
-    return '';
-}
-
-/**
- * Stable fingerprint of the codegen-affecting versions in play this run. Used
- * to invalidate the cache whenever the CLI, `@contractkit/core`, or any loaded
- * plugin is upgraded — otherwise stale generated TypeScript would persist
- * until the next `--force` run.
- */
-function computeCompilerFingerprint(plugins: LoadedPlugin[]): string {
-    const cliPath = fileURLToPath(import.meta.url);
-    const cliVersion = readNearestPackageVersion(cliPath);
-    let coreVersion = '';
-    try {
-        const corePkg = createRequire(cliPath).resolve('@contractkit/core/package.json');
-        coreVersion = (JSON.parse(readFileSync(corePkg, 'utf-8')) as { version?: string }).version ?? '';
-    } catch {
-        // Optional — fingerprint just omits core when it can't be resolved.
-    }
-    const pluginParts = plugins.map(p => `${p.plugin.name}@${p.version}`).sort();
-    return computeHash(['cli', cliVersion, 'core', coreVersion, ...pluginParts].join('|'));
-}
-
 // ─── File resolution ───────────────────────────────────────────────────────
 
 async function resolveFiles(patterns: string[], rootDir: string): Promise<string[]> {
@@ -261,7 +218,7 @@ async function main() {
         const resolvedBase = resolve(config.rootDir);
         const cacheEnabled = config.cache.enabled && !config.force;
         const cacheService = new CacheService(resolvedBase, { enabled: cacheEnabled, dir: config.cache.dir });
-        const compilerFingerprint = computeCompilerFingerprint(plugins);
+        const compilerFingerprint = computeCompilerFingerprintFromImportMeta(plugins, import.meta.url);
         const cache: FileHashMap = cacheService.loadBuildCache(compilerFingerprint);
         const newCache: FileHashMap = { [COMPILER_FINGERPRINT_KEY]: compilerFingerprint };
 
