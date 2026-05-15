@@ -22,6 +22,57 @@ describe('renderItemPage', () => {
         expect(html).toContain('Pick an endpoint or model');
     });
 
+    it('renders endpoints grouped by area on the overview', () => {
+        const grouped: PreviewData = {
+            configMeta: { title: 'Test API', version: '1.0.0' },
+            operations: [
+                resolvedOp('/payments', op('get', { sdk: 'listPayments', name: 'List payments' }), { fileGroup: 'payments' }),
+                resolvedOp('/payments/{id}', op('get', { sdk: 'getPayment' }), { fileGroup: 'payments' }),
+                resolvedOp('/customers', op('post', { sdk: 'createCustomer' }), { fileGroup: 'customers' }),
+            ],
+            models: [],
+            warnings: [],
+        };
+        const html = renderItemPage(grouped, { kind: 'overview' });
+        expect(html).toContain('class="ce-overview-area"');
+        expect(html).toContain('payments');
+        expect(html).toContain('customers');
+        expect(html).toContain('data-open-operation=');
+        expect(html).toContain('class="ce-method ce-method-get"');
+        expect(html).toContain('class="ce-method ce-method-post"');
+        // Human-readable name shows next to the path when present
+        expect(html).toContain('class="ce-overview-endpoint-name">List payments<');
+        // ≤3 areas → all start open
+        expect(html).toContain('<details class="ce-overview-area" open>');
+        // Area count badge reflects ops in that area
+        expect(html).toMatch(/class="ce-overview-area-count">2</);
+    });
+
+    it('starts areas collapsed when there are more than three', () => {
+        const many: PreviewData = {
+            configMeta: { title: 'Test API', version: '1.0.0' },
+            operations: ['a', 'b', 'c', 'd'].map((g, i) =>
+                resolvedOp(`/r${i}`, op('get', { sdk: `op${i}` }), { fileGroup: g }),
+            ),
+            models: [],
+            warnings: [],
+        };
+        const html = renderItemPage(many, { kind: 'overview' });
+        expect(html).not.toContain('<details class="ce-overview-area" open>');
+        expect(html).toContain('<details class="ce-overview-area">');
+    });
+
+    it('omits the endpoints section when there are no operations', () => {
+        const empty: PreviewData = {
+            configMeta: { title: 'Test API', version: '1.0.0' },
+            operations: [],
+            models: [],
+            warnings: [],
+        };
+        const html = renderItemPage(empty, { kind: 'overview' });
+        expect(html).not.toContain('ce-overview-area');
+    });
+
     it('renders an operation view by id', () => {
         const id = operationId(data.operations[0]!);
         const html = renderItemPage(data, { kind: 'operation', id });

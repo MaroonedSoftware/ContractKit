@@ -11,6 +11,11 @@ interface OpenModelMessage {
     name: string;
 }
 
+interface OpenOperationMessage {
+    type: 'openOperation';
+    id: string;
+}
+
 interface ReadyMessage {
     type: 'ready';
 }
@@ -20,7 +25,7 @@ interface SendRequestMessage {
     request: TryItRequest;
 }
 
-type IncomingMessage = RevealMessage | OpenModelMessage | ReadyMessage | SendRequestMessage;
+type IncomingMessage = RevealMessage | OpenModelMessage | OpenOperationMessage | ReadyMessage | SendRequestMessage;
 
 /**
  * Singleton live-preview panel that follows the active text editor — matches the VS Code
@@ -132,6 +137,12 @@ export class LivePreviewPanel {
                 void vscode.commands.executeCommand('contractkit.openApiItem', {
                     kind: 'model',
                     name: msg.name,
+                });
+                return;
+            case 'openOperation':
+                void vscode.commands.executeCommand('contractkit.openApiItem', {
+                    kind: 'operation',
+                    id: msg.id,
                 });
                 return;
             case 'sendRequest':

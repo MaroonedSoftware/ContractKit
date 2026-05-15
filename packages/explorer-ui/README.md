@@ -118,6 +118,7 @@ The webview script (or static-site bootstrapper) attaches event delegation to ha
 | --- | --- |
 | `[data-tryit-action="send"]` | Read the form, post `{type:'sendRequest', request}` to the host, render response |
 | `[data-open-model]` | Navigate the detail view to that model's dedicated page |
+| `[data-open-operation]` | Post `{type:'openOperation', id}` — used by the overview's "Endpoints by area" list to open an operation in its own panel |
 | `[data-jump-file] / [data-jump-line]` | Post `{type:'reveal', file, line}` to the host (in VS Code, opens the source) |
 | `a.ce-ref` | Fallback for unresolved refs — host navigates to the dedicated page |
 

@@ -12,6 +12,11 @@ interface OpenModelMessage {
     name: string;
 }
 
+interface OpenOperationMessage {
+    type: 'openOperation';
+    id: string;
+}
+
 interface ReadyMessage {
     type: 'ready';
 }
@@ -21,13 +26,15 @@ interface SendRequestMessage {
     request: TryItRequest;
 }
 
-type IncomingMessage = RevealMessage | OpenModelMessage | ReadyMessage | SendRequestMessage;
+type IncomingMessage = RevealMessage | OpenModelMessage | OpenOperationMessage | ReadyMessage | SendRequestMessage;
 
 /**
  * One webview panel per unique selection (operation / model / overview). Clicking a different
  * item in the tree opens its own dedicated panel — like opening multiple editor tabs. Clicking
  * the same item again reveals its existing panel instead of duplicating it. Ref-link clicks
- * inside a panel also spawn a new panel for the linked model rather than navigating in place.
+ * inside a panel also spawn a new panel for the linked model rather than navigating in place;
+ * clicking an endpoint row in the Overview's "Endpoints by area" list similarly spawns a
+ * dedicated operation panel.
  */
 export class PreviewPanel {
     private static panels = new Map<string, PreviewPanel>();
@@ -112,6 +119,9 @@ export class PreviewPanel {
             case 'openModel':
                 // Open the linked model in its own panel — reveals if already open.
                 PreviewPanel.createOrShow(this.context, this.store, { kind: 'model', name: msg.name });
+                return;
+            case 'openOperation':
+                PreviewPanel.createOrShow(this.context, this.store, { kind: 'operation', id: msg.id });
                 return;
             case 'sendRequest':
                 void this.handleTryIt(msg.request);

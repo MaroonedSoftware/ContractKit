@@ -11,18 +11,23 @@ export type ItemSelection =
     | { kind: 'overview' }
     | { kind: 'file'; path: string };
 
-/**
- * Renders a single-item detail page intended for a focused webview. Wraps `renderOperation` /
- * `renderModel` / a file page (all operations + models declared in one source file) / an
- * Overview block in a minimal shell — no sidebar (the consumer provides navigation via a
- * native tree view).
- */
 /** Options for {@link renderItemPage}. */
 export interface RenderItemOptions {
     /** Base URL surfaced to the operation's Try-it form. Pass an empty string to render the form with no default; omit to hide the form. */
     tryItBaseUrl?: string;
 }
 
+/**
+ * Renders a single-item detail page intended for a focused webview. Wraps `renderOperation` /
+ * `renderModel` / a file page (all operations + models declared in one source file) / an
+ * Overview block in a minimal shell — no sidebar (the consumer provides navigation via a
+ * native tree view).
+ *
+ * The Overview block now includes a collapsible "Endpoints by area" list grouping operations
+ * by their `fileGroup` — each row links to the operation's detail panel via a
+ * `data-open-operation="<anchor>"` attribute that webview consumers handle as an
+ * `openOperation` message.
+ */
 export function renderItemPage(data: PreviewData, selection: ItemSelection, options: RenderItemOptions = {}): string {
     const body = renderBody(data, selection, options);
     return html`<div class="ce-detail ce-detail-single">${raw(body)}</div>`;
@@ -97,15 +102,64 @@ function renderOverviewPage(data: PreviewData): string {
         <dt>Endpoints</dt><dd>${data.operations.length}</dd>
         <dt>Models</dt><dd>${data.models.length}</dd>
     </dl>`;
+    const endpoints = renderEndpointsByArea(data);
 
     return html`<section id="overview" class="ce-section ce-overview">
         <h1>${configMeta.title}</h1>
         <p class="ce-version">v${configMeta.version}</p>
         ${raw(description)}
         ${raw(stats)}
+        ${raw(endpoints)}
         ${raw(servers)}
         <p class="ce-hint">Pick an endpoint or model from the API Explorer in the sidebar to see details.</p>
     </section>`;
+}
+
+function renderEndpointsByArea(data: PreviewData): string {
+    if (data.operations.length === 0) return '';
+
+    const byArea = new Map<string, ResolvedOperation[]>();
+    for (const op of data.operations) {
+        const key = op.fileGroup;
+        const list = byArea.get(key);
+        if (list) list.push(op);
+        else byArea.set(key, [op]);
+    }
+
+    const sortedAreas = [...byArea.keys()].sort((a, b) => a.localeCompare(b));
+    const openByDefault = sortedAreas.length <= 3;
+
+    const sections = sortedAreas
+        .map(area => {
+            const ops = byArea.get(area)!;
+            const rows = ops
+                .map(op => {
+                    const name = op.op.name?.trim();
+                    const nameHtml = name
+                        ? `<span class="ce-overview-endpoint-name">${escapeHtml(name)}</span>`
+                        : '';
+                    return (
+                        `<li><a class="ce-overview-endpoint" href="#${escapeHtml(operationAnchor(op))}" data-open-operation="${escapeHtml(operationAnchor(op))}">` +
+                        `<span class="ce-method ce-method-${escapeHtml(op.method)}">${escapeHtml(op.method.toUpperCase())}</span>` +
+                        `<code class="ce-overview-endpoint-path">${escapeHtml(op.routePath)}</code>` +
+                        nameHtml +
+                        `</a></li>`
+                    );
+                })
+                .join('');
+            return (
+                `<details class="ce-overview-area"${openByDefault ? ' open' : ''}>` +
+                `<summary>` +
+                `<span class="ce-overview-area-name">${escapeHtml(area)}</span>` +
+                `<span class="ce-overview-area-count">${ops.length}</span>` +
+                `</summary>` +
+                `<ul class="ce-overview-endpoints">${rows}</ul>` +
+                `</details>`
+            );
+        })
+        .join('');
+
+    return `<section class="ce-subsection ce-overview-endpoints-section"><h3>Endpoints by area</h3>${sections}</section>`;
 }
 
 function renderServersList(servers: PreviewServer[] | undefined): string {

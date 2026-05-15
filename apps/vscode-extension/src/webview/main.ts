@@ -97,6 +97,15 @@ if (root) {
             return;
         }
 
+        // Endpoint row on the overview page — open the operation in its own panel.
+        const openOpEl = target.closest('[data-open-operation]') as HTMLElement | null;
+        if (openOpEl) {
+            event.preventDefault();
+            event.stopPropagation();
+            vscode.postMessage({ type: 'openOperation', id: openOpEl.dataset.openOperation ?? '' });
+            return;
+        }
+
         // Bare `<a class="ce-ref">` (unresolved model) — navigate to the dedicated page.
         const refLink = target.closest('a.ce-ref') as HTMLAnchorElement | null;
         if (refLink) {

@@ -26,6 +26,7 @@ Language support for ContractKit `.ck` contract files in VS Code and Cursor. Inc
 - **Filter & grouping** — title-bar buttons let you filter by path/name/method/sdk/service and switch the grouping mode (persisted per workspace)
 - **Right-click actions** on tree nodes — Reveal in Editor, Copy Path (`METHOD /route`), Copy as cURL
 - **API preview panel** — click any tree node to open a Stoplight-style detail panel beside the editor showing description, params, request/response schemas (with **inline-expandable** model refs), security badges, plugin extensions, and source-jump buttons. Lives refreshes on edit.
+- **Overview endpoints list** — the API Overview page shows a collapsible list of every operation grouped by area (method badge, route, and optional human-readable name). Areas auto-expand when there are three or fewer; click any row to open that operation in its own panel.
 - **Markdown in descriptions** — `description:` blocks render with paragraphs, headings, lists, fenced code, bold/italic, inline code, and http(s) links (in the preview panel and tree tooltips).
 - **Try-it-out** — every operation card includes a collapsible form prefilled with the schema's path params, query, headers, and (for JSON bodies) an editable body textarea. Send button fires the request from the extension host (Node `fetch`, full network access), shows status/headers/body in-place.
 - **Status bar** — left-aligned entry shows the API title, endpoint and model counts, and a warning badge. Click to open the preview.
