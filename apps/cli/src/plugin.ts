@@ -1,5 +1,5 @@
-import { resolve, isAbsolute } from 'node:path';
-import { existsSync } from 'node:fs';
+import { resolve, isAbsolute, dirname, join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { computeHash } from './cache.js';
 import type { PluginEntry, ResolvedConfig } from './config.js';
@@ -11,16 +11,39 @@ export type { ContractKitPlugin };
 export interface LoadedPlugin {
     plugin: ContractKitPlugin;
     entry: PluginEntry;
+    /** Resolved version from the plugin module's `package.json`. Empty string when the version can't be discovered. */
+    version: string;
 }
+
+/** Walk up from a module file looking for the nearest `package.json` and return its `version`, or `''` if none is found. */
+const tryReadVersion = (modulePath: string): string => {
+    try {
+        let dir = dirname(modulePath);
+        for (let i = 0; i < 10; i++) {
+            const candidate = join(dir, 'package.json');
+            if (existsSync(candidate)) {
+                const pkg = JSON.parse(readFileSync(candidate, 'utf-8')) as { version?: string };
+                return pkg.version ?? '';
+            }
+            const parent = dirname(dir);
+            if (parent === dir) return '';
+            dir = parent;
+        }
+    } catch {
+        // best-effort
+    }
+    return '';
+};
 
 export async function loadPlugins(entries: PluginEntry[], configDir: string): Promise<LoadedPlugin[]> {
     const loaded: LoadedPlugin[] = [];
+    const require_ = createRequire(resolve(configDir, 'package.json'));
     for (const entry of entries) {
         const { plugin: specifier } = entry;
         const modulePath =
             specifier.startsWith('.') || specifier.startsWith('/') || isAbsolute(specifier)
                 ? resolve(configDir, specifier)
-                : createRequire(resolve(configDir, 'package.json')).resolve(specifier);
+                : require_.resolve(specifier);
         let mod: unknown;
         try {
             mod = await import(modulePath);
@@ -32,7 +55,7 @@ export async function loadPlugins(entries: PluginEntry[], configDir: string): Pr
         if (!raw || typeof raw !== 'object' || typeof (raw as { name?: string }).name !== 'string') {
             throw new Error(`Plugin "${specifier}" must export a ContractKitPlugin object with a "name" field.`);
         }
-        loaded.push({ plugin: raw as ContractKitPlugin, entry });
+        loaded.push({ plugin: raw as ContractKitPlugin, entry, version: tryReadVersion(modulePath) });
     }
     return loaded;
 }
@@ -65,8 +88,14 @@ export function makePluginContext(
     };
 }
 
-export function computePluginFingerprint(newCache: FileHashMap, cacheKey: string): string {
-    const allHashes = Object.values(newCache).sort().join('|') + '|' + cacheKey;
+/**
+ * Build the fingerprint stored under `__plugin_<cacheKey>__`. Hashes every
+ * source file's content hash from `newCache` plus the cacheKey. When a
+ * `pluginVersion` is supplied, it's folded in so a plugin package upgrade
+ * invalidates its slice of the cache without disturbing other plugins.
+ */
+export function computePluginFingerprint(newCache: FileHashMap, cacheKey: string, pluginVersion?: string): string {
+    const allHashes = Object.values(newCache).sort().join('|') + '|' + cacheKey + (pluginVersion ? `|v=${pluginVersion}` : '');
     return computeHash(allHashes);
 }
 

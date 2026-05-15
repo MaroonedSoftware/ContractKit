@@ -10,6 +10,7 @@ export * from './validate-inheritance.js';
 export * from './apply-options-defaults.js';
 export * from './apply-variable-substitution.js';
 export * from './validate-refs.js';
+export * from './validate-project.js';
 export * from './plugin.js';
 export * from './content-type.js';
 export * from './incremental.js';

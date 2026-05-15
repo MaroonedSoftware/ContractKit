@@ -5,8 +5,10 @@
 // to the first plugin whose command.name matches argv[2].
 import { default as importOpenApiPlugin } from '@contractkit/openapi-to-ck/plugin';
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { glob } from 'glob';
 import {
     DiagnosticCollector,
@@ -22,8 +24,8 @@ import {
 } from '@contractkit/core';
 import type { ContractRootNode, OpRootNode, ContractKitPlugin } from '@contractkit/core';
 import { loadConfig, mergeConfig, type PluginEntry } from './config.js';
-import { CacheService, computeHash } from './cache.js';
-import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist } from './plugin.js';
+import { CacheService, COMPILER_FINGERPRINT_KEY, computeHash } from './cache.js';
+import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist, type LoadedPlugin } from './plugin.js';
 import { resolvePluginExtensions } from './resolve-plugin-extensions.js';
 import type { FileHashMap } from './cache.js';
 
@@ -124,6 +126,48 @@ function collectFallbackKeys(entries: PluginEntry[], builtins: Record<string, st
     return merged;
 }
 
+// ─── Compiler fingerprint ──────────────────────────────────────────────────
+
+/** Walk up from a file path looking for the nearest `package.json` and return its `version`, or `''` if unavailable. */
+function readNearestPackageVersion(startPath: string): string {
+    try {
+        let dir = dirname(startPath);
+        for (let i = 0; i < 10; i++) {
+            const candidate = join(dir, 'package.json');
+            if (existsSync(candidate)) {
+                const pkg = JSON.parse(readFileSync(candidate, 'utf-8')) as { version?: string };
+                return pkg.version ?? '';
+            }
+            const parent = dirname(dir);
+            if (parent === dir) return '';
+            dir = parent;
+        }
+    } catch {
+        // best-effort
+    }
+    return '';
+}
+
+/**
+ * Stable fingerprint of the codegen-affecting versions in play this run. Used
+ * to invalidate the cache whenever the CLI, `@contractkit/core`, or any loaded
+ * plugin is upgraded — otherwise stale generated TypeScript would persist
+ * until the next `--force` run.
+ */
+function computeCompilerFingerprint(plugins: LoadedPlugin[]): string {
+    const cliPath = fileURLToPath(import.meta.url);
+    const cliVersion = readNearestPackageVersion(cliPath);
+    let coreVersion = '';
+    try {
+        const corePkg = createRequire(cliPath).resolve('@contractkit/core/package.json');
+        coreVersion = (JSON.parse(readFileSync(corePkg, 'utf-8')) as { version?: string }).version ?? '';
+    } catch {
+        // Optional — fingerprint just omits core when it can't be resolved.
+    }
+    const pluginParts = plugins.map(p => `${p.plugin.name}@${p.version}`).sort();
+    return computeHash(['cli', cliVersion, 'core', coreVersion, ...pluginParts].join('|'));
+}
+
 // ─── File resolution ───────────────────────────────────────────────────────
 
 async function resolveFiles(patterns: string[], rootDir: string): Promise<string[]> {
@@ -217,8 +261,9 @@ async function main() {
         const resolvedBase = resolve(config.rootDir);
         const cacheEnabled = config.cache.enabled && !config.force;
         const cacheService = new CacheService(resolvedBase, { enabled: cacheEnabled, dir: config.cache.dir });
-        const cache: FileHashMap = cacheService.loadBuildCache();
-        const newCache: FileHashMap = {};
+        const compilerFingerprint = computeCompilerFingerprint(plugins);
+        const cache: FileHashMap = cacheService.loadBuildCache(compilerFingerprint);
+        const newCache: FileHashMap = { [COMPILER_FINGERPRINT_KEY]: compilerFingerprint };
 
         // ── Parse all .ck files ────────────────────────────────────────
         const allContracts: ContractRootNode[] = [];
@@ -327,13 +372,13 @@ async function main() {
         // ── Generate via plugins ───────────────────────────────────────
         const results: { outPath: string; content: string }[] = [];
 
-        for (const { plugin, entry } of plugins) {
+        for (const { plugin, entry, version } of plugins) {
             if (!plugin.generateTargets) continue;
 
             const optionsSuffix = entry.options && Object.keys(entry.options).length > 0 ? `:${JSON.stringify(entry.options)}` : '';
             const cacheKey = plugin.cacheKey ? `${plugin.cacheKey}${optionsSuffix}` : undefined;
             if (cacheKey && !config.force && cacheEnabled && !depsChanged) {
-                const fingerprint = computePluginFingerprint(newCache, cacheKey);
+                const fingerprint = computePluginFingerprint(newCache, cacheKey, version);
                 if (cache[`__plugin_${cacheKey}__`] === fingerprint && pluginOutputsExist(cache, cacheKey)) {
                     console.log(`  -  [plugin:${plugin.name}] (unchanged)`);
                     newCache[`__plugin_${cacheKey}__`] = fingerprint;
@@ -365,7 +410,7 @@ async function main() {
             results.push(...pluginEmitted);
 
             if (cacheKey) {
-                newCache[`__plugin_${cacheKey}__`] = computePluginFingerprint(newCache, cacheKey);
+                newCache[`__plugin_${cacheKey}__`] = computePluginFingerprint(newCache, cacheKey, version);
                 newCache[`__plugin_${cacheKey}__files__`] = pluginEmitted.map(f => f.outPath).join('|');
             }
         }
@@ -394,6 +439,35 @@ async function main() {
             writtenCount++;
         }
 
+        // ── Orphan cleanup ──────────────────────────────────────────
+        // Files emitted by a previous run but no longer claimed by any plugin
+        // this run (because the plugin was removed, renamed, or its output set
+        // shrank). Cached plugins also write their files into newCache, so the
+        // new file set is the union of fresh emits and reused cache entries.
+        const collectPluginFiles = (map: FileHashMap): Set<string> => {
+            const out = new Set<string>();
+            for (const [key, value] of Object.entries(map)) {
+                if (!key.startsWith('__plugin_') || !key.endsWith('__files__')) continue;
+                if (typeof value !== 'string') continue;
+                for (const f of value.split('|').filter(Boolean)) out.add(f);
+            }
+            return out;
+        };
+        const prevFiles = collectPluginFiles(cache);
+        const newFiles = collectPluginFiles(newCache);
+        let orphanedCount = 0;
+        for (const file of prevFiles) {
+            if (newFiles.has(file)) continue;
+            if (!existsSync(file)) continue;
+            try {
+                unlinkSync(file);
+                console.log(`  ✗  ${file} (orphaned)`);
+                orphanedCount++;
+            } catch {
+                // best-effort: stale paths or permission issues should not fail the build
+            }
+        }
+
         // Save cache
         if (config.cache.enabled) {
             cacheService.saveBuildCache(newCache);
@@ -403,7 +477,8 @@ async function main() {
         // appear at the bottom of the output and are easy to spot.
         diag.report();
 
-        console.log(`\nCompiled ${results.length} file(s) (${writtenCount} written, ${results.length - writtenCount} unchanged).`);
+        const orphanedNote = orphanedCount > 0 ? `, ${orphanedCount} orphaned` : '';
+        console.log(`\nCompiled ${results.length} file(s) (${writtenCount} written, ${results.length - writtenCount} unchanged${orphanedNote}).`);
     };
 
     await run();

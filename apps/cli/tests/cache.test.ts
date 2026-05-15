@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { CacheService, DEFAULT_CACHE_DIR } from '../src/cache.js';
+import { CacheService, COMPILER_FINGERPRINT_KEY, DEFAULT_CACHE_DIR } from '../src/cache.js';
 
 describe('CacheService', () => {
     let tmpDir: string;
@@ -82,5 +82,21 @@ describe('CacheService', () => {
         service.saveBuildCache({ 'a.ck': 'hash-a' });
         const raw = readFileSync(join(tmpDir, DEFAULT_CACHE_DIR, 'build.json'), 'utf-8');
         expect(raw).toContain('\n');
+    });
+
+    it('returns empty when the compiler fingerprint does not match', () => {
+        const service = new CacheService(tmpDir, { enabled: true });
+        service.saveBuildCache({ [COMPILER_FINGERPRINT_KEY]: 'old-fingerprint', 'a.ck': 'hash' });
+        // Load with a different fingerprint — entire cache should be treated as empty so codegen reruns.
+        const loaded = service.loadBuildCache('new-fingerprint');
+        expect(loaded).toEqual({});
+    });
+
+    it('returns the stored cache when the compiler fingerprint matches', () => {
+        const service = new CacheService(tmpDir, { enabled: true });
+        service.saveBuildCache({ [COMPILER_FINGERPRINT_KEY]: 'fp-1', 'a.ck': 'hash' });
+        const loaded = service.loadBuildCache('fp-1');
+        expect(loaded['a.ck']).toBe('hash');
+        expect(loaded[COMPILER_FINGERPRINT_KEY]).toBe('fp-1');
     });
 });

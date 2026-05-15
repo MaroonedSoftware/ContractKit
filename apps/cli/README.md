@@ -69,6 +69,10 @@ Create `contractkit.config.json` at your project root:
 
 When `"cache": true`, the CLI hashes each `.ck` file plus the resolved plugin config and skips files whose inputs haven't changed since the last run. Caches live under `.contractkit/cache/` (override the directory by passing a string for `cache`): `build.json` for build hashes, and `http/<sha256(url)>` for any fetched plugin extension HTTP responses. Use `--force` to bypass everything.
 
+The build cache is stamped with a fingerprint of the `@contractkit/cli`, `@contractkit/core`, and every loaded plugin's package version. When any of those versions changes, the fingerprint no longer matches and the entire cache is dropped on the next run — a `pnpm update` of any codegen-affecting package forces a clean rebuild instead of silently serving stale generated files.
+
+At the end of each run, the CLI also deletes any generated file that a previous run claimed but no plugin claims this run (because the plugin was removed from `contractkit.config.json`, renamed, or its output set shrank). Cleanup is best-effort: stale paths or permission failures log nothing and never fail the build, and the CLI never deletes a file emitted by another plugin in the same run.
+
 ## Built-in plugins
 
 Each plugin is its own npm package, listed under `"plugins"`:

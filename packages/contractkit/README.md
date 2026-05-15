@@ -20,6 +20,7 @@ import {
     validateRefs,
     validateInheritance,
     validateOperation,
+    validateProject,
     type ContractKitPlugin,
     type PluginContext,
     type CkRootNode,
@@ -41,6 +42,7 @@ import {
 | `validateRefs(roots)` | Cross-file type-reference validation. Warns when a model is referenced but not declared anywhere. |
 | `validateInheritance(roots)` | Multi-base inheritance validation — cross-base conflicts, `override` requirement, cycle detection. |
 | `validateOperation(route, root)` | Validates an operation against config constraints (path-param coverage, service references, signature schemes). |
+| `validateProject({ files, fallbackKeys?, diag? })` | Runs parse + `applyOptionsDefaults` + `applyVariableSubstitution` + `decomposeCk` + cross-file `validateRefs`/`validateInheritance`/`validateOp` in one call. Returns `{ diag, contracts, ops, asts }`. Designed as the shared semantics source for the CLI and the language server. |
 | `ContractKitPlugin` / `PluginContext` | Interfaces a plugin author implements/consumes. See **Plugin API**. |
 | AST node types | `CkRootNode`, `ContractTypeNode`, `FieldNode`, `ModelNode`, `OpRouteNode`, `OpOperationNode`, `OpParamNode`, etc. |
 

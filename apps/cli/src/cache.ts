@@ -12,6 +12,9 @@ export interface FileHashMap {
     [filePath: string]: string;
 }
 
+/** Synthetic cache key recording the compiler-stack version. A mismatch on load invalidates the entire cache. */
+export const COMPILER_FINGERPRINT_KEY = '__compiler__';
+
 /** Compute a stable sha256 hex digest for a string of content. */
 export function computeHash(content: string): string {
     return createHash('sha256').update(content).digest('hex');
@@ -60,11 +63,20 @@ export class CacheService {
         this.httpCacheDir = join(this.root, HTTP_CACHE_DIRNAME);
     }
 
-    /** Load the previous run's `FileHashMap` from disk, or return `{}` when disabled or unreadable. */
-    loadBuildCache(): FileHashMap {
+    /**
+     * Load the previous run's `FileHashMap` from disk, or return `{}` when
+     * disabled, unreadable, or stamped with a different compiler fingerprint.
+     * When `expectedFingerprint` is provided and doesn't match the cache's
+     * stored `__compiler__` key, the cache is treated as empty so an upgrade
+     * of `@contractkit/core` (or any plugin that influences codegen) forces a
+     * full rebuild on the next run.
+     */
+    loadBuildCache(expectedFingerprint?: string): FileHashMap {
         if (!this.enabled) return {};
         try {
-            return JSON.parse(readFileSync(this.buildCachePath, 'utf-8'));
+            const cache = JSON.parse(readFileSync(this.buildCachePath, 'utf-8')) as FileHashMap;
+            if (expectedFingerprint !== undefined && cache[COMPILER_FINGERPRINT_KEY] !== expectedFingerprint) return {};
+            return cache;
         } catch {
             return {};
         }
