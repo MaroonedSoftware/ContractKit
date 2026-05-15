@@ -1,5 +1,12 @@
 # @contractkit/contractkit-plugin-openapi
 
+## 0.8.10
+
+### Patch Changes
+
+- Updated dependencies [a049895]
+    - @contractkit/core@0.19.0
+
 ## 0.8.9
 
 ### Patch Changes
