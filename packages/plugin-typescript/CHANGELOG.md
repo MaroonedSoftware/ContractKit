@@ -1,5 +1,11 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.25.3
+
+### Patch Changes
+
+- 5da85ca: Stop emitting `await next()` at the end of generated Koa route handlers — route handlers are the terminus of the middleware chain.
+
 ## 0.25.2
 
 ### Patch Changes
