@@ -354,8 +354,6 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
         lines.push(`    ctx.body = ${hasRespHeaders ? 'result.body' : 'result'};`);
     }
 
-    lines.push('');
-    lines.push(`    await next();`);
     lines.push(`});`);
 
     return lines;
