@@ -1,5 +1,11 @@
 # @contractkit/explorer-ui
 
+## 0.3.0
+
+### Minor Changes
+
+- 4c6bd6f: `renderOperation` accepts a new `collapsible` option that emits the card as an open `<details>` with the header row as its `<summary>`. The single-file detail page now uses this when a file declares more than one operation, so each route can be folded individually.
+
 ## 0.2.1
 
 ### Patch Changes
