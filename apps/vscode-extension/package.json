@@ -135,6 +135,11 @@
                     "when": "resourceLangId == contract-ck",
                     "command": "contractkit.previewApi",
                     "group": "navigation"
+                },
+                {
+                    "when": "activeWebviewPanelId == 'contractkitPreviewApi' || activeWebviewPanelId == 'contractkitLivePreview'",
+                    "command": "contractkit.refreshExplorer",
+                    "group": "navigation"
                 }
             ],
             "view/title": [

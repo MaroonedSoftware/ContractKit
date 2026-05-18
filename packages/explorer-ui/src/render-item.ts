@@ -134,7 +134,9 @@ function renderEndpointsByArea(data: PreviewData): string {
 
     const sections = sortedAreas
         .map(area => {
-            const ops = byArea.get(area)!;
+            const ops = [...byArea.get(area)!].sort(
+                (a, b) => a.routePath.localeCompare(b.routePath) || a.method.localeCompare(b.method),
+            );
             const rows = ops
                 .map(op => {
                     const name = op.op.name?.trim();

@@ -6,6 +6,9 @@ export const PREVIEW_DATA_REQUEST = 'contractkit/previewData' as const;
 /** Server → client notification fired (debounced) whenever the workspace's PreviewData would change. */
 export const PREVIEW_DATA_CHANGED_NOTIFICATION = 'contractkit/previewDataChanged' as const;
 
+/** Client → server request that forces a full re-index of every `.ck` file on disk. */
+export const REINDEX_WORKSPACE_REQUEST = 'contractkit/reindexWorkspace' as const;
+
 /** Convenience alias for the response shape of {@link PREVIEW_DATA_REQUEST}. */
 export type PreviewDataResponse = PreviewData;
 

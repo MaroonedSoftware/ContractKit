@@ -58,7 +58,7 @@ The install script packages the extension with `vsce`, then installs the resulti
 | Command | Title | Notes |
 | --- | --- | --- |
 | `contractkit.previewApi` | ContractKit: Open API Preview | Reveals the tree view and opens the overview |
-| `contractkit.refreshExplorer` | ContractKit: Refresh Explorer | Force re-fetch from the workspace index |
+| `contractkit.refreshExplorer` | ContractKit: Refresh Explorer | Forces the LSP server to re-walk every `.ck` file from disk, then re-fetches the snapshot. Also available as the title-bar button on the Explorer view and on every preview panel. |
 | `contractkit.setGrouping` | ContractKit: Set Grouping… | QuickPick for `file` / `area` / `method` / `flat` (persisted per workspace) |
 | `contractkit.filterExplorer` | ContractKit: Filter Explorer… | InputBox; matches path, method, name, sdk, service, group |
 | `contractkit.clearExplorerFilter` | ContractKit: Clear Explorer Filter | Resets the filter |

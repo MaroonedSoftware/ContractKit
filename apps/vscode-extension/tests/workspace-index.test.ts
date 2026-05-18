@@ -101,6 +101,37 @@ options {
             expect(index.getAllServiceNames()).toHaveLength(0);
         });
 
+        it('clear() drops every cached AST, declaration, and reference', () => {
+            const index = new WorkspaceIndex();
+            index.indexFromSource(
+                'file:///a.ck',
+                `\
+options {
+    services: {
+        Svc: "#src/svc.js"
+    }
+}
+contract User: { name: string }
+operation /users: { get: { service: Svc.list } }
+`,
+            );
+            index.indexFromSource('file:///b.ck', 'contract Other: {\n    u: User\n}\n');
+            expect(index.getAllModelNames().length).toBeGreaterThan(0);
+            expect(index.getModelReferences('User').length).toBeGreaterThan(0);
+            expect(index.getAllAsts().length).toBe(2);
+
+            const versionBefore = index.version();
+            index.clear();
+
+            expect(index.getAllModelNames()).toHaveLength(0);
+            expect(index.getAllServiceNames()).toHaveLength(0);
+            expect(index.getAllServiceDeclNames()).toHaveLength(0);
+            expect(index.getAllRoutePaths()).toHaveLength(0);
+            expect(index.getModelReferences('User', true)).toHaveLength(0);
+            expect(index.getAllAsts()).toHaveLength(0);
+            expect(index.version()).toBeGreaterThan(versionBefore);
+        });
+
         it('removes service declarations on file removal', () => {
             const index = new WorkspaceIndex();
             index.indexFromSource(

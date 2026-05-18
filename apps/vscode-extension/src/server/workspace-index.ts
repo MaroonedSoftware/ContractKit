@@ -108,6 +108,18 @@ export class WorkspaceIndex {
         return [...this.asts].map(([filePath, ast]) => ({ filePath, ast }));
     }
 
+    /** Drop every cached AST, declaration, and reference so the next index pass starts clean. */
+    clear(): void {
+        this.models.clear();
+        this.routes.clear();
+        this.services = [];
+        this.serviceDecls.clear();
+        this.referencesByModel.clear();
+        this.referencesByService.clear();
+        this.asts.clear();
+        this.versionCounter++;
+    }
+
     async indexWorkspace(workspaceFolders: string[]): Promise<void> {
         const allFiles: string[] = [];
         for (const folder of workspaceFolders) {

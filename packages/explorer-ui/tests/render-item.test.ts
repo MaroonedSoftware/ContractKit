@@ -48,6 +48,30 @@ describe('renderItemPage', () => {
         expect(html).toMatch(/class="ce-overview-area-count">2</);
     });
 
+    it('sorts endpoints within each area by path then method', () => {
+        const unordered: PreviewData = {
+            configMeta: { title: 'Test API', version: '1.0.0' },
+            operations: [
+                resolvedOp('/payments/{id}', op('patch', { sdk: 'patchPayment' }), { fileGroup: 'payments' }),
+                resolvedOp('/payments/{id}', op('get', { sdk: 'getPayment' }), { fileGroup: 'payments' }),
+                resolvedOp('/payments', op('post', { sdk: 'createPayment' }), { fileGroup: 'payments' }),
+                resolvedOp('/payments', op('get', { sdk: 'listPayments' }), { fileGroup: 'payments' }),
+            ],
+            models: [],
+            warnings: [],
+        };
+        const html = renderItemPage(unordered, { kind: 'overview' });
+        const paymentsArea = html.split('<details class="ce-overview-area"')[1] ?? '';
+        const order = [...paymentsArea.matchAll(/ce-method-(get|post|patch)[\s\S]*?<code class="ce-overview-endpoint-path">([^<]+)</g)]
+            .map(m => `${m[1]!.toUpperCase()} ${m[2]!}`);
+        expect(order).toEqual([
+            'GET /payments',
+            'POST /payments',
+            'GET /payments/{id}',
+            'PATCH /payments/{id}',
+        ]);
+    });
+
     it('starts areas collapsed when there are more than three', () => {
         const many: PreviewData = {
             configMeta: { title: 'Test API', version: '1.0.0' },

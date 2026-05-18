@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node.js';
 import type { ItemSelection } from '@contractkit/explorer-ui';
 import { operationId } from '@contractkit/explorer-ui';
-import { PREVIEW_DATA_CHANGED_NOTIFICATION } from '../shared/protocol.js';
+import { PREVIEW_DATA_CHANGED_NOTIFICATION, REINDEX_WORKSPACE_REQUEST } from '../shared/protocol.js';
 import { ApiTreeProvider, type GroupingMode } from './api-tree-provider.js';
 import { buildCurl, revealSelectionSource } from './commands.js';
 import { LivePreviewPanel } from './live-preview-panel.js';
@@ -48,6 +48,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{ scheme: 'file', language: 'contract-ck' }],
+        synchronize: {
+            // Forward `.ck` and config file events to the server so it can re-index files
+            // that aren't currently open in an editor (external edits, git operations, etc.).
+            // Without this, `connection.onDidChangeWatchedFiles` on the server never fires
+            // and the workspace index goes stale.
+            fileEvents: [
+                vscode.workspace.createFileSystemWatcher('**/*.ck'),
+                vscode.workspace.createFileSystemWatcher('**/contractkit.config.json'),
+            ],
+        },
     };
 
     client = new LanguageClient('contractDsl', 'Contract DSL Language Server', serverOptions, clientOptions);
@@ -115,8 +125,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             PreviewPanel.createOrShow(context, store, { kind: 'overview' });
         }),
 
-        vscode.commands.registerCommand('contractkit.refreshExplorer', () => {
-            void store.refresh();
+        vscode.commands.registerCommand('contractkit.refreshExplorer', async () => {
+            // Force the server to drop its in-memory index and re-walk every `.ck` file on
+            // disk. The server emits a PREVIEW_DATA_CHANGED notification once indexing
+            // finishes, which kicks off the store refresh — but call refresh() directly too
+            // so the user gets a snapshot even if the notification race-fails.
+            try {
+                await client?.sendRequest(REINDEX_WORKSPACE_REQUEST);
+            } catch {
+                // Ignore — fall back to a local refresh below.
+            }
+            await store.refresh();
         }),
 
         vscode.commands.registerCommand('contractkit.revealApiItemSource', async (arg?: ItemSelection) => {

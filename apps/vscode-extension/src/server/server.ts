@@ -30,7 +30,11 @@ import { getSemanticTokens, SEMANTIC_TOKENS_LEGEND } from './semantic-tokens-pro
 import { WorkspaceConfigCache } from './workspace-config.js';
 import { buildPreviewData } from './preview-data-builder.js';
 import { ProjectValidator } from './project-validator.js';
-import { PREVIEW_DATA_CHANGED_NOTIFICATION, PREVIEW_DATA_REQUEST } from '../shared/protocol.js';
+import {
+    PREVIEW_DATA_CHANGED_NOTIFICATION,
+    PREVIEW_DATA_REQUEST,
+    REINDEX_WORKSPACE_REQUEST,
+} from '../shared/protocol.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -44,6 +48,7 @@ const projectValidator = new ProjectValidator(connection, documentManager, works
 // involve the just-changed file.
 documentManager.setOnParsed(() => projectValidator.schedule());
 let workspaceRoot: string | undefined;
+let workspaceFolderPaths: string[] = [];
 /**
  * Resolves after the initial workspace scan completes. `PREVIEW_DATA_REQUEST` awaits this so a
  * client that asks for the preview snapshot before indexing finishes doesn't receive an empty
@@ -75,6 +80,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
     }
     if (rootPaths.length > 0) {
         workspaceRoot = rootPaths[0];
+        workspaceFolderPaths = rootPaths;
         initialIndexing = workspaceIndex.indexWorkspace(rootPaths)
             .catch(() => undefined)
             .then(() => {
@@ -153,6 +159,18 @@ connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
 connection.onRequest(PREVIEW_DATA_REQUEST, async () => {
     if (initialIndexing) await initialIndexing;
     return buildPreviewData(workspaceIndex, workspaceConfigCache, workspaceRoot);
+});
+
+// Manual reindex: wipes the in-memory workspace index and re-walks every workspace folder
+// from disk. Used by the explorer/preview refresh buttons to force-pick-up changes that
+// somehow bypassed the live update path (external edits, stale state, etc.).
+connection.onRequest(REINDEX_WORKSPACE_REQUEST, async () => {
+    if (workspaceFolderPaths.length === 0) return;
+    workspaceConfigCache.clear();
+    workspaceIndex.clear();
+    await workspaceIndex.indexWorkspace(workspaceFolderPaths);
+    schedulePreviewChanged();
+    projectValidator.schedule();
 });
 
 // Document symbols (Outline panel)
