@@ -318,6 +318,45 @@ body, .ce-layout {
     flex-wrap: wrap;
     gap: 8px;
 }
+.ce-op-card-collapsible,
+.ce-detail-single .ce-op-card-collapsible {
+    padding: 0;
+    border: 1px solid var(--ce-border);
+    border-radius: 8px;
+    background: var(--ce-card-bg);
+    margin-bottom: 16px;
+}
+.ce-detail-single .ce-op-card-collapsible + .ce-op-card-collapsible {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 1px solid var(--ce-border);
+}
+.ce-op-card-collapsible > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 24px 28px;
+    position: relative;
+    padding-right: 56px;
+    border-radius: 8px;
+}
+.ce-op-card-collapsible[open] > summary {
+    border-bottom: 1px solid var(--ce-border);
+    border-radius: 8px 8px 0 0;
+}
+.ce-op-card-collapsible > summary::-webkit-details-marker { display: none; }
+.ce-op-card-collapsible > summary::after {
+    content: "▸";
+    position: absolute;
+    right: 24px;
+    top: 28px;
+    color: var(--ce-fg-muted);
+    transition: transform 0.15s ease;
+}
+.ce-op-card-collapsible[open] > summary::after { transform: rotate(90deg); }
+.ce-op-card-collapsible > .ce-op-body {
+    padding: 24px 28px;
+    margin-top: 0;
+}
 .ce-op-title-row {
     display: flex;
     align-items: center;

@@ -27,12 +27,18 @@ export interface RenderOperationOptions {
     tryItBaseUrl?: string;
     /** Render context used to inline `ref` types as collapsible model expansions. */
     ctx?: RenderContext;
+    /** When true, the card renders as a `<details>` element whose `<summary>` is the header row, so consumers can collapse it. Open by default. */
+    collapsible?: boolean;
 }
 
 /**
  * Renders an operation card with header (method, path, badges, jump-to-source), description,
  * service/signature lines, parameter tables (path/query/headers), request body, responses,
  * plugin extensions, and an optional Try-it form when `options.tryItBaseUrl` is defined.
+ *
+ * When `options.collapsible` is true, the card is emitted as a `<details>` element with the
+ * header row as its `<summary>` so callers (e.g. the file detail page that stacks multiple
+ * operations) can let users fold individual routes. The element opens by default.
  */
 export function renderOperation(op: ResolvedOperation, options: RenderOperationOptions = {}): string {
     const ctx = options.ctx ?? {};
@@ -64,44 +70,51 @@ export function renderOperation(op: ResolvedOperation, options: RenderOperationO
 
     const title = op.op.name ?? op.op.sdk ?? `${op.method.toUpperCase()} ${op.routePath}`;
 
-    return html`<section id="${raw(operationAnchor(op))}" class="ce-card ce-op-card">
-        <header class="ce-card-header">
-            <div class="ce-op-title-row">
-                <h1 class="ce-op-title">${title}</h1>
-                <button
-                    class="ce-jump"
-                    data-jump-file="${op.filePath}"
-                    data-jump-line="${op.op.loc.line}"
-                    title="Open in editor"
-                    type="button"
-                >
-                    ↗
-                </button>
-            </div>
-            <div class="ce-endpoint-row">
-                <span class="ce-method ce-method-${raw(op.method)}">${op.method.toUpperCase()}</span>
-                <code class="ce-path">${op.routePath}</code>
-                ${raw(badges.length > 0 ? `<span class="ce-badge-row">${badges.join('')}</span>` : '')}
-            </div>
-        </header>
-        <div class="ce-op-body">
-            <div class="ce-op-main">
-                ${raw(description)}
-                ${raw(service)}
-                ${raw(signature)}
-                ${raw(pathParams)}
-                ${raw(queryParams)}
-                ${raw(headerParams)}
-                ${raw(requestBody)}
-                ${raw(responses)}
-                ${raw(pluginExt)}
-            </div>
-            <div class="ce-op-resize" data-resize-handle role="separator" aria-orientation="vertical" aria-label="Resize columns" tabindex="0"></div>
-            <aside class="ce-op-rail">
-                ${raw(tryIt)}
-                ${raw(codeSamples)}
-            </aside>
+    const headerInner = html`<div class="ce-op-title-row">
+            <h1 class="ce-op-title">${title}</h1>
+            <button
+                class="ce-jump"
+                data-jump-file="${op.filePath}"
+                data-jump-line="${op.op.loc.line}"
+                title="Open in editor"
+                type="button"
+            >
+                ↗
+            </button>
         </div>
+        <div class="ce-endpoint-row">
+            <span class="ce-method ce-method-${raw(op.method)}">${op.method.toUpperCase()}</span>
+            <code class="ce-path">${op.routePath}</code>
+            ${raw(badges.length > 0 ? `<span class="ce-badge-row">${badges.join('')}</span>` : '')}
+        </div>`;
+
+    const bodyInner = html`<div class="ce-op-main">
+            ${raw(description)}
+            ${raw(service)}
+            ${raw(signature)}
+            ${raw(pathParams)}
+            ${raw(queryParams)}
+            ${raw(headerParams)}
+            ${raw(requestBody)}
+            ${raw(responses)}
+            ${raw(pluginExt)}
+        </div>
+        <div class="ce-op-resize" data-resize-handle role="separator" aria-orientation="vertical" aria-label="Resize columns" tabindex="0"></div>
+        <aside class="ce-op-rail">
+            ${raw(tryIt)}
+            ${raw(codeSamples)}
+        </aside>`;
+
+    if (options.collapsible) {
+        return html`<details id="${raw(operationAnchor(op))}" class="ce-card ce-op-card ce-op-card-collapsible" open>
+            <summary class="ce-card-header">${raw(headerInner)}</summary>
+            <div class="ce-op-body">${raw(bodyInner)}</div>
+        </details>`;
+    }
+
+    return html`<section id="${raw(operationAnchor(op))}" class="ce-card ce-op-card">
+        <header class="ce-card-header">${raw(headerInner)}</header>
+        <div class="ce-op-body">${raw(bodyInner)}</div>
     </section>`;
 }
 

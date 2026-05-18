@@ -129,4 +129,27 @@ describe('renderOperation', () => {
         expect(html).toContain('<details><summary>Show JSON</summary>');
         expect(html).toContain('bruno');
     });
+
+    it('renders as a <details>/<summary> card with the header row when collapsible', () => {
+        const r = resolvedOp('/payments', op('get', { sdk: 'listPayments', name: 'List payments' }));
+        const html = renderOperation(r, { collapsible: true });
+        expect(html).toMatch(/^\s*<details [^>]*class="ce-card ce-op-card ce-op-card-collapsible"[^>]*open>/);
+        expect(html).toContain(`id="${operationAnchor(r)}"`);
+        expect(html).toContain('<summary class="ce-card-header"');
+        // Header row content stays the same — method, path, jump button, and title all present.
+        expect(html).toContain('class="ce-method ce-method-get"');
+        expect(html).toContain('<code class="ce-path">/payments</code>');
+        expect(html).toContain('data-jump-file="/test.ck"');
+        expect(html).toContain('<h1 class="ce-op-title">List payments</h1>');
+        // The non-collapsible <section>/<header> wrapper is gone.
+        expect(html).not.toMatch(/<section[^>]*class="ce-card ce-op-card"/);
+        expect(html).not.toContain('<header class="ce-card-header"');
+    });
+
+    it('defaults to the flat <section>/<header> shape when collapsible is not set', () => {
+        const html = renderOperation(resolvedOp('/payments', op('get')));
+        expect(html).toMatch(/<section[^>]*class="ce-card ce-op-card"/);
+        expect(html).toContain('<header class="ce-card-header"');
+        expect(html).not.toContain('ce-op-card-collapsible');
+    });
 });

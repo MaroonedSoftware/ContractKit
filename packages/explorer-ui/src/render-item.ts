@@ -62,7 +62,9 @@ function renderBody(data: PreviewData, selection: ItemSelection, options: Render
 
 /**
  * Renders every operation and model declared in a single source file. Used by the live-preview
- * panel that follows the active editor — operations stack first, then models.
+ * panel that follows the active editor — operations stack first, then models. When the file
+ * contains more than one operation, each operation card is rendered collapsible so users can
+ * fold the routes they aren't focused on.
  */
 function renderFilePage(
     data: PreviewData,
@@ -75,7 +77,8 @@ function renderFilePage(
     if (ops.length === 0 && models.length === 0) {
         return renderMissing(`No contracts or operations found in \`${path}\`.`);
     }
-    const opsHtml = ops.map(o => renderOperation(o, { tryItBaseUrl: options.tryItBaseUrl, ctx })).join('');
+    const collapsible = ops.length > 1;
+    const opsHtml = ops.map(o => renderOperation(o, { tryItBaseUrl: options.tryItBaseUrl, ctx, collapsible })).join('');
     const modelsHtml = models.map(m => renderModel(m, ctx)).join('');
     const fileLabel = path.split('/').pop() ?? path;
     return html`<section class="ce-section">

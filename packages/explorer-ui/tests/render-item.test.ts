@@ -98,4 +98,40 @@ describe('renderItemPage', () => {
         expect(html).toContain('ce-missing');
         expect(html).toContain('Model');
     });
+
+    it('wraps each operation in a collapsible <details> when a file has multiple operations', () => {
+        const multi: PreviewData = {
+            configMeta: { title: 'Test API', version: '1.0.0' },
+            operations: [
+                resolvedOp('/payments', op('get', { sdk: 'listPayments' }), { filePath: '/contracts/payments.ck' }),
+                resolvedOp('/payments/{id}', op('get', { sdk: 'getPayment' }), { filePath: '/contracts/payments.ck' }),
+            ],
+            models: [],
+            warnings: [],
+        };
+        const html = renderItemPage(multi, { kind: 'file', path: '/contracts/payments.ck' });
+        // Two collapsible cards, both open by default
+        const matches = html.match(/class="ce-card ce-op-card ce-op-card-collapsible"/g) ?? [];
+        expect(matches.length).toBe(2);
+        expect(html).toContain('<details');
+        expect(html).toContain('open>');
+        expect(html).toContain('<summary class="ce-card-header"');
+        // The bare <section class="ce-card ce-op-card"> form is not used when collapsible
+        expect(html).not.toMatch(/<section[^>]*class="ce-card ce-op-card"[^>]*>/);
+    });
+
+    it('keeps the flat (non-collapsible) shape when a file has a single operation', () => {
+        const single: PreviewData = {
+            configMeta: { title: 'Test API', version: '1.0.0' },
+            operations: [
+                resolvedOp('/payments', op('get', { sdk: 'listPayments' }), { filePath: '/contracts/payments.ck' }),
+            ],
+            models: [],
+            warnings: [],
+        };
+        const html = renderItemPage(single, { kind: 'file', path: '/contracts/payments.ck' });
+        expect(html).not.toContain('ce-op-card-collapsible');
+        expect(html).not.toContain('<summary class="ce-card-header"');
+        expect(html).toMatch(/<section[^>]*class="ce-card ce-op-card"/);
+    });
 });

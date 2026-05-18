@@ -89,7 +89,7 @@ The renderer expects **pre-resolved** data — the consumer is responsible for r
 | --- | --- | --- |
 | `renderApp(data)` | HTML string | Full layout: sidebar nav + detail pane |
 | `renderItemPage(data, selection, options?)` | HTML string | Single-item detail page (operation / model / overview) |
-| `renderOperation(op, options?)` | HTML string | Operation card with header, parameters, request/response schemas, and an optional Try-it form. `options.ctx` enables inline-ref expansion |
+| `renderOperation(op, options?)` | HTML string | Operation card with header, parameters, request/response schemas, and an optional Try-it form. `options.ctx` enables inline-ref expansion; pass `options.collapsible: true` to emit the card as an open `<details>` whose `<summary>` is the header row |
 | `renderModel(resolvedModel, ctx?)` | HTML string | Model card with badges and field table |
 | `renderFieldRows(fields, ctx?)` | HTML string | Just the field table — exported for reuse in inline-object rendering |
 | `renderType(type, ctx?)` | HTML string | Recursive type rendering; `ctx.models` enables inline ref expansion |
