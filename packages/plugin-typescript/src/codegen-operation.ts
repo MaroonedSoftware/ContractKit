@@ -160,6 +160,10 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
         body.push(`import { parseAndValidate } from '@maroonedsoftware/zod';`);
     }
 
+    if (fileUsesMultipart(root)) {
+        body.push(`import { MultipartBody } from '@maroonedsoftware/multipart';`);
+    }
+
     const helpers: string[] = [];
     if (opNeedsScalar(root, 'binary')) {
         helpers.push(`const _ZodBinary = z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' });`);
@@ -771,6 +775,12 @@ function fileNeedsPolicy(root: OpRootNode): boolean {
 
 function fileNeedsSignature(root: OpRootNode): boolean {
     return root.routes.some(route => route.operations.some(op => !!op.signature));
+}
+
+function fileUsesMultipart(root: OpRootNode): boolean {
+    return root.routes.some(route =>
+        route.operations.some(op => (op.request?.bodies ?? []).some(b => b.contentType === 'multipart/form-data')),
+    );
 }
 
 function isValidIdentifier(name: string): boolean {

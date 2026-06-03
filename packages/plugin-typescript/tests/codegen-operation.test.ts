@@ -193,6 +193,7 @@ describe('generateOperation', () => {
             expect(output).toContain("case 'multipart/form-data':");
             expect(output).toContain('body = ctx.body as MultipartBody;');
             expect(output).toContain('body = await parseAndValidate(ctx.body, UploadMeta)');
+            expect(output).toContain("import { MultipartBody } from '@maroonedsoftware/multipart';");
         });
     });
 
@@ -471,6 +472,7 @@ describe('generateOperation', () => {
             const output = generateOp(root);
             expect(output).toContain("bodyParserMiddleware(['multipart'])");
             expect(output).toContain('ctx.body as MultipartBody');
+            expect(output).toContain("import { MultipartBody } from '@maroonedsoftware/multipart';");
         });
     });
 
