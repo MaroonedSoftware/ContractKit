@@ -1,5 +1,11 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.25.4
+
+### Patch Changes
+
+- c5e74a3: Emit the missing `import { MultipartBody } from '@maroonedsoftware/multipart'` in generated Koa routers when an operation declares a `multipart/form-data` request body.
+
 ## 0.25.3
 
 ### Patch Changes
