@@ -163,6 +163,16 @@ describe('printCk — security', () => {
         expect(printCk(ast)).toContain('        signature: MODERN_TREASURY_WEBHOOK');
     });
 
+    it('prints block-form signature when a signature policy is set', () => {
+        const ast = makeRoot([
+            makeRoute('/webhooks', [makeOp('post', { signature: 'SLACK_WEBHOOK', signaturePolicy: 'slackSignatureValid' })]),
+        ]);
+        const out = printCk(ast);
+        expect(out).toContain('        signature: {');
+        expect(out).toContain('            options: SLACK_WEBHOOK');
+        expect(out).toContain('            policy: slackSignatureValid');
+    });
+
     it('prints route-level security with shallower indentation', () => {
         const ast = makeRoot([makeRoute('/users', [makeOp('get')], { security: makeSecFields({ policy: 'paymentsWrite' }) })]);
         const out = printCk(ast);

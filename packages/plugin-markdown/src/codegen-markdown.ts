@@ -493,7 +493,7 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
             parts.push(`policy: ${effectiveSecurity.policy === false ? 'none' : effectiveSecurity.policy}`);
         }
         if (op.signature) {
-            parts.push(`signature: ${op.signature}`);
+            parts.push(`signature: ${op.signature}${op.signaturePolicy ? ` (policy: ${op.signaturePolicy})` : ''}`);
         }
         lines.push(`> Security: authenticated${parts.length > 0 ? ` (${parts.join('; ')})` : ''}`);
     }

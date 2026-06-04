@@ -255,10 +255,12 @@ export interface OpOperationNode {
     name?: string; // e.g. "Create an Offer" — human-readable name for docs/collections
     service?: string; // e.g. "LedgerService.updateCategoryNesting"
     sdk?: string; // e.g. "getUser" — explicit SDK method name
-    /** HMAC signature key name for this endpoint (e.g. `WEBHOOK_SECRET`). */
+    /** HMAC signature key name for this endpoint (e.g. `WEBHOOK_SECRET`). Sourced from the bare `signature: KEY` form or the block form's `options:` field. */
     signature?: string;
-    /** Inline comment attached to the `signature:` line. */
+    /** Inline comment attached to the `signature:` value (the bare value or the block's `options:` line). */
     signatureDescription?: string;
+    /** Signature-scoped policy identifier from the block form `signature: { options: KEY, policy: name }`. Distinct from `security.policy`. */
+    signaturePolicy?: string;
     request?: OpRequestNode;
     responses: OpResponseNode[];
     query?: ParamSource;

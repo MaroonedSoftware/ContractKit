@@ -116,7 +116,14 @@ function printOperation(op: OpOperationNode): string[] {
     if (op.sdk) lines.push(`${I2}sdk: ${op.sdk}`);
     if (op.signature) {
         const comment = op.signatureDescription ? ` # ${op.signatureDescription}` : '';
-        lines.push(`${I2}signature: ${formatSignatureValue(op.signature)}${comment}`);
+        if (op.signaturePolicy) {
+            lines.push(`${I2}signature: {`);
+            lines.push(`${I3}options: ${formatSignatureValue(op.signature)}${comment}`);
+            lines.push(`${I3}policy: ${op.signaturePolicy}`);
+            lines.push(`${I2}}`);
+        } else {
+            lines.push(`${I2}signature: ${formatSignatureValue(op.signature)}${comment}`);
+        }
     }
     if (op.security !== undefined) lines.push(...printSecurity(op.security));
     if (op.plugins && Object.keys(op.plugins).length > 0) {

@@ -55,8 +55,8 @@ export function renderOperation(op: ResolvedOperation, options: RenderOperationO
     const service = op.op.service ? html`<p class="ce-meta"><strong>service:</strong> <code>${op.op.service}</code></p>` : '';
     const signature = op.op.signature
         ? html`<p class="ce-meta"><strong>signature:</strong> <code>${op.op.signature}</code>${
-              op.op.signatureDescription ? raw(` — ${escapeHtml(op.op.signatureDescription)}`) : ''
-          }</p>`
+              op.op.signaturePolicy ? html` <code>policy: ${op.op.signaturePolicy}</code>` : ''
+          }${op.op.signatureDescription ? raw(` — ${escapeHtml(op.op.signatureDescription)}`) : ''}</p>`
         : '';
 
     const pathParams = renderParamSection('Path Parameters', op.routeParams, ctx);

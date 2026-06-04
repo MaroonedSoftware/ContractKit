@@ -1269,6 +1269,28 @@ operation /users: {
             expect(root.routes[0]!.operations[0]!.signature).toBe('MODERN_TREASURY_WEBHOOK');
         });
 
+        it('parses block-form signature with options and policy', () => {
+            const { root, diag } = parse(
+                'operation /hooks: { post: { signature: { options: SLACK_WEBHOOK\n  policy: slackSignatureValid } } }',
+            );
+            expect(diag.hasErrors()).toBe(false);
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.signature).toBe('SLACK_WEBHOOK');
+            expect(op.signaturePolicy).toBe('slackSignatureValid');
+        });
+
+        it('parses block-form signature with options only (no policy)', () => {
+            const { root } = parse('operation /hooks: { post: { signature: { options: "hmac-sha256" } } }');
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.signature).toBe('hmac-sha256');
+            expect(op.signaturePolicy).toBeUndefined();
+        });
+
+        it('leaves signaturePolicy undefined for the bare form', () => {
+            const { root } = parse('operation /users: { post: { signature: MODERN_TREASURY_WEBHOOK } }');
+            expect(root.routes[0]!.operations[0]!.signaturePolicy).toBeUndefined();
+        });
+
         it('parses signature: alongside security: { policy }', () => {
             const { root } = parse('operation /users: { post: { signature: "hmac-sha256"\n  security: { policy: paymentsWrite } } }');
             expect(root.routes[0]!.operations[0]!.signature).toBe('hmac-sha256');

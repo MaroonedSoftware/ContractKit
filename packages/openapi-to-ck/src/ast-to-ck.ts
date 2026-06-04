@@ -294,7 +294,14 @@ function serializeOperation(lines: string[], op: OpOperationNode, depth: number,
     // Signature
     if (op.signature) {
         const sigComment = ctx.includeComments && op.signatureDescription ? ` # ${op.signatureDescription}` : '';
-        lines.push(`${inner}signature: ${op.signature}${sigComment}`);
+        if (op.signaturePolicy) {
+            lines.push(`${inner}signature: {`);
+            lines.push(`${inner}    options: ${op.signature}${sigComment}`);
+            lines.push(`${inner}    policy: ${op.signaturePolicy}`);
+            lines.push(`${inner}}`);
+        } else {
+            lines.push(`${inner}signature: ${op.signature}${sigComment}`);
+        }
     }
 
     // Security

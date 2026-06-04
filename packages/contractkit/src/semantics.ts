@@ -788,6 +788,7 @@ export function createSemantics(grammar: Grammar) {
                 sdk?: string;
                 signature?: string;
                 signatureDescription?: string;
+                signaturePolicy?: string;
                 query?: ParamSource;
                 queryMode?: ObjectMode;
                 headers?: ParamSource;
@@ -820,6 +821,7 @@ export function createSemantics(grammar: Grammar) {
             let sdk: string | undefined;
             let signature: string | undefined;
             let signatureDescription: string | undefined;
+            let signaturePolicy: string | undefined;
             let query: ParamSource | undefined;
             let queryMode: ObjectMode | undefined;
             let headers: ParamSource | undefined;
@@ -846,6 +848,7 @@ export function createSemantics(grammar: Grammar) {
                     case 'signature':
                         signature = item.value;
                         signatureDescription = item.description;
+                        signaturePolicy = item.policy;
                         break;
                     case 'query':
                         query = item.source;
@@ -874,7 +877,7 @@ export function createSemantics(grammar: Grammar) {
                 }
             }
 
-            return { name, service, sdk, signature, signatureDescription, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, security, plugins };
+            return { name, service, sdk, signature, signatureDescription, signaturePolicy, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, security, plugins };
         },
 
         OperationBodyItem(child) {
@@ -896,11 +899,56 @@ export function createSemantics(grammar: Grammar) {
             return { _type: 'sdk', value: identNode.sourceString };
         },
 
-        SignatureDecl(_signatureKw, _colon, valueNode) {
+        SignatureDecl_bare(_signatureKw, _colon, valueNode) {
             const raw = valueNode.sourceString;
             // Strip quotes if present
             const value = raw.startsWith('"') || raw.startsWith("'") ? raw.slice(1, -1) : raw;
-            return { _type: 'signature', value, description: undefined };
+            return { _type: 'signature', value, description: undefined, policy: undefined };
+        },
+
+        SignatureDecl_block(_signatureKw, _colon, blockNode) {
+            const block = blockNode.toAst(this.args.file, this.args.diag) as {
+                options?: string;
+                optionsDescription?: string;
+                policy?: string;
+            };
+            return { _type: 'signature', value: block.options, description: block.optionsDescription, policy: block.policy };
+        },
+
+        SignatureBlock(_lb, items, _rb) {
+            const file = this.args.file;
+            const diag = this.args.diag;
+            const result: { options?: string; optionsDescription?: string; policy?: string } = {};
+            for (let i = 0; i < items.numChildren; i++) {
+                const child = items.child(i);
+                if (child.ctorName === 'comment') continue;
+                const field = child.toAst(file, diag);
+                if (field._type === 'signatureOptions') {
+                    result.options = field.value;
+                    if (field.description) result.optionsDescription = field.description;
+                } else if (field._type === 'signaturePolicy') {
+                    result.policy = field.value;
+                }
+            }
+            return result;
+        },
+
+        SignatureField(child) {
+            return child.toAst(this.args.file, this.args.diag);
+        },
+
+        SignatureOptionsLine(_optionsKw, _colon, valueNode, commentOpt) {
+            const raw = valueNode.sourceString;
+            const value = raw.startsWith('"') || raw.startsWith("'") ? raw.slice(1, -1) : raw;
+            let description: string | undefined;
+            if ((commentOpt as IterationNode).numChildren > 0) {
+                description = (commentOpt as IterationNode).child(0).sourceString.replace(/^#\s?/, '').trimEnd();
+            }
+            return { _type: 'signatureOptions', value, description };
+        },
+
+        SignaturePolicyLine(_policyKw, _colon, identNode, _commentOpt) {
+            return { _type: 'signaturePolicy', value: identNode.sourceString };
         },
 
         // ─── Query & Headers ──────────────────────────────────────────

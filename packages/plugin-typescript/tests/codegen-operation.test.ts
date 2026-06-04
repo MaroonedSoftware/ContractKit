@@ -851,6 +851,17 @@ describe('generateOp — route modifiers JSDoc', () => {
             expect(out).toContain(`requireSignature('MODERN_TREASURY_WEBHOOK')`);
         });
 
+        it('passes the signature policy to requireSignature when set', () => {
+            const op = opOperation('post', {
+                signature: 'SLACK_WEBHOOK',
+                signaturePolicy: 'slackSignatureValid',
+                request: opRequest('Payload'),
+            });
+            const root = opRoot([opRoute('/webhooks', [op])]);
+            const out = generateOp(root);
+            expect(out).toContain(`requireSignature('SLACK_WEBHOOK', { policy: 'slackSignatureValid' })`);
+        });
+
         it('places requireSignature after bodyParserMiddleware in the route line', () => {
             const op = opOperation('post', {
                 signature: 'MY_KEY',

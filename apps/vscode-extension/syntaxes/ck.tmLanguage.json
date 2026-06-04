@@ -531,10 +531,59 @@
             }
         },
         "signature-decl": {
-            "match": "\\b(signature)\\s*(:)\\s*(\"[^\"]*\"|[a-zA-Z_$][a-zA-Z0-9_$]*)",
+            "patterns": [
+                {
+                    "begin": "\\b(signature)\\s*(:)\\s*(\\{)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.control.signature.ck"
+                        },
+                        "2": {
+                            "name": "punctuation.separator.colon.ck"
+                        },
+                        "3": {
+                            "name": "punctuation.definition.block.begin.ck"
+                        }
+                    },
+                    "end": "(\\})",
+                    "endCaptures": {
+                        "1": {
+                            "name": "punctuation.definition.block.end.ck"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#comment"
+                        },
+                        {
+                            "include": "#signature-options-line"
+                        },
+                        {
+                            "include": "#security-policy-line"
+                        }
+                    ]
+                },
+                {
+                    "match": "\\b(signature)\\s*(:)\\s*(\"[^\"]*\"|[a-zA-Z_$][a-zA-Z0-9_$]*)",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.signature.ck"
+                        },
+                        "2": {
+                            "name": "punctuation.separator.colon.ck"
+                        },
+                        "3": {
+                            "name": "string.unquoted.ck"
+                        }
+                    }
+                }
+            ]
+        },
+        "signature-options-line": {
+            "match": "\\b(options)\\s*(:)\\s*(\"[^\"]*\"|[a-zA-Z_$][a-zA-Z0-9_$]*)",
             "captures": {
                 "1": {
-                    "name": "keyword.control.signature.ck"
+                    "name": "keyword.control.signature.options.ck"
                 },
                 "2": {
                     "name": "punctuation.separator.colon.ck"

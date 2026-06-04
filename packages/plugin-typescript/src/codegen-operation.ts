@@ -260,7 +260,10 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
         middlewares.push(`bodyParserMiddleware([${tokensExpr}])`);
     }
     if (op.signature) {
-        middlewares.push(`requireSignature('${op.signature}')`);
+        const sigArgs = op.signaturePolicy
+            ? `'${op.signature}', { policy: '${op.signaturePolicy}' }`
+            : `'${op.signature}'`;
+        middlewares.push(`requireSignature(${sigArgs})`);
     }
     const middlewareStr = middlewares.length > 0 ? `, ${middlewares.join(', ')},` : ',';
 

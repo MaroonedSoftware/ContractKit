@@ -1065,6 +1065,23 @@ post: {
 
 The `signature` value must match an HMAC scheme name in the config. The generated router middleware validates the HMAC signature before the handler runs.
 
+To attach a signature-scoped policy, use the block form. `options:` carries the HMAC scheme name (same value as the bare form), and `policy:` names a policy that gates the signature check:
+
+```
+post: {
+    signature: {
+        options: SLACK_WEBHOOK
+        policy: slackSignatureValid
+    }
+    security: none
+    response: {
+        204:
+    }
+}
+```
+
+Both forms are interchangeable — the bare `signature: KEY` is shorthand for a block with only `options:`. The block's `policy:` is distinct from `security: { policy: }`; it is passed through to the generated `requireSignature('SLACK_WEBHOOK', { policy: 'slackSignatureValid' })` middleware.
+
 ---
 
 ### Per-Operation Plugin Extensions

@@ -312,6 +312,32 @@ describe('route serialization', () => {
         expect(result).toContain('operation(internal) /webhooks/stripe: {');
     });
 
+    it('serializes a bare signature key', () => {
+        const root = ckRoot({
+            routes: [opRoute('/webhooks', [opOperation('post', { signature: 'SLACK_WEBHOOK', responses: [opResponse(204)] })])],
+        });
+        const result = astToCk(root);
+        expect(result).toContain('signature: SLACK_WEBHOOK');
+    });
+
+    it('serializes a block-form signature with options and policy', () => {
+        const root = ckRoot({
+            routes: [
+                opRoute('/webhooks', [
+                    opOperation('post', {
+                        signature: 'SLACK_WEBHOOK',
+                        signaturePolicy: 'slackSignatureValid',
+                        responses: [opResponse(204)],
+                    }),
+                ]),
+            ],
+        });
+        const result = astToCk(root);
+        expect(result).toContain('signature: {');
+        expect(result).toContain('options: SLACK_WEBHOOK');
+        expect(result).toContain('policy: slackSignatureValid');
+    });
+
     it('serializes security: none', () => {
         const root = ckRoot({
             routes: [

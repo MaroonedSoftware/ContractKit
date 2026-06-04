@@ -201,7 +201,16 @@ Contract {
 
   SdkDecl = sdkKw ":" identifier
 
-  SignatureDecl = signatureKw ":" (stringLit | identifier)
+  SignatureDecl = signatureKw ":" SignatureBlock               -- block
+                | signatureKw ":" (stringLit | identifier)     -- bare
+
+  SignatureBlock = "{" (comment | SignatureField)* "}"
+
+  SignatureField = SignatureOptionsLine
+                 | SignaturePolicyLine
+
+  SignatureOptionsLine = optionsKw ":" (stringLit | identifier) comment?
+  SignaturePolicyLine  = policyKw ":" identifier comment?
 
   // ─── Query & Headers ────────────────────────────────────────────
 
