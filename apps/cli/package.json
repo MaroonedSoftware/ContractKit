@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/cli",
-    "version": "0.10.0",
+    "version": "0.10.1",
     "description": "Compiler for .ck files",
     "author": {
         "name": "Marooned Software",
