@@ -1,5 +1,14 @@
 # @contractkit/cli
 
+## 0.10.2
+
+### Patch Changes
+
+- 0d3b8e2: Add opt-in `sdk.scaffold` to the TypeScript plugin, which emits a starter `package.json` and `tsconfig.json` at the SDK `baseDir` so generated output is a buildable, publishable package. Dependencies are derived from the contracts (`zod` when `zod: true`; `luxon`/`@types/luxon` when a date/time scalar is used). Scaffold files are write-once: a new `ctx.emitFile(path, content, { ifAbsent: true })` option writes them only when absent and never overwrites or orphan-deletes them, so disabling `scaffold` or editing the files later is always safe.
+- Updated dependencies [0d3b8e2]
+    - @contractkit/core@0.22.0
+    - @contractkit/openapi-to-ck@0.9.1
+
 ## 0.10.1
 
 ### Patch Changes
