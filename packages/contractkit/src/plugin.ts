@@ -20,8 +20,23 @@ export interface PluginContext {
      * CLI's cache and is ignored by source control alongside it.
      */
     cacheDir: string;
-    /** Register a file to be written to disk. Only available in generateTargets. */
-    emitFile(outPath: string, content: string): void;
+    /**
+     * Register a file to be written to disk. Only available in generateTargets.
+     *
+     * Pass `{ ifAbsent: true }` to emit a *starter* file that must never clobber
+     * user edits: it is written only when no file already exists at `outPath`, is
+     * skipped (not overwritten) on every subsequent build, and is excluded from
+     * orphan cleanup so disabling the feature that emitted it never deletes it.
+     * Use this for scaffolding (package.json, tsconfig.json, .gitignore) the user
+     * is expected to take ownership of — not for generated code, which should
+     * overwrite normally so it stays in sync with the contracts.
+     */
+    emitFile(outPath: string, content: string, opts?: EmitFileOptions): void;
+}
+
+export interface EmitFileOptions {
+    /** When true, write only if no file exists at the path; never overwrite, never orphan-clean. */
+    ifAbsent?: boolean;
 }
 
 /** Context passed to a plugin's command handler. */

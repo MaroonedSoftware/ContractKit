@@ -123,6 +123,9 @@ Generates a typed TypeScript HTTP client. Each operation file becomes a client c
 | `output.types`    | `string`  | Path template for SDK type files                                                                    |
 | `output.clients`  | `string`  | Path template for client class files                                                                |
 | `includeInternal` | `boolean` | Whether to emit SDK methods for `internal` operations. Default: `false`.                            |
+| `scaffold`        | `boolean` | Emit a starter `package.json` and `tsconfig.json` at `baseDir` so the SDK is a buildable package. Opt-in and **write-once** — see below. Default: `false`. |
+
+When `scaffold: true`, the SDK output becomes a standalone, buildable package: a `package.json` (with a `build` script, `exports`, and dependency ranges) and a self-contained `tsconfig.json` are written at `baseDir`. Dependencies are derived from the contracts — `zod` is added when `zod: true`, and `luxon` (plus `@types/luxon`) when any surfaced model uses a `date`/`time`/`datetime`/`interval` scalar. These files are **written only when absent**: they are never overwritten on later builds and never removed by orphan cleanup, so once created they are yours to edit. Disabling `scaffold` later leaves your files untouched.
 
 ##### `zod` and `types`
 

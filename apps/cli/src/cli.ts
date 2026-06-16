@@ -327,7 +327,7 @@ async function main() {
         }
 
         // ── Generate via plugins ───────────────────────────────────────
-        const results: { outPath: string; content: string }[] = [];
+        const results: { outPath: string; content: string; ifAbsent?: boolean }[] = [];
 
         for (const { plugin, entry, version } of plugins) {
             if (!plugin.generateTargets) continue;
@@ -344,9 +344,9 @@ async function main() {
                 }
             }
 
-            const pluginEmitted: { outPath: string; content: string }[] = [];
-            const ctx = makePluginContext(entry, config, cacheEnabled, cacheService.root, (outPath, content) => {
-                pluginEmitted.push({ outPath, content });
+            const pluginEmitted: { outPath: string; content: string; ifAbsent?: boolean }[] = [];
+            const ctx = makePluginContext(entry, config, cacheEnabled, cacheService.root, (outPath, content, opts) => {
+                pluginEmitted.push({ outPath, content, ifAbsent: opts?.ifAbsent });
             });
 
             try {
@@ -368,7 +368,12 @@ async function main() {
 
             if (cacheKey) {
                 newCache[`__plugin_${cacheKey}__`] = computePluginFingerprint(newCache, cacheKey, version);
-                newCache[`__plugin_${cacheKey}__files__`] = pluginEmitted.map(f => f.outPath).join('|');
+                // ifAbsent (scaffold) files are user-owned starter files: exclude them
+                // from orphan tracking so disabling the feature never deletes them.
+                newCache[`__plugin_${cacheKey}__files__`] = pluginEmitted
+                    .filter(f => !f.ifAbsent)
+                    .map(f => f.outPath)
+                    .join('|');
             }
         }
 
@@ -388,7 +393,9 @@ async function main() {
         mkdirSync(resolvedBase, { recursive: true });
 
         let writtenCount = 0;
-        for (const { outPath, content } of results) {
+        for (const { outPath, content, ifAbsent } of results) {
+            // Scaffold files are written once and never overwritten thereafter.
+            if (ifAbsent && existsSync(outPath)) continue;
             if (existsSync(outPath) && readFileSync(outPath, 'utf-8') === content) continue;
             mkdirSync(dirname(outPath), { recursive: true });
             writeFileSync(outPath, content, 'utf-8');

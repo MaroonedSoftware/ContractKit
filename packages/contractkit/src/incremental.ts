@@ -10,6 +10,15 @@ export const INCREMENTAL_MANIFEST_VERSION = 2;
 export interface IncrementalOutputFile {
     relativePath: string;
     content: string;
+    /**
+     * Starter/scaffold file the user takes ownership of (package.json, tsconfig.json, …).
+     * Such files are always offered to the writer but are deliberately excluded from
+     * manifest tracking: they never participate in stale-path deletion, so disabling
+     * the feature that emits them never removes the user's edited copy. The writer is
+     * responsible for honoring write-once semantics (see {@link IncrementalOutputFile}
+     * consumers, which forward this to `ctx.emitFile(..., { ifAbsent })`).
+     */
+    ifAbsent?: boolean;
 }
 
 /** Cache record for one plugin "unit" — the smallest thing a plugin can decide to regenerate or reuse. */
@@ -156,7 +165,9 @@ export function runIncrementalCodegen(args: {
 
     for (const file of globalFiles) {
         filesToWrite.push(file);
-        trackedPaths.add(file.relativePath);
+        // Scaffold files are write-once and user-owned: keep them out of manifest
+        // tracking so they're never offered up for stale-path deletion.
+        if (!file.ifAbsent) trackedPaths.add(file.relativePath);
     }
 
     for (const unit of units) {

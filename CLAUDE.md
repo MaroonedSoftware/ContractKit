@@ -175,6 +175,12 @@ Multiple area-level files merge into one `<Area>Client`. Duplicate method names 
 
 The SDK emits a shared `sdk-options.ts` alongside the client files. It contains `SdkOptions`, `createSdkFetch`, `buildQueryString`, `parseJson<T>`, and bigint JSON helpers. Void operations (no response body) skip body consumption entirely.
 
+### TS SDK scaffold (`sdk.scaffold`)
+
+`sdk.scaffold: true` emits a starter `package.json` and `tsconfig.json` at the SDK `baseDir`, turning the generated output into a standalone, buildable package. `generateSdkPackageJson` / `generateSdkTsconfig` live in `codegen-sdk.ts`; deps are derived from the surfaced contracts (`zod` when `zod: true`; `luxon` + `@types/luxon` when any covered model uses a `date`/`time`/`datetime`/`interval` scalar — detected via `rootNeedsScalar`). Pinned dep ranges live in `SCAFFOLD_DEP_VERSIONS`.
+
+These are **write-once** files, emitted through a new `ctx.emitFile(path, content, { ifAbsent: true })` option (`EmitFileOptions` in `plugin.ts`). `ifAbsent` semantics are enforced end-to-end: `IncrementalOutputFile.ifAbsent` keeps the file out of the manifest's tracked-paths set (so it never appears in `deletedPaths`), and the CLI write loop (`cli.ts`) skips the write when the target already exists and excludes it from the `__files__` orphan list. Net effect: created once, never overwritten, never orphan-deleted — disabling `scaffold` leaves the user's files untouched. Use `ifAbsent` for any user-owned starter file; never for generated code.
+
 The plugin interface is defined in `packages/contractkit/src/plugin.ts`. Hooks:
 
 - `transform` — mutate the AST per file before validation

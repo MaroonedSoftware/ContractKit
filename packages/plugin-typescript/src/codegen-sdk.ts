@@ -959,6 +959,84 @@ export function generateSdkOptions(): string {
     ].join('\n');
 }
 
+// ─── Scaffold files (package.json / tsconfig.json) ─────────────────────────
+
+/** Pinned dependency ranges for scaffolded SDK packages. Kept in one place so they're easy to bump. */
+const SCAFFOLD_DEP_VERSIONS = {
+    zod: '^4.3.6',
+    luxon: '^3.5.0',
+    typesLuxon: '^3.4.2',
+    typescript: '^6.0.3',
+} as const;
+
+/** Which optional runtime deps the generated SDK references, derived from the contracts it covers. */
+export interface SdkScaffoldDeps {
+    /** Zod schema files are emitted (`config.zod`) — the SDK imports `zod`. */
+    zod: boolean;
+    /** Any covered model uses a `date`/`time`/`datetime`/`interval` scalar — the SDK imports `luxon`. */
+    luxon: boolean;
+}
+
+/**
+ * Generate a starter `package.json` for a generated SDK package. Emitted with
+ * `ifAbsent` semantics — written once, then owned by the user — so the dependency
+ * ranges here are only ever a starting point, never re-applied on later builds.
+ */
+export function generateSdkPackageJson(input: { name: string; deps: SdkScaffoldDeps }): string {
+    const dependencies: Record<string, string> = {};
+    if (input.deps.zod) dependencies.zod = SCAFFOLD_DEP_VERSIONS.zod;
+    if (input.deps.luxon) dependencies.luxon = SCAFFOLD_DEP_VERSIONS.luxon;
+
+    const devDependencies: Record<string, string> = { typescript: SCAFFOLD_DEP_VERSIONS.typescript };
+    if (input.deps.luxon) devDependencies['@types/luxon'] = SCAFFOLD_DEP_VERSIONS.typesLuxon;
+
+    const pkg = {
+        name: input.name,
+        version: '0.0.0',
+        type: 'module',
+        main: './dist/index.js',
+        types: './dist/index.d.ts',
+        exports: {
+            '.': {
+                types: './dist/index.d.ts',
+                import: './dist/index.js',
+            },
+        },
+        files: ['dist'],
+        scripts: {
+            build: 'tsc -p tsconfig.json',
+        },
+        ...(Object.keys(dependencies).length > 0 ? { dependencies } : {}),
+        devDependencies,
+    };
+    return JSON.stringify(pkg, null, 4) + '\n';
+}
+
+/**
+ * Generate a standalone `tsconfig.json` for a generated SDK package. Deliberately
+ * self-contained (no workspace `extends`) so the scaffold works in a freshly
+ * `npm init`'d package outside this monorepo. Emitted with `ifAbsent` semantics.
+ */
+export function generateSdkTsconfig(): string {
+    const tsconfig = {
+        compilerOptions: {
+            target: 'ES2022',
+            module: 'NodeNext',
+            moduleResolution: 'NodeNext',
+            declaration: true,
+            outDir: './dist',
+            rootDir: './src',
+            strict: true,
+            esModuleInterop: true,
+            skipLibCheck: true,
+            forceConsistentCasingInFileNames: true,
+        },
+        include: ['src'],
+        exclude: ['dist', 'node_modules'],
+    };
+    return JSON.stringify(tsconfig, null, 4) + '\n';
+}
+
 /**
  * Reference to a per-file leaf client emitted to its own `*.client.ts`. Used by the
  * aggregator to import the class and wire it as either a top-level `sdk.<prop>` or a

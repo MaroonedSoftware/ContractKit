@@ -12,6 +12,8 @@ import {
     deriveSubareaPropertyName,
     getAreaSubarea,
     hasPublicOperations,
+    generateSdkPackageJson,
+    generateSdkTsconfig,
 } from '../src/codegen-sdk.js';
 import { collectPublicTypeNames } from '@contractkit/core';
 import { renderTsType, renderInputTsType } from '../src/ts-render.js';
@@ -1666,5 +1668,51 @@ describe('generateAreaClient — <Area>Client emission', () => {
                 sdkOptionsPath: '/out/sdk-options.ts',
             }),
         ).toThrow(/duplicate method 'getCurrentUser' in area 'identity'/);
+    });
+});
+
+describe('generateSdkPackageJson', () => {
+    it('emits a valid package.json with the given name and standard fields', () => {
+        const pkg = JSON.parse(generateSdkPackageJson({ name: 'my-sdk', deps: { zod: false, luxon: false } }));
+        expect(pkg.name).toBe('my-sdk');
+        expect(pkg.type).toBe('module');
+        expect(pkg.exports['.'].types).toBe('./dist/index.d.ts');
+        expect(pkg.scripts.build).toContain('tsc');
+        expect(pkg.devDependencies.typescript).toBeDefined();
+    });
+
+    it('omits the dependencies block entirely when neither zod nor luxon is used', () => {
+        const pkg = JSON.parse(generateSdkPackageJson({ name: 'sdk', deps: { zod: false, luxon: false } }));
+        expect(pkg.dependencies).toBeUndefined();
+        expect(pkg.devDependencies['@types/luxon']).toBeUndefined();
+    });
+
+    it('adds zod as a runtime dependency when zod output is enabled', () => {
+        const pkg = JSON.parse(generateSdkPackageJson({ name: 'sdk', deps: { zod: true, luxon: false } }));
+        expect(pkg.dependencies.zod).toBeDefined();
+        expect(pkg.dependencies.luxon).toBeUndefined();
+    });
+
+    it('adds luxon (runtime) and @types/luxon (dev) when a date/time scalar is used', () => {
+        const pkg = JSON.parse(generateSdkPackageJson({ name: 'sdk', deps: { zod: false, luxon: true } }));
+        expect(pkg.dependencies.luxon).toBeDefined();
+        expect(pkg.devDependencies['@types/luxon']).toBeDefined();
+    });
+
+    it('ends with a trailing newline', () => {
+        expect(generateSdkPackageJson({ name: 'sdk', deps: { zod: false, luxon: false } }).endsWith('}\n')).toBe(true);
+    });
+});
+
+describe('generateSdkTsconfig', () => {
+    it('emits a self-contained tsconfig with no workspace extends', () => {
+        const raw = generateSdkTsconfig();
+        const cfg = JSON.parse(raw);
+        expect(cfg.extends).toBeUndefined();
+        expect(cfg.compilerOptions.declaration).toBe(true);
+        expect(cfg.compilerOptions.outDir).toBe('./dist');
+        expect(cfg.compilerOptions.strict).toBe(true);
+        expect(cfg.include).toEqual(['src']);
+        expect(raw.endsWith('}\n')).toBe(true);
     });
 });
