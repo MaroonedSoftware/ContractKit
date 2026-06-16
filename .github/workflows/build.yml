@@ -5,6 +5,9 @@ on:
 
 jobs:
     build:
+        concurrency:
+            group: build-${{ github.sha }}
+            cancel-in-progress: false
         runs-on: ubuntu-latest
 
         steps:
