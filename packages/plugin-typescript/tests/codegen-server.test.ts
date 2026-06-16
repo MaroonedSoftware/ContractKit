@@ -303,3 +303,110 @@ describe('createTypescriptPlugin (sdk) — area / subarea grouping', () => {
         expect(sdk).not.toMatch(/class \w+Client \{/m);
     });
 });
+
+describe('createTypescriptPlugin (sdk) — scaffold', () => {
+    // ctx variant that records the ifAbsent flag passed to emitFile.
+    function makeScaffoldCtx(rootDir = '/project', options: Record<string, unknown> = {}): PluginContext & {
+        emitted: Map<string, { content: string; ifAbsent?: boolean }>;
+    } {
+        const emitted = new Map<string, { content: string; ifAbsent?: boolean }>();
+        return {
+            rootDir,
+            options,
+            cacheEnabled: true,
+            cacheDir: `${rootDir}/.contractkit/cache`,
+            emitFile: (outPath: string, content: string, opts?: { ifAbsent?: boolean }) => {
+                emitted.set(outPath, { content, ifAbsent: opts?.ifAbsent });
+            },
+            emitted,
+        };
+    }
+
+    function find(emitted: Map<string, { content: string; ifAbsent?: boolean }>, suffix: string) {
+        for (const [path, value] of emitted) if (path.endsWith(suffix)) return { path, ...value };
+        return undefined;
+    }
+
+    function eventInputs() {
+        // An op that responds with the Event model (has a datetime field) so the type
+        // is publicly reachable and surfaces into the SDK.
+        const root = opRoot(
+            [opRoute('/events', [opOperation('get', { sdk: 'getEvent', responses: [opResponse(200, 'Event', 'application/json')] })])],
+            '/project/contracts/events.ck',
+        );
+        return {
+            contractRoots: [contractRoot([model('Event', [field('id', scalarType('uuid')), field('at', scalarType('datetime'))])], '/project/contracts/events.ck')],
+            opRoots: [root],
+            modelOutPaths: new Map<string, string>(),
+            modelsWithInput: new Set<string>(),
+            modelsWithOutput: new Set<string>(),
+        };
+    }
+
+    it('does not emit scaffold files unless scaffold is enabled', async () => {
+        const plugin = createTypescriptPlugin(
+            { sdk: { baseDir: 'packages/sdk', output: { sdk: 'src/sdk.ts', clients: 'src/{filename}.client.ts', types: 'src/types/{filename}.ts' } } },
+            '/project',
+        );
+        const ctx = makeScaffoldCtx();
+        await plugin.generateTargets!(eventInputs(), ctx);
+        expect(find(ctx.emitted, 'package.json')).toBeUndefined();
+        expect(find(ctx.emitted, 'tsconfig.json')).toBeUndefined();
+    });
+
+    it('emits package.json and tsconfig.json at the SDK baseDir as ifAbsent files', async () => {
+        const plugin = createTypescriptPlugin(
+            {
+                sdk: {
+                    baseDir: 'packages/sdk',
+                    name: 'my-sdk',
+                    zod: true,
+                    scaffold: true,
+                    output: { sdk: 'src/sdk.ts', clients: 'src/{filename}.client.ts', types: 'src/types/{filename}.ts' },
+                },
+            },
+            '/project',
+        );
+        const ctx = makeScaffoldCtx();
+        await plugin.generateTargets!(eventInputs(), ctx);
+
+        const pkg = find(ctx.emitted, 'packages/sdk/package.json');
+        const tsconfig = find(ctx.emitted, 'packages/sdk/tsconfig.json');
+        expect(pkg).toBeDefined();
+        expect(tsconfig).toBeDefined();
+        // Both are write-once scaffold files.
+        expect(pkg!.ifAbsent).toBe(true);
+        expect(tsconfig!.ifAbsent).toBe(true);
+        // Name carried from sdk.name; zod (enabled) and luxon (datetime field) detected.
+        const parsed = JSON.parse(pkg!.content);
+        expect(parsed.name).toBe('my-sdk');
+        expect(parsed.dependencies.zod).toBeDefined();
+        expect(parsed.dependencies.luxon).toBeDefined();
+    });
+
+    it('omits luxon when no covered model uses a date/time scalar', async () => {
+        const root = opRoot(
+            [opRoute('/things', [opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing', 'application/json')] })])],
+            '/project/contracts/things.ck',
+        );
+        const plugin = createTypescriptPlugin(
+            { sdk: { baseDir: 'packages/sdk', scaffold: true, output: { sdk: 'src/sdk.ts', clients: 'src/{filename}.client.ts', types: 'src/types/{filename}.ts' } } },
+            '/project',
+        );
+        const ctx = makeScaffoldCtx();
+        await plugin.generateTargets!(
+            {
+                contractRoots: [contractRoot([model('Thing', [field('id', scalarType('uuid'))])], '/project/contracts/things.ck')],
+                opRoots: [root],
+                modelOutPaths: new Map<string, string>(),
+                modelsWithInput: new Set<string>(),
+                modelsWithOutput: new Set<string>(),
+            },
+            ctx,
+        );
+        const pkg = JSON.parse(find(ctx.emitted, 'packages/sdk/package.json')!.content);
+        expect(pkg.dependencies?.luxon).toBeUndefined();
+        // zod also absent (zod not enabled) → no dependencies block at all.
+        expect(pkg.dependencies).toBeUndefined();
+    });
+});

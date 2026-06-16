@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { computeHash } from './cache.js';
 import { readNearestPackageVersion } from './compiler-fingerprint.js';
 import type { PluginEntry, ResolvedConfig } from './config.js';
-import type { ContractKitPlugin, PluginContext } from '@contractkit/core';
+import type { ContractKitPlugin, PluginContext, EmitFileOptions } from '@contractkit/core';
 import type { FileHashMap } from './cache.js';
 
 export type { ContractKitPlugin };
@@ -54,7 +54,7 @@ export function makePluginContext(
     config: ResolvedConfig,
     cacheEnabled: boolean,
     cacheDir: string,
-    emitFile?: (outPath: string, content: string) => void,
+    emitFile?: (outPath: string, content: string, opts?: EmitFileOptions) => void,
 ): PluginContext {
     return {
         rootDir: config.rootDir,

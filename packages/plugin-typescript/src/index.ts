@@ -1,6 +1,6 @@
 import { resolve, join, relative, dirname, basename } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
-import { generateContract } from './codegen-contract.js';
+import { generateContract, rootNeedsScalar } from './codegen-contract.js';
 import { generateOp } from './codegen-operation.js';
 import type {
     ContractKitPlugin,
@@ -34,8 +34,11 @@ import {
     deriveSubareaPropertyName,
     getAreaSubarea,
     hasPublicOperations,
+    generateSdkPackageJson,
+    generateSdkTsconfig,
     type SdkClientInfo,
     type SdkAreaInfo,
+    type SdkScaffoldDeps,
 } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
 import {
@@ -80,6 +83,15 @@ export interface SdkConfig {
         clients?: string;
     };
     includeInternal?: boolean;
+    /**
+     * Emit a starter `package.json` and `tsconfig.json` at the SDK `baseDir` so the
+     * generated output is a buildable, publishable package on its own. Opt-in and
+     * write-once: the files are created only when absent and are never overwritten or
+     * cleaned up on later builds, so any edits you make to them are preserved.
+     * Dependency ranges are derived from the contracts (always `zod` when `zod: true`;
+     * `luxon` when any covered model uses a date/time/datetime/interval scalar).
+     */
+    scaffold?: boolean;
 }
 
 export interface ZodConfig {
@@ -165,8 +177,8 @@ async function runTypescriptCodegen(
 
     deleteStalePaths(result.deletedPaths);
 
-    for (const { relativePath, content } of result.filesToWrite) {
-        ctx.emitFile(relativePath, content);
+    for (const { relativePath, content, ifAbsent } of result.filesToWrite) {
+        ctx.emitFile(relativePath, content, ifAbsent ? { ifAbsent: true } : undefined);
     }
 
     writeManifest(manifestPath, result.manifest);
@@ -691,6 +703,31 @@ function collectSdkOutput(
         relativePath: join(sdkSrcDir, 'index.ts'),
         content: `// Auto-generated barrel file\n${rootExports.sort().join('\n')}\n`,
     });
+
+    // ── Scaffold files (opt-in, write-once) ──
+    // Emitted at the SDK package root with `ifAbsent` so they're created once and
+    // then owned by the user. Deps are derived from the contracts actually surfaced
+    // into the SDK: zod when schema output is on, luxon when any covered model uses a
+    // date/time/datetime/interval scalar.
+    if (config.scaffold) {
+        const coveredRoots = sdkContractEntries.map(e => e.ast);
+        const deps: SdkScaffoldDeps = {
+            zod: !!config.zod,
+            luxon: coveredRoots.some(
+                r => rootNeedsScalar(r, 'datetime') || rootNeedsScalar(r, 'date') || rootNeedsScalar(r, 'time') || rootNeedsScalar(r, 'interval'),
+            ),
+        };
+        globalFiles.push({
+            relativePath: join(sdkBase, 'package.json'),
+            content: generateSdkPackageJson({ name: sdkName ?? 'sdk', deps }),
+            ifAbsent: true,
+        });
+        globalFiles.push({
+            relativePath: join(sdkBase, 'tsconfig.json'),
+            content: generateSdkTsconfig(),
+            ifAbsent: true,
+        });
+    }
 }
 
 // ─── Zod sub-generator ─────────────────────────────────────────────────────

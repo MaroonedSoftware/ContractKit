@@ -217,6 +217,46 @@ describe('runIncrementalCodegen', () => {
         expect(second.deletedPaths).toContain('b.ts');
     });
 
+    it('offers ifAbsent global files to write but keeps them out of manifest tracking', () => {
+        const result = runIncrementalCodegen({
+            codegenVersion: '1',
+            prevManifest: emptyIncrementalManifest('1'),
+            globalFiles: [
+                { relativePath: 'index.ts', content: 'barrel' },
+                { relativePath: 'package.json', content: '{}', ifAbsent: true },
+            ],
+            units: [],
+            fileExists: () => true,
+        });
+        // Both files are offered to the writer (the CLI enforces write-once via ifAbsent).
+        expect(result.filesToWrite.map(f => f.relativePath)).toContain('package.json');
+        expect(result.filesToWrite.find(f => f.relativePath === 'package.json')?.ifAbsent).toBe(true);
+        // ...but the scaffold file is NOT tracked in the manifest.
+        expect(result.manifest.files).toContain('index.ts');
+        expect(result.manifest.files).not.toContain('package.json');
+    });
+
+    it('never reports a vanished ifAbsent global file as a deletedPath', () => {
+        // Scaffold on: emits package.json (untracked).
+        const first = runIncrementalCodegen({
+            codegenVersion: '1',
+            prevManifest: emptyIncrementalManifest('1'),
+            globalFiles: [{ relativePath: 'package.json', content: '{}', ifAbsent: true }],
+            units: [unit('a', 'fp', [{ relativePath: 'a.ts', content: 'A' }])],
+            fileExists: () => true,
+        });
+        // Scaffold off: package.json no longer emitted. It must not be cleaned up —
+        // disabling the feature must never delete the user's edited package.json.
+        const second = runIncrementalCodegen({
+            codegenVersion: '1',
+            prevManifest: first.manifest,
+            globalFiles: [],
+            units: [unit('a', 'fp', [{ relativePath: 'a.ts', content: 'A' }])],
+            fileExists: () => true,
+        });
+        expect(second.deletedPaths).not.toContain('package.json');
+    });
+
     it('always writes global files, even when every unit is cached', () => {
         const first = runIncrementalCodegen({
             codegenVersion: '1',
