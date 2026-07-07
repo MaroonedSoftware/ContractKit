@@ -132,7 +132,7 @@ describe('generateOperation', () => {
         it('generates body validation with parseAndValidate', () => {
             const root = opRoot([opRoute('/users', [opOperation('post', { request: opRequest('CreateUser') })])]);
             const output = generateOp(root);
-            expect(output).toContain('parseAndValidate(ctx.body, CreateUser)');
+            expect(output).toContain('parseAndValidate(ctx.parsedBody, CreateUser)');
         });
 
         it('generates create service method for POST', () => {
@@ -172,7 +172,7 @@ describe('generateOperation', () => {
                 ]),
             ]);
             const output = generateOp(root);
-            expect(output).toContain('const body = await parseAndValidate(ctx.body, AuthRequest)');
+            expect(output).toContain('const body = await parseAndValidate(ctx.parsedBody, AuthRequest)');
             expect(output).not.toContain('switch (ctx.request.type)');
         });
 
@@ -191,8 +191,8 @@ describe('generateOperation', () => {
             expect(output).toContain('switch (ctx.request.type)');
             expect(output).toContain("case 'application/json':");
             expect(output).toContain("case 'multipart/form-data':");
-            expect(output).toContain('body = ctx.body as MultipartBody;');
-            expect(output).toContain('body = await parseAndValidate(ctx.body, UploadMeta)');
+            expect(output).toContain('body = ctx.parsedBody as MultipartBody;');
+            expect(output).toContain('body = await parseAndValidate(ctx.parsedBody, UploadMeta)');
             expect(output).toContain("import { MultipartBody } from '@maroonedsoftware/multipart';");
         });
     });
@@ -471,7 +471,7 @@ describe('generateOperation', () => {
             const root = opRoot([opRoute('/uploads', [opOperation('post', { request: opRequest('Upload', 'multipart/form-data') })])]);
             const output = generateOp(root);
             expect(output).toContain("bodyParserMiddleware(['multipart'])");
-            expect(output).toContain('ctx.body as MultipartBody');
+            expect(output).toContain('ctx.parsedBody as MultipartBody');
             expect(output).toContain("import { MultipartBody } from '@maroonedsoftware/multipart';");
         });
     });

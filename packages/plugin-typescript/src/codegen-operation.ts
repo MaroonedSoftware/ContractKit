@@ -277,14 +277,14 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     // Body validation (request-side — use Input variants)
     if (hasBody && op.request) {
         if (isSingleMultipart) {
-            lines.push(`    const multipartBody = ctx.body as MultipartBody;`);
+            lines.push(`    const multipartBody = ctx.parsedBody as MultipartBody;`);
             lines.push('');
         } else if (bodies.length === 1) {
-            lines.push(`    const body = await parseAndValidate(ctx.body, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
+            lines.push(`    const body = await parseAndValidate(ctx.parsedBody, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
             lines.push('');
         } else if (bodies.every(b => bodyTypesStructurallyEqual(b.bodyType, bodies[0]!.bodyType))) {
             // All declared MIMEs share the same body shape — single validation suffices
-            lines.push(`    const body = await parseAndValidate(ctx.body, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
+            lines.push(`    const body = await parseAndValidate(ctx.parsedBody, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
             lines.push('');
         } else {
             // Different body types per MIME — dispatch on Content-Type
@@ -298,9 +298,9 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
             for (const b of bodies) {
                 lines.push(`        case '${b.contentType}':`);
                 if (b.contentType === 'multipart/form-data') {
-                    lines.push(`            body = ctx.body as MultipartBody;`);
+                    lines.push(`            body = ctx.parsedBody as MultipartBody;`);
                 } else {
-                    lines.push(`            body = await parseAndValidate(ctx.body, ${renderInputType(b.bodyType, modelsWithInput)});`);
+                    lines.push(`            body = await parseAndValidate(ctx.parsedBody, ${renderInputType(b.bodyType, modelsWithInput)});`);
                 }
                 lines.push(`            break;`);
             }
