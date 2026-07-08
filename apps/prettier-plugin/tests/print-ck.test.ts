@@ -800,3 +800,242 @@ contract M: {
         expect(roundTrip(source)).toBe(source);
     });
 });
+
+describe('printCk — trailing/orphan comments (round-trip)', () => {
+    function roundTrip(source: string): string {
+        const diag = new DiagnosticCollector();
+        const ast = parseCk(source, 'test.ck', diag);
+        expect(diag.hasErrors()).toBe(false);
+        return printCk(ast);
+    }
+
+    it('preserves a comment on the last line of a contract body', () => {
+        const source = `\
+contract Payment: {
+    id: uuid
+    # more fields to come
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('# more fields to come');
+        // Comment sits on its own line after the last field, before the closing brace.
+        expect(out).toBe(source);
+        // Idempotent: formatting the output again yields the same result.
+        expect(roundTrip(out)).toBe(out);
+    });
+
+    it('preserves multiple trailing comments in a contract body', () => {
+        const source = `\
+contract Payment: {
+    id: uuid
+    # note one
+    # note two
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('# note one');
+        expect(out).toContain('# note two');
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+
+    it('preserves a comment as the only content of a contract body', () => {
+        const source = `\
+contract Empty: {
+    # nothing here yet
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('# nothing here yet');
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+
+    it('preserves a comment on the last line of an operation/route body', () => {
+        const source = `\
+operation /users: {
+    get: {
+    }
+    # TODO: add post
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('# TODO: add post');
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+
+    it('does not double-emit a header inline comment on a contract with no fields', () => {
+        const source = `\
+contract Empty: { # nothing here yet
+}
+`;
+        const out = roundTrip(source);
+        // The inline header comment must survive exactly once, not be duplicated on a trailing line.
+        expect(out.match(/# nothing here yet/g)?.length).toBe(1);
+        expect(roundTrip(out)).toBe(out);
+    });
+});
+
+describe('printCk — inline object trailing comments (round-trip)', () => {
+    function roundTrip(source: string): string {
+        const diag = new DiagnosticCollector();
+        const ast = parseCk(source, 'test.ck', diag);
+        expect(diag.hasErrors()).toBe(false);
+        return printCk(ast);
+    }
+
+    it('preserves a trailing comment as the last inner item of an inline object type', () => {
+        const source = `\
+contract Foo: {
+    bar: {
+        a: string
+        # trailing note
+    }
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('# trailing note');
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+
+    it('preserves multiple trailing comments in an inline object type', () => {
+        const source = `\
+contract Foo: {
+    bar: {
+        a: string
+        # note one
+        # note two
+    }
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('# note one');
+        expect(out).toContain('# note two');
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+
+    it('preserves a trailing comment as the only inner item of an inline object type', () => {
+        const source = `\
+contract Foo: {
+    bar: {
+        # placeholder
+    }
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('# placeholder');
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+
+    it('still attaches an inline comment on an inline field (no regression)', () => {
+        const source = `\
+contract Foo: {
+    bar: {
+        a: string # about a
+        b: int
+    }
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('a: string # about a');
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+});
+
+describe('printCk — options block sub-block comments (round-trip)', () => {
+    function roundTrip(source: string): string {
+        const diag = new DiagnosticCollector();
+        const ast = parseCk(source, 'test.ck', diag);
+        expect(diag.hasErrors()).toBe(false);
+        return printCk(ast);
+    }
+
+    it('preserves a leading comment on a keys entry', () => {
+        const source = `\
+options {
+    keys: {
+        # the api area
+        area: payments
+        version: v2
+    }
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('# the api area');
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+
+    it('preserves a trailing comment at the end of the keys sub-block', () => {
+        const source = `\
+options {
+    keys: {
+        area: payments
+        # more keys to come
+    }
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('# more keys to come');
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+
+    it('preserves a leading comment on a services entry', () => {
+        const source = `\
+options {
+    services: {
+        # payments backend
+        PaymentsService: "#src/services/payments.service.js"
+    }
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('# payments backend');
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+
+    it('preserves a comment at the end of the last options sub-block (end of options block)', () => {
+        const source = `\
+options {
+    keys: {
+        area: payments
+    }
+    services: {
+        PaymentsService: "#src/services/payments.service.js"
+        # end of options
+    }
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('# end of options');
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+
+    it('preserves both leading and trailing comments across keys and services', () => {
+        const source = `\
+options {
+    keys: {
+        # area comment
+        area: payments
+        # trailing keys
+    }
+    services: {
+        # service comment
+        PaymentsService: "#src/services/payments.service.js"
+        # trailing services
+    }
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toBe(source);
+        expect(roundTrip(out)).toBe(out);
+    });
+});

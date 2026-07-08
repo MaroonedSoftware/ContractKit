@@ -1,6 +1,7 @@
 import { Hover, MarkupKind, TextDocumentPositionParams } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { WorkspaceIndex } from './workspace-index.js';
+import { getWordAtPosition } from '../shared/word-at-position.js';
 import type { ContractTypeNode, FieldNode, ModelNode } from '@contractkit/core';
 
 const SECURITY_SCHEME_DOCS: Record<string, string> = {
@@ -30,8 +31,9 @@ const BUILTIN_TYPE_DOCS: Record<string, string> = {
 };
 
 export function getHover(params: TextDocumentPositionParams, document: TextDocument, index: WorkspaceIndex): Hover | null {
-    const word = getWordAtPosition(document, params.position.line, params.position.character);
-    if (!word) return null;
+    const hit = getWordAtPosition(document, params.position.line, params.position.character);
+    if (!hit) return null;
+    const word = hit.word;
 
     // Check security scheme keywords
     if (word in SECURITY_SCHEME_DOCS) {
@@ -127,25 +129,4 @@ function formatType(type: ContractTypeNode): string {
         case 'lazy':
             return `lazy(${formatType(type.inner)})`;
     }
-}
-
-function getWordAtPosition(document: TextDocument, line: number, character: number): string | null {
-    const text = document.getText();
-    const lines = text.split('\n');
-    if (line >= lines.length) return null;
-
-    const lineText = lines[line]!;
-    if (character >= lineText.length) return null;
-
-    let start = character;
-    while (start > 0 && /[a-zA-Z0-9_$]/.test(lineText[start - 1]!)) {
-        start--;
-    }
-    let end = character;
-    while (end < lineText.length && /[a-zA-Z0-9_$]/.test(lineText[end]!)) {
-        end++;
-    }
-
-    if (start === end) return null;
-    return lineText.slice(start, end);
 }

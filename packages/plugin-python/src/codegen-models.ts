@@ -1,4 +1,4 @@
-import type { ContractRootNode, ModelNode, FieldNode, ContractTypeNode } from '@contractkit/core';
+import type { ContractRootNode, ModelNode, FieldNode, ContractTypeNode, ScalarTypeNode } from '@contractkit/core';
 import { computeModelsWithInput, topoSortModels, collectExternalRefs, collectExternalInputRefs } from '@contractkit/core';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -173,6 +173,15 @@ function scanTypeImports(type: ContractTypeNode, imports: ImportTracker): void {
 
 // ─── Type rendering ───────────────────────────────────────────────────────
 
+/**
+ * Render a ContractKit type node as its Python type annotation (Pydantic v2 conventions).
+ *
+ * @param modelsWithInput - Model names that have a distinct `Input` variant; a `ref` to one of
+ *   these renders as `<Name>Input` when `forInput` is set.
+ * @param forInput - When true, request-side refs use their `Input` variant.
+ * @throws {Error} Via the scalar renderer, if a scalar name has no Python mapping (guards against
+ *   a scalar being added to core without updating this plugin).
+ */
 export function renderPyType(type: ContractTypeNode, modelsWithInput?: Set<string>, forInput = false): string {
     switch (type.kind) {
         case 'scalar':
@@ -209,7 +218,7 @@ export function renderPyType(type: ContractTypeNode, modelsWithInput?: Set<strin
     }
 }
 
-function renderScalar(name: string): string {
+function renderScalar(name: ScalarTypeNode['name']): string {
     switch (name) {
         case 'string':
         case 'email':
@@ -231,6 +240,8 @@ function renderScalar(name: string): string {
             return 'datetime';
         case 'duration':
             return 'timedelta';
+        case 'interval':
+            return 'str';
         case 'uuid':
             return 'UUID';
         case 'null':
@@ -241,8 +252,10 @@ function renderScalar(name: string): string {
         case 'json':
         case 'object':
             return 'Any';
-        default:
-            return 'Any';
+        default: {
+            const _exhaustive: never = name;
+            throw new Error(`plugin-python: unmapped scalar '${String(_exhaustive)}' — add a case`);
+        }
     }
 }
 
@@ -259,6 +272,19 @@ export function toPythonFieldName(name: string): string {
     // Prefix if starts with digit
     if (/^\d/.test(result)) result = 'f_' + result;
     return result;
+}
+
+// ─── Comment emission ─────────────────────────────────────────────────────
+
+/**
+ * Render `text` as one `#`-prefixed Python comment line per source line.
+ * Descriptions come from `#` doc comments and may contain embedded newlines;
+ * emitting them verbatim would leave every line after the first uncommented
+ * (a SyntaxError in the generated module). `indent` is the whitespace prefix
+ * that precedes `# ` at the call site.
+ */
+function commentLines(text: string, indent: string): string[] {
+    return text.split('\n').map(line => `${indent}# ${line}`);
 }
 
 // ─── Model generation ─────────────────────────────────────────────────────
@@ -278,7 +304,7 @@ function generateModel(model: ModelNode, allModelsWithInput: Set<string>, import
 
 function generateTypeAlias(model: ModelNode, allModelsWithInput: Set<string>, _: ImportTracker): string[] {
     const lines: string[] = [];
-    if (model.description) lines.push(`# ${model.description}`);
+    if (model.description) lines.push(...commentLines(model.description, ''));
     if (model.deprecated) lines.push('# @deprecated');
     lines.push(`${model.name} = ${renderPyType(model.type!, allModelsWithInput)}`);
     if (allModelsWithInput.has(model.name)) {
@@ -289,7 +315,7 @@ function generateTypeAlias(model: ModelNode, allModelsWithInput: Set<string>, _:
 
 function generateSimpleModel(model: ModelNode, allModelsWithInput: Set<string>, imports: ImportTracker): string[] {
     const lines: string[] = [];
-    if (model.description) lines.push(`# ${model.description}`);
+    if (model.description) lines.push(...commentLines(model.description, ''));
     if (model.deprecated) lines.push('# @deprecated');
 
     const baseList = model.bases && model.bases.length > 0 ? model.bases.join(', ') : 'BaseModel';
@@ -317,7 +343,7 @@ function generateSplitModel(model: ModelNode, allModelsWithInput: Set<string>, i
 
     // Read model — omit writeonly fields
     const readFields = model.fields.filter(f => f.visibility !== 'writeonly');
-    if (model.description) lines.push(`# ${model.description}`);
+    if (model.description) lines.push(...commentLines(model.description, ''));
     if (model.deprecated) lines.push('# @deprecated');
 
     const readBaseList = model.bases && model.bases.length > 0 ? model.bases.join(', ') : 'BaseModel';
@@ -387,7 +413,7 @@ function renderField(field: FieldNode, allModelsWithInput: Set<string>, imports:
     }
 
     if (field.deprecated) lines.push(`    # @deprecated`);
-    if (field.description) lines.push(`    # ${field.description}`);
+    if (field.description) lines.push(...commentLines(field.description, '    '));
 
     let rhs: string;
     if (fieldAnnotations.length > 0) {

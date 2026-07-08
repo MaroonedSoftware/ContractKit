@@ -9,7 +9,7 @@ import {
     typeNeedsScalar,
     modeToWrapper,
 } from './codegen-contract.js';
-import { renderOutputTsType, quoteKey, headerNameToProperty } from './ts-render.js';
+import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted } from './ts-render.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Content-type helpers ──────────────────────────────────────────────────
@@ -217,7 +217,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     // JSDoc from description
     const desc = op.description ?? route.description;
     if (desc) {
-        lines.push(` * ${desc}`);
+        for (const l of escapeJsDocLines(desc)) lines.push(` * ${l}`);
     }
     // Source location comment
     const relFile = outPath ? relative(dirname(outPath), file) : file;
@@ -261,8 +261,8 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     }
     if (op.signature) {
         const sigArgs = op.signaturePolicy
-            ? `'${op.signature}', { policy: '${op.signaturePolicy}' }`
-            : `'${op.signature}'`;
+            ? `'${escapeSingleQuoted(op.signature)}', { policy: '${escapeSingleQuoted(op.signaturePolicy)}' }`
+            : `'${escapeSingleQuoted(op.signature)}'`;
         middlewares.push(`requireSignature(${sigArgs})`);
     }
     const middlewareStr = middlewares.length > 0 ? `, ${middlewares.join(', ')},` : ',';

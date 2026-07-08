@@ -1,11 +1,102 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, relative, isAbsolute } from 'node:path';
+import { lookup } from 'node:dns/promises';
 import type { OpRootNode, PluginValue } from '@contractkit/core';
 import type { DiagnosticCollector } from '@contractkit/core';
 import type { HttpCache } from './cache.js';
 
 const FILE_URL_PREFIX = 'file://';
 
+/** Abort an outbound plugin-extension fetch after this many milliseconds. */
+const HTTP_TIMEOUT_MS = 10_000;
+/** Reject a plugin-extension response body larger than this many bytes. */
+const MAX_HTTP_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Returns true when `p` (the result of `relative(root, target)`) indicates the
+ * target escapes `root` — i.e. it walks up out of the tree (`..`) or is an
+ * absolute path (different drive/root). Callers pass `relative(root, target)`.
+ */
+function escapesRoot(rel: string): boolean {
+    return rel === '..' || rel.startsWith(`..${'/'}`) || rel.startsWith('..\\') || isAbsolute(rel);
+}
+
+/**
+ * Returns true when `ip` is a loopback, private, link-local, or unique-local
+ * address that plugin-extension fetches must never reach (SSRF guard). Accepts
+ * both IPv4 dotted-quad and IPv6 literals (including IPv4-mapped IPv6).
+ */
+export function isBlockedAddress(ip: string): boolean {
+    let host = ip.trim().toLowerCase();
+    // Strip zone id (e.g. fe80::1%eth0) and brackets.
+    const pct = host.indexOf('%');
+    if (pct !== -1) host = host.slice(0, pct);
+    if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
+
+    // IPv4-mapped / IPv4-compatible IPv6 (e.g. ::ffff:127.0.0.1) → check the IPv4 tail.
+    const mapped = host.match(/^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped) host = mapped[1]!;
+
+    if (host.includes(':')) return isBlockedIpv6(host);
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return isBlockedIpv4(host);
+    return false;
+}
+
+function isBlockedIpv4(host: string): boolean {
+    const parts = host.split('.').map(n => Number(n));
+    if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+    const [a, b] = parts as [number, number, number, number];
+    if (a === 127) return true; // 127.0.0.0/8 loopback
+    if (a === 10) return true; // 10.0.0.0/8 private
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private
+    if (a === 192 && b === 168) return true; // 192.168.0.0/16 private
+    if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local (incl. cloud metadata)
+    if (a === 0) return true; // 0.0.0.0/8 "this host"
+    return false;
+}
+
+function isBlockedIpv6(host: string): boolean {
+    if (host === '::1') return true; // loopback
+    if (host === '::') return true; // unspecified
+    const first = host.split(':')[0] ?? '';
+    const head = parseInt(first || '0', 16);
+    if (Number.isNaN(head)) return true;
+    if ((head & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
+    if ((head & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+    return false;
+}
+
+/**
+ * Throws when `url`'s host is a literal private/loopback/link-local address, is
+ * `localhost`, or resolves (via DNS) to any such address. Resolving all A/AAAA
+ * records and rejecting if ANY is blocked mitigates DNS-rebinding on this
+ * pre-fetch check. Callers should treat a throw as "leave the URL in place".
+ *
+ * @throws if the host is `localhost`, a blocked IP literal, or resolves to any
+ * blocked address.
+ */
+export async function assertPublicUrl(url: string): Promise<void> {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'localhost' || host.endsWith('.localhost')) {
+        throw new Error(`refusing to fetch loopback host: ${host}`);
+    }
+    // IP literal (URL hostname strips the brackets from IPv6).
+    if (isBlockedAddress(host)) {
+        throw new Error(`refusing to fetch private/loopback address: ${host}`);
+    }
+    // Hostname → resolve and reject if any address is blocked.
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(host) && !host.includes(':')) {
+        const records = await lookup(host, { all: true });
+        for (const { address } of records) {
+            if (isBlockedAddress(address)) {
+                throw new Error(`host ${host} resolves to blocked address ${address}`);
+            }
+        }
+    }
+}
+
+/** Options for {@link resolvePluginExtensions}. */
 export interface ResolvePluginExtensionsOptions {
     /**
      * Persistent HTTP response cache. Successful responses are written through
@@ -27,12 +118,14 @@ export interface ResolvePluginExtensionsOptions {
  *
  * The transformed tree is stored as `op.pluginExtensions[name]`. Strings without
  * a recognized URL prefix and non-string leaves pass through unchanged. Missing
- * files and failed/non-2xx HTTP requests emit warnings and leave the original
- * string in place.
+ * files, `file://` paths that escape `rootDir`, and failed/blocked/non-2xx HTTP
+ * requests emit warnings and leave the original string in place.
  *
- * Each unique HTTP URL is fetched at most once per CLI invocation; when
- * `options.httpCacheDir` is set, successful responses are persisted there and
- * reused on subsequent runs.
+ * `file://` reads are contained to `rootDir` and outbound HTTP is guarded against
+ * SSRF (private/loopback/link-local targets, DNS rebinding, redirects, oversized
+ * bodies). Each unique HTTP URL is fetched at most once per CLI invocation; when
+ * `options.httpCache` is provided, successful responses are persisted through it
+ * and reused on subsequent runs.
  */
 export async function resolvePluginExtensions(
     roots: OpRootNode[],
@@ -50,7 +143,7 @@ export async function resolvePluginExtensions(
                 if (!op.plugins) continue;
                 const resolved: Record<string, PluginValue> = {};
                 for (const [name, value] of Object.entries(op.plugins)) {
-                    resolved[name] = await resolveUrls(value, contractDir, root.file, op.loc.line, name, diag, inFlight, httpCache);
+                    resolved[name] = await resolveUrls(value, contractDir, rootDir, root.file, op.loc.line, name, diag, inFlight, httpCache);
                 }
                 op.pluginExtensions = resolved;
             }
@@ -61,6 +154,7 @@ export async function resolvePluginExtensions(
 async function resolveUrls(
     value: PluginValue,
     contractDir: string,
+    rootDir: string,
     file: string,
     line: number,
     pluginName: string,
@@ -72,6 +166,13 @@ async function resolveUrls(
         if (value.startsWith(FILE_URL_PREFIX)) {
             const relPath = value.slice(FILE_URL_PREFIX.length);
             const absPath = resolve(contractDir, relPath);
+            // Containment: reject `..` traversal and absolute overrides that would
+            // read a file outside the project root and embed it into generated output.
+            const rel = relative(rootDir, absPath);
+            if (escapesRoot(rel)) {
+                diag.warn(file, line, `plugins.${pluginName}: refusing to read file outside project root: ${relPath}`);
+                return value;
+            }
             if (!existsSync(absPath)) {
                 diag.warn(file, line, `plugins.${pluginName}: file not found: ${relPath}`);
                 return value;
@@ -94,12 +195,12 @@ async function resolveUrls(
         return value;
     }
     if (Array.isArray(value)) {
-        return Promise.all(value.map(item => resolveUrls(item, contractDir, file, line, pluginName, diag, inFlight, httpCache)));
+        return Promise.all(value.map(item => resolveUrls(item, contractDir, rootDir, file, line, pluginName, diag, inFlight, httpCache)));
     }
     if (value !== null && typeof value === 'object') {
         const out: Record<string, PluginValue> = {};
         for (const [k, v] of Object.entries(value)) {
-            out[k] = await resolveUrls(v, contractDir, file, line, pluginName, diag, inFlight, httpCache);
+            out[k] = await resolveUrls(v, contractDir, rootDir, file, line, pluginName, diag, inFlight, httpCache);
         }
         return out;
     }
@@ -112,9 +213,30 @@ async function fetchUrl(url: string, httpCache: HttpCache | undefined): Promise<
         if (cached !== null) return cached;
     }
     try {
-        const res = await fetch(url);
+        // SSRF guard: refuse loopback/private/link-local/metadata targets before
+        // the request goes out (resolving hostnames to catch DNS-based bypass).
+        await assertPublicUrl(url);
+
+        const res = await fetch(url, {
+            signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+            // Refuse redirects outright — following them would bypass the pre-fetch
+            // SSRF check by bouncing to a private/internal target.
+            redirect: 'manual',
+        });
+        // A manual-mode 3xx (or opaqueredirect) is treated as a failure.
+        if (res.status >= 300 && res.status < 400) return null;
+        if (res.type === 'opaqueredirect') return null;
         if (!res.ok) return null;
-        const body = await res.text();
+
+        // Size cap: reject via the advertised content-length first (cheap), then
+        // guard the actual decoded byte length after reading.
+        const contentLength = Number(res.headers.get('content-length'));
+        if (Number.isFinite(contentLength) && contentLength > MAX_HTTP_BYTES) return null;
+
+        const buf = await res.arrayBuffer();
+        if (buf.byteLength > MAX_HTTP_BYTES) return null;
+        const body = new TextDecoder('utf-8').decode(buf);
+
         httpCache?.set(url, body);
         return body;
     } catch {

@@ -1,8 +1,25 @@
-import { resolve, join, relative, dirname } from 'node:path';
+import { resolve, join, relative, dirname, isAbsolute } from 'node:path';
 import type { ContractRootNode, OpRootNode } from '@contractkit/core';
 import { collectTypeRefs, collectPublicTypeNames } from '@contractkit/core';
 
 export const TEMPLATE_VAR_RE = /\{\w+\}/;
+
+/**
+ * Guard against path traversal in output-path templates. Output-path template variables
+ * (`{area}`, `{dir}`, `{filename}`, `{name}`) can be sourced from a `.ck` file's
+ * `options { keys }` block, so a malicious value like `../../../tmp/x` could escape the
+ * plugin's output directory. After the final absolute path is computed, verify it stays
+ * within `baseOutDir`; otherwise throw.
+ */
+function assertWithinBase(baseOutDir: string, outPath: string): string {
+    const rel = relative(resolve(baseOutDir), resolve(outPath));
+    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+        throw new Error(
+            `Refusing to emit outside output directory: resolved path "${outPath}" escapes "${baseOutDir}" (check options { keys } values used in output path templates)`,
+        );
+    }
+    return outPath;
+}
 
 export function resolveTemplate(template: string, vars: Record<string, string>): string {
     return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
@@ -47,14 +64,14 @@ export function computeOpOutPath(
 
     if (output && TEMPLATE_VAR_RE.test(output)) {
         const resolved = resolveTemplate(output, { filename, dir: relDir, ext: 'ck', ...meta });
-        if (includesFilename(resolved)) return join(baseOutDir, resolved);
-        return join(baseOutDir, resolved, defaultName);
+        if (includesFilename(resolved)) return assertWithinBase(baseOutDir, join(baseOutDir, resolved));
+        return assertWithinBase(baseOutDir, join(baseOutDir, resolved, defaultName));
     }
     if (output) {
-        if (includesFilename(output)) return join(baseOutDir, output);
-        return join(baseOutDir, output, relDir, defaultName);
+        if (includesFilename(output)) return assertWithinBase(baseOutDir, join(baseOutDir, output));
+        return assertWithinBase(baseOutDir, join(baseOutDir, output, relDir, defaultName));
     }
-    return join(baseOutDir, relDir, defaultName);
+    return assertWithinBase(baseOutDir, join(baseOutDir, relDir, defaultName));
 }
 
 export function computeContractOutPath(
@@ -86,14 +103,14 @@ export function computeSdkOutPath(
 
     if (clientOutput && TEMPLATE_VAR_RE.test(clientOutput)) {
         const resolved = resolveTemplate(clientOutput, { filename, dir: relDir, ext: 'ck', ...meta });
-        if (includesFilename(resolved)) return join(baseOutDir, resolved);
-        return join(baseOutDir, resolved, defaultOutName);
+        if (includesFilename(resolved)) return assertWithinBase(baseOutDir, join(baseOutDir, resolved));
+        return assertWithinBase(baseOutDir, join(baseOutDir, resolved, defaultOutName));
     }
     if (clientOutput) {
-        if (includesFilename(clientOutput)) return join(baseOutDir, clientOutput);
-        return join(baseOutDir, clientOutput, relDir, defaultOutName);
+        if (includesFilename(clientOutput)) return assertWithinBase(baseOutDir, join(baseOutDir, clientOutput));
+        return assertWithinBase(baseOutDir, join(baseOutDir, clientOutput, relDir, defaultOutName));
     }
-    return join(baseOutDir, relDir, defaultOutName);
+    return assertWithinBase(baseOutDir, join(baseOutDir, relDir, defaultOutName));
 }
 
 /**
@@ -118,14 +135,14 @@ export function computeSdkAreaClientOutPath(area: string, rootDir: string, clien
     if (clientOutput && TEMPLATE_VAR_RE.test(clientOutput)) {
         const resolved = resolveTemplate(clientOutput, { filename, dir: '', ext: 'ck', area, subarea: '' });
         const cleaned = fixHiddenSegment(resolved.replace(/\/+/g, '/').replace(/^\//, ''));
-        if (includesFilename(cleaned)) return join(baseOutDir, cleaned);
-        return join(baseOutDir, cleaned, `${filename}.client.ts`);
+        if (includesFilename(cleaned)) return assertWithinBase(baseOutDir, join(baseOutDir, cleaned));
+        return assertWithinBase(baseOutDir, join(baseOutDir, cleaned, `${filename}.client.ts`));
     }
     if (clientOutput) {
-        if (includesFilename(clientOutput)) return join(baseOutDir, clientOutput);
-        return join(baseOutDir, clientOutput, `${filename}.client.ts`);
+        if (includesFilename(clientOutput)) return assertWithinBase(baseOutDir, join(baseOutDir, clientOutput));
+        return assertWithinBase(baseOutDir, join(baseOutDir, clientOutput, `${filename}.client.ts`));
     }
-    return join(baseOutDir, `${filename}.client.ts`);
+    return assertWithinBase(baseOutDir, join(baseOutDir, `${filename}.client.ts`));
 }
 
 export function computeSdkTypeOutPath(
@@ -144,11 +161,11 @@ export function computeSdkTypeOutPath(
 
     if (TEMPLATE_VAR_RE.test(typeOutput)) {
         const resolved = resolveTemplate(typeOutput, { filename, dir: relDir, ext: 'ck', ...meta });
-        if (includesFilename(resolved)) return join(baseOutDir, resolved);
-        return join(baseOutDir, resolved, defaultOutName);
+        if (includesFilename(resolved)) return assertWithinBase(baseOutDir, join(baseOutDir, resolved));
+        return assertWithinBase(baseOutDir, join(baseOutDir, resolved, defaultOutName));
     }
-    if (includesFilename(typeOutput)) return join(baseOutDir, typeOutput);
-    return join(baseOutDir, typeOutput, relDir, defaultOutName);
+    if (includesFilename(typeOutput)) return assertWithinBase(baseOutDir, join(baseOutDir, typeOutput));
+    return assertWithinBase(baseOutDir, join(baseOutDir, typeOutput, relDir, defaultOutName));
 }
 
 export function generateBarrelFiles(contractPaths: string[]): { outPath: string; content: string }[] {

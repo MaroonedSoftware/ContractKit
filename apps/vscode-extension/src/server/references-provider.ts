@@ -1,6 +1,7 @@
 import { DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams, Location, Range, ReferenceParams, TextDocumentPositionParams } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { Reference, WorkspaceIndex } from './workspace-index.js';
+import { getWordAtPosition } from '../shared/word-at-position.js';
 
 /** All reference Locations for the identifier under the cursor (across the workspace). */
 export function getReferences(params: ReferenceParams, document: TextDocument, index: WorkspaceIndex): Location[] {
@@ -28,25 +29,11 @@ function lookupReferencesAtPosition(
     index: WorkspaceIndex,
     includeDeclaration: boolean,
 ): Reference[] {
-    const word = getWordAtPosition(document, params.position.line, params.position.character);
-    if (!word) return [];
+    const hit = getWordAtPosition(document, params.position.line, params.position.character);
+    if (!hit) return [];
+    const word = hit.word;
     const modelRefs = index.getModelReferences(word, includeDeclaration);
     if (modelRefs.length > 0) return modelRefs;
     const serviceRefs = index.getServiceReferences(word, includeDeclaration);
     return serviceRefs;
-}
-
-function getWordAtPosition(document: TextDocument, line: number, character: number): string | null {
-    const text = document.getText();
-    const lines = text.split('\n');
-    if (line >= lines.length) return null;
-    const lineText = lines[line]!;
-    if (character >= lineText.length) return null;
-
-    let start = character;
-    while (start > 0 && /[a-zA-Z0-9_$]/.test(lineText[start - 1]!)) start--;
-    let end = character;
-    while (end < lineText.length && /[a-zA-Z0-9_$]/.test(lineText[end]!)) end++;
-    if (start === end) return null;
-    return lineText.slice(start, end);
 }

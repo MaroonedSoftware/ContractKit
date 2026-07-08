@@ -21,6 +21,7 @@ const I4 = INDENT.repeat(4);
 // ─── Orphan comment helpers ──────────────────────────────────────────────────
 
 type CommentEntry = { line: number; text: string };
+/** A run of consecutive-line orphan comments, keyed by the source line it starts on. */
 export type CommentBlock = { startLine: number; lines: string[] };
 
 /** Group sorted orphan comment entries into consecutive-line blocks. */
@@ -52,6 +53,14 @@ export function flushBlocks(out: string[], blocks: CommentBlock[], idx: { value:
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 
+/**
+ * Render an `operation` route body from its `path: {` onward (the `operation` keyword and
+ * any modifier are prepended by the caller). Emits the params/security blocks and each HTTP
+ * operation, interleaving orphan comment `blocks` at their original source positions — `idx`
+ * tracks how far through `blocks` we've consumed, and `nextRouteStart` bounds the flush to
+ * comments before the following route. Any `route.trailingComments` (comments after the last
+ * operation, before `}`) are emitted before the closing brace so they round-trip.
+ */
 export function printRoute(route: OpRouteNode, blocks: CommentBlock[], idx: { value: number }, nextRouteStart: number): string {
     const lines: string[] = [];
     const commentSuffix = route.description ? ` # ${route.description}` : '';
@@ -73,6 +82,11 @@ export function printRoute(route: OpRouteNode, blocks: CommentBlock[], idx: { va
 
     // Flush comment blocks between last operation and the next route
     flushBlocks(lines, blocks, idx, nextRouteStart, I1);
+
+    // Trailing/orphan comments after the last operation, before the closing brace.
+    for (const comment of route.trailingComments ?? []) {
+        lines.push(`${I1}# ${comment}`);
+    }
 
     lines.push('}');
     return lines.join('\n');

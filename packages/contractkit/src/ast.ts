@@ -119,6 +119,8 @@ export interface InlineObjectTypeNode {
     kind: 'inlineObject';
     fields: FieldNode[];
     mode?: ObjectMode;
+    /** Comments appearing after the last field, before the closing `}`. Not attached to any field. Preserved for lossless round-trip. */
+    trailingComments?: string[];
 }
 
 export interface IntersectionTypeNode {
@@ -153,6 +155,8 @@ export interface ModelNode {
      * `contract C: A & B & { ... }` produces `bases: ['A', 'B']`. Empty/undefined for non-inherited models. */
     bases?: string[];
     fields: FieldNode[];
+    /** Comments appearing after the last field, before the closing `}`. Not attached to any field. Preserved for lossless round-trip. */
+    trailingComments?: string[];
     type?: ContractTypeNode; // type alias: Name: typeExpression (fields will be empty)
     mode?: ObjectMode; // object validation mode — defaults to 'strict'
     inputCase?: 'camel' | 'snake' | 'pascal'; // format(input=) — key casing of incoming data
@@ -285,6 +289,8 @@ export interface OpRouteNode {
     params?: ParamSource;
     paramsMode?: ObjectMode;
     operations: OpOperationNode[];
+    /** Comments appearing after the last operation, before the closing `}`. Not attached to any operation. Preserved for lossless round-trip. */
+    trailingComments?: string[];
     /** Route-level modifiers — cascade to all operations unless overridden. */
     modifiers?: RouteModifier[];
     /** Route-level security default — cascades to operations that have no explicit security declaration. */
@@ -333,10 +339,26 @@ export interface OpRootNode {
 
 // ─── Unified AST (.ck) ───────────────────────────────────────────────────
 
+/** Comments retained from inside a single options sub-block (`keys` or `services`). */
+export interface OptionsScopeComments {
+    /** Comment lines appearing immediately before an entry, keyed by that entry's key. */
+    leading?: Record<string, string[]>;
+    /** Comment lines after the last entry, before the sub-block's closing `}`. */
+    trailing?: string[];
+}
+
+/** Comments retained from inside the options block's `keys`/`services` sub-blocks, for lossless round-trip. */
+export interface OptionsComments {
+    keys?: OptionsScopeComments;
+    services?: OptionsScopeComments;
+}
+
 export interface CkRootNode {
     kind: 'ckRoot';
     meta: Record<string, string>;
     services: Record<string, string>;
+    /** Comments retained from inside the options block's `keys`/`services` sub-blocks. Preserved for lossless round-trip. */
+    optionsComments?: OptionsComments;
     /** File-level security default — cascades to all routes/operations unless overridden. */
     security?: SecurityNode;
     /** File-level request headers from `options { request: { headers { ... } } }` — merged into every operation's request headers. */

@@ -1,6 +1,6 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, OpRequestBodyNode, ContractTypeNode, ParamSource } from '@contractkit/core';
 import { resolveModifiers, isJsonMime, classifyContentType } from '@contractkit/core';
-import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { basename, dirname, relative } from 'path';
@@ -289,11 +289,12 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
         const tags: string[] = [];
         if (op.name) tags.push(`@name ${op.name}`);
         if (desc) tags.push(`@description ${desc}`);
-        if (tags.length === 1) {
-            lines.push(`    /** ${tags[0]} */`);
+        const contentLines = tags.flatMap(t => escapeJsDocLines(t));
+        if (contentLines.length === 1) {
+            lines.push(`    /** ${contentLines[0]} */`);
         } else {
             lines.push(`    /**`);
-            for (const tag of tags) lines.push(`     * ${tag}`);
+            for (const l of contentLines) lines.push(`     * ${l}`);
             lines.push(`     */`);
         }
     }

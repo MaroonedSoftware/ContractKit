@@ -16,13 +16,48 @@ import type {
 
 const INDENT = '    '; // 4 spaces
 
+/** Matches a bare identifier that needs no quoting (mirrors serializeDefault). */
+const IDENT_RE = /^[a-zA-Z_$][a-zA-Z0-9_$\-.]*$/;
+
+/**
+ * Flatten a description to a single line so it is safe to embed in a trailing
+ * `# ...` comment. OpenAPI descriptions routinely contain newlines; an embedded
+ * newline would terminate the comment and dump the rest as raw `.ck` source.
+ */
+function singleLineComment(text: string): string {
+    return text.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Serialize an enum value as a `.ck` enum argument. Bare identifiers are emitted
+ * as-is; anything else (spaces, punctuation) is wrapped in a string literal.
+ * `.ck` string literals have no escape sequences, so when the value contains a
+ * double quote we fall back to single quotes (and vice versa).
+ */
+function quoteEnumValue(value: string): string {
+    if (IDENT_RE.test(value)) return value;
+    if (!value.includes('"')) return `"${value}"`;
+    if (!value.includes("'")) return `'${value}'`;
+    // Value contains both quote styles; `.ck` cannot escape, so keep double
+    // quotes and preserve the inner ones as best we can.
+    return `"${value}"`;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────
 
+/** Options controlling how a {@link CkRootNode} is rendered to `.ck` source. */
 export interface SerializeOptions {
     /** Emit descriptions as inline # comments. Default: true. */
     includeComments?: boolean;
 }
 
+/**
+ * Serialize a `.ck` AST back to formatted `.ck` source text. Emits the options
+ * block first, then every model, then every route, separated by blank lines and
+ * terminated with a trailing newline. Descriptions become trailing `# ...`
+ * comments unless `options.includeComments` is `false`. The output is designed
+ * to re-parse cleanly via `parseCk` (see round-trip tests).
+ */
 export function astToCk(root: CkRootNode, options: SerializeOptions = {}): string {
     const { includeComments = true } = options;
     const ctx: Ctx = { includeComments };
@@ -114,7 +149,7 @@ function serializeModel(model: ModelNode, ctx: Ctx): string {
     }
 
     const prefix = prefixes.length > 0 ? prefixes.join(' ') + ' ' : '';
-    const comment = ctx.includeComments && model.description ? ` # ${model.description}` : '';
+    const comment = ctx.includeComments && model.description ? ` # ${singleLineComment(model.description)}` : '';
 
     // Type alias: contract Name: typeExpression
     if (model.type) {
@@ -151,7 +186,7 @@ function serializeField(field: FieldNode, depth: number, ctx: Ctx): string {
     }
 
     const defaultVal = field.default !== undefined ? ` = ${serializeDefault(field.default)}` : '';
-    const comment = ctx.includeComments && field.description ? ` # ${field.description}` : '';
+    const comment = ctx.includeComments && field.description ? ` # ${singleLineComment(field.description)}` : '';
 
     return `${indent}${field.name}${optional}: ${deprecated}${visibility}${typeStr}${defaultVal}${comment}`;
 }
@@ -173,6 +208,12 @@ function serializeDefault(value: string | number | boolean): string {
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
+/**
+ * Serialize a single {@link ContractTypeNode} to its inline `.ck` type
+ * expression (e.g. `array(User, min=1)`, `string | int`, `enum(asc, desc)`).
+ * Recurses through composite types; enum values are quoted as needed via
+ * {@link quoteEnumValue}.
+ */
 export function serializeType(type: ContractTypeNode): string {
     switch (type.kind) {
         case 'scalar':
@@ -184,7 +225,7 @@ export function serializeType(type: ContractTypeNode): string {
         case 'record':
             return `record(${serializeType(type.key)}, ${serializeType(type.value)})`;
         case 'enum':
-            return `enum(${type.values.join(', ')})`;
+            return `enum(${type.values.map(quoteEnumValue).join(', ')})`;
         case 'literal':
             return serializeLiteral(type);
         case 'union':
@@ -251,7 +292,7 @@ function serializeRoute(route: OpRouteNode, ctx: Ctx): string {
     const lines: string[] = [];
 
     const modStr = serializeModifiers(route.modifiers);
-    const comment = ctx.includeComments && route.description ? ` # ${route.description}` : '';
+    const comment = ctx.includeComments && route.description ? ` # ${singleLineComment(route.description)}` : '';
     lines.push(`operation${modStr} ${route.path}: {${comment}`);
 
     // Route-level params
@@ -276,7 +317,7 @@ function serializeRoute(route: OpRouteNode, ctx: Ctx): string {
 function serializeOperation(lines: string[], op: OpOperationNode, depth: number, ctx: Ctx): string[] {
     const indent = INDENT.repeat(depth);
     const modStr = serializeModifiers(op.modifiers);
-    const comment = ctx.includeComments && op.description ? ` # ${op.description}` : '';
+    const comment = ctx.includeComments && op.description ? ` # ${singleLineComment(op.description)}` : '';
     lines.push(`${indent}${op.method}${modStr}: {${comment}`);
 
     const inner = INDENT.repeat(depth + 1);
@@ -293,7 +334,7 @@ function serializeOperation(lines: string[], op: OpOperationNode, depth: number,
 
     // Signature
     if (op.signature) {
-        const sigComment = ctx.includeComments && op.signatureDescription ? ` # ${op.signatureDescription}` : '';
+        const sigComment = ctx.includeComments && op.signatureDescription ? ` # ${singleLineComment(op.signatureDescription)}` : '';
         if (op.signaturePolicy) {
             lines.push(`${inner}signature: {`);
             lines.push(`${inner}    options: ${op.signature}${sigComment}`);
@@ -363,7 +404,7 @@ function serializeParamSource(lines: string[], keyword: string, source: ParamSou
             typeStr = `${typeStr} | null`;
         }
         const defaultVal = param.default !== undefined ? ` = ${serializeDefault(param.default)}` : '';
-        const comment = ctx.includeComments && param.description ? ` # ${param.description}` : '';
+        const comment = ctx.includeComments && param.description ? ` # ${singleLineComment(param.description)}` : '';
         lines.push(`${INDENT.repeat(depth + 1)}${param.name}${optional}: ${typeStr}${defaultVal}${comment}`);
     }
     lines.push(`${indent}}`);
@@ -393,7 +434,7 @@ function serializeResponses(lines: string[], responses: OpResponseNode[], depth:
                 lines.push(`${INDENT.repeat(depth + 2)}headers: {`);
                 for (const h of resp.headers!) {
                     const opt = h.optional ? '?' : '';
-                    const trail = h.description ? ` # ${h.description}` : '';
+                    const trail = h.description ? ` # ${singleLineComment(h.description)}` : '';
                     lines.push(`${INDENT.repeat(depth + 3)}${h.name}${opt}: ${serializeType(h.type)}${trail}`);
                 }
                 lines.push(`${INDENT.repeat(depth + 2)}}`);
@@ -415,7 +456,7 @@ function serializeSecurityBlock(lines: string[], security: SecurityNode, depth: 
 
     const sec = security as SecurityFields;
     if (sec.policy !== undefined) {
-        const comment = ctx.includeComments && sec.policyDescription ? ` # ${sec.policyDescription}` : '';
+        const comment = ctx.includeComments && sec.policyDescription ? ` # ${singleLineComment(sec.policyDescription)}` : '';
         const value = sec.policy === false ? 'none' : sec.policy;
         lines.push(`${indent}security: {`);
         lines.push(`${INDENT.repeat(depth + 1)}policy: ${value}${comment}`);

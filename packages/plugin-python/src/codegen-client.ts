@@ -190,8 +190,8 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     if (op.name || desc) {
         lines.push(`    async def ${methodName}(${selfParam}${paramStr}) -> ${returnType}:`);
         lines.push(`        """`);
-        if (op.name) lines.push(`        ${op.name}`);
-        if (desc) lines.push(`        ${desc}`);
+        if (op.name) lines.push(...docstringLines(op.name, '        '));
+        if (desc) lines.push(...docstringLines(desc, '        '));
         lines.push(`        """`);
     } else {
         lines.push(`    async def ${methodName}(${selfParam}${paramStr}) -> ${returnType}:`);
@@ -291,6 +291,21 @@ function buildHeadersDictLines(headers: OpResponseHeaderNode[], typeName: string
         lines.push(`            headers[${JSON.stringify(pyName)}] = _response_headers[${JSON.stringify(h.name.toLowerCase())}]`);
     }
     return lines;
+}
+
+/**
+ * Render `text` as indented docstring body lines, neutralizing anything that
+ * could terminate the enclosing `"""` docstring early. `op.name` / descriptions
+ * come from user `.ck` source and may contain `"""` runs or embedded newlines.
+ * Each `"` is escaped to `\"` (inside a Python string `\"` cannot close a `"""`),
+ * and a trailing backslash is guarded with a space so it can't escape the delimiter.
+ */
+function docstringLines(text: string, indent: string): string[] {
+    return text.split('\n').map(line => {
+        let safe = line.replace(/"/g, '\\"');
+        if (/\\$/.test(safe)) safe += ' ';
+        return `${indent}${safe}`;
+    });
 }
 
 /** snake_case → PascalCase. */

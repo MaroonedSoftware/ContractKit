@@ -1,8 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { CacheService, COMPILER_FINGERPRINT_KEY, DEFAULT_CACHE_DIR } from '../src/cache.js';
+import {
+    CacheService,
+    COMPILER_FINGERPRINT_KEY,
+    DEFAULT_CACHE_DIR,
+    HTTP_CACHE_MAX_AGE_MS,
+    computeHash,
+    type HttpCacheEntry,
+} from '../src/cache.js';
 
 describe('CacheService', () => {
     let tmpDir: string;
@@ -98,5 +105,90 @@ describe('CacheService', () => {
         const loaded = service.loadBuildCache('fp-1');
         expect(loaded['a.ck']).toBe('hash');
         expect(loaded[COMPILER_FINGERPRINT_KEY]).toBe('fp-1');
+    });
+
+    describe('http cache envelope validation', () => {
+        /** Resolve the on-disk path a given url hashes to under the default cache dir. */
+        const httpFilePath = (url: string): string => join(tmpDir, DEFAULT_CACHE_DIR, 'http', computeHash(url));
+
+        it('stores a validating JSON envelope, not the bare body', () => {
+            const url = 'https://example.com/a';
+            new CacheService(tmpDir, { enabled: true }).httpCache().set(url, 'body-a');
+            const raw = readFileSync(httpFilePath(url), 'utf-8');
+            const entry = JSON.parse(raw) as HttpCacheEntry;
+            expect(entry.version).toBe(1);
+            expect(entry.url).toBe(url);
+            expect(entry.body).toBe('body-a');
+            expect(entry.bodyHash).toBe(computeHash('body-a'));
+            expect(typeof entry.fetchedAt).toBe('number');
+        });
+
+        it('returns null once the entry is past its TTL', () => {
+            const url = 'https://example.com/stale';
+            // Configure a service so the file path resolution matches, then write a stale envelope directly.
+            const service = new CacheService(tmpDir, { enabled: true });
+            mkdirSync(join(tmpDir, DEFAULT_CACHE_DIR, 'http'), { recursive: true });
+            const stale: HttpCacheEntry = {
+                version: 1,
+                url,
+                fetchedAt: Date.now() - HTTP_CACHE_MAX_AGE_MS - 1000,
+                bodyHash: computeHash('old-body'),
+                body: 'old-body',
+            };
+            writeFileSync(httpFilePath(url), JSON.stringify(stale), 'utf-8');
+            expect(service.httpCache().get(url)).toBeNull();
+        });
+
+        it('honors a configurable httpMaxAgeMs', () => {
+            const url = 'https://example.com/short';
+            // Zero max-age: even a just-written entry is immediately expired.
+            const service = new CacheService(tmpDir, { enabled: true, httpMaxAgeMs: 0 });
+            service.httpCache().set(url, 'body');
+            expect(service.httpCache().get(url)).toBeNull();
+        });
+
+        it('returns null when the stored body no longer matches its bodyHash (tamper)', () => {
+            const url = 'https://example.com/tamper';
+            const service = new CacheService(tmpDir, { enabled: true });
+            service.httpCache().set(url, 'original');
+            const path = httpFilePath(url);
+            const entry = JSON.parse(readFileSync(path, 'utf-8')) as HttpCacheEntry;
+            entry.body = 'tampered'; // bodyHash still points at "original"
+            writeFileSync(path, JSON.stringify(entry), 'utf-8');
+            expect(service.httpCache().get(url)).toBeNull();
+        });
+
+        it('returns null when the envelope url differs from the requested url (key confusion)', () => {
+            const url = 'https://example.com/wanted';
+            const service = new CacheService(tmpDir, { enabled: true });
+            mkdirSync(join(tmpDir, DEFAULT_CACHE_DIR, 'http'), { recursive: true });
+            const entry: HttpCacheEntry = {
+                version: 1,
+                url: 'https://example.com/other', // does not match the key
+                fetchedAt: Date.now(),
+                bodyHash: computeHash('body'),
+                body: 'body',
+            };
+            writeFileSync(httpFilePath(url), JSON.stringify(entry), 'utf-8');
+            expect(service.httpCache().get(url)).toBeNull();
+        });
+
+        it('treats a legacy bare-body file as a miss without throwing', () => {
+            const url = 'https://example.com/legacy';
+            const service = new CacheService(tmpDir, { enabled: true });
+            mkdirSync(join(tmpDir, DEFAULT_CACHE_DIR, 'http'), { recursive: true });
+            // Old format: the raw body written straight to the sha256(url) path.
+            writeFileSync(httpFilePath(url), 'a raw legacy body', 'utf-8');
+            expect(() => service.httpCache().get(url)).not.toThrow();
+            expect(service.httpCache().get(url)).toBeNull();
+        });
+
+        it('get/set are no-ops when the cache is disabled', () => {
+            const url = 'https://example.com/disabled';
+            const service = new CacheService(tmpDir, { enabled: false });
+            service.httpCache().set(url, 'body');
+            expect(service.httpCache().get(url)).toBeNull();
+            expect(existsSync(join(tmpDir, DEFAULT_CACHE_DIR))).toBe(false);
+        });
     });
 });

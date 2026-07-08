@@ -5,4 +5,6 @@ on:
 jobs:
   pull-request:
     uses: ./.github/workflows/build.yml
-    secrets: inherit
+    # No `secrets: inherit`: build.yml uses no secrets, and this workflow runs
+    # untrusted PR code (install + build:ci + test:ci). Do not forward repo
+    # secrets down this path.

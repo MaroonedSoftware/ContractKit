@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parseCk, DiagnosticCollector } from '@contractkit/core';
 import { astToCk, serializeType } from '../src/ast-to-ck.js';
 import {
     ckRoot,
@@ -447,5 +448,81 @@ describe('full document', () => {
         // Route
         expect(result).toContain('operation /ledger/accounts: {');
         expect(result).toContain('        service: LedgerService.listAccounts');
+    });
+});
+
+// ─── Round-trip regressions ─────────────────────────────────────────────────
+
+/** Parse `.ck` source and return true when it re-parses with no errors. */
+function parsesCleanly(source: string): boolean {
+    const diag = new DiagnosticCollector();
+    parseCk(source, 'roundtrip.ck', diag);
+    return !diag.hasErrors();
+}
+
+describe('round-trip: multi-line descriptions', () => {
+    it('flattens a multi-line model description into a single-line trailing comment', () => {
+        const root = ckRoot({
+            models: [model('User', [field('id', scalarType('uuid'))], { description: 'A user.\nSpans multiple\nlines.' })],
+        });
+        const result = astToCk(root);
+        expect(result).toContain('contract User: { # A user. Spans multiple lines.');
+        // The comment line must not contain an embedded newline that leaks source.
+        const commentLine = result.split('\n').find(l => l.includes('contract User'))!;
+        expect(commentLine).toBe('contract User: { # A user. Spans multiple lines.');
+    });
+
+    it('flattens a multi-line field description', () => {
+        const root = ckRoot({
+            models: [model('User', [field('id', scalarType('uuid'), { description: 'The\nuser\nID' })])],
+        });
+        const result = astToCk(root);
+        expect(result).toContain('    id: uuid # The user ID');
+    });
+
+    it('re-parses cleanly with multi-line descriptions on model and field', () => {
+        const root = ckRoot({
+            models: [
+                model(
+                    'User',
+                    [
+                        field('id', scalarType('uuid'), { visibility: 'readonly', description: 'The user ID.\nGenerated server-side.' }),
+                        field('name', scalarType('string'), { description: 'Display name.\r\n\r\nCan contain\ttabs.' }),
+                    ],
+                    { description: 'A user record.\nMultiple paragraphs here.\n\nEven blank lines.' },
+                ),
+            ],
+        });
+        const result = astToCk(root);
+        expect(parsesCleanly(result)).toBe(true);
+    });
+});
+
+describe('round-trip: enum values needing quotes', () => {
+    it('quotes enum values that contain spaces', () => {
+        expect(serializeType(enumType('Not Started', 'In Progress', 'Done'))).toBe('enum("Not Started", "In Progress", Done)');
+    });
+
+    it('leaves bare-identifier enum values unquoted', () => {
+        expect(serializeType(enumType('asc', 'desc'))).toBe('enum(asc, desc)');
+    });
+
+    it('falls back to single quotes when the value contains a double quote', () => {
+        expect(serializeType(enumType('a "quoted" value'))).toBe(`enum('a "quoted" value')`);
+    });
+
+    it('keeps double quotes when the value contains both quote styles', () => {
+        // `.ck` string literals have no escape sequences, so a value with both
+        // quote styles cannot round-trip; the serializer keeps double quotes.
+        expect(serializeType(enumType(`a "b" 'c'`))).toBe(`enum("a "b" 'c'")`);
+    });
+
+    it('re-parses cleanly with space-containing enum values', () => {
+        const root = ckRoot({
+            models: [model('Task', [field('status', enumType('Not Started', 'in progress', 'Done'))])],
+        });
+        const result = astToCk(root);
+        expect(result).toContain('status: enum("Not Started", "in progress", Done)');
+        expect(parsesCleanly(result)).toBe(true);
     });
 });

@@ -714,10 +714,10 @@ function findParamType(source: ParamSource | undefined, name: string, modelMap: 
 
 /** Return a YAML-quoted example value string for a param, preferring a default value when provided. */
 function paramExampleValue(type: ContractTypeNode | undefined, defaultValue?: string | number | boolean, randomExamples = false): string {
-    if (defaultValue !== undefined) return `"${defaultValue}"`;
+    if (defaultValue !== undefined) return yamlDoubleQuoted(defaultValue);
     if (!type) return '""';
-    if (type.kind === 'enum') return type.values.length > 0 ? `"${type.values[0]}"` : '""';
-    if (type.kind === 'literal') return `"${type.value}"`;
+    if (type.kind === 'enum') return type.values.length > 0 ? yamlDoubleQuoted(type.values[0]!) : '""';
+    if (type.kind === 'literal') return yamlDoubleQuoted(type.value);
     if (type.kind !== 'scalar') return '""';
     if (randomExamples) {
         const random = randomScalarTemplate(type.name);
@@ -900,6 +900,19 @@ function extractPathParamNames(path: string): string[] {
 /** Derive folder name from op file path, e.g. src/users.op → users */
 function deriveFolderName(file: string): string {
     return basename(file).replace(/\.(op|ck)$/, '');
+}
+
+/**
+ * Escape a value into an always-quoted, valid double-quoted YAML scalar.
+ *
+ * Unlike {@link yamlString} (which only quotes when required), this always wraps
+ * the value in double quotes — used for example/param values that must stay
+ * strings (e.g. `"0"`, `"true"`). `.ck` string literals permit unescaped `"`
+ * inside either quote style, so backslashes and quotes are escaped here to keep
+ * the emitted YAML scalar valid.
+ */
+function yamlDoubleQuoted(value: string | number | boolean): string {
+    return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 /**

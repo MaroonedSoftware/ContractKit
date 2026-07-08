@@ -10,11 +10,13 @@ import type {
 } from '@contractkit/core';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@contractkit/core';
 
+/** A single entry for the OpenAPI `servers` array. */
 export interface OpenApiServerEntry {
     url: string;
     description?: string;
 }
 
+/** A named entry for `components.securitySchemes` (e.g. an HTTP bearer or API-key scheme). */
 export interface OpenApiSecurityScheme {
     type: string;
     scheme?: string;
@@ -23,6 +25,7 @@ export interface OpenApiSecurityScheme {
     in?: string;
 }
 
+/** Plugin configuration controlling the generated OpenAPI document (info block, servers, security, internal-op visibility). */
 export interface OpenApiConfig {
     baseDir?: string;
     output?: string;
@@ -134,6 +137,7 @@ function computeReachableSchemas(seeds: Set<string>, modelMap: Map<string, Model
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
+/** Inputs to {@link generateOpenApi}: the parsed contracts/operations plus the OpenAPI config and shared security schemes. */
 export interface OpenApiCodegenContext {
     contractRoots: ContractRootNode[];
     opRoots: OpRootNode[];
@@ -142,6 +146,14 @@ export interface OpenApiCodegenContext {
     securitySchemes?: Record<string, OpenApiSecurityScheme>;
 }
 
+/**
+ * Generate an OpenAPI 3.0 document (YAML) from the parsed contracts and operations.
+ *
+ * Emits `paths` from the operations and `components.schemas` from the contracts, honoring
+ * `config.includeInternal` for `operation(internal)` visibility.
+ *
+ * @returns The OpenAPI document serialized as a YAML string.
+ */
 export function generateOpenApi(ctx: OpenApiCodegenContext): string {
     const { contractRoots, opRoots, config, securitySchemes } = ctx;
     const includeInternal = config.includeInternal ?? false;
@@ -364,7 +376,15 @@ function resolveDiscriminatorLiterals(modelName: string, discriminator: string, 
     return [];
 }
 
-function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode): Record<string, unknown> {
+/**
+ * Map a ContractKit scalar type node to its OpenAPI schema object (`{ type, format, ... }`),
+ * carrying across constraints like min/max/length.
+ *
+ * @throws {Error} If the scalar name is not mapped — every member of the closed scalar set must
+ *   have an explicit case, so an unmapped name signals a scalar was added to core without updating
+ *   this plugin (rather than silently emitting a type-less, permissive schema).
+ */
+export function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode): Record<string, unknown> {
     const s: Record<string, unknown> = {};
 
     switch (type.name) {
@@ -399,6 +419,10 @@ function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode): Recor
             s.type = 'string';
             s.format = 'date';
             break;
+        case 'time':
+            s.type = 'string';
+            s.format = 'time';
+            break;
         case 'datetime':
             s.type = 'string';
             s.format = 'date-time';
@@ -406,6 +430,10 @@ function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode): Recor
         case 'duration':
             s.type = 'string';
             s.format = 'duration';
+            break;
+        case 'interval':
+            s.type = 'string';
+            s.format = 'interval';
             break;
         case 'email':
             s.type = 'string';
@@ -435,6 +463,10 @@ function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode): Recor
         case 'json':
             // Any JSON value — no type constraint
             break;
+        default: {
+            const _exhaustive: never = type.name;
+            throw new Error(`plugin-openapi: unmapped scalar '${String(_exhaustive)}' — add a case`);
+        }
     }
 
     return s;

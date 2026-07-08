@@ -26,6 +26,7 @@ import { CacheService, COMPILER_FINGERPRINT_KEY, computeHash } from './cache.js'
 import { loadPlugins, makePluginContext, computePluginFingerprint, pluginOutputsExist } from './plugin.js';
 import { computeCompilerFingerprintFromImportMeta } from './compiler-fingerprint.js';
 import { resolvePluginExtensions } from './resolve-plugin-extensions.js';
+import { assertWithinRoot, isOutsideRoot } from './path-utils.js';
 import type { FileHashMap } from './cache.js';
 
 // ─── Arg parsing ───────────────────────────────────────────────────────────
@@ -394,6 +395,9 @@ async function main() {
 
         let writtenCount = 0;
         for (const { outPath, content, ifAbsent } of results) {
+            // Containment backstop: a `.ck`-derived template var must never steer a
+            // write outside the project root, no matter which plugin emitted it.
+            assertWithinRoot(resolvedBase, outPath);
             // Scaffold files are written once and never overwritten thereafter.
             if (ifAbsent && existsSync(outPath)) continue;
             if (existsSync(outPath) && readFileSync(outPath, 'utf-8') === content) continue;
@@ -422,6 +426,13 @@ async function main() {
         let orphanedCount = 0;
         for (const file of prevFiles) {
             if (newFiles.has(file)) continue;
+            // Containment backstop: never unlink a path outside the project root
+            // (a poisoned manifest entry must not delete arbitrary files). Skip
+            // rather than throw so one bad entry can't abort the rest of cleanup.
+            if (isOutsideRoot(resolvedBase, file)) {
+                console.warn(`  ⚠  refusing to delete path outside project root: ${file}`);
+                continue;
+            }
             if (!existsSync(file)) continue;
             try {
                 unlinkSync(file);

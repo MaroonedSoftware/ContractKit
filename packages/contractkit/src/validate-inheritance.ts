@@ -4,8 +4,10 @@
  * modifiers on fields not present in any base.
  *
  * Resolution rules:
- * - Each base contributes its fully-resolved field set (recursive). Diamond inheritance is
- *   deduplicated — a model reachable via multiple paths only contributes its fields once.
+ * - Each base contributes its fully-resolved field set via the canonical `resolveEffectiveFields`
+ *   from type-utils, which follows `bases`, aliased `type` declarations, intersections, and inline
+ *   objects — so an aliased base (`contract B: A`) still contributes A's fields. Diamond inheritance
+ *   is deduplicated — a model reachable via multiple paths only contributes its fields once.
  * - Two fields with the same name conflict iff their `FieldNode` shapes differ on any of:
  *   type, optional, nullable, visibility, default, deprecated. `description` and `loc` are ignored.
  * - When two or more bases contribute a same-named field, the model must redeclare that field
@@ -18,6 +20,7 @@
  */
 import type { ContractRootNode, ContractTypeNode, FieldNode, ModelNode } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
+import { resolveEffectiveFields } from './type-utils.js';
 
 export function validateInheritance(contractRoots: ContractRootNode[], diag: DiagnosticCollector): void {
     const modelMap = new Map<string, ModelNode>();
@@ -31,7 +34,7 @@ export function validateInheritance(contractRoots: ContractRootNode[], diag: Dia
         for (const model of root.models) {
             if (!model.bases || model.bases.length === 0) continue;
             if (cycleNodes.has(model.name)) continue;
-            checkModel(model, modelMap, cycleNodes, diag);
+            checkModel(model, modelMap, diag);
         }
     }
 }
@@ -68,55 +71,18 @@ function detectCycles(modelMap: Map<string, ModelNode>, diag: DiagnosticCollecto
     return inCycle;
 }
 
-/** Resolve a base model to its **effective** field set: the merge of all its inherited
- * fields with its own (own fields shadow inherited by name). Memoized per model. */
-function resolveEffectiveFields(
-    baseName: string,
-    modelMap: Map<string, ModelNode>,
-    cycleNodes: Set<string>,
-    cache: Map<string, Map<string, FieldNode>>,
-): Map<string, FieldNode> {
-    const cached = cache.get(baseName);
-    if (cached) return cached;
-    if (cycleNodes.has(baseName)) {
-        const empty = new Map<string, FieldNode>();
-        cache.set(baseName, empty);
-        return empty;
-    }
-    const base = modelMap.get(baseName);
-    if (!base) {
-        const empty = new Map<string, FieldNode>();
-        cache.set(baseName, empty);
-        return empty;
-    }
-    // Set early to break any unexpected recursion.
-    const effective = new Map<string, FieldNode>();
-    cache.set(baseName, effective);
-    if (base.bases) {
-        for (const grandparent of base.bases) {
-            const g = resolveEffectiveFields(grandparent, modelMap, cycleNodes, cache);
-            for (const [name, field] of g) effective.set(name, field);
-        }
-    }
-    for (const own of base.fields) {
-        effective.set(own.name, own);
-    }
-    return effective;
-}
-
-function checkModel(model: ModelNode, modelMap: Map<string, ModelNode>, cycleNodes: Set<string>, diag: DiagnosticCollector): void {
-    const cache = new Map<string, Map<string, FieldNode>>();
-
-    // For each direct base, resolve its effective field set. Cross-base conflicts are detected
-    // by comparing same-named contributions across bases (each base's own overrides already
-    // applied within its set).
+function checkModel(model: ModelNode, modelMap: Map<string, ModelNode>, diag: DiagnosticCollector): void {
+    // For each direct base, resolve its effective field set (via the canonical resolver in
+    // type-utils, which follows `bases`, aliased `type`, intersections, and inline objects —
+    // so aliased bases contribute their fields). Cross-base conflicts are detected by comparing
+    // same-named contributions across bases (each base's own overrides already applied within its set).
     const baseFieldsByName = new Map<string, { source: string; field: FieldNode }[]>();
     for (const base of model.bases!) {
-        const effective = resolveEffectiveFields(base, modelMap, cycleNodes, cache);
-        for (const [name, field] of effective) {
-            const list = baseFieldsByName.get(name) ?? [];
+        const { fields } = resolveEffectiveFields(base, modelMap);
+        for (const field of fields) {
+            const list = baseFieldsByName.get(field.name) ?? [];
             list.push({ source: base, field });
-            baseFieldsByName.set(name, list);
+            baseFieldsByName.set(field.name, list);
         }
     }
 

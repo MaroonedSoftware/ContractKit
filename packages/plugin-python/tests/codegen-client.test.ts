@@ -358,4 +358,68 @@ describe('generatePythonClient', () => {
             expect(output).not.toContain('_fetch_with_headers');
         });
     });
+
+    // ─── Docstring injection (regression) ─────────────────────────────────
+
+    describe('docstring safety', () => {
+        it('escapes """ in op name/description so it cannot close the docstring early', () => {
+            const root = opRoot([
+                opRoute('/payments', [
+                    opOperation('get', {
+                        sdk: 'getPayment',
+                        name: 'Bad """ name',
+                        description: 'desc with """ triple quote',
+                        responses: [opResponse(200, 'Payment')],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+
+            // The escaped form is emitted...
+            expect(output).toContain('Bad \\"\\"\\" name');
+            expect(output).toContain('desc with \\"\\"\\" triple quote');
+
+            // ...and the docstring body is only closed by the real delimiter, not the
+            // injected one. Between the two `"""` fences there must be exactly the two
+            // sanitized body lines and nothing that terminates early.
+            const idx = output.indexOf('async def get_payment');
+            const body = output.slice(idx);
+            const open = body.indexOf('        """');
+            const close = body.indexOf('        """', open + 1);
+            const between = body.slice(open + '        """'.length, close);
+            expect(between).not.toMatch(/"""/); // no unescaped triple-quote inside the docstring
+            // The method body after the docstring is intact.
+            expect(body.slice(close)).toContain('await self._fetch');
+        });
+
+        it('guards a trailing backslash in a description', () => {
+            const root = opRoot([
+                opRoute('/payments', [
+                    opOperation('get', {
+                        sdk: 'getPayment',
+                        description: 'ends with backslash\\',
+                        responses: [opResponse(200, 'Payment')],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            // Trailing backslash is neutralized (space appended) so it can't escape the delimiter.
+            expect(output).toContain('        ends with backslash\\ \n');
+        });
+
+        it('keeps each line of a multi-line description indented in the docstring', () => {
+            const root = opRoot([
+                opRoute('/payments', [
+                    opOperation('get', {
+                        sdk: 'getPayment',
+                        description: 'first line\nsecond line',
+                        responses: [opResponse(200, 'Payment')],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('        first line');
+            expect(output).toContain('        second line');
+        });
+    });
 });

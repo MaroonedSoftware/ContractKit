@@ -1,6 +1,7 @@
 import { PrepareRenameParams, Range, RenameParams, ResponseError, TextEdit, WorkspaceEdit } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { Reference, WorkspaceIndex } from './workspace-index.js';
+import { getWordAtPosition } from '../shared/word-at-position.js';
 
 const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -44,18 +45,9 @@ function toRange(ref: Reference): Range {
 }
 
 function symbolUnderCursor(document: TextDocument, line: number, character: number, index: WorkspaceIndex): SymbolHit | null {
-    const text = document.getText();
-    const lines = text.split('\n');
-    if (line >= lines.length) return null;
-    const lineText = lines[line]!;
-    if (character > lineText.length) return null;
-
-    let start = character;
-    while (start > 0 && /[A-Za-z0-9_]/.test(lineText[start - 1]!)) start--;
-    let end = character;
-    while (end < lineText.length && /[A-Za-z0-9_]/.test(lineText[end]!)) end++;
-    if (start === end) return null;
-    const word = lineText.slice(start, end);
+    const hit = getWordAtPosition(document, line, character);
+    if (!hit) return null;
+    const { word, start, end } = hit;
     const range = Range.create(line, start, line, end);
 
     if (index.getModel(word)) return { name: word, kind: 'model', range };

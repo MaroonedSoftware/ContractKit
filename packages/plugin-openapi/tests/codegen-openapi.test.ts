@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseCk, decomposeCk, applyOptionsDefaults, DiagnosticCollector } from '@contractkit/core';
-import { generateOpenApi, toYaml } from '../src/codegen-openapi.js';
+import { generateOpenApi, toYaml, scalarToSchema } from '../src/codegen-openapi.js';
 import {
     scalarType,
     arrayType,
@@ -22,6 +22,22 @@ import {
     opRoute,
     opRoot,
 } from './helpers.js';
+
+// ─── scalarToSchema ───────────────────────────────────────────────────────
+
+describe('scalarToSchema', () => {
+    it('maps time to string with format time', () => {
+        expect(scalarToSchema({ kind: 'scalar', name: 'time' })).toEqual({ type: 'string', format: 'time' });
+    });
+
+    it('maps interval to string with format interval', () => {
+        expect(scalarToSchema({ kind: 'scalar', name: 'interval' })).toEqual({ type: 'string', format: 'interval' });
+    });
+
+    it('throws on an unmapped scalar name', () => {
+        expect(() => scalarToSchema({ kind: 'scalar', name: 'decimal' } as any)).toThrow(/unmapped scalar 'decimal'/);
+    });
+});
 
 // ─── YAML serializer ──────────────────────────────────────────────────────
 

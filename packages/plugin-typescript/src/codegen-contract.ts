@@ -21,6 +21,7 @@ import {
     computeModelsWithOutput as ckComputeModelsWithOutput,
     collectExternalOutputRefs as ckCollectExternalOutputRefs,
 } from '@contractkit/core';
+import { escapeJsDocLines } from './ts-render.js';
 
 /**
  * Maps a ContractKit object mode to its Zod constructor name.
@@ -108,7 +109,7 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
         lines.push(` * @deprecated`);
     }
     if (model.description) {
-        lines.push(` * ${model.description}`);
+        for (const l of escapeJsDocLines(model.description)) lines.push(` * ${l}`);
     }
 
     const relPath = outPath ? relative(dirname(outPath), model.loc.file) : model.loc.file;
@@ -664,8 +665,10 @@ function renderScalar(s: ScalarTypeNode): string {
             return '_ZodBinary';
         case 'json':
             return '_ZodJson';
-        default:
-            return 'z.unknown()';
+        default: {
+            const _exhaustive: never = s.name;
+            throw new Error(`plugin-typescript: unmapped scalar '${String(_exhaustive)}' — add a case`);
+        }
     }
 }
 
@@ -685,7 +688,7 @@ function renderRecord(r: RecordTypeNode): string {
 }
 
 function renderEnum(e: EnumTypeNode): string {
-    const vals = e.values.map(v => `"${v}"`).join(', ');
+    const vals = e.values.map(v => `"${escapeString(v)}"`).join(', ');
     return `z.enum([${vals}])`;
 }
 

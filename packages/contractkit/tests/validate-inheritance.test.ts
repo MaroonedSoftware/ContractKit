@@ -129,6 +129,39 @@ contract D: B & {}
     });
 });
 
+describe('validateInheritance — aliased bases', () => {
+    it('detects a cross-base conflict contributed through a type-alias base', () => {
+        // AliasA is an alias (`model.type = ref A`, no own fields/bases). Its effective field set
+        // is A's — so the `x` conflict with B must still be caught even though it comes via the alias.
+        const { diag } = compile(`
+contract A: { x: string }
+contract B: { x: int }
+contract AliasA: A
+contract C: AliasA & B & { y: string }
+`);
+        expect(errors(diag).some(e => e.includes("Field 'x'") && e.includes("'AliasA'") && e.includes("'B'"))).toBe(true);
+    });
+
+    it('requires override for a conflicting field reached through an alias', () => {
+        const { diag } = compile(`
+contract A: { x: string }
+contract B: { x: int }
+contract AliasA: A
+contract C: AliasA & B & { x: int }
+`);
+        expect(errors(diag).some(e => e.includes('conflicts across bases'))).toBe(true);
+    });
+
+    it('does not flag identical contributions reached through an alias (dedupe)', () => {
+        const { diag } = compile(`
+contract A: { x: string }
+contract AliasA: A
+contract C: AliasA & A & { y: int }
+`);
+        expect(errors(diag)).toHaveLength(0);
+    });
+});
+
 describe('validateInheritance — cycles', () => {
     it('detects a direct two-node cycle and errors once', () => {
         const { diag } = compile(`

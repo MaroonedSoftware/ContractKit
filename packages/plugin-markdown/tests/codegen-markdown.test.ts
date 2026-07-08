@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateMarkdown } from '../src/codegen-markdown.js';
+import { generateMarkdown, renderTsScalar } from '../src/codegen-markdown.js';
 import {
     scalarType,
     arrayType,
@@ -24,6 +24,16 @@ import type { IntersectionTypeNode, ContractTypeNode } from '@contractkit/core';
 function intersectionType(...members: ContractTypeNode[]): IntersectionTypeNode {
     return { kind: 'intersection', members };
 }
+
+describe('renderTsScalar', () => {
+    it('maps time to string', () => {
+        expect(renderTsScalar('time')).toBe('string');
+    });
+
+    it('throws on an unmapped scalar name', () => {
+        expect(() => renderTsScalar('decimal' as any)).toThrow(/unmapped scalar 'decimal'/);
+    });
+});
 
 describe('generateMarkdown', () => {
     // ─── Basic structure ─────────────────────────────────────────
@@ -977,5 +987,47 @@ describe('model filtering by public reachability', () => {
         ]);
         const output = generateMarkdown({ contractRoots: [dto], opRoots: [op] });
         expect(output).toContain('SharedModel');
+    });
+
+    // ─── Table cell escaping ────────────────────────────────────────
+
+    describe('table cell escaping', () => {
+        it('collapses embedded newlines in a field description into <br> without breaking the row', () => {
+            const dto = contractRoot([
+                model('User', [field('name', scalarType('string'), { description: 'First line\nSecond line' })]),
+            ]);
+            const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
+            const row = output.split('\n').find(l => l.startsWith('| `name`'));
+            expect(row).toBeDefined();
+            // The whole cell content stays on a single table row.
+            expect(row).toContain('First line<br>Second line');
+            // No raw newline leaked into the description that would terminate the row early.
+            expect(row).not.toContain('First line\n');
+        });
+
+        it('escapes pipe characters in a field description', () => {
+            const dto = contractRoot([
+                model('User', [field('name', scalarType('string'), { description: 'a | b' })]),
+            ]);
+            const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
+            const row = output.split('\n').find(l => l.startsWith('| `name`'));
+            expect(row).toBeDefined();
+            expect(row).toContain('a \\| b');
+        });
+    });
+
+    // ─── Scalar type rendering ──────────────────────────────────────
+
+    describe('scalar type rendering', () => {
+        it('documents an interval field as string, not unknown', () => {
+            const dto = contractRoot([
+                model('Booking', [field('window', scalarType('interval'))]),
+            ]);
+            const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
+            const row = output.split('\n').find(l => l.startsWith('| `window`'));
+            expect(row).toBeDefined();
+            expect(row).toContain('| `string` |');
+            expect(row).not.toContain('unknown');
+        });
     });
 });

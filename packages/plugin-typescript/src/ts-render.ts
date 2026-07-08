@@ -1,9 +1,21 @@
-import type { ContractTypeNode, FieldNode } from '@contractkit/core';
+import type { ContractTypeNode, FieldNode, ScalarTypeNode } from '@contractkit/core';
 
 export const JSON_VALUE_TYPE_DECL = 'export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };';
 
 export function quoteKey(name: string): string {
     return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
+}
+
+/** Escape text for safe inclusion inside a JSDoc block comment: neutralize the
+ *  block-comment terminator sequence and split embedded newlines into separate
+ *  ` * ` continuation lines. Returns the content lines (WITHOUT a leading prefix). */
+export function escapeJsDocLines(text: string): string[] {
+    return text.replace(/\*\//g, '*\\/').split('\n');
+}
+
+/** Escape a string for inclusion inside a single-quoted TypeScript string literal. */
+export function escapeSingleQuoted(s: string): string {
+    return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
 }
 
 /** Convert an HTTP header name (e.g. `preference-applied`, `X-Request-ID`, `ETag`) to camelCase for use as a JS property. */
@@ -37,9 +49,9 @@ export function renderTsType(type: ContractTypeNode): string {
         case 'record':
             return `Record<${renderTsType(type.key)}, ${renderTsType(type.value)}>`;
         case 'enum':
-            return type.values.map(v => `'${v}'`).join(' | ');
+            return type.values.map(v => `'${escapeSingleQuoted(v)}'`).join(' | ');
         case 'literal':
-            return typeof type.value === 'string' ? `'${type.value}'` : String(type.value);
+            return typeof type.value === 'string' ? `'${escapeSingleQuoted(type.value)}'` : String(type.value);
         case 'union':
             return type.members.map(renderTsType).join(' | ');
         case 'discriminatedUnion':
@@ -57,7 +69,7 @@ export function renderTsType(type: ContractTypeNode): string {
     }
 }
 
-function renderTsScalar(name: string): string {
+function renderTsScalar(name: ScalarTypeNode['name']): string {
     switch (name) {
         case 'string':
         case 'email':
@@ -72,6 +84,7 @@ function renderTsScalar(name: string): string {
         case 'boolean':
             return 'boolean';
         case 'date':
+        case 'time':
         case 'datetime':
         case 'duration':
         case 'interval':
@@ -86,8 +99,10 @@ function renderTsScalar(name: string): string {
             return 'Blob';
         case 'json':
             return 'JsonValue';
-        default:
-            return 'unknown';
+        default: {
+            const _exhaustive: never = name;
+            throw new Error(`plugin-typescript: unmapped scalar '${String(_exhaustive)}' — add a case`);
+        }
     }
 }
 

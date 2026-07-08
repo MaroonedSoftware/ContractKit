@@ -4,6 +4,13 @@ import { INDENT } from './indent.js';
 
 // ─── Model declaration ───────────────────────────────────────────────────────
 
+/**
+ * Render a `contract` body from its `Name: ...` onward (the `contract ` keyword is
+ * prepended by the caller). Handles both the type-alias form (`Name: <type>`) and the
+ * regular field-block form, including modifiers, base chain, and per-field printing.
+ * Any `model.trailingComments` (comments after the last field, before `}`) are emitted
+ * as indented `# text` lines so they round-trip.
+ */
 export function printModelDecl(model: ModelNode, printWidth: number = 80): string {
     // Type alias form: Name : typeExpression
     if (model.type !== undefined) {
@@ -28,6 +35,9 @@ export function printModelDecl(model: ModelNode, printWidth: number = 80): strin
     const lines: string[] = [header];
     for (const field of model.fields) {
         lines.push(printField(field, INDENT, printWidth));
+    }
+    for (const comment of model.trailingComments ?? []) {
+        lines.push(`${INDENT}# ${comment}`);
     }
     lines.push('}');
     return lines.join('\n');

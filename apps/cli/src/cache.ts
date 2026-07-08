@@ -7,6 +7,27 @@ export const DEFAULT_CACHE_DIR = '.contractkit/cache';
 const BUILD_CACHE_FILENAME = 'build.json';
 const HTTP_CACHE_DIRNAME = 'http';
 
+/** Default maximum age of a cached HTTP response before it is treated as a miss (24 hours). */
+export const HTTP_CACHE_MAX_AGE_MS = 86_400_000;
+
+/**
+ * On-disk representation of a cached HTTP response. Stored as JSON so a read can
+ * validate integrity (`bodyHash`), freshness (`fetchedAt`), and key identity
+ * (`url`) before trusting the body. Legacy bare-body files predate this envelope
+ * and fail the `JSON.parse`/`version` check, so they read as a miss.
+ */
+export interface HttpCacheEntry {
+    version: 1;
+    /** The URL this entry was fetched from; guards against hash-collision / key confusion. */
+    url: string;
+    /** Epoch milliseconds when the body was fetched; used for TTL expiry. */
+    fetchedAt: number;
+    /** `computeHash(body)` at write time; re-checked on read to detect tampering. */
+    bodyHash: string;
+    /** The cached response body. Only trusted after `bodyHash`, `url`, and TTL checks pass. */
+    body: string;
+}
+
 /** Map of source file path → sha256 hex of its content (or synthetic keys like `__plugin_<key>__`). */
 export interface FileHashMap {
     [filePath: string]: string;
@@ -30,11 +51,14 @@ export interface HttpCache {
     set(url: string, body: string): void;
 }
 
+/** Construction options for {@link CacheService}. */
 export interface CacheServiceOptions {
     /** When false, every read returns empty/null and every write is a no-op. */
     enabled: boolean;
     /** Directory (relative to `rootDir` or absolute) used as the cache root. Defaults to `.contractkit/cache`. */
     dir?: string;
+    /** Maximum age of a cached HTTP response before it is treated as a miss. Defaults to {@link HTTP_CACHE_MAX_AGE_MS}. */
+    httpMaxAgeMs?: number;
 }
 
 /**
@@ -55,12 +79,14 @@ export class CacheService {
     readonly root: string;
     private readonly buildCachePath: string;
     private readonly httpCacheDir: string;
+    private readonly httpMaxAgeMs: number;
 
     constructor(rootDir: string, options: CacheServiceOptions) {
         this.enabled = options.enabled;
         this.root = resolve(rootDir, options.dir ?? DEFAULT_CACHE_DIR);
         this.buildCachePath = join(this.root, BUILD_CACHE_FILENAME);
         this.httpCacheDir = join(this.root, HTTP_CACHE_DIRNAME);
+        this.httpMaxAgeMs = options.httpMaxAgeMs ?? HTTP_CACHE_MAX_AGE_MS;
     }
 
     /**
@@ -105,24 +131,49 @@ export class CacheService {
         return join(this.httpCacheDir, computeHash(url));
     }
 
-    /** Read a previously cached HTTP body for `url`, or `null` on miss / when disabled / on read error. */
+    /**
+     * Read a previously cached HTTP body for `url`. Returns the body only when the
+     * stored {@link HttpCacheEntry} is well-formed AND passes every guard:
+     *   - JSON parses and `version === 1`,
+     *   - `entry.url === url` (defends against hash-collision / key confusion),
+     *   - `computeHash(entry.body) === entry.bodyHash` (tamper detection),
+     *   - the entry is within TTL (`Date.now() - entry.fetchedAt < httpMaxAgeMs`).
+     * Any failure — miss, disabled, read/parse error, mismatch, expiry, or a
+     * legacy bare-body file — returns `null` so the caller re-fetches.
+     */
     getHttpResponse(url: string): string | null {
         if (!this.enabled) return null;
         const path = this.urlPath(url);
         if (!existsSync(path)) return null;
         try {
-            return readFileSync(path, 'utf-8');
+            const entry = JSON.parse(readFileSync(path, 'utf-8')) as HttpCacheEntry;
+            if (entry?.version !== 1) return null;
+            if (entry.url !== url) return null;
+            if (typeof entry.body !== 'string' || computeHash(entry.body) !== entry.bodyHash) return null;
+            if (typeof entry.fetchedAt !== 'number' || Date.now() - entry.fetchedAt >= this.httpMaxAgeMs) return null;
+            return entry.body;
         } catch {
             return null;
         }
     }
 
-    /** Persist an HTTP response body keyed by the URL's sha256. No-op when disabled; write errors are swallowed. */
+    /**
+     * Persist an HTTP response body keyed by the URL's sha256, wrapped in an
+     * {@link HttpCacheEntry} envelope so reads can validate integrity, freshness,
+     * and key identity. No-op when disabled; write errors are swallowed.
+     */
     setHttpResponse(url: string, body: string): void {
         if (!this.enabled) return;
         try {
             mkdirSync(this.httpCacheDir, { recursive: true });
-            writeFileSync(this.urlPath(url), body, 'utf-8');
+            const entry: HttpCacheEntry = {
+                version: 1,
+                url,
+                fetchedAt: Date.now(),
+                bodyHash: computeHash(body),
+                body,
+            };
+            writeFileSync(this.urlPath(url), JSON.stringify(entry), 'utf-8');
         } catch {
             // best-effort
         }

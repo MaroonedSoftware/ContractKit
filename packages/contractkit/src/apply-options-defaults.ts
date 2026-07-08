@@ -4,6 +4,11 @@
  *
  * Runs after parsing and before validation. Mutates the root in place.
  *
+ * Idempotent: re-running on an already-merged AST is a no-op. A previously injected global
+ * header is recognized as structurally identical to its source global (`headerMatchesGlobal`)
+ * and skipped silently, so a second pass neither duplicates it nor misreports it as an
+ * operation-level override.
+ *
  * Merge rules:
  * - Request headers: applied to every operation. Op-level headers with the same name win.
  *   If the op declares `headers: none`, the merge is skipped. If the op uses a referenced
@@ -51,12 +56,17 @@ function mergeRequestHeaders(op: OpOperationNode, globals: OpResponseHeaderNode[
     }
 
     const existing: OpParamNode[] = src?.kind === 'params' ? src.nodes : [];
-    const existingNames = new Set(existing.map(p => p.name));
+    const existingByName = new Map(existing.map(p => [p.name, p]));
     const additions: OpParamNode[] = [];
     const overridden: string[] = [];
 
     for (const g of globals) {
-        if (existingNames.has(g.name)) {
+        const match = existingByName.get(g.name);
+        if (match) {
+            // Structurally identical to the global → treat as already-merged and skip silently
+            // (keeps the pass idempotent when re-run on an AST it previously mutated). Only a
+            // genuinely different op-declared header of the same name counts as an override.
+            if (headerMatchesGlobal(match, g)) continue;
             overridden.push(g.name);
             continue;
         }
@@ -80,6 +90,15 @@ function mergeResponseHeaders(res: OpResponseNode, globals: OpResponseHeaderNode
     if (additions.length === 0 && res.headers) return;
 
     res.headers = [...additions, ...existing];
+}
+
+/** True when an existing op header is structurally identical to a global header
+ * (same name, optionality, and type). Used to detect an already-merged global so a
+ * second pass over the same AST doesn't misread it as an operation-level override. */
+function headerMatchesGlobal(existing: OpParamNode, g: OpResponseHeaderNode): boolean {
+    if (existing.name !== g.name) return false;
+    if (!!existing.optional !== !!g.optional) return false;
+    return JSON.stringify(existing.type) === JSON.stringify(g.type);
 }
 
 function headerToParam(h: OpResponseHeaderNode, op: OpOperationNode): OpParamNode {

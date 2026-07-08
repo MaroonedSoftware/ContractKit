@@ -70,4 +70,15 @@ operation /payments: {
         const def = getDefinition({ textDocument: { uri: doc.uri }, position: { line: 1, character: 9 } }, doc, index);
         expect(def).toBeNull();
     });
+
+    it('resolves a model name that is the last token on a line when the cursor is at end-of-line', () => {
+        const lineText = '    user: User';
+        const doc = TextDocument.create('file:///main.ck', 'contract-ck', 1, `contract Wrapper: {\n${lineText}\n}`);
+        const index = new WorkspaceIndex();
+        index.indexFromSource('file:///user.ck', 'contract User: {\n    name: string\n}\n');
+        // Cursor immediately after the trailing `User` reference — character === line length
+        const def = getDefinition({ textDocument: { uri: doc.uri }, position: { line: 1, character: lineText.length } }, doc, index);
+        expect(def).not.toBeNull();
+        expect(def!.uri).toBe('file:///user.ck');
+    });
 });

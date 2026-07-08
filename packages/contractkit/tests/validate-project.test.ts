@@ -4,6 +4,8 @@ import { validateProject } from '../src/validate-project.js';
 const errors = (diag: ReturnType<typeof validateProject>['diag']): string[] =>
     diag.getAll().filter(d => d.severity === 'error').map(d => d.message);
 const messages = (diag: ReturnType<typeof validateProject>['diag']): string[] => diag.getAll().map(d => d.message);
+const warnings = (diag: ReturnType<typeof validateProject>['diag']): string[] =>
+    diag.getAll().filter(d => d.severity === 'warning').map(d => d.message);
 
 describe('validateProject', () => {
     it('returns decomposed contracts and ops with no errors on a valid project', () => {
@@ -84,6 +86,23 @@ describe('validateProject', () => {
         const b = result.asts.find(x => x.filePath.includes('/billing/'));
         expect(a?.ast.services?.Foo).toBe('https://payments.example.com/a');
         expect(b?.ast.services?.Bar).toBe('https://billing.example.com/b');
+    });
+
+    it('is idempotent: re-running on a returned AST emits no duplicate request-header override warning', () => {
+        const source = `
+options { request: { headers: { x-request-id: uuid } } }
+operation /widgets: { get: { response: { 200: } } }
+`;
+        // First pass: options-level global merges into the op, no override warning.
+        const first = validateProject({ files: [{ filePath: 'a.ck', source }] });
+        expect(errors(first.diag)).toHaveLength(0);
+        expect(warnings(first.diag).some(w => w.includes('overrides global request header'))).toBe(false);
+
+        // Second pass over the already-merged AST (LSP incremental re-validation reuses asts).
+        // The merged header must be recognized as already-merged — no spurious override warning.
+        const second = validateProject({ files: [{ filePath: 'a.ck', ast: first.asts[0]!.ast }] });
+        expect(errors(second.diag)).toHaveLength(0);
+        expect(warnings(second.diag).some(w => w.includes('overrides global request header'))).toBe(false);
     });
 
     it('falls back to fallbackKeys when getKeysForFile returns undefined', () => {

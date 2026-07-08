@@ -85,6 +85,26 @@ operation /b: { get: { service: Svc.find } }
         expect(refs).toHaveLength(2);
     });
 
+    it('resolves a model reference that is the last token on a line at end-of-line', () => {
+        const index = new WorkspaceIndex();
+        index.indexFromSource('file:///user.ck', 'contract User: { name: string }');
+        const src = `\
+contract M: {
+    u: User
+}
+`;
+        index.indexFromSource('file:///main.ck', src);
+        const doc = makeDoc('file:///main.ck', src);
+        // Line 1 is `    u: User`; cursor immediately after the trailing `User` — character === line length
+        const lineText = '    u: User';
+        const refs = getReferences(
+            { textDocument: { uri: doc.uri }, position: { line: 1, character: lineText.length }, context: { includeDeclaration: false } },
+            doc,
+            index,
+        );
+        expect(refs.some(r => r.uri === 'file:///main.ck')).toBe(true);
+    });
+
     it('returns empty when cursor is on whitespace', () => {
         const index = new WorkspaceIndex();
         const doc = makeDoc('file:///x.ck', 'contract M: {\n    \n}');

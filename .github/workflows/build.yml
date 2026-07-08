@@ -12,13 +12,13 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v6
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
             - name: Install pnpm
-              uses: pnpm/action-setup@v6
+              uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
 
             - name: Setup Node
-              uses: actions/setup-node@v6
+              uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
               with:
                   node-version: latest
                   cache: pnpm
@@ -30,7 +30,7 @@ jobs:
                   echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
             - name: Setup cache
-              uses: actions/cache@v5
+              uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
               with:
                   path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
                   key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -50,8 +50,22 @@ jobs:
             #   with:
             #     token: ${{ secrets.CODECOV_TOKEN }}
 
+            # Remove transient/untrusted artifacts written during build/test (e.g.
+            # the CLI's HTTP cache under .contractkit/cache and coverage output) so
+            # they can't ride the build cache into the privileged deploy job.
+            - name: Prune transient artifacts before caching
+              run: |
+                  find . -type d -name '.contractkit' -prune -exec rm -rf {} + 2>/dev/null || true
+                  rm -rf coverage 2>/dev/null || true
+                  find . -type d -name coverage -prune -exec rm -rf {} + 2>/dev/null || true
+
+            # NOTE: `path: ./*` is intentionally broad — deploy.yml restores this exact
+            # cache and runs `pnpm publish -r` from it, so it must include node_modules
+            # and every package's dist. Future improvement: scope the cache to
+            # `**/dist` + `node_modules` and rebuild in deploy instead of shipping the
+            # whole tree.
             - name: Upload build cache
-              uses: actions/cache@v5
+              uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
               with:
                   path: ./*
                   key: build-cache-${{ github.sha }}

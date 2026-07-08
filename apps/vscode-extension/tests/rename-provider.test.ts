@@ -17,6 +17,17 @@ describe('prepareRename', () => {
         expect(range).toEqual({ start: { line: 0, character: 9 }, end: { line: 0, character: 13 } });
     });
 
+    it('resolves a model name that is the last token on a line when the cursor is at end-of-line', () => {
+        const index = new WorkspaceIndex();
+        const src = 'contract User: { name: string }\ncontract M: {\n    u: User\n}\n';
+        index.indexFromSource('file:///user.ck', src);
+        const doc = makeDoc('file:///user.ck', src);
+        // Line 2 is `    u: User`; cursor immediately after the trailing `User` — character === line length
+        const lineText = '    u: User';
+        const range = prepareRename({ textDocument: { uri: doc.uri }, position: { line: 2, character: lineText.length } }, doc, index);
+        expect(range).toEqual({ start: { line: 2, character: 7 }, end: { line: 2, character: 11 } });
+    });
+
     it('returns null when cursor is not on a known symbol', () => {
         const index = new WorkspaceIndex();
         const doc = makeDoc('file:///x.ck', 'contract X: { f: string }');

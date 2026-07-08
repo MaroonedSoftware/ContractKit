@@ -10,7 +10,7 @@ import {
     resolveImportPath,
     rootNeedsScalar,
 } from './codegen-contract.js';
-import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJsDocLines, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -123,7 +123,7 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
         lines.push(` * @deprecated`);
     }
     if (model.description) {
-        lines.push(` * ${model.description}`);
+        for (const l of escapeJsDocLines(model.description)) lines.push(` * ${l}`);
     }
 
     const relPath = outPath ? relative(dirname(outPath), model.loc.file) : model.loc.file;
@@ -205,6 +205,18 @@ function generateVisibilityModel(model: ModelNode, outPath?: string, modelsWithI
 
 // ─── Field rendering ──────────────────────────────────────────────────────
 
+/** Prefix a field declaration with a JSDoc comment built from `@deprecated` / description parts,
+ *  neutralizing any block-comment terminator and expanding embedded newlines into continuation lines. */
+function withFieldJsDoc(jsdocParts: string[], line: string): string {
+    if (jsdocParts.length === 0) return line;
+    const contentLines = escapeJsDocLines(jsdocParts.join(' '));
+    if (contentLines.length === 1) {
+        return `/** ${contentLines[0]} */\n    ${line}`;
+    }
+    const body = contentLines.map(l => `     * ${l}`).join('\n');
+    return `/**\n${body}\n     */\n    ${line}`;
+}
+
 function renderField(field: FieldNode): string {
     const opt = field.optional || field.default !== undefined ? '?' : '';
     let typeStr = renderTsType(field.type);
@@ -213,10 +225,7 @@ function renderField(field: FieldNode): string {
     const jsdocParts: string[] = [];
     if (field.deprecated) jsdocParts.push('@deprecated');
     if (field.description) jsdocParts.push(field.description);
-    if (jsdocParts.length > 0) {
-        return `/** ${jsdocParts.join(' ')} */\n    ${line}`;
-    }
-    return line;
+    return withFieldJsDoc(jsdocParts, line);
 }
 
 function renderInputField(field: FieldNode, modelsWithInput: Set<string>): string {
@@ -227,10 +236,7 @@ function renderInputField(field: FieldNode, modelsWithInput: Set<string>): strin
     const jsdocParts: string[] = [];
     if (field.deprecated) jsdocParts.push('@deprecated');
     if (field.description) jsdocParts.push(field.description);
-    if (jsdocParts.length > 0) {
-        return `/** ${jsdocParts.join(' ')} */\n    ${line}`;
-    }
-    return line;
+    return withFieldJsDoc(jsdocParts, line);
 }
 
 // ─── Output (post-transform wire shape) ──────────────────────────────────
@@ -297,8 +303,5 @@ function renderOutputField(field: FieldNode, outputCase: 'camel' | 'snake' | 'pa
     const jsdocParts: string[] = [];
     if (field.deprecated) jsdocParts.push('@deprecated');
     if (field.description) jsdocParts.push(field.description);
-    if (jsdocParts.length > 0) {
-        return `/** ${jsdocParts.join(' ')} */\n    ${line}`;
-    }
-    return line;
+    return withFieldJsDoc(jsdocParts, line);
 }

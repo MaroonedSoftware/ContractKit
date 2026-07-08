@@ -49,4 +49,24 @@ describe('getHover', () => {
         expect(hover).not.toBeNull();
         expect(hover!.contents).toMatchObject({ kind: 'markdown', value: expect.stringContaining('z.coerce.number().int()') });
     });
+
+    it('resolves the last token on a line when the cursor sits at end-of-line (builtin type)', () => {
+        const lineText = '    createdAt: readonly datetime';
+        const doc = TextDocument.create('file:///test.ck', 'contract-ck', 1, `contract M: {\n${lineText}\n}`);
+        const index = new WorkspaceIndex();
+        // Cursor immediately after the final `datetime` token — character === line length
+        const hover = getHover({ textDocument: { uri: doc.uri }, position: { line: 1, character: lineText.length } }, doc, index);
+        expect(hover).not.toBeNull();
+        expect(hover!.contents).toMatchObject({ kind: 'markdown', value: expect.stringContaining('Luxon `DateTime`') });
+    });
+
+    it('resolves a model reference that is the last token on a line at end-of-line', () => {
+        const lineText = '    ref: User';
+        const doc = TextDocument.create('file:///test.ck', 'contract-ck', 1, `contract M: {\n${lineText}\n}`);
+        const index = new WorkspaceIndex();
+        index.indexFromSource('file:///user.ck', 'contract User: { name: string }');
+        const hover = getHover({ textDocument: { uri: doc.uri }, position: { line: 1, character: lineText.length } }, doc, index);
+        expect(hover).not.toBeNull();
+        expect(hover!.contents).toMatchObject({ kind: 'markdown', value: expect.stringContaining('User') });
+    });
 });

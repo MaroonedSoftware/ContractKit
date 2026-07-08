@@ -4,6 +4,7 @@ import {
     OpRouteNode,
     OpOperationNode,
     ContractTypeNode,
+    ScalarTypeNode,
     FieldNode,
     ModelNode,
     ParamSource,
@@ -55,7 +56,14 @@ function renderTsType(type: ContractTypeNode): string {
     }
 }
 
-function renderTsScalar(name: string): string {
+/**
+ * Render a ContractKit scalar type name as its TypeScript type string
+ * (e.g. `uuid` → `string`, `int` → `number`, `datetime`/`interval` → `string`).
+ *
+ * Exported for unit testing. Throws on an unmapped scalar name so a newly added
+ * scalar surfaces as a hard error instead of silently rendering as `unknown`.
+ */
+export function renderTsScalar(name: ScalarTypeNode['name']): string {
     switch (name) {
         case 'string':
         case 'email':
@@ -70,8 +78,10 @@ function renderTsScalar(name: string): string {
         case 'boolean':
             return 'boolean';
         case 'date':
+        case 'time':
         case 'datetime':
         case 'duration':
+        case 'interval':
             return 'string';
         case 'null':
             return 'null';
@@ -83,8 +93,10 @@ function renderTsScalar(name: string): string {
             return 'Blob';
         case 'json':
             return 'JsonValue';
-        default:
-            return 'unknown';
+        default: {
+            const _exhaustive: never = name;
+            throw new Error(`plugin-markdown: unmapped scalar '${String(_exhaustive)}' — add a case`);
+        }
     }
 }
 
@@ -98,6 +110,7 @@ function renderTsInlineObject(fields: FieldNode[]): string {
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
+/** Inputs for {@link generateMarkdown} — the parsed contract and operation roots plus render options. */
 export interface MarkdownCodegenContext {
     contractRoots: ContractRootNode[];
     opRoots: OpRootNode[];
@@ -108,6 +121,12 @@ export interface MarkdownCodegenContext {
     includeInternal?: boolean;
 }
 
+/**
+ * Render a complete Markdown API reference from parsed contract and operation roots.
+ * Emits a table of contents, an Endpoints section, and a Models section — each grouped
+ * by `keys.area` when present. Internal operations (and models reachable only from them)
+ * are omitted unless `ctx.includeInternal` is set.
+ */
 export function generateMarkdown(ctx: MarkdownCodegenContext): string {
     const { contractRoots, opRoots } = ctx;
     const includeInternal = ctx.includeInternal ?? false;
@@ -831,9 +850,9 @@ function wrapCollapsible(summary: string, tableLines: string[]): string[] {
     return ['<details>', `<summary>${summary}</summary>`, '', ...tableLines, '', '</details>'];
 }
 
-/** Escape pipe characters inside markdown table cells. */
+/** Escape pipe characters and collapse newlines inside markdown table cells. */
 function escapeCell(s: string): string {
-    return s.replace(/\|/g, '\\|');
+    return s.replace(/\|/g, '\\|').replace(/\r\n|\r|\n/g, '<br>');
 }
 
 function anchor(name: string): string {

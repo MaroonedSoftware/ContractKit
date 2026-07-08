@@ -1,9 +1,10 @@
-import type { CkRootNode, OpResponseHeaderNode } from '@contractkit/core';
+import type { CkRootNode, OpResponseHeaderNode, OptionsScopeComments } from '@contractkit/core';
 import { printModelDecl } from './print-contract.js';
 import { printRoute, printSecurity, type CommentBlock } from './print-operation.js';
 import { printType } from './print-type.js';
 import { INDENT } from './indent.js';
 
+/** Default line width used for wrapping inline-object and enum types when none is supplied. */
 export const DEFAULT_PRINT_WIDTH = 80;
 
 // ─── Options block ──────────────────────────────────────────────────────────
@@ -20,6 +21,20 @@ function quoteOptionsValue(value: string): string {
     return /^[a-zA-Z_$][a-zA-Z0-9_$\-.]*$/.test(value) ? value : `"${value}"`;
 }
 
+/**
+ * Emit the `key: value` lines of an options `keys`/`services` sub-block, interleaving any
+ * retained comments: leading comments before the entry they precede, and trailing comments
+ * after the last entry (before the closing `}`). Keeps comments inside these sub-blocks lossless.
+ */
+function emitOptionsEntries(lines: string[], entries: Record<string, string>, comments: OptionsScopeComments | undefined): void {
+    const I2 = INDENT + INDENT;
+    for (const [key, value] of Object.entries(entries)) {
+        for (const c of comments?.leading?.[key] ?? []) lines.push(`${I2}# ${c}`);
+        lines.push(`${I2}${key}: ${quoteOptionsValue(value)}`);
+    }
+    for (const c of comments?.trailing ?? []) lines.push(`${I2}# ${c}`);
+}
+
 function printOptionsBlock(ast: CkRootNode): string | null {
     const hasMeta = Object.keys(ast.meta).length > 0;
     const hasServices = Object.keys(ast.services).length > 0;
@@ -33,17 +48,13 @@ function printOptionsBlock(ast: CkRootNode): string | null {
 
     if (hasMeta) {
         lines.push(`${INDENT}keys: {`);
-        for (const [key, value] of Object.entries(ast.meta)) {
-            lines.push(`${INDENT}${INDENT}${key}: ${quoteOptionsValue(value)}`);
-        }
+        emitOptionsEntries(lines, ast.meta, ast.optionsComments?.keys);
         lines.push(`${INDENT}}`);
     }
 
     if (hasServices) {
         lines.push(`${INDENT}services: {`);
-        for (const [key, value] of Object.entries(ast.services)) {
-            lines.push(`${INDENT}${INDENT}${key}: ${quoteOptionsValue(value)}`);
-        }
+        emitOptionsEntries(lines, ast.services, ast.optionsComments?.services);
         lines.push(`${INDENT}}`);
     }
 

@@ -105,9 +105,15 @@ export function printField(field: FieldNode, indent: string, printWidth: number 
     return fullLine;
 }
 
-/** Print inline-object fields expanded (used when an inline brace object trails a type alias). */
+/** Print inline-object fields expanded (used when an inline brace object trails a type alias).
+ * Any `trailingComments` (comments after the last field, before `}`) are emitted as indented
+ * `# text` lines after the fields, matching how model bodies round-trip trailing comments. */
 export function printInlineObjectExpanded(obj: InlineObjectTypeNode, indent: string, printWidth: number = 80): string[] {
-    return obj.fields.map(f => printField(f, indent, printWidth));
+    const lines = obj.fields.map(f => printField(f, indent, printWidth));
+    for (const comment of obj.trailingComments ?? []) {
+        lines.push(`${indent}# ${comment}`);
+    }
+    return lines;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

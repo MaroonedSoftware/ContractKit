@@ -26,6 +26,10 @@ describe('renderType', () => {
             expect(renderType(scalarType('string'))).toBe('z.string()');
         });
 
+        it('throws on an unmapped scalar name', () => {
+            expect(() => renderType({ kind: 'scalar', name: 'decimal' } as any)).toThrow(/unmapped scalar 'decimal'/);
+        });
+
         it('renders z.string() with min/max', () => {
             expect(renderType(scalarType('string', { min: 1, max: 100 }))).toBe('z.string().min(1).max(100)');
         });

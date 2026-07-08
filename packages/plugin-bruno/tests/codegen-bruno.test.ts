@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import {
     generateOpenCollection,
     generateOpenCollectionIncremental,
@@ -21,6 +22,7 @@ import {
     opRequest,
     scalarType,
     enumType,
+    literalType,
     inlineObjectType,
     field,
     arrayType,
@@ -310,6 +312,67 @@ describe('generateOpenCollection', () => {
         const files = generateOpenCollection([root], { collectionName: 'API' });
         const yml = files.find(f => f.relativePath === 'users/get-users.yml');
         expect(yml!.content).toContain('value: "user@example.com"');
+    });
+
+    it('escapes a string default containing a double quote in the param value', () => {
+        const root = opRoot(
+            [
+                opRoute('/users', [
+                    opOperation('get', {
+                        query: paramNodes([opParam('label', scalarType('string'), { default: 'has "quotes" inside' })]),
+                    }),
+                ]),
+            ],
+            'users.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'users/get-users.yml');
+        // Escaped form present; no raw unescaped quote that would break the YAML scalar.
+        expect(yml!.content).toContain('value: "has \\"quotes\\" inside"');
+        expect(yml!.content).not.toContain('value: "has "quotes" inside"');
+        // Round-trips through a YAML parser back to the original string.
+        const parsed = parseYaml(yml!.content) as { http: { params: Array<{ name: string; value: string }> } };
+        expect(parsed.http.params.find(p => p.name === 'label')!.value).toBe('has "quotes" inside');
+    });
+
+    it('escapes a literal-typed value containing a double quote in the param value', () => {
+        const root = opRoot(
+            [
+                opRoute('/users', [
+                    opOperation('get', {
+                        query: paramNodes([opParam('kind', literalType('a "b" c'))]),
+                    }),
+                ]),
+            ],
+            'users.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'users/get-users.yml');
+        expect(yml!.content).toContain('value: "a \\"b\\" c"');
+        expect(yml!.content).not.toContain('value: "a "b" c"');
+        const parsed = parseYaml(yml!.content) as { http: { params: Array<{ name: string; value: string }> } };
+        expect(parsed.http.params.find(p => p.name === 'kind')!.value).toBe('a "b" c');
+    });
+
+    it('escapes an enum-typed value containing a double quote in the param value', () => {
+        const root = opRoot(
+            [
+                opRoute('/items', [
+                    opOperation('get', {
+                        query: paramNodes([opParam('status', enumType('a "b" c', 'other'))]),
+                    }),
+                ]),
+            ],
+            'items.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'items/get-items.yml');
+        // The first enum value is used as the example and is routed through the
+        // escaping helper, so the emitted scalar stays valid YAML.
+        expect(yml!.content).toContain('value: "a \\"b\\" c"');
+        expect(yml!.content).not.toContain('value: "a "b" c"');
+        const parsed = parseYaml(yml!.content) as { http: { params: Array<{ name: string; value: string }> } };
+        expect(parsed.http.params.find(p => p.name === 'status')!.value).toBe('a "b" c');
     });
 
     it('falls back to single placeholder entry for ref query params with no registry', () => {

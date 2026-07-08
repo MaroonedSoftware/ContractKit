@@ -27,6 +27,11 @@ describe('renderPyType', () => {
         expect(renderPyType(scalarType('unknown'))).toBe('Any');
         expect(renderPyType(scalarType('json'))).toBe('Any');
         expect(renderPyType(scalarType('object'))).toBe('Any');
+        expect(renderPyType(scalarType('interval'))).toBe('str');
+    });
+
+    it('throws on an unmapped scalar name', () => {
+        expect(() => renderPyType({ kind: 'scalar', name: 'decimal' } as any)).toThrow(/unmapped scalar 'decimal'/);
     });
 
     it('renders enum', () => {
@@ -291,5 +296,49 @@ describe('generatePydanticModels', () => {
         const output = generatePydanticModels(root);
         expect(output).toContain('items: list[Payment]');
         expect(output).toContain('meta: dict[str, str]');
+    });
+});
+
+// ─── Multi-line descriptions (regression) ─────────────────────────────────
+
+describe('multi-line descriptions', () => {
+    it('comments every line of a multi-line model description', () => {
+        const root = contractRoot([
+            model('Payment', [field('amount', scalarType('number'))], {
+                description: 'A payment record.\nSecond line of docs.',
+            }),
+        ]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('# A payment record.');
+        expect(output).toContain('# Second line of docs.');
+        // No physical line of a description may be left uncommented (would be a SyntaxError).
+        expect(output).not.toMatch(/^Second line of docs\.$/m);
+    });
+
+    it('comments every line of a multi-line field description with field indent', () => {
+        const root = contractRoot([
+            model('Payment', [
+                field('amount', scalarType('number'), {
+                    description: 'Amount in cents.\nMust be non-negative.',
+                }),
+            ]),
+        ]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('    # Amount in cents.');
+        expect(output).toContain('    # Must be non-negative.');
+        expect(output).not.toMatch(/^\s*Must be non-negative\.$/m);
+    });
+
+    it('comments every line of a multi-line type-alias description', () => {
+        const root = contractRoot([
+            model('Status', [], {
+                type: enumType('pending', 'done'),
+                description: 'Lifecycle status.\nExtra detail line.',
+            }),
+        ]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('# Lifecycle status.');
+        expect(output).toContain('# Extra detail line.');
+        expect(output).not.toMatch(/^Extra detail line\.$/m);
     });
 });

@@ -56,7 +56,10 @@ export interface ValidateProjectResult {
  *
  * Diagnostics are aggregated rather than thrown; callers inspect `diag` to
  * decide how to surface them (CLI prints + non-zero exit, LSP publishes
- * per-URI).
+ * per-URI). An unexpected exception thrown while parsing a file's `source` is
+ * caught and recorded as an `Internal parse error` diagnostic on that file
+ * (line 0) rather than propagated, so one malformed file cannot abort
+ * validation of the rest of the project.
  */
 export const validateProject = (options: ValidateProjectOptions): ValidateProjectResult => {
     const diag = options.diag ?? new DiagnosticCollector();
@@ -72,7 +75,8 @@ export const validateProject = (options: ValidateProjectOptions): ValidateProjec
         else if (file.source !== undefined) {
             try {
                 ast = parseCk(file.source, file.filePath, diag);
-            } catch {
+            } catch (e) {
+                diag.error(file.filePath, 0, `Internal parse error: ${e instanceof Error ? e.message : String(e)}`);
                 continue;
             }
         } else {

@@ -1110,6 +1110,14 @@ describe('renderTsType', () => {
         it('maps json to JsonValue', () => {
             expect(renderTsType(scalarType('json'))).toBe('JsonValue');
         });
+
+        it('maps time to string', () => {
+            expect(renderTsType(scalarType('time'))).toBe('string');
+        });
+
+        it('throws on an unmapped scalar name', () => {
+            expect(() => renderTsType({ kind: 'scalar', name: 'decimal' } as any)).toThrow(/unmapped scalar 'decimal'/);
+        });
     });
 
     it('renders tuple type', () => {

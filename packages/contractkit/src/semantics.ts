@@ -22,6 +22,8 @@ import type {
     HttpMethod,
     InlineObjectTypeNode,
     PluginValue,
+    OptionsComments,
+    OptionsScopeComments,
 } from './ast.js';
 import { SECURITY_NONE } from './ast.js';
 import { buildCompoundType, resolveSimpleType, extractNullability, typeNodeToParamSource, OBJECT_MODES, type TypeArg } from './type-builders.js';
@@ -70,6 +72,48 @@ function collectOptionsHeaders(
     return headers ?? [];
 }
 
+/**
+ * Collect the `(comment | OptionsEntry)*` body of an options `keys`/`services` sub-block into its
+ * entries plus any retained comments. Leading comments (their own line before an entry) attach to
+ * that entry by key; comments left after the last entry become the sub-block's trailing comments.
+ * Both are preserved so the prettier printer can round-trip the block losslessly.
+ */
+function collectOptionsEntries(
+    type: 'keys' | 'services',
+    items: IterationNode,
+    file: string,
+    diag: DiagnosticCollector | undefined,
+): { _type: 'keys' | 'services'; entries: [string, string][]; comments?: OptionsScopeComments } {
+    const entries: [string, string][] = [];
+    const leading: Record<string, string[]> = {};
+    let pending: string[] = [];
+    for (let i = 0; i < items.numChildren; i++) {
+        const child = items.child(i);
+        if (child.ctorName === 'comment') {
+            pending.push(child.sourceString.replace(/^#\s?/, '').trimEnd());
+            continue;
+        }
+        const entry = child.toAst(file, diag) as [string, string];
+        if (pending.length > 0) {
+            leading[entry[0]] = pending;
+            pending = [];
+        }
+        entries.push(entry);
+    }
+    const comments: OptionsScopeComments = {};
+    if (Object.keys(leading).length > 0) comments.leading = leading;
+    if (pending.length > 0) comments.trailing = pending;
+    return { _type: type, entries, comments: Object.keys(comments).length > 0 ? comments : undefined };
+}
+
+/**
+ * Build the Ohm semantics that lower a parsed `.ck` grammar tree into the typed AST
+ * (`CkRootNode` and its children). Every action attaches via `toAst(file, diag)`, threading
+ * the source file path and diagnostic collector through the walk. Alongside the structural
+ * AST, the actions retain formatter round-trip data — trailing comments on field lists, route
+ * bodies, and inline objects, plus options-block `keys`/`services` comments — so the prettier
+ * plugin can reproduce the source losslessly.
+ */
 export function createSemantics(grammar: Grammar) {
     const semantics = grammar.createSemantics();
 
@@ -84,6 +128,7 @@ export function createSemantics(grammar: Grammar) {
             let security: SecurityNode | undefined;
             let requestHeaders: OpResponseHeaderNode[] | undefined;
             let responseHeaders: OpResponseHeaderNode[] | undefined;
+            let optionsComments: OptionsComments | undefined;
 
             if (preambleOpt.numChildren > 0) {
                 const result = preambleOpt.child(0).toAst(file, this.args.diag);
@@ -92,6 +137,7 @@ export function createSemantics(grammar: Grammar) {
                 security = result.security;
                 requestHeaders = result.requestHeaders;
                 responseHeaders = result.responseHeaders;
+                optionsComments = result.optionsComments;
             }
 
             const models: ModelNode[] = [];
@@ -109,6 +155,7 @@ export function createSemantics(grammar: Grammar) {
             const root: CkRootNode = { kind: 'ckRoot', meta, services, security, models, routes, file };
             if (requestHeaders) root.requestHeaders = requestHeaders;
             if (responseHeaders) root.responseHeaders = responseHeaders;
+            if (optionsComments) root.optionsComments = optionsComments;
             return root;
         },
 
@@ -134,6 +181,7 @@ export function createSemantics(grammar: Grammar) {
             let security: SecurityNode | undefined;
             let requestHeaders: OpResponseHeaderNode[] | undefined;
             let responseHeaders: OpResponseHeaderNode[] | undefined;
+            const optionsComments: OptionsComments = {};
             for (let i = 0; i < items.numChildren; i++) {
                 const itemNode = items.child(i);
                 const result = itemNode.toAst(file, diag);
@@ -156,9 +204,20 @@ export function createSemantics(grammar: Grammar) {
                         if (result._type === 'keys') meta[key] = value;
                         else if (result._type === 'services') services[key] = value;
                     }
+                    if (result.comments) {
+                        if (result._type === 'keys') optionsComments.keys = result.comments;
+                        else if (result._type === 'services') optionsComments.services = result.comments;
+                    }
                 }
             }
-            return { meta, services, security, requestHeaders, responseHeaders };
+            return {
+                meta,
+                services,
+                security,
+                requestHeaders,
+                responseHeaders,
+                optionsComments: Object.keys(optionsComments).length > 0 ? optionsComments : undefined,
+            };
         },
 
         OptionsBodyItem(child) {
@@ -166,23 +225,11 @@ export function createSemantics(grammar: Grammar) {
         },
 
         OptionsKeysBlock(_keysKw, _colonOpt, _lb, items, _rb) {
-            const entries: [string, string][] = [];
-            for (let i = 0; i < items.numChildren; i++) {
-                const child = items.child(i);
-                if (child.ctorName === 'comment') continue;
-                entries.push(child.toAst(this.args.file, this.args.diag));
-            }
-            return { _type: 'keys', entries };
+            return collectOptionsEntries('keys', items as IterationNode, this.args.file, this.args.diag);
         },
 
         OptionsServicesBlock(_servicesKw, _colonOpt, _lb, items, _rb) {
-            const entries: [string, string][] = [];
-            for (let i = 0; i < items.numChildren; i++) {
-                const child = items.child(i);
-                if (child.ctorName === 'comment') continue;
-                entries.push(child.toAst(this.args.file, this.args.diag));
-            }
-            return { _type: 'services', entries };
+            return collectOptionsEntries('services', items as IterationNode, this.args.file, this.args.diag);
         },
 
         OptionsRequestBlock(_requestKw, _colon, _lb, items, _rb) {
@@ -271,6 +318,12 @@ export function createSemantics(grammar: Grammar) {
                 result.description = body.firstCommentText;
             }
 
+            // Comments left after the last field, before `}`. Drop any sitting on the header line
+            // (those are an inline description on the `{`, already consumed above).
+            const trailing = (body.trailingComments as Array<{ line: number; text: string }> | undefined) ?? [];
+            const trailingTexts = trailing.filter(c => c.line !== prefix.line).map(c => c.text);
+            if (trailingTexts.length > 0) result.trailingComments = trailingTexts;
+
             return result;
         },
 
@@ -314,6 +367,7 @@ export function createSemantics(grammar: Grammar) {
                 fields: FieldNode[];
                 firstCommentLine?: number;
                 firstCommentText?: string;
+                trailingComments?: Array<{ line: number; text: string }>;
             };
             const bases = [firstBaseNode.sourceString];
             const rest = restBases as IterationNode;
@@ -325,6 +379,7 @@ export function createSemantics(grammar: Grammar) {
                 fields: result.fields,
                 firstCommentLine: result.firstCommentLine,
                 firstCommentText: result.firstCommentText,
+                trailingComments: result.trailingComments,
             };
         },
 
@@ -333,11 +388,13 @@ export function createSemantics(grammar: Grammar) {
                 fields: FieldNode[];
                 firstCommentLine?: number;
                 firstCommentText?: string;
+                trailingComments?: Array<{ line: number; text: string }>;
             };
             return {
                 fields: result.fields,
                 firstCommentLine: result.firstCommentLine,
                 firstCommentText: result.firstCommentText,
+                trailingComments: result.trailingComments,
             };
         },
 
@@ -354,6 +411,9 @@ export function createSemantics(grammar: Grammar) {
             const file = this.args.file as string;
             const fields: FieldNode[] = [];
             let pendingComment: string | undefined;
+            // Parallel to pendingComment: the individual comment lines (with source lines) not yet
+            // attached to a field. Whatever remains after the loop is trailing/orphan, kept for round-trip.
+            let pendingEntries: Array<{ line: number; text: string }> = [];
             let firstCommentLine: number | undefined;
             let firstCommentText: string | undefined;
 
@@ -374,6 +434,7 @@ export function createSemantics(grammar: Grammar) {
                         firstCommentText = commentText;
                     }
                     pendingComment = pendingComment ? pendingComment + '\n' + commentText : commentText;
+                    pendingEntries.push({ line: commentLine, text: commentText });
                 } else {
                     const field = child.toAst(file, this.args.diag) as FieldNode;
                     if (field) {
@@ -383,9 +444,10 @@ export function createSemantics(grammar: Grammar) {
                         fields.push(field);
                     }
                     pendingComment = undefined;
+                    pendingEntries = [];
                 }
             }
-            return { fields, firstCommentLine, firstCommentText };
+            return { fields, firstCommentLine, firstCommentText, trailingComments: pendingEntries };
         },
 
         FieldEntry(fieldNode, _comma) {
@@ -545,14 +607,22 @@ export function createSemantics(grammar: Grammar) {
         },
 
         InlineBraceObject(_lb, fieldsNode, _rb) {
-            const fields = fieldsNode.toAst(this.args.file, this.args.diag) as FieldNode[];
-            return { kind: 'inlineObject', fields } as InlineObjectTypeNode;
+            const result = fieldsNode.toAst(this.args.file, this.args.diag) as {
+                fields: FieldNode[];
+                trailingComments?: string[];
+            };
+            const node: InlineObjectTypeNode = { kind: 'inlineObject', fields: result.fields };
+            if (result.trailingComments && result.trailingComments.length > 0) node.trailingComments = result.trailingComments;
+            return node;
         },
 
         InlineFieldList(items) {
             const file = this.args.file;
             const fields: FieldNode[] = [];
             let pendingComment: string | undefined;
+            // Parallel to pendingComment: comment lines not yet attached to a field.
+            // Whatever remains after the loop is trailing/orphan, kept for round-trip.
+            let pendingEntries: string[] = [];
             for (let i = 0; i < items.numChildren; i++) {
                 const child = items.child(i);
                 if (child.ctorName === 'comment') {
@@ -566,6 +636,7 @@ export function createSemantics(grammar: Grammar) {
                         }
                     }
                     pendingComment = pendingComment ? pendingComment + '\n' + commentText : commentText;
+                    pendingEntries.push(commentText);
                 } else {
                     const field = child.toAst(file, this.args.diag) as FieldNode;
                     if (field) {
@@ -573,9 +644,10 @@ export function createSemantics(grammar: Grammar) {
                         fields.push(field);
                     }
                     pendingComment = undefined;
+                    pendingEntries = [];
                 }
             }
-            return fields;
+            return { fields, trailingComments: pendingEntries };
         },
 
         InlineFieldEntry(fieldNode, _comma) {
@@ -630,9 +702,10 @@ export function createSemantics(grammar: Grammar) {
                 paramsMode?: ObjectMode;
                 security?: SecurityNode;
                 operations: OpOperationNode[];
+                trailingComments?: string[];
             };
 
-            return {
+            const route: OpRouteNode = {
                 path,
                 params: routeBody.params,
                 paramsMode: routeBody.paramsMode,
@@ -642,6 +715,10 @@ export function createSemantics(grammar: Grammar) {
                 description,
                 loc: { file, line },
             } as OpRouteNode;
+            if (routeBody.trailingComments && routeBody.trailingComments.length > 0) {
+                route.trailingComments = routeBody.trailingComments;
+            }
+            return route;
         },
 
         RoutePath(segments) {
@@ -670,6 +747,9 @@ export function createSemantics(grammar: Grammar) {
             let security: SecurityNode | undefined;
             const operations: OpOperationNode[] = [];
             let pendingComment: string | undefined;
+            // Parallel to pendingComment: comment lines not yet attached to an operation.
+            // Whatever remains after the loop is trailing/orphan, kept for round-trip.
+            let pendingEntries: string[] = [];
 
             for (let i = 0; i < items.numChildren; i++) {
                 const child = items.child(i);
@@ -678,6 +758,7 @@ export function createSemantics(grammar: Grammar) {
                 if (result._type === 'comment') {
                     const text = result.value as string;
                     pendingComment = pendingComment ? pendingComment + '\n' + text : text;
+                    pendingEntries.push(text);
                     continue;
                 }
                 if (result._type === 'params') {
@@ -693,9 +774,10 @@ export function createSemantics(grammar: Grammar) {
                     operations.push(op);
                 }
                 pendingComment = undefined;
+                pendingEntries = [];
             }
 
-            return { params, paramsMode, security, operations };
+            return { params, paramsMode, security, operations, trailingComments: pendingEntries };
         },
 
         RouteBodyItem(child) {
