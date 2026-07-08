@@ -1,5 +1,13 @@
 # @contractkit/contractkit-plugin-python
 
+## 0.11.7
+
+### Patch Changes
+
+- 2bf01f1: Split multi-line descriptions across `#` comment lines and escape `"""` in generated method docstrings so ordinary multi-line doc comments can no longer produce invalid Python. Render the `interval` scalar as `str` and throw on an unmapped scalar type instead of falling back to `Any`.
+- Updated dependencies [2bf01f1]
+    - @contractkit/core@0.23.0
+
 ## 0.11.6
 
 ### Patch Changes

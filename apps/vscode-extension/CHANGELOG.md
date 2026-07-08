@@ -1,5 +1,16 @@
 # @contractkit/vscode-extension
 
+## 0.13.5
+
+### Patch Changes
+
+- 2bf01f1: Fix hover, go-to-definition, and find-references returning nothing when the cursor sits at the end of a line on the last token (e.g. right after `datetime` in `createdAt: readonly datetime`).
+- Updated dependencies [2bf01f1]
+- Updated dependencies [2bf01f1]
+    - @contractkit/core@0.23.0
+    - @contractkit/prettier-plugin@0.12.2
+    - @contractkit/explorer-ui@0.3.4
+
 ## 0.13.4
 
 ### Patch Changes

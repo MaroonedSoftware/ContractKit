@@ -1,5 +1,15 @@
 # @contractkit/cli
 
+## 0.10.3
+
+### Patch Changes
+
+- 2bf01f1: Contain per-operation plugin `file://` reads and all generated-file writes/deletes within the project root, so a crafted `.ck` file can't read or overwrite files outside the repo. Add SSRF guardrails to `http(s)://` plugin-extension fetches (block private/loopback/link-local/metadata targets with DNS-rebinding protection, refuse redirects, and enforce a request timeout and response-size cap). Validate the HTTP response cache with a stored content hash and TTL, treating tampered, mismatched, or stale entries as misses.
+- Updated dependencies [2bf01f1]
+- Updated dependencies [2bf01f1]
+    - @contractkit/core@0.23.0
+    - @contractkit/openapi-to-ck@0.9.2
+
 ## 0.10.2
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @contractkit/contractkit-plugin-bruno
 
+## 1.5.8
+
+### Patch Changes
+
+- 2bf01f1: Escape quotes in default, enum, and literal example values so a `.ck` value containing `"` produces valid YAML instead of a malformed request file.
+- Updated dependencies [2bf01f1]
+    - @contractkit/core@0.23.0
+
 ## 1.5.7
 
 ### Patch Changes

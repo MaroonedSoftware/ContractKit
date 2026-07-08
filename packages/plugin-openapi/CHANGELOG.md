@@ -1,5 +1,13 @@
 # @contractkit/contractkit-plugin-openapi
 
+## 0.8.14
+
+### Patch Changes
+
+- 2bf01f1: Emit explicit schemas for the `time` and `interval` scalars instead of type-less (permissive) schemas, and throw on an unmapped scalar type so a missing mapping fails loudly rather than producing an empty schema.
+- Updated dependencies [2bf01f1]
+    - @contractkit/core@0.23.0
+
 ## 0.8.13
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @contractkit/openapi-to-ck
 
+## 0.9.2
+
+### Patch Changes
+
+- 2bf01f1: Flatten multi-line descriptions into single-line trailing comments and quote enum values containing spaces or other non-identifier characters, so `.ck` generated from real-world OpenAPI specs re-parses cleanly.
+- Updated dependencies [2bf01f1]
+    - @contractkit/core@0.23.0
+
 ## 0.9.1
 
 ### Patch Changes
