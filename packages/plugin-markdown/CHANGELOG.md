@@ -1,5 +1,13 @@
 # @contractkit/contractkit-plugin-markdown
 
+## 0.9.5
+
+### Patch Changes
+
+- 2bf01f1: Escape newlines in table cells (as `<br>`) so multi-line descriptions no longer corrupt the generated tables. Render the `interval` and `time` scalars as `string` instead of `unknown`, and throw on an unmapped scalar type.
+- Updated dependencies [2bf01f1]
+    - @contractkit/core@0.23.0
+
 ## 0.9.4
 
 ### Patch Changes

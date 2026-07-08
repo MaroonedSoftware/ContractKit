@@ -1,5 +1,13 @@
 # @contractkit/prettier-plugin-contractkit
 
+## 0.12.2
+
+### Patch Changes
+
+- 2bf01f1: Preserve trailing comments instead of dropping them on format: a comment as the last line of a contract/model body, an operation/route body, an inline object type, or an options `keys`/`services` block now round-trips.
+- Updated dependencies [2bf01f1]
+    - @contractkit/core@0.23.0
+
 ## 0.12.1
 
 ### Patch Changes
