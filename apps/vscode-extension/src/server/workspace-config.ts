@@ -9,6 +9,8 @@ interface RawConfig {
     plugins?: Record<string, { keys?: Record<string, string> } | unknown>;
 }
 
+const TS_PLUGIN_NAME = '@contractkit/plugin-typescript';
+
 /**
  * Resolves `contractkit.config.json` relative to each `.ck` file and merges every plugin
  * entry's `keys` into a `{{var}}` fallback map. Mirrors the CLI's `collectFallbackKeys` so
@@ -24,6 +26,8 @@ interface RawConfig {
 export class WorkspaceConfigCache {
     /** Resolved keys per config-file path. */
     private byConfigPath = new Map<string, Record<string, string>>();
+    /** Resolved absolute TS-plugin `server.baseDir` per config-file path (`null` when none). */
+    private serviceBaseDirByConfigPath = new Map<string, string | null>();
     /** Per-directory memoization of "the nearest config above this dir" lookups. */
     private dirToConfigPath = new Map<string, string | null>();
 
@@ -38,9 +42,26 @@ export class WorkspaceConfigCache {
         return keys;
     }
 
+    /**
+     * Returns the absolute directory that anchors the generated server's `#`-subpath imports —
+     * the TS plugin's resolved `server.baseDir` (`resolve(rootDir, baseDir)`). Used to resolve an
+     * operation's `service: Class.method` reference to the real TypeScript source. `undefined` when
+     * no config, no TS plugin, or no `server` sub-config is reachable from `filePath`.
+     */
+    getServiceBaseDirForFile(filePath: string): string | undefined {
+        const configPath = this.findConfigForFile(filePath);
+        if (!configPath) return undefined;
+        const cached = this.serviceBaseDirByConfigPath.get(configPath);
+        if (cached !== undefined) return cached ?? undefined;
+        const baseDir = this.loadServiceBaseDir(configPath);
+        this.serviceBaseDirByConfigPath.set(configPath, baseDir);
+        return baseDir ?? undefined;
+    }
+
     /** Drop all cached entries — call when files change or the workspace is re-indexed. */
     clear(): void {
         this.byConfigPath.clear();
+        this.serviceBaseDirByConfigPath.clear();
         this.dirToConfigPath.clear();
     }
 
@@ -85,6 +106,21 @@ export class WorkspaceConfigCache {
             }
         }
         return merged;
+    }
+
+    private loadServiceBaseDir(configPath: string): string | null {
+        let raw: RawConfig;
+        try {
+            raw = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as RawConfig;
+        } catch {
+            return null;
+        }
+        const configDir = path.dirname(configPath);
+        const rootDir = resolveRootDir(raw.rootDir, configDir);
+        const tsPlugin = raw.plugins?.[TS_PLUGIN_NAME] as { server?: { baseDir?: unknown } } | undefined;
+        const baseDir = tsPlugin?.server?.baseDir;
+        if (typeof baseDir !== 'string') return null;
+        return path.resolve(rootDir, baseDir);
     }
 }
 
