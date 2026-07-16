@@ -7,7 +7,7 @@ Language support for ContractKit `.ck` contract files in VS Code and Cursor. Inc
 - **Syntax highlighting** via TextMate grammar (`syntaxes/ck.tmLanguage.json`)
 - **Auto-completion** for built-in types, modifiers, keywords, HTTP methods, content types, security blocks, and cross-file model references
 - **Hover information** for built-in types and referenced models
-- **Go-to-definition** — jumps from a model reference to its `contract` declaration, or from a `service:` reference (e.g. `PaymentsService.foo`) to its entry in the file's `options { services { ... } }` block. Resolves across any indexed `.ck` file in the workspace.
+- **Go-to-definition** — jumps from a model reference to its `contract` declaration, or from a `service:` reference (e.g. `PaymentsService.foo`) to its entry in the file's `options { services { ... } }` block. Resolves across any indexed `.ck` file in the workspace. Placing the cursor on the **method** segment (the `foo` in `PaymentsService.foo`) jumps straight to that method in the TypeScript service source. The service's module path is resolved relative to the TS plugin's `server.baseDir` (from `contractkit.config.json`) via the generated server's `package.json` `imports` map **or** the nearest `tsconfig.json` `compilerOptions.paths`, mapping the compiled `.js` back to `.ts`.
 - **Document symbols** outline — `contract` and `operation` declarations show in the breadcrumb / outline panel
 - **Workspace symbols** (Cmd+T) — jump to any contract, route, or service declaration across the workspace, filtered by query
 - **Document formatting** — Format Document runs the ContractKit prettier printer over the file

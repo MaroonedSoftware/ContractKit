@@ -184,7 +184,8 @@ connection.onDocumentSymbol(params => {
 connection.onDefinition(params => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return null;
-    return getDefinition(params, document, workspaceIndex);
+    const parsed = documentManager.getDocument(params.textDocument.uri);
+    return getDefinition(params, document, workspaceIndex, parsed, workspaceConfigCache);
 });
 
 // Hover
