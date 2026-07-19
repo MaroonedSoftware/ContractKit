@@ -531,6 +531,82 @@ describe('printCk — response headers', () => {
     });
 });
 
+describe('printCk — mcp field', () => {
+    function roundTrip(source: string): string {
+        const diag = new DiagnosticCollector();
+        const ast = parseCk(source, 'test.ck', diag);
+        expect(diag.hasErrors()).toBe(false);
+        return printCk(ast);
+    }
+
+    it('prints mcp: true', () => {
+        const ast = makeRoot([makeRoute('/users', [makeOp('get', { mcp: true })])]);
+        expect(printCk(ast)).toContain('        mcp: true');
+    });
+
+    it('prints explicit mcp: false', () => {
+        const ast = makeRoot([makeRoute('/users', [makeOp('get', { mcp: false })])]);
+        expect(printCk(ast)).toContain('        mcp: false');
+    });
+
+    it('omits mcp when undefined', () => {
+        const ast = makeRoot([makeRoute('/users', [makeOp('get')])]);
+        expect(printCk(ast)).not.toContain('mcp:');
+    });
+
+    it('prints mcp block with text fields and reconstructed hint list', () => {
+        const ast = makeRoot([
+            makeRoute('/routes', [
+                makeOp('post', {
+                    mcp: {
+                        name: 'searchRoutes',
+                        title: 'Search routes',
+                        description: 'Full-text search.',
+                        readOnlyHint: true,
+                        idempotentHint: true,
+                        destructiveHint: false,
+                        loc: makeLoc(),
+                    },
+                }),
+            ]),
+        ]);
+        const out = printCk(ast);
+        expect(out).toContain('        mcp: {');
+        expect(out).toContain('            name: "searchRoutes"');
+        expect(out).toContain('            title: "Search routes"');
+        expect(out).toContain('            description: "Full-text search."');
+        expect(out).toContain('            hint: readOnly, idempotent, nonDestructive');
+    });
+
+    it('round-trips mcp: true / false through parse', () => {
+        expect(roundTrip('operation /a: {\n    get: {\n        mcp: true\n    }\n}\n')).toContain('        mcp: true');
+        expect(roundTrip('operation /b: {\n    get: {\n        mcp: false\n    }\n}\n')).toContain('        mcp: false');
+    });
+
+    it('round-trips an mcp settings block through parse', () => {
+        const source = `\
+operation /routes: {
+    post: {
+        mcp: {
+            name: "searchRoutes"
+            title: "Search routes"
+            description: "Full-text search across routes."
+            hint: readOnly, idempotent, nonDestructive, closedWorld
+        }
+    }
+}
+`;
+        const out = roundTrip(source);
+        expect(out).toContain('        mcp: {');
+        expect(out).toContain('            name: "searchRoutes"');
+        expect(out).toContain('            hint: readOnly, idempotent, nonDestructive, closedWorld');
+        // Idempotent: printing the round-tripped output again is stable.
+        const diag = new DiagnosticCollector();
+        expect(printCk(parseCk(out, 'test.ck', diag))).toBe(out);
+        expect(diag.hasErrors()).toBe(false);
+    });
+});
+
 describe('printCk — options-level header globals (round-trip)', () => {
     function roundTrip(source: string): string {
         const diag = new DiagnosticCollector();

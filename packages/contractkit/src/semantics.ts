@@ -24,6 +24,7 @@ import type {
     PluginValue,
     OptionsComments,
     OptionsScopeComments,
+    McpConfigNode,
 } from './ast.js';
 import { SECURITY_NONE } from './ast.js';
 import { buildCompoundType, resolveSimpleType, extractNullability, typeNodeToParamSource, OBJECT_MODES, type TypeArg } from './type-builders.js';
@@ -37,6 +38,18 @@ import type { DiagnosticCollector } from './diagnostics.js';
 function normalizeContentType(raw: string): string {
     return raw.toLowerCase();
 }
+
+/** Which MCP annotation boolean each `hint:` token sets. Positive/negative pairs so hints that default to `true` in MCP (destructive, openWorld) can be turned off. */
+const MCP_HINT_TOKENS: Record<string, { key: 'readOnlyHint' | 'destructiveHint' | 'idempotentHint' | 'openWorldHint'; value: boolean }> = {
+    readOnly: { key: 'readOnlyHint', value: true },
+    nonReadOnly: { key: 'readOnlyHint', value: false },
+    idempotent: { key: 'idempotentHint', value: true },
+    nonIdempotent: { key: 'idempotentHint', value: false },
+    destructive: { key: 'destructiveHint', value: true },
+    nonDestructive: { key: 'destructiveHint', value: false },
+    openWorld: { key: 'openWorldHint', value: true },
+    closedWorld: { key: 'openWorldHint', value: false },
+};
 
 /**
  * Get the line number (1-based) from an Ohm Node.
@@ -868,6 +881,7 @@ export function createSemantics(grammar: Grammar) {
                 name?: string;
                 service?: string;
                 sdk?: string;
+                mcp?: boolean | McpConfigNode;
                 signature?: string;
                 signatureDescription?: string;
                 signaturePolicy?: string;
@@ -901,6 +915,7 @@ export function createSemantics(grammar: Grammar) {
             let name: string | undefined;
             let service: string | undefined;
             let sdk: string | undefined;
+            let mcp: boolean | McpConfigNode | undefined;
             let signature: string | undefined;
             let signatureDescription: string | undefined;
             let signaturePolicy: string | undefined;
@@ -926,6 +941,9 @@ export function createSemantics(grammar: Grammar) {
                         break;
                     case 'sdk':
                         sdk = item.value;
+                        break;
+                    case 'mcp':
+                        mcp = item.value;
                         break;
                     case 'signature':
                         signature = item.value;
@@ -959,7 +977,7 @@ export function createSemantics(grammar: Grammar) {
                 }
             }
 
-            return { name, service, sdk, signature, signatureDescription, signaturePolicy, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, security, plugins };
+            return { name, service, sdk, mcp, signature, signatureDescription, signaturePolicy, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, security, plugins };
         },
 
         OperationBodyItem(child) {
@@ -979,6 +997,82 @@ export function createSemantics(grammar: Grammar) {
 
         SdkDecl(_sdkKw, _colon, identNode) {
             return { _type: 'sdk', value: identNode.sourceString };
+        },
+
+        // ─── MCP ──────────────────────────────────────────────────────
+
+        McpDecl_bool(_mcpKw, _colon, boolNode) {
+            return { _type: 'mcp', value: boolNode.toAst(this.args.file, this.args.diag) as boolean };
+        },
+
+        McpDecl_block(mcpKwNode, _colon, _lb, items, _rb) {
+            const file = this.args.file;
+            const diag = this.args.diag;
+            const node: McpConfigNode = { loc: { file, line: getLine(mcpKwNode) } };
+            const seenKeys = new Set<string>();
+            // Track which boolean each hint token targets, to catch conflicts (e.g. `readOnly` + `nonReadOnly`) and duplicates.
+            const seenHintTargets = new Map<string, string>();
+
+            for (let i = 0; i < items.numChildren; i++) {
+                const child = items.child(i);
+                if (child.ctorName === 'comment') continue;
+                const field = child.toAst(file, diag) as { key: string; valueKind: 'string' | 'hintList'; value: string | string[]; line: number };
+
+                if (seenKeys.has(field.key)) {
+                    diag?.error(file, field.line, `Duplicate mcp setting '${field.key}'`);
+                    continue;
+                }
+                seenKeys.add(field.key);
+
+                if (field.key === 'name' || field.key === 'title' || field.key === 'description') {
+                    if (field.valueKind !== 'string') {
+                        diag?.error(file, field.line, `mcp setting '${field.key}' expects a quoted string`);
+                        continue;
+                    }
+                    node[field.key] = field.value as string;
+                } else if (field.key === 'hint') {
+                    if (field.valueKind !== 'hintList') {
+                        diag?.error(file, field.line, `mcp 'hint' expects a comma-separated token list, e.g. \`hint: readOnly, nonDestructive\``);
+                        continue;
+                    }
+                    for (const token of field.value as string[]) {
+                        const mapping = MCP_HINT_TOKENS[token];
+                        if (!mapping) {
+                            diag?.error(file, field.line, `Unknown mcp hint '${token}'`);
+                            continue;
+                        }
+                        const prior = seenHintTargets.get(mapping.key);
+                        if (prior !== undefined) {
+                            diag?.error(file, field.line, `Conflicting or duplicate mcp hint '${token}' (already set via '${prior}')`);
+                            continue;
+                        }
+                        seenHintTargets.set(mapping.key, token);
+                        node[mapping.key] = mapping.value;
+                    }
+                } else {
+                    diag?.error(file, field.line, `Unknown mcp setting '${field.key}'`);
+                }
+            }
+
+            return { _type: 'mcp', value: node };
+        },
+
+        McpField(identNode, _colon, valueNode, _commentOpt) {
+            const v = valueNode.toAst(this.args.file, this.args.diag) as { kind: 'string'; value: string } | { kind: 'hintList'; tokens: string[] };
+            return {
+                key: identNode.sourceString,
+                valueKind: v.kind,
+                value: v.kind === 'string' ? v.value : v.tokens,
+                line: getLine(identNode),
+            };
+        },
+
+        McpFieldValue_string(strNode) {
+            return { kind: 'string', value: strNode.toAst(this.args.file, this.args.diag) as string };
+        },
+
+        McpFieldValue_hintList(listNode) {
+            return { kind: 'hintList', tokens: listNode.toAst(this.args.file, this.args.diag) as string[] };
         },
 
         SignatureDecl_bare(_signatureKw, _colon, valueNode) {

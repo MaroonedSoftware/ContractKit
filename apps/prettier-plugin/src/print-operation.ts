@@ -8,6 +8,7 @@ import type {
     ContractTypeNode,
     ObjectMode,
     PluginValue,
+    McpConfigNode,
 } from '@contractkit/core';
 import { SECURITY_NONE } from '@contractkit/core';
 import { printType, formatDefault } from './print-type.js';
@@ -128,6 +129,13 @@ function printOperation(op: OpOperationNode): string[] {
     if (op.name) lines.push(`${I2}name: ${op.name}`);
     if (op.service) lines.push(`${I2}service: ${op.service}`);
     if (op.sdk) lines.push(`${I2}sdk: ${op.sdk}`);
+    if (op.mcp === true) {
+        lines.push(`${I2}mcp: true`);
+    } else if (op.mcp === false) {
+        lines.push(`${I2}mcp: false`);
+    } else if (op.mcp) {
+        lines.push(...printMcpBlock(op.mcp));
+    }
     if (op.signature) {
         const comment = op.signatureDescription ? ` # ${op.signatureDescription}` : '';
         if (op.signaturePolicy) {
@@ -165,6 +173,33 @@ function printOperation(op: OpOperationNode): string[] {
     }
 
     lines.push(`${I1}}`);
+    return lines;
+}
+
+// ─── MCP block ───────────────────────────────────────────────────────────────
+
+/**
+ * Reconstruct the `hint:` token list from the four annotation booleans, in canonical
+ * order. Each set boolean contributes its positive or negative token; unset hints are omitted.
+ */
+function mcpHintTokens(mcp: McpConfigNode): string[] {
+    const tokens: string[] = [];
+    if (mcp.readOnlyHint !== undefined) tokens.push(mcp.readOnlyHint ? 'readOnly' : 'nonReadOnly');
+    if (mcp.idempotentHint !== undefined) tokens.push(mcp.idempotentHint ? 'idempotent' : 'nonIdempotent');
+    if (mcp.destructiveHint !== undefined) tokens.push(mcp.destructiveHint ? 'destructive' : 'nonDestructive');
+    if (mcp.openWorldHint !== undefined) tokens.push(mcp.openWorldHint ? 'openWorld' : 'closedWorld');
+    return tokens;
+}
+
+/** Print an `mcp: { ... }` settings block. Fields are emitted in canonical order; `hint:` is omitted when no hints are set. */
+function printMcpBlock(mcp: McpConfigNode): string[] {
+    const lines: string[] = [`${I2}mcp: {`];
+    if (mcp.name !== undefined) lines.push(`${I3}name: "${escapeString(mcp.name)}"`);
+    if (mcp.title !== undefined) lines.push(`${I3}title: "${escapeString(mcp.title)}"`);
+    if (mcp.description !== undefined) lines.push(`${I3}description: "${escapeString(mcp.description)}"`);
+    const tokens = mcpHintTokens(mcp);
+    if (tokens.length > 0) lines.push(`${I3}hint: ${tokens.join(', ')}`);
+    lines.push(`${I2}}`);
     return lines;
 }
 

@@ -254,8 +254,39 @@ export interface OpResponseNode {
     headersOptOut?: boolean;
 }
 
+/**
+ * Parsed `mcp: { ... }` settings on an operation. Enables MCP tool/route generation
+ * for the verb and carries optional MCP tool metadata. The four `*Hint` booleans are the
+ * surface form of the `hint:` token list (e.g. `hint: readOnly, nonDestructive`); an unset
+ * hint means "not specified" — a consuming MCP plugin applies MCP's own default.
+ */
+export interface McpConfigNode {
+    /** MCP tool id override. When absent, derived from `sdk` → `name` → HTTP method + path. */
+    name?: string;
+    /** Human-friendly display title for the MCP tool. */
+    title?: string;
+    /** LLM-facing tool description (distinct from the operation's `#` doc comment). */
+    description?: string;
+    /** MCP `readOnlyHint`. From `hint: readOnly` / `nonReadOnly`. */
+    readOnlyHint?: boolean;
+    /** MCP `destructiveHint`. From `hint: destructive` / `nonDestructive`. */
+    destructiveHint?: boolean;
+    /** MCP `idempotentHint`. From `hint: idempotent` / `nonIdempotent`. */
+    idempotentHint?: boolean;
+    /** MCP `openWorldHint`. From `hint: openWorld` / `closedWorld`. */
+    openWorldHint?: boolean;
+    loc: SourceLocation;
+}
+
 export interface OpOperationNode {
     method: HttpMethod;
+    /**
+     * MCP exposure for this verb. `undefined`/`false` = not exposed (the default); `true` =
+     * exposed with all metadata derived from the operation; an `McpConfigNode` = exposed with
+     * explicit settings. Test enablement with `Boolean(op.mcp)`. Kept as a union so the prettier
+     * plugin round-trips the exact authored form (`mcp: true` / `mcp: false` / `mcp: { ... }`).
+     */
+    mcp?: boolean | McpConfigNode;
     name?: string; // e.g. "Create an Offer" — human-readable name for docs/collections
     service?: string; // e.g. "LedgerService.updateCategoryNesting"
     sdk?: string; // e.g. "getUser" — explicit SDK method name

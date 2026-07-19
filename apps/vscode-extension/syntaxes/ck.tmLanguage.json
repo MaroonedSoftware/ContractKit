@@ -379,6 +379,12 @@
                     "include": "#sdk-decl"
                 },
                 {
+                    "include": "#mcp-block"
+                },
+                {
+                    "include": "#mcp-decl"
+                },
+                {
                     "include": "#signature-decl"
                 },
                 {
@@ -529,6 +535,63 @@
                     "name": "entity.name.function.sdk-method.ck"
                 }
             }
+        },
+        "mcp-decl": {
+            "match": "\\b(mcp)\\s*(:)\\s*(true|false)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword.control.mcp.ck"
+                },
+                "2": {
+                    "name": "punctuation.separator.colon.ck"
+                },
+                "3": {
+                    "name": "constant.language.boolean.ck"
+                }
+            }
+        },
+        "mcp-block": {
+            "begin": "\\b(mcp)\\s*(:)\\s*(\\{)",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.mcp.ck"
+                },
+                "2": {
+                    "name": "punctuation.separator.colon.ck"
+                },
+                "3": {
+                    "name": "punctuation.definition.block.begin.ck"
+                }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": {
+                    "name": "punctuation.definition.block.end.ck"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#comment"
+                },
+                {
+                    "match": "\\b(name|title|description|hint)\\b\\s*(:)",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.mcp-setting.ck"
+                        },
+                        "2": {
+                            "name": "punctuation.separator.colon.ck"
+                        }
+                    }
+                },
+                {
+                    "match": "\\b(readOnly|nonReadOnly|idempotent|nonIdempotent|destructive|nonDestructive|openWorld|closedWorld)\\b",
+                    "name": "constant.language.mcp-hint.ck"
+                },
+                {
+                    "include": "#string-literal"
+                }
+            ]
         },
         "signature-decl": {
             "patterns": [

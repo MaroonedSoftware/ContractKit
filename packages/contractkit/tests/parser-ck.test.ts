@@ -1172,6 +1172,87 @@ operation /users: {
         });
     });
 
+    // ─── MCP declaration ─────────────────────────────────────────────
+
+    describe('mcp declaration', () => {
+        it('parses mcp: true', () => {
+            const { root, diag } = parse('operation /users: { get: { mcp: true } }');
+            expect(diag.hasErrors()).toBe(false);
+            expect(root.routes[0]!.operations[0]!.mcp).toBe(true);
+        });
+
+        it('parses mcp: false', () => {
+            const { root, diag } = parse('operation /users: { get: { mcp: false } }');
+            expect(diag.hasErrors()).toBe(false);
+            expect(root.routes[0]!.operations[0]!.mcp).toBe(false);
+        });
+
+        it('leaves mcp undefined when not declared', () => {
+            expect(parse('operation /users: { get: {} }').root.routes[0]!.operations[0]!.mcp).toBeUndefined();
+        });
+
+        it('parses mcp block with text fields and mixed hint tokens', () => {
+            const { root, diag } = parse(`\
+operation /routes: {
+    post: {
+        mcp: {
+            name: "searchRoutes"
+            title: "Search routes"
+            description: "Full-text search across routes."
+            hint: readOnly, idempotent, nonDestructive
+        }
+    }
+}`);
+            expect(diag.hasErrors()).toBe(false);
+            expect(root.routes[0]!.operations[0]!.mcp).toMatchObject({
+                name: 'searchRoutes',
+                title: 'Search routes',
+                description: 'Full-text search across routes.',
+                readOnlyHint: true,
+                idempotentHint: true,
+                destructiveHint: false,
+            });
+            // Unlisted hint left unset.
+            expect((root.routes[0]!.operations[0]!.mcp as any).openWorldHint).toBeUndefined();
+        });
+
+        it('parses closedWorld / nonIdempotent negative tokens', () => {
+            const { root, diag } = parse('operation /r: { get: { mcp: { hint: closedWorld, nonIdempotent } } }');
+            expect(diag.hasErrors()).toBe(false);
+            expect(root.routes[0]!.operations[0]!.mcp).toMatchObject({ openWorldHint: false, idempotentHint: false });
+        });
+
+        it('errors on unknown mcp setting key', () => {
+            const { diag } = parse('operation /r: { get: { mcp: { bogus: "x" } } }');
+            expect(diag.getAll().some(d => d.severity === 'error' && /Unknown mcp setting 'bogus'/.test(d.message))).toBe(true);
+        });
+
+        it('errors when a text field is given a token list', () => {
+            const { diag } = parse('operation /r: { get: { mcp: { name: searchRoutes } } }');
+            expect(diag.getAll().some(d => d.severity === 'error' && /'name' expects a quoted string/.test(d.message))).toBe(true);
+        });
+
+        it('errors when hint is given a quoted string', () => {
+            const { diag } = parse('operation /r: { get: { mcp: { hint: "readOnly" } } }');
+            expect(diag.getAll().some(d => d.severity === 'error' && /'hint' expects a comma-separated token list/.test(d.message))).toBe(true);
+        });
+
+        it('errors on unknown hint token', () => {
+            const { diag } = parse('operation /r: { get: { mcp: { hint: sideEffectFree } } }');
+            expect(diag.getAll().some(d => d.severity === 'error' && /Unknown mcp hint 'sideEffectFree'/.test(d.message))).toBe(true);
+        });
+
+        it('errors on conflicting hint pair', () => {
+            const { diag } = parse('operation /r: { get: { mcp: { hint: readOnly, nonReadOnly } } }');
+            expect(diag.getAll().some(d => d.severity === 'error' && /Conflicting or duplicate mcp hint 'nonReadOnly'/.test(d.message))).toBe(true);
+        });
+
+        it('errors on duplicate setting key', () => {
+            const { diag } = parse('operation /r: { get: { mcp: { name: "a"\n  name: "b" } } }');
+            expect(diag.getAll().some(d => d.severity === 'error' && /Duplicate mcp setting 'name'/.test(d.message))).toBe(true);
+        });
+    });
+
     // ─── Route modifiers ─────────────────────────────────────────────
 
     describe('route modifiers', () => {

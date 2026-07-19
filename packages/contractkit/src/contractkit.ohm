@@ -184,6 +184,7 @@ Contract {
                     | NameDecl
                     | ServiceDecl
                     | SdkDecl
+                    | McpDecl
                     | SignatureDecl
                     | QueryBlock
                     | HeadersBlock
@@ -200,6 +201,20 @@ Contract {
   ServiceDecl = serviceKw ":" identifier
 
   SdkDecl = sdkKw ":" identifier
+
+  // ─── MCP ────────────────────────────────────────────────────────
+  // `mcp: true|false` or a settings block. Text fields are quoted strings;
+  // `hint` is a bracket-less comma-separated token list (enum-style). The two
+  // McpFieldValue forms are unambiguous: a string starts with a quote, a hint
+  // list starts with an identifier. The comma-terminated list stops at the line
+  // boundary because the next field has no leading comma.
+  McpDecl = mcpKw ":" booleanLit                     -- bool
+          | mcpKw ":" "{" (comment | McpField)* "}"  -- block
+
+  McpField = identifier ":" McpFieldValue comment?
+
+  McpFieldValue = stringLit                        -- string
+                | NonemptyListOf<identifier, ",">  -- hintList
 
   SignatureDecl = signatureKw ":" SignatureBlock               -- block
                 | signatureKw ":" (stringLit | identifier)     -- bare
@@ -286,6 +301,7 @@ Contract {
   serviceKw = "service" ~identPart
   nameKw = "name" ~identPart
   sdkKw = "sdk" ~identPart
+  mcpKw = "mcp" ~identPart
   signatureKw = "signature" ~identPart
   queryKw = "query" ~identPart
   headersKw = "headers" ~identPart

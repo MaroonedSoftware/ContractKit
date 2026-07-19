@@ -1048,6 +1048,61 @@ get: {
 
 ---
 
+### MCP Exposure
+
+Mark an individual HTTP verb as MCP-exposed so an MCP plugin can generate a tool/route for it. The `mcp` field is per-verb (each verb maps to one MCP tool) and defaults to `false` — an absent `mcp` or `mcp: false` means "not exposed."
+
+The simplest form is a boolean, which derives all tool metadata from the operation:
+
+```
+get: {
+    name: Get Route
+    mcp: true
+    service: RoutesService.getRoute
+    response: {
+        200: { application/json: Application }
+    }
+}
+```
+
+For explicit MCP tool metadata, use the settings block:
+
+```
+post: {
+    service: RoutesService.search
+    mcp: {
+        name: "searchRoutes"
+        title: "Search routes"
+        description: "Full-text search across routes; returns matches."
+        hint: readOnly, idempotent, nonDestructive
+    }
+    request:  { application/json: RouteQuery }
+    response: { 200: { application/json: RouteList } }
+}
+```
+
+Settings:
+
+| Key | Value | Meaning |
+| --- | --- | --- |
+| `name` | quoted string | Tool id override (else derived from `sdk` → `name` → HTTP method + path) |
+| `title` | quoted string | Human display title |
+| `description` | quoted string | LLM-facing tool description (distinct from the `#` doc comment) |
+| `hint` | comma-separated tokens | MCP tool annotation hints |
+
+`hint` is a bracket-less comma-separated token list (like `enum(...)` args without the parens). Each token sets one MCP annotation; positive/negative pairs let you turn a hint on or off (two of the four default to `true` in MCP):
+
+| Token | Sets | Token | Sets |
+| --- | --- | --- | --- |
+| `readOnly` | `readOnlyHint = true` | `nonReadOnly` | `readOnlyHint = false` |
+| `idempotent` | `idempotentHint = true` | `nonIdempotent` | `idempotentHint = false` |
+| `destructive` | `destructiveHint = true` | `nonDestructive` | `destructiveHint = false` |
+| `openWorld` | `openWorldHint = true` | `closedWorld` | `openWorldHint = false` |
+
+Unknown keys, unknown or conflicting hint tokens (e.g. both `readOnly` and `nonReadOnly`), and duplicates are compile-time errors. MCP route/tool generation itself is handled by a consuming plugin; the `mcp` field is the language-level flag it reads.
+
+---
+
 ### Webhook Signature
 
 For HMAC-authenticated webhooks, bind the operation to a signature key:

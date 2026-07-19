@@ -299,6 +299,15 @@ Models with visibility modifiers generate up to three schemas:
 
 `discriminated(by=<field>, A | B | C)` compiles to `z.discriminatedUnion("field", [...])` in Zod, an `Annotated[Union[...], Field(discriminator=...)]` in Python, and `oneOf` + `discriminator.mapping` in OpenAPI. Validated at parse time in `validate-discriminated.ts` — every member must be a model ref or inline object containing the discriminator as a `literal()`/`enum()` field, and at least two members are required. Failures emit warnings, not errors.
 
+### MCP field
+
+A per-HTTP-verb `mcp` field flags an operation for MCP tool/route generation. AST: `OpOperationNode.mcp?: boolean | McpConfigNode` (union kept so prettier round-trips the exact source form). Default is `false` — `undefined`/`false` = not exposed; test enablement with `Boolean(op.mcp)`.
+
+- `mcp: true` / `mcp: false` — boolean form (parsed via `booleanLit`).
+- `mcp: { name, title, description, hint }` — settings block. Text fields are quoted strings; `hint` is a bracket-less comma-separated token list (enum-style). Hint tokens map to the four MCP annotation booleans on `McpConfigNode` (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) via positive/negative pairs (`readOnly`/`nonReadOnly`, `idempotent`/`nonIdempotent`, `destructive`/`nonDestructive`, `openWorld`/`closedWorld`) — `hint:` is surface sugar, so consumers/validation only see booleans.
+
+Grammar: `McpDecl` (bool/block) + `McpField`/`McpFieldValue` in `contractkit.ohm`. Validation is inline in `semantics.ts` (`McpDecl_block` emits `diag?.error` for unknown keys, value-kind mismatches, unknown/conflicting/duplicate hint tokens) — the token→boolean table is `MCP_HINT_TOKENS`. Prettier reconstructs the block (canonical field/token order) in `print-operation.ts`. **No codegen plugin consumes `op.mcp` yet** — MCP route/tool generation is deferred to a future `@contractkit/plugin-mcp`; this is language plumbing only.
+
 ### Response headers
 
 A status code body can declare `headers: { name?: type, ... }` alongside `application/json:`. AST: `OpResponseNode.headers?: OpResponseHeaderNode[]`. When present:
