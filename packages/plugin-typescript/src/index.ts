@@ -41,6 +41,7 @@ import {
     type SdkScaffoldDeps,
 } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
+import { generateMcpFile, generateMcpAggregator, generateMcpRouter, hasMcpOperations, deriveMcpRegisterFnName } from './codegen-mcp.js';
 import {
     TEMPLATE_VAR_RE,
     resolveTemplate,
@@ -104,11 +105,39 @@ export interface TypesConfig {
     output?: string;
 }
 
+export interface McpConfig {
+    /** Directory (relative to rootDir) where MCP files are written. Default: rootDir. */
+    baseDir?: string;
+    output?: {
+        /** Path template for per-op-file tool handlers. Supports {filename}, {dir}, {area}. Default `{filename}.mcp.ts`. */
+        tools?: string;
+        /** Path (or template) for the aggregator that assembles the McpToolHandlerMap. Default `mcp.tools.ts`. */
+        index?: string;
+        /** Path (or template) for the optional POST /mcp route file. Default `mcp.router.ts`. */
+        router?: string;
+        /**
+         * Path template for the model **Zod schema** files the tools import (for arg validation and
+         * `z.toJSONSchema`). When omitted, falls back to the `server` sub-config's `output.types`
+         * (if `server.zod`) or the `zod` sub-config's output. Tools require Zod schemas, not plain types.
+         */
+        types?: string;
+    };
+    /** Emit the `mcp.router.ts` route boilerplate. Default true. */
+    emitRouter?: boolean;
+    /** Mount path used in the emitted router. Default `/mcp`. */
+    path?: string;
+    /** Import path template for service implementations (same semantics as ServerConfig). */
+    servicePathTemplate?: string;
+    /** Whether to expose operations marked `internal` as MCP tools. Default false. */
+    includeInternal?: boolean;
+}
+
 export interface TypescriptPluginConfig {
     server?: ServerConfig;
     sdk?: SdkConfig;
     zod?: ZodConfig;
     types?: TypesConfig;
+    mcp?: McpConfig;
 }
 
 // ─── Caching constants ─────────────────────────────────────────────────────
@@ -165,6 +194,7 @@ async function runTypescriptCodegen(
     if (config.sdk) collectSdkOutput(config.sdk, rootDir, inputs, units, globalFiles);
     if (config.zod) collectZodOutput(config.zod, rootDir, inputs, units);
     if (config.types) collectTypesOutput(config.types, rootDir, inputs, units);
+    if (config.mcp) collectMcpOutput(config.mcp, config, rootDir, inputs, units, globalFiles);
 
     const result = runIncrementalCodegen({
         codegenVersion: TYPESCRIPT_CODEGEN_VERSION,
@@ -835,6 +865,130 @@ function collectTypesOutput(
                 },
             ],
         });
+    }
+}
+
+// ─── MCP sub-generator ─────────────────────────────────────────────────────
+
+/**
+ * Resolve where the model **Zod schema** files live so the MCP tools can import them (for arg
+ * validation + `z.toJSONSchema`). Precedence: explicit `mcp.output.types` → the `server` sub-config's
+ * `output.types` (only when `server.zod`) → the `zod` sub-config's output. Returns an empty map when
+ * none resolve (imports then fall back to a colocated `./<name>.js` guess).
+ */
+function resolveMcpModelOutPaths(
+    config: TypescriptPluginConfig,
+    rootDir: string,
+    contractRoots: readonly ContractRootNode[],
+    commonRoot: string,
+    modelsWithInput: Set<string>,
+    modelsWithOutput: Set<string>,
+): Map<string, string> {
+    const map = new Map<string, string>();
+    let base: string;
+    let template: string | undefined;
+    let suffix: string;
+    if (config.mcp?.output?.types) {
+        base = resolve(rootDir, config.mcp.baseDir ?? '.');
+        template = config.mcp.output.types;
+        suffix = '.ts';
+    } else if (config.server?.zod && config.server.output?.types) {
+        base = resolve(rootDir, config.server.baseDir ?? '.');
+        template = config.server.output.types;
+        suffix = '.ts';
+    } else if (config.zod) {
+        base = resolve(rootDir, config.zod.baseDir ?? '.');
+        template = config.zod.output;
+        suffix = '.schema.ts';
+    } else {
+        return map;
+    }
+
+    for (const ast of contractRoots) {
+        const outPath = computeContractOutPath(ast.file, base, template, suffix, commonRoot, ast.meta);
+        for (const model of ast.models) {
+            map.set(model.name, outPath);
+            if (modelsWithInput.has(model.name)) map.set(`${model.name}Input`, outPath);
+            if (modelsWithOutput.has(model.name)) map.set(`${model.name}Output`, outPath);
+        }
+    }
+    return map;
+}
+
+function collectMcpOutput(
+    config: McpConfig,
+    fullConfig: TypescriptPluginConfig,
+    rootDir: string,
+    inputs: Parameters<NonNullable<ContractKitPlugin['generateTargets']>>[0],
+    units: IncrementalUnit[],
+    globalFiles: IncrementalOutputFile[],
+): void {
+    const mcpBase = resolve(rootDir, config.baseDir ?? '.');
+    const modelsWithInput = inputs.modelsWithInput as Set<string>;
+    const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
+    const modelMap = buildModelMap(inputs.contractRoots);
+    const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
+    const commonRoot = commonDir(allFiles, rootDir);
+    const subConfigKey = stableSubConfig(config);
+    const includeInternal = config.includeInternal ?? false;
+
+    const modelOutPaths = resolveMcpModelOutPaths(fullConfig, rootDir, inputs.contractRoots, commonRoot, modelsWithInput, modelsWithOutput);
+
+    // ── Per-op-root tool-handler units (only files with MCP-exposed ops) ──
+    const entries: { outPath: string; registerFn: string }[] = [];
+    for (const ast of inputs.opRoots) {
+        if (!hasMcpOperations(ast, includeInternal)) continue;
+        const outPath = computeOpOutPath(ast.file, mcpBase, config.output?.tools, '.mcp.ts', commonRoot, ast.meta);
+        const refs = collectOpRootRefs(ast, modelMap);
+        const fingerprint = hashFingerprint({
+            kind: 'mcp-tools',
+            v: TYPESCRIPT_CODEGEN_VERSION,
+            outPath,
+            root: ast,
+            outPathSlice: sliceOutPathMap(refs, modelOutPaths, modelsWithInput, modelsWithOutput),
+            modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
+            modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
+            servicePathTemplate: config.servicePathTemplate ?? null,
+            includeInternal,
+            sub: subConfigKey,
+        });
+        units.push({
+            key: `mcp-tools::${outPath}`,
+            fingerprint,
+            render: () => [
+                {
+                    relativePath: outPath,
+                    content: generateMcpFile(ast, {
+                        outPath,
+                        modelOutPaths,
+                        modelsWithInput,
+                        modelsWithOutput,
+                        servicePathTemplate: config.servicePathTemplate,
+                        includeInternal,
+                    }),
+                },
+            ],
+        });
+        entries.push({ outPath, registerFn: deriveMcpRegisterFnName(ast.file) });
+    }
+
+    if (entries.length === 0) return;
+
+    // ── Aggregator (global) ──
+    const indexPath = join(mcpBase, config.output?.index ?? 'mcp.tools.ts');
+    const aggregatorEntries = entries
+        .map(e => {
+            let rel = relative(dirname(indexPath), e.outPath).replace(/\.ts$/, '.js');
+            if (!rel.startsWith('.')) rel = './' + rel;
+            return { registerFn: e.registerFn, importPath: rel };
+        })
+        .sort((a, b) => a.registerFn.localeCompare(b.registerFn));
+    globalFiles.push({ relativePath: indexPath, content: generateMcpAggregator(aggregatorEntries) });
+
+    // ── Router (global, optional) ──
+    if (config.emitRouter !== false) {
+        const routerPath = join(mcpBase, config.output?.router ?? 'mcp.router.ts');
+        globalFiles.push({ relativePath: routerPath, content: generateMcpRouter({ path: config.path }) });
     }
 }
 

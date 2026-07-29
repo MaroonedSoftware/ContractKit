@@ -368,7 +368,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
 
 // ─── Inference helpers ─────────────────────────────────────────────────────
 
-function inferService(op: OpOperationNode, route: OpRouteNode, file: string): { className: string; methodName: string } {
+export function inferService(op: OpOperationNode, route: OpRouteNode, file: string): { className: string; methodName: string } {
     // If explicitly declared: service: ServiceClass.methodName
     if (op.service) {
         const [cls = '', method] = op.service.split('.');
@@ -400,7 +400,7 @@ function inferMethodName(method: string, path: string): string {
     }
 }
 
-function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
+export function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
     const args: string[] = [];
     // Path params: spread individually (inline) or pass 'params' object (type-ref/ContractTypeNode)
     if (route.params) {
@@ -792,7 +792,7 @@ function isValidIdentifier(name: string): boolean {
 
 // ─── Naming conventions ────────────────────────────────────────────────────
 
-function deriveBaseName(file: string): string {
+export function deriveBaseName(file: string): string {
     const base =
         file
             .split('/')
@@ -809,7 +809,7 @@ function deriveRouterName(file: string): string {
     return `${deriveBaseName(file)}Router`;
 }
 
-function deriveModulePath(serviceName: string, template?: string): string {
+export function deriveModulePath(serviceName: string, template?: string): string {
     // LedgerService -> #modules/ledger/ledger.service.js
     const base = serviceName.replace(/Service$/, '');
     const kebab = base.replace(/([A-Z])/g, m => `-${m.toLowerCase()}`).replace(/^-/, '');

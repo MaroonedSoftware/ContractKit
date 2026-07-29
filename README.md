@@ -1099,7 +1099,41 @@ Settings:
 | `destructive` | `destructiveHint = true` | `nonDestructive` | `destructiveHint = false` |
 | `openWorld` | `openWorldHint = true` | `closedWorld` | `openWorldHint = false` |
 
-Unknown keys, unknown or conflicting hint tokens (e.g. both `readOnly` and `nonReadOnly`), and duplicates are compile-time errors. MCP route/tool generation itself is handled by a consuming plugin; the `mcp` field is the language-level flag it reads.
+Unknown keys, unknown or conflicting hint tokens (e.g. both `readOnly` and `nonReadOnly`), and duplicates are compile-time errors.
+
+#### Generating an MCP server (TypeScript plugin)
+
+The `@contractkit/plugin-typescript` plugin turns `mcp`-flagged operations into a
+[`@maroonedsoftware/mcp`](https://github.com/MaroonedSoftware/ServerKit/tree/main/packages/mcp) server
+via an `mcp` sub-config:
+
+```json
+"@contractkit/plugin-typescript": {
+    "mcp": {
+        "baseDir": "apps/api/",
+        "output": { "tools": "src/mcp/{filename}.mcp.ts" },
+        "servicePathTemplate": "#modules/{kebab}/{kebab}.service.js"
+    }
+}
+```
+
+For each `.ck` file with at least one flagged op it emits `<filename>.mcp.ts` — one `@Injectable()`
+tool-handler class per operation (mirroring the Koa router split) — plus a `mcp.tools.ts` aggregator
+exporting `registerMcpTools(container)` (which assembles the DI `McpToolHandlerMap`) and, unless
+`emitRouter: false`, a `mcp.router.ts` with the `POST /mcp` route. Each tool handler:
+
+- derives its tool name from `mcp.name` → `sdk` → `name` → the HTTP method + path (the last three
+  snake-cased), and its class name from that with an `McpTool` suffix;
+- advertises `inputSchema`/`outputSchema` (JSON Schema) generated from the operation's Zod schemas via
+  `z.toJSONSchema()`, and validates incoming args against the same schema;
+- constructor-injects the operation's `service` and calls it in-process, returning the result as MCP
+  tool content.
+
+Tools require the model **Zod schemas** to be generated (via the `server` sub-config with `zod: true`,
+or the `zod` sub-config); set `mcp.output.types` to point at them explicitly if neither is configured.
+`internal` operations are excluded unless `includeInternal: true`. The generated code depends on
+`@maroonedsoftware/mcp`, `@modelcontextprotocol/sdk`, `injectkit`, and `zod`; the runtime owns the
+JSON-RPC lifecycle, session management, Streamable HTTP transport, and auth.
 
 ---
 

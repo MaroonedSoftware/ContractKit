@@ -77,11 +77,12 @@ pnpm --filter @contractkit/core exec vitest run tests/parser-ck.test.ts
 
 | File                     | Role                                                                        |
 | ------------------------ | --------------------------------------------------------------------------- |
-| `index.ts`               | Combined plugin — server, SDK, Zod, and plain-types generation              |
+| `index.ts`               | Combined plugin — server, SDK, Zod, plain-types, and MCP generation         |
 | `codegen-contract.ts`    | Generates Zod schemas from `contract` declarations                          |
 | `codegen-operation.ts`   | Generates Koa routers from `operation` declarations                         |
 | `codegen-sdk.ts`         | TypeScript SDK client codegen                                               |
 | `codegen-plain-types.ts` | Plain TypeScript interface/type codegen (no Zod runtime)                    |
+| `codegen-mcp.ts`         | `@maroonedsoftware/mcp` tool-handler codegen from `mcp`-flagged operations  |
 | `ts-render.ts`           | TypeScript type rendering — `renderTsType`, `renderInputTsType`, `quoteKey` |
 | `path-utils.ts`          | Output path template resolution shared across all sub-generators            |
 
@@ -306,7 +307,9 @@ A per-HTTP-verb `mcp` field flags an operation for MCP tool/route generation. AS
 - `mcp: true` / `mcp: false` — boolean form (parsed via `booleanLit`).
 - `mcp: { name, title, description, hint }` — settings block. Text fields are quoted strings; `hint` is a bracket-less comma-separated token list (enum-style). Hint tokens map to the four MCP annotation booleans on `McpConfigNode` (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) via positive/negative pairs (`readOnly`/`nonReadOnly`, `idempotent`/`nonIdempotent`, `destructive`/`nonDestructive`, `openWorld`/`closedWorld`) — `hint:` is surface sugar, so consumers/validation only see booleans.
 
-Grammar: `McpDecl` (bool/block) + `McpField`/`McpFieldValue` in `contractkit.ohm`. Validation is inline in `semantics.ts` (`McpDecl_block` emits `diag?.error` for unknown keys, value-kind mismatches, unknown/conflicting/duplicate hint tokens) — the token→boolean table is `MCP_HINT_TOKENS`. Prettier reconstructs the block (canonical field/token order) in `print-operation.ts`. **No codegen plugin consumes `op.mcp` yet** — MCP route/tool generation is deferred to a future `@contractkit/plugin-mcp`; this is language plumbing only.
+Grammar: `McpDecl` (bool/block) + `McpField`/`McpFieldValue` in `contractkit.ohm`. Validation is inline in `semantics.ts` (`McpDecl_block` emits `diag?.error` for unknown keys, value-kind mismatches, unknown/conflicting/duplicate hint tokens) — the token→boolean table is `MCP_HINT_TOKENS`. Prettier reconstructs the block (canonical field/token order) in `print-operation.ts`.
+
+**Consumed by the TypeScript plugin** via its `mcp` sub-config (`packages/plugin-typescript/src/codegen-mcp.ts`). For every `mcp`-flagged op it emits an `@maroonedsoftware/mcp` `@Injectable()` tool-handler class (`McpToolHandler`): the `definition` is the MCP SDK `Tool` type, with `inputSchema`/`outputSchema` produced at runtime from generated Zod schemas via `z.toJSONSchema(...)` and the same Zod schema reused for `parseAndValidate` in `handle`; the handler constructor-injects the op's `service` and calls it. Output mirrors the Koa router: one `<filename>.mcp.ts` per op-root (a cacheable unit) plus a `mcp.tools.ts` aggregator that assembles the DI `McpToolHandlerMap` and an optional `mcp.router.ts`. The `@maroonedsoftware/mcp` runtime owns the JSON-RPC lifecycle, sessions, Streamable HTTP transport, and auth. Other plugins (Python/OpenAPI/Markdown/Bruno) still do not consume `op.mcp`.
 
 ### Response headers
 

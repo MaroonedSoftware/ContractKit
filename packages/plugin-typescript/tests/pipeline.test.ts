@@ -2,6 +2,7 @@ import { parseCk, decomposeCk, validateOp, validateRefs, applyOptionsDefaults, D
 import { generateContract } from '../src/codegen-contract.js';
 import { generateOp } from '../src/codegen-operation.js';
 import { generateSdk } from '../src/codegen-sdk.js';
+import { generateMcpFile } from '../src/codegen-mcp.js';
 import { SIMPLE_USER_CONTRACT, VISIBILITY_CONTRACT, INHERITANCE_CONTRACT, SIMPLE_USERS_OP, PARAMETERIZED_OP } from './helpers.js';
 
 function compileContractSource(source: string) {
@@ -115,6 +116,64 @@ describe('OP pipeline (source -> parse -> codegen)', () => {
         const source = `operation /items: { get: {} }`;
         const { output } = compileOpSource(source, 'ledger.items.ck');
         expect(output).toContain('LedgerItemsRouter');
+    });
+});
+
+describe('MCP pipeline (source -> parse -> codegen)', () => {
+    function compileMcp(source: string, file = 'payments.ck') {
+        const diag = new DiagnosticCollector();
+        const ck = parseCk(source, file, diag);
+        const { op } = decomposeCk(ck);
+        return { output: generateMcpFile(op, { includeInternal: false }), diag };
+    }
+
+    it('generates a tool handler from a parsed mcp block', () => {
+        const source = `\
+operation /payments/{id}: {
+    params: { id: uuid }
+    get: {
+        mcp: {
+            title: "Get Payment"
+            description: "Fetch a payment by id."
+            hint: readOnly, idempotent, nonDestructive
+        }
+        service: PaymentsService.getById
+        response: { 200: { application/json: Payment } }
+    }
+}`;
+        const { output, diag } = compileMcp(source);
+        expect(diag.hasErrors()).toBe(false);
+        expect(output).toContain('export class GetPaymentsByIdMcpTool implements McpToolHandler');
+        expect(output).toContain("title: 'Get Payment'");
+        expect(output).toContain('annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }');
+        expect(output).toContain('const GetPaymentsByIdArgs = z.object({ id: z.uuid() });');
+        expect(output).toContain('constructor(private readonly service: PaymentsService) {}');
+        expect(output).toContain('const result = await this.service.getById(id);');
+        expect(output).toContain('export function registerPaymentsMcpTools(map: McpToolHandlerMap, container: Container): void {');
+        expect(output).toContain("map.set('get_payments_by_id', container.get(GetPaymentsByIdMcpTool));");
+    });
+
+    it('generates a tool from mcp: true with an inferred name', () => {
+        const source = `\
+operation /payments: {
+    post: {
+        mcp: true
+        service: PaymentsService.create
+        request: { application/json: PaymentInput }
+        response: { 201: { application/json: Payment } }
+    }
+}`;
+        const { output, diag } = compileMcp(source);
+        expect(diag.hasErrors()).toBe(false);
+        expect(output).toContain("name: 'post_payments'");
+        expect(output).toContain('const PostPaymentsArgs = z.object({ body: PaymentInput });');
+        expect(output).not.toContain('annotations:');
+    });
+
+    it('emits nothing tool-like for a file with no flagged ops', () => {
+        const source = `operation /payments: { get: { response: { 200: { application/json: Payment } } } }`;
+        const { output } = compileMcp(source);
+        expect(output).not.toContain('implements McpToolHandler');
     });
 });
 
