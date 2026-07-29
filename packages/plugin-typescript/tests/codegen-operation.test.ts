@@ -103,6 +103,24 @@ describe('generateOperation', () => {
         });
     });
 
+    // ─── Handler signature ─────────────────────────────────────────
+
+    describe('handler signature', () => {
+        it('emits a single-parameter handler without the unused next argument', () => {
+            const root = opRoot([opRoute('/users', [opOperation('get', { security: SECURITY_NONE })])]);
+            const output = generateOp(root);
+            expect(output).toContain(".get('/users', async ctx => {");
+            expect(output).not.toContain('ctx, next');
+        });
+
+        it('omits next on handlers that carry middleware', () => {
+            const root = opRoot([opRoute('/users', [opOperation('post', { request: opRequest('CreateUser') })])]);
+            const output = generateOp(root);
+            expect(output).toContain('async ctx => {');
+            expect(output).not.toContain('ctx, next');
+        });
+    });
+
     // ─── Handler generation — GET ──────────────────────────────────
 
     describe('GET handlers', () => {

@@ -107,6 +107,7 @@ export function bodyTypesStructurallyEqual(a: ContractTypeNode, b: ContractTypeN
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
+/** Options controlling how {@link generateOp} renders a Koa router module. */
 export interface OpCodegenOptions {
     servicePathTemplate?: string;
     typeImportPathTemplate?: string;
@@ -267,7 +268,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     }
     const middlewareStr = middlewares.length > 0 ? `, ${middlewares.join(', ')},` : ',';
 
-    lines.push(`${deriveRouterName(file)}.${method}('${path}'${middlewareStr} async (ctx, next) => {`);
+    lines.push(`${deriveRouterName(file)}.${method}('${path}'${middlewareStr} async ctx => {`);
 
     // Params / query / headers validation (request-side — use Input variants)
     lines.push(...generateParamValidation(route.params, 'ctx.params', 'params', route.paramsMode ?? 'strict', '', modelsWithInput));
@@ -368,6 +369,15 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
 
 // ─── Inference helpers ─────────────────────────────────────────────────────
 
+/**
+ * Resolve the service class and method a handler should delegate to.
+ *
+ * Uses the operation's explicit `service: Class.method` declaration when present; otherwise derives
+ * the class from the contract file name (`ledger.categories.ck` → `LedgerCategoriesService`) and the
+ * method from the HTTP verb and whether the path carries a parameter (`get` → `list` / `getById`).
+ *
+ * @param file Path of the `.ck` file the operation came from.
+ */
 export function inferService(op: OpOperationNode, route: OpRouteNode, file: string): { className: string; methodName: string } {
     // If explicitly declared: service: ServiceClass.methodName
     if (op.service) {
@@ -400,6 +410,15 @@ function inferMethodName(method: string, path: string): string {
     }
 }
 
+/**
+ * Build the comma-separated argument list passed to the service method in a generated handler.
+ *
+ * Order is params, body, query, headers. Inline path params are spread as individual identifiers;
+ * a referenced/compound params type is passed as a single `params` object. A lone
+ * `multipart/form-data` request body is passed as `multipartBody` rather than `body`.
+ *
+ * @returns The rendered argument list, or an empty string when the method takes no arguments.
+ */
 export function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
     const args: string[] = [];
     // Path params: spread individually (inline) or pass 'params' object (type-ref/ContractTypeNode)
@@ -792,6 +811,12 @@ function isValidIdentifier(name: string): boolean {
 
 // ─── Naming conventions ────────────────────────────────────────────────────
 
+/**
+ * Derive the PascalCase base name used for router, service, and type names from a contract file path.
+ *
+ * Strips directories and the `.op`/`.ck` extension, then PascalCases each dot-separated segment
+ * (`contracts/ledger.categories.ck` → `LedgerCategories`). Falls back to `Resource` for an empty path.
+ */
 export function deriveBaseName(file: string): string {
     const base =
         file
@@ -809,6 +834,15 @@ function deriveRouterName(file: string): string {
     return `${deriveBaseName(file)}Router`;
 }
 
+/**
+ * Resolve the import specifier for a service class.
+ *
+ * Drops the trailing `Service` suffix and kebab-cases the remainder, then applies `template` if given
+ * (`{name}` → `Ledger`, `{kebab}` → `ledger`). Without a template, defaults to
+ * `#modules/<kebab>/<kebab>.service.js`.
+ *
+ * @param template Optional `servicePathTemplate` from the plugin config.
+ */
 export function deriveModulePath(serviceName: string, template?: string): string {
     // LedgerService -> #modules/ledger/ledger.service.js
     const base = serviceName.replace(/Service$/, '');
