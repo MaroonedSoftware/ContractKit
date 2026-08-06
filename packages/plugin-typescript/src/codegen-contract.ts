@@ -22,6 +22,7 @@ import {
     collectExternalOutputRefs as ckCollectExternalOutputRefs,
 } from '@contractkit/core';
 import { escapeJsDocLines } from './ts-render.js';
+import type { TsRenderTarget } from './ts-render.js';
 
 /**
  * Maps a ContractKit object mode to its Zod constructor name.
@@ -53,6 +54,12 @@ export interface ContractCodegenContext {
     modelsWithOutput?: Set<string>;
     /** If set, import JsonValue from this path instead of re-declaring it (avoids barrel re-export conflicts) */
     jsonValueImportPath?: string;
+    /**
+     * Runtime the emitted plain types describe. Only affects scalars whose TypeScript type differs
+     * per runtime (`binary` → `Buffer` on the server, `Blob` in the client). Ignored by
+     * `generateContract`, whose Zod schemas are server-shaped by construction. Default `'client'`.
+     */
+    target?: TsRenderTarget;
 }
 
 // ─── Public entry point ────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ParamSource, ObjectMode } from '@contractkit/core';
+import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ScalarTypeNode, ParamSource, ObjectMode } from '@contractkit/core';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType } from '@contractkit/core';
 import {
     renderType,
@@ -153,8 +153,14 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
         body.push(...generateTypeImports(types, root.file, options));
     }
 
-    if (opNeedsDateTime(root)) {
-        body.push(`import { DateTime } from 'luxon';`);
+    // luxon is needed for date/time/datetime (DateTime), duration (Duration) and interval (Interval);
+    // the rendered Zod schemas and the service-result annotations both reference these classes.
+    const luxonImports: string[] = [];
+    if (opNeedsDateTime(root)) luxonImports.push('DateTime');
+    if (opNeedsScalar(root, 'duration')) luxonImports.push('Duration');
+    if (opNeedsScalar(root, 'interval')) luxonImports.push('Interval');
+    if (luxonImports.length > 0) {
+        body.push(`import { ${luxonImports.join(', ')} } from 'luxon';`);
     }
 
     if (needsParseAndValidate) {
@@ -172,6 +178,11 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     if (opNeedsScalar(root, 'datetime')) {
         helpers.push(
             `const _ZodDatetime = z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }));`,
+        );
+    }
+    if (opNeedsScalar(root, 'interval')) {
+        helpers.push(
+            `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' })).transform(val => val.toISO()!);`,
         );
     }
     if (opNeedsScalar(root, 'json')) {
@@ -317,7 +328,10 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     const hasRespHeaders = respHeaders.length > 0;
     const headersAnnotation = hasRespHeaders
         ? `{ ${respHeaders
-              .map(h => `${quoteKey(headerNameToProperty(h.name))}${h.optional ? '?' : ''}: ${renderOutputTsType(h.type, options.modelsWithOutput)}`)
+              .map(
+                  h =>
+                      `${quoteKey(headerNameToProperty(h.name))}${h.optional ? '?' : ''}: ${renderOutputTsType(h.type, options.modelsWithOutput, 'server')}`,
+              )
               .join('; ')} }`
         : '';
 
@@ -442,6 +456,52 @@ export function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
     return args.join(', ');
 }
 
+/**
+ * Map a `.ck` scalar to the TypeScript type a server handler sees, i.e. `z.infer` of the schema
+ * `renderType` emits for that scalar. This is deliberately NOT `renderTsScalar` from ts-render:
+ * that one describes the wire/SDK view (`binary` → `Blob`, dates → `string`), while the router
+ * runs on Node against the parsed Zod output (`binary` → `Buffer`, dates → luxon `DateTime`).
+ */
+function serverTsScalar(name: ScalarTypeNode['name']): string {
+    switch (name) {
+        case 'string':
+        case 'email':
+        case 'url':
+        case 'uuid':
+            return 'string';
+        case 'number':
+        case 'int':
+            return 'number';
+        case 'bigint':
+            return 'bigint';
+        case 'boolean':
+            return 'boolean';
+        case 'date':
+        case 'time':
+        case 'datetime':
+            return 'DateTime';
+        case 'duration':
+            return 'Duration';
+        case 'interval':
+            // _ZodInterval transforms to an ISO string, so the inferred output type is string.
+            return 'string';
+        case 'binary':
+            return 'Buffer';
+        case 'json':
+            return '_JsonValue';
+        case 'object':
+            return 'Record<string, unknown>';
+        case 'null':
+            return 'null';
+        case 'unknown':
+            return 'unknown';
+        default: {
+            const _exhaustive: never = name;
+            throw new Error(`plugin-typescript: unmapped scalar '${String(_exhaustive)}' — add a case`);
+        }
+    }
+}
+
 function formatTypeAnnotation(bodyType: ContractTypeNode, modelsWithOutput?: Set<string>): { annotation: string; prelude?: string } {
     if (bodyType.kind === 'array') {
         const inner = formatTypeAnnotation(bodyType.item, modelsWithOutput);
@@ -451,7 +511,7 @@ function formatTypeAnnotation(bodyType: ContractTypeNode, modelsWithOutput?: Set
         const name = modelsWithOutput?.has(bodyType.name) ? `${bodyType.name}Output` : bodyType.name;
         return { annotation: name };
     }
-    if (bodyType.kind === 'scalar') return { annotation: bodyType.name };
+    if (bodyType.kind === 'scalar') return { annotation: serverTsScalar(bodyType.name) };
     // For complex types, extract schema into a variable so the result line stays readable
     const schema = renderType(bodyType);
     return {

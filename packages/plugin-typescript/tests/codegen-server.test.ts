@@ -120,6 +120,43 @@ describe('createTypescriptPlugin (server)', () => {
             expect(typeContent).not.toContain('z.');
             expect(typeContent).toContain('export interface User');
         });
+
+        it('renders binary as Buffer in server plain types', async () => {
+            const plugin = createTypescriptPlugin({ server: { output: { types: 'src/types/{filename}.ts' } } }, '/project');
+            const ctx = makeCtx('/project');
+            const contractRoots = [contractRoot([model('Upload', [field('data', scalarType('binary'))])], '/project/contracts/uploads.ck')];
+            await plugin.generateTargets!(inputs([], contractRoots as any), ctx);
+            const typeContent = [...ctx.emitted.values()][0]!;
+            expect(typeContent).toContain('data: Buffer;');
+            expect(typeContent).not.toContain('Blob');
+        });
+
+        it('renders binary as Blob in SDK plain types', async () => {
+            const plugin = createTypescriptPlugin({ sdk: { output: { types: 'src/types/{filename}.ts' } } }, '/project');
+            const ctx = makeCtx('/project');
+            const contractRoots = [contractRoot([model('Upload', [field('data', scalarType('binary'))])], '/project/contracts/uploads.ck')];
+            await plugin.generateTargets!(inputs([], contractRoots as any), ctx);
+            const typeContent = [...ctx.emitted.values()].find(c => c.includes('interface Upload'))!;
+            expect(typeContent).toContain('data: Blob;');
+        });
+
+        it('honors types.target on the standalone types sub-generator', async () => {
+            const contractRoots = [contractRoot([model('Upload', [field('data', scalarType('binary'))])], '/project/contracts/uploads.ck')];
+
+            const serverCtx = makeCtx('/project');
+            await createTypescriptPlugin({ types: { output: 'src/{filename}.types.ts', target: 'server' } }, '/project').generateTargets!(
+                inputs([], contractRoots as any),
+                serverCtx,
+            );
+            expect([...serverCtx.emitted.values()][0]!).toContain('data: Buffer;');
+
+            const defaultCtx = makeCtx('/project');
+            await createTypescriptPlugin({ types: { output: 'src/{filename}.types.ts' } }, '/project').generateTargets!(
+                inputs([], contractRoots as any),
+                defaultCtx,
+            );
+            expect([...defaultCtx.emitted.values()][0]!).toContain('data: Blob;');
+        });
     });
 
     describe('generated content', () => {

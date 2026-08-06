@@ -57,6 +57,7 @@ import {
 
 // ─── Sub-config interfaces ─────────────────────────────────────────────────
 
+/** Koa server output: routers, and the type or Zod schema files they import. */
 export interface ServerConfig {
     /** Directory (relative to rootDir) where server files are written. Default: rootDir. */
     baseDir?: string;
@@ -74,6 +75,7 @@ export interface ServerConfig {
     includeInternal?: boolean;
 }
 
+/** TypeScript SDK client output: the client class, per-area operation clients, and their types. */
 export interface SdkConfig {
     baseDir?: string;
     name?: string;
@@ -95,16 +97,25 @@ export interface SdkConfig {
     scaffold?: boolean;
 }
 
+/** Standalone Zod schema output, independent of the server and SDK sub-generators. */
 export interface ZodConfig {
     baseDir?: string;
     output?: string;
 }
 
+/** Standalone plain TypeScript type output, independent of the server and SDK sub-generators. */
 export interface TypesConfig {
     baseDir?: string;
     output?: string;
+    /**
+     * Runtime the emitted types describe. Affects scalars whose TypeScript type is runtime-specific:
+     * `binary` renders as `Buffer` for `'server'` and `Blob` for `'client'`. Default `'client'`.
+     * The `server` and `sdk` sub-generators set this themselves.
+     */
+    target?: 'client' | 'server';
 }
 
+/** MCP tool output: per-op-file handlers, the aggregator, and the optional POST route. */
 export interface McpConfig {
     /** Directory (relative to rootDir) where MCP files are written. Default: rootDir. */
     baseDir?: string;
@@ -132,6 +143,7 @@ export interface McpConfig {
     includeInternal?: boolean;
 }
 
+/** Top-level plugin config. Each sub-config that is present enables its sub-generator. */
 export interface TypescriptPluginConfig {
     server?: ServerConfig;
     sdk?: SdkConfig;
@@ -355,6 +367,8 @@ function collectServerOutput(
                     currentOutPath: typeOutPath,
                     modelsWithInput,
                     modelsWithOutput,
+                    // These types are consumed by Koa handlers, so `binary` is a Buffer, not a Blob.
+                    target: 'server' as const,
                 };
                 const content = config.zod ? generateContract(ast, renderCtx) : generatePlainTypes(ast, renderCtx);
                 return [{ relativePath: typeOutPath, content }];
@@ -861,7 +875,13 @@ function collectTypesOutput(
             render: () => [
                 {
                     relativePath: outPath,
-                    content: generatePlainTypes(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput, modelsWithOutput }),
+                    content: generatePlainTypes(ast, {
+                        modelOutPaths,
+                        currentOutPath: outPath,
+                        modelsWithInput,
+                        modelsWithOutput,
+                        target: config.target,
+                    }),
                 },
             ],
         });

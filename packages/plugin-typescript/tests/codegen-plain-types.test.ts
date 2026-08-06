@@ -98,6 +98,54 @@ describe('generatePlainTypes', () => {
             expect(output).toContain('o: Record<string, unknown>;');
             expect(output).toContain('bin: Blob;');
         });
+
+        // `binary` is the one scalar with no runtime-independent TypeScript type: a fetch client
+        // sees a Blob, a Koa handler sees the Buffer that _ZodBinary validates.
+        describe('binary follows the render target', () => {
+            const ctx = (target: 'client' | 'server') => ({
+                modelOutPaths: new Map<string, string>(),
+                currentOutPath: 'out.ts',
+                target,
+            });
+
+            it('renders Buffer for the server target', () => {
+                const root = contractRoot([model('M', [field('bin', scalarType('binary'))])]);
+                expect(generatePlainTypes(root, ctx('server'))).toContain('bin: Buffer;');
+            });
+
+            it('renders Blob for the client target', () => {
+                const root = contractRoot([model('M', [field('bin', scalarType('binary'))])]);
+                expect(generatePlainTypes(root, ctx('client'))).toContain('bin: Blob;');
+            });
+
+            it('defaults to the client target when unset', () => {
+                const root = contractRoot([model('M', [field('bin', scalarType('binary'))])]);
+                expect(generatePlainTypes(root)).toContain('bin: Blob;');
+            });
+
+            it('applies to nested and compound positions', () => {
+                const root = contractRoot([
+                    model('M', [
+                        field('list', arrayType(scalarType('binary'))),
+                        field('nested', inlineObjectType([field('bin', scalarType('binary'))])),
+                        field('map', recordType(scalarType('string'), scalarType('binary'))),
+                    ]),
+                ]);
+                const output = generatePlainTypes(root, ctx('server'));
+                expect(output).toContain('list: Buffer[];');
+                expect(output).toContain('nested: { bin: Buffer };');
+                expect(output).toContain('map: Record<string, Buffer>;');
+            });
+
+            it('applies to type aliases and their Input variants', () => {
+                const root = contractRoot([
+                    model('Blob1', [field('bin', scalarType('binary')), field('secret', scalarType('binary'), { visibility: 'readonly' })]),
+                ]);
+                const output = generatePlainTypes(root, { ...ctx('server'), modelsWithInput: new Set(['Blob1']) });
+                expect(output).toContain('bin: Buffer;');
+                expect(output).not.toContain('Blob;');
+            });
+        });
     });
 
     // ─── Compound types ───────────────────────────────────────────

@@ -11,6 +11,7 @@ import {
     rootNeedsScalar,
 } from './codegen-contract.js';
 import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJsDocLines, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import type { TsRenderTarget } from './ts-render.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -19,8 +20,12 @@ import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJs
  * Unlike `generateContract()` which produces Zod schemas, this emits
  * vanilla TypeScript `interface` and `type` declarations suitable
  * for SDK consumers that don't need runtime validation.
+ *
+ * @param context Import resolution and Input/Output variant sets. `context.target` selects the
+ * runtime the types describe (`'server'` renders `binary` as `Buffer`, `'client'` as `Blob`).
  */
 export function generatePlainTypes(root: ContractRootNode, context?: ContractCodegenContext): string {
+    const target: TsRenderTarget = context?.target ?? 'client';
     const externalRefs = collectExternalRefs(root);
     const lines: string[] = [];
 
@@ -58,7 +63,7 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
     const modelMap = new Map(root.models.map(m => [m.name, m]));
 
     for (const model of topoSortModels(root.models)) {
-        lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, allModelsWithOutput, modelMap));
+        lines.push(...generateModel(model, target, context?.currentOutPath, allModelsWithInput, allModelsWithOutput, modelMap));
         lines.push('');
     }
 
@@ -69,6 +74,7 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
 
 function generateModel(
     model: ModelNode,
+    target: TsRenderTarget,
     outPath?: string,
     modelsWithInput?: Set<string>,
     modelsWithOutput?: Set<string>,
@@ -76,18 +82,20 @@ function generateModel(
 ): string[] {
     // Type alias: Name : typeExpression
     if (model.type) {
-        return generateTypeAlias(model, outPath, modelsWithInput, modelsWithOutput);
+        return generateTypeAlias(model, target, outPath, modelsWithInput, modelsWithOutput);
     }
 
     // A model needs Input/read split if it has visibility-modified fields OR if it
     // transitively references models that have Input variants (captured in modelsWithInput).
     const needsInputSplit = model.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(model.name) ?? false);
 
-    const lines = needsInputSplit ? generateVisibilityModel(model, outPath, modelsWithInput, modelMap) : generateSimpleModel(model, outPath, modelMap);
+    const lines = needsInputSplit
+        ? generateVisibilityModel(model, target, outPath, modelsWithInput, modelMap)
+        : generateSimpleModel(model, target, outPath, modelMap);
 
     if (modelsWithOutput?.has(model.name)) {
         lines.push('');
-        lines.push(...generateOutputModel(model, modelsWithOutput));
+        lines.push(...generateOutputModel(model, target, modelsWithOutput));
     }
     return lines;
 }
@@ -132,15 +140,21 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
     return lines;
 }
 
-function generateTypeAlias(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>, modelsWithOutput?: Set<string>): string[] {
+function generateTypeAlias(
+    model: ModelNode,
+    target: TsRenderTarget,
+    outPath?: string,
+    modelsWithInput?: Set<string>,
+    modelsWithOutput?: Set<string>,
+): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
-    lines.push(`export type ${model.name} = ${renderTsType(model.type!)};`);
+    lines.push(`export type ${model.name} = ${renderTsType(model.type!, target)};`);
     if (modelsWithInput?.has(model.name)) {
-        lines.push(`export type ${model.name}Input = ${renderInputTsType(model.type!, modelsWithInput)};`);
+        lines.push(`export type ${model.name}Input = ${renderInputTsType(model.type!, modelsWithInput, target)};`);
     }
     if (modelsWithOutput?.has(model.name)) {
-        lines.push(`export type ${model.name}Output = ${renderOutputTsType(model.type!, modelsWithOutput)};`);
+        lines.push(`export type ${model.name}Output = ${renderOutputTsType(model.type!, modelsWithOutput, target)};`);
     }
     return lines;
 }
@@ -158,7 +172,7 @@ function buildExtendsClause(bases: string[], overrideNames: string[], baseNameRe
     return ` extends ${wrapped.join(', ')}`;
 }
 
-function generateSimpleModel(model: ModelNode, outPath?: string, modelMap?: Map<string, ModelNode>): string[] {
+function generateSimpleModel(model: ModelNode, target: TsRenderTarget, outPath?: string, modelMap?: Map<string, ModelNode>): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
 
@@ -167,14 +181,20 @@ function generateSimpleModel(model: ModelNode, outPath?: string, modelMap?: Map<
     lines.push(`export interface ${model.name}${buildExtendsClause(bases, overrideNames, b => b)} {`);
 
     for (const field of model.fields) {
-        lines.push(`    ${renderField(field)}`);
+        lines.push(`    ${renderField(field, target)}`);
     }
 
     lines.push('}');
     return lines;
 }
 
-function generateVisibilityModel(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>, modelMap?: Map<string, ModelNode>): string[] {
+function generateVisibilityModel(
+    model: ModelNode,
+    target: TsRenderTarget,
+    outPath?: string,
+    modelsWithInput?: Set<string>,
+    modelMap?: Map<string, ModelNode>,
+): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
 
@@ -185,7 +205,7 @@ function generateVisibilityModel(model: ModelNode, outPath?: string, modelsWithI
     const readFields = model.fields.filter(f => f.visibility !== 'writeonly');
     lines.push(`export interface ${model.name}${buildExtendsClause(bases, overrideNames, b => b)} {`);
     for (const field of readFields) {
-        lines.push(`    ${renderField(field)}`);
+        lines.push(`    ${renderField(field, target)}`);
     }
     lines.push('}');
     lines.push('');
@@ -196,7 +216,7 @@ function generateVisibilityModel(model: ModelNode, outPath?: string, modelsWithI
     const inputResolver = (b: string) => (modelsWithInput?.has(b) ? `${b}Input` : b);
     lines.push(`export interface ${model.name}Input${buildExtendsClause(bases, overrideNames, inputResolver)} {`);
     for (const field of writeFields) {
-        lines.push(`    ${modelsWithInput ? renderInputField(field, modelsWithInput) : renderField(field)}`);
+        lines.push(`    ${modelsWithInput ? renderInputField(field, modelsWithInput, target) : renderField(field, target)}`);
     }
     lines.push('}');
 
@@ -217,9 +237,9 @@ function withFieldJsDoc(jsdocParts: string[], line: string): string {
     return `/**\n${body}\n     */\n    ${line}`;
 }
 
-function renderField(field: FieldNode): string {
+function renderField(field: FieldNode, target: TsRenderTarget): string {
     const opt = field.optional || field.default !== undefined ? '?' : '';
-    let typeStr = renderTsType(field.type);
+    let typeStr = renderTsType(field.type, target);
     if (field.nullable) typeStr += ' | null';
     const line = `${quoteKey(field.name)}${opt}: ${typeStr};`;
     const jsdocParts: string[] = [];
@@ -228,9 +248,9 @@ function renderField(field: FieldNode): string {
     return withFieldJsDoc(jsdocParts, line);
 }
 
-function renderInputField(field: FieldNode, modelsWithInput: Set<string>): string {
+function renderInputField(field: FieldNode, modelsWithInput: Set<string>, target: TsRenderTarget): string {
     const opt = field.optional || field.default !== undefined ? '?' : '';
-    let typeStr = renderInputTsType(field.type, modelsWithInput);
+    let typeStr = renderInputTsType(field.type, modelsWithInput, target);
     if (field.nullable) typeStr += ' | null';
     const line = `${quoteKey(field.name)}${opt}: ${typeStr};`;
     const jsdocParts: string[] = [];
@@ -264,7 +284,7 @@ function applyOutputCase(name: string, c: 'camel' | 'snake' | 'pascal' | undefin
  * ancestor has format(...) (see `flattenFormatChain` in codegen-contract); we mirror that here
  * so the plain interface matches the wire shape produced by the Zod transform.
  */
-function generateOutputModel(model: ModelNode, modelsWithOutput: Set<string>): string[] {
+function generateOutputModel(model: ModelNode, target: TsRenderTarget, modelsWithOutput: Set<string>): string[] {
     const lines: string[] = [];
     const outputCase = model.outputCase && model.outputCase !== 'camel' ? model.outputCase : undefined;
     const readFields = model.fields.filter(f => f.visibility !== 'writeonly');
@@ -279,7 +299,7 @@ function generateOutputModel(model: ModelNode, modelsWithOutput: Set<string>): s
                   : '';
         lines.push(`export interface ${model.name}Output${baseExt} {`);
         for (const field of readFields) {
-            lines.push(`    ${renderOutputField(field, model.outputCase, modelsWithOutput)}`);
+            lines.push(`    ${renderOutputField(field, model.outputCase, modelsWithOutput, target)}`);
         }
         lines.push('}');
         return lines;
@@ -288,16 +308,21 @@ function generateOutputModel(model: ModelNode, modelsWithOutput: Set<string>): s
     // Direct hit: emit a flat interface with renamed keys.
     lines.push(`export interface ${model.name}Output {`);
     for (const field of readFields) {
-        lines.push(`    ${renderOutputField(field, outputCase, modelsWithOutput)}`);
+        lines.push(`    ${renderOutputField(field, outputCase, modelsWithOutput, target)}`);
     }
     lines.push('}');
     return lines;
 }
 
-function renderOutputField(field: FieldNode, outputCase: 'camel' | 'snake' | 'pascal' | undefined, modelsWithOutput: Set<string>): string {
+function renderOutputField(
+    field: FieldNode,
+    outputCase: 'camel' | 'snake' | 'pascal' | undefined,
+    modelsWithOutput: Set<string>,
+    target: TsRenderTarget,
+): string {
     const opt = field.optional || field.default !== undefined ? '?' : '';
     const key = applyOutputCase(field.name, outputCase);
-    let typeStr = renderOutputTsType(field.type, modelsWithOutput);
+    let typeStr = renderOutputTsType(field.type, modelsWithOutput, target);
     if (field.nullable) typeStr += ' | null';
     const line = `${quoteKey(key)}${opt}: ${typeStr};`;
     const jsdocParts: string[] = [];

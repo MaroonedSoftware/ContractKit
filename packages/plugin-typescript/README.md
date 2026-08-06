@@ -94,6 +94,10 @@ Generates plain TypeScript interface/type files from `contract` declarations. No
 |---|---|---|---|
 | `baseDir` | `string` | `rootDir` | Base directory for output files |
 | `output` | `string` | `"{filename}.types.ts"` | Path template for type files |
+| `target` | `"client" \| "server"` | `"client"` | Runtime the types describe. Affects scalars whose TypeScript type is runtime-specific: `binary` renders as `Buffer` for `server` and `Blob` for `client` |
+
+The `server` and `sdk` sub-generators set `target` themselves (`server` and `client` respectively), so
+their plain-type output already matches the runtime that consumes it.
 
 ## Path templates
 

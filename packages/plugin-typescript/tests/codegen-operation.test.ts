@@ -658,6 +658,77 @@ describe('generateOperation', () => {
             const output = generateOp(root, { modelsWithOutput: new Set(['AuthToken']) });
             expect(output).toContain('result: AuthTokenOutput[]');
         });
+
+        // Scalar response bodies used to emit the .ck scalar name verbatim (`result: binary`),
+        // which only happened to compile for `string`.
+        describe('scalar response bodies map to the server-side TypeScript type', () => {
+            const cases: Array<[string, string]> = [
+                ['binary', 'Buffer'],
+                ['int', 'number'],
+                ['number', 'number'],
+                ['bigint', 'bigint'],
+                ['boolean', 'boolean'],
+                ['string', 'string'],
+                ['uuid', 'string'],
+                ['email', 'string'],
+                ['url', 'string'],
+                ['datetime', 'DateTime'],
+                ['date', 'DateTime'],
+                ['time', 'DateTime'],
+                ['duration', 'Duration'],
+                ['interval', 'string'],
+                ['json', '_JsonValue'],
+                ['object', 'Record<string, unknown>'],
+                ['unknown', 'unknown'],
+                ['null', 'null'],
+            ];
+
+            for (const [scalar, tsType] of cases) {
+                it(`renders ${scalar} as ${tsType}`, () => {
+                    const root = opRoot([
+                        opRoute('/x', [
+                            opOperation('get', {
+                                responses: [opResponse(200, scalarType(scalar as never), 'application/octet-stream')],
+                            }),
+                        ]),
+                    ]);
+                    expect(generateOp(root)).toContain(`const result: ${tsType} = await service.list();`);
+                });
+            }
+
+            it('renders an array of binary as Buffer[]', () => {
+                const root = opRoot([
+                    opRoute('/x', [opOperation('get', { responses: [opResponse(200, arrayType(scalarType('binary')), 'application/json')] })]),
+                ]);
+                expect(generateOp(root)).toContain('const result: Buffer[] = await service.list();');
+            });
+        });
+
+        describe('luxon imports cover every scalar that references a luxon class', () => {
+            it('imports Duration for a duration response body', () => {
+                const root = opRoot([opRoute('/x', [opOperation('get', { responses: [opResponse(200, scalarType('duration'), 'application/json')] })])]);
+                expect(generateOp(root)).toContain("import { Duration } from 'luxon';");
+            });
+
+            it('imports Interval and emits the _ZodInterval helper for an interval body', () => {
+                const root = opRoot([opRoute('/x', [opOperation('get', { responses: [opResponse(200, scalarType('interval'), 'application/json')] })])]);
+                const output = generateOp(root);
+                expect(output).toContain("import { Interval } from 'luxon';");
+                expect(output).toContain('const _ZodInterval =');
+            });
+
+            it('imports DateTime and Duration together when both are used', () => {
+                const root = opRoot([
+                    opRoute('/x', [
+                        opOperation('post', {
+                            request: opRequest(scalarType('datetime')),
+                            responses: [opResponse(200, scalarType('duration'), 'application/json')],
+                        }),
+                    ]),
+                ]);
+                expect(generateOp(root)).toContain("import { DateTime, Duration } from 'luxon';");
+            });
+        });
     });
 
     // ─── Service inference ────────────────────────────────────────
