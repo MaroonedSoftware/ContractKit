@@ -60,7 +60,9 @@ describe('printCk — route modifiers', () => {
 
     it('preserves description alongside modifier', () => {
         const ast = makeRoot([makeRoute('/users', [makeOp('get')], { modifiers: ['deprecated'], description: 'Old user list' })]);
-        expect(printCk(ast)).toContain('operation(deprecated) /users: { # Old user list');
+        // A route description is emitted above the declaration, not inline: a `#` after the `{`
+        // would re-parse as the first operation's description instead.
+        expect(printCk(ast)).toContain('# Old user list\noperation(deprecated) /users: {');
     });
 });
 

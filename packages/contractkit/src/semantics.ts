@@ -25,6 +25,7 @@ import type {
     OptionsComments,
     OptionsScopeComments,
     McpConfigNode,
+    OpBodyKey,
 } from './ast.js';
 import { SECURITY_NONE } from './ast.js';
 import { buildCompoundType, resolveSimpleType, extractNullability, typeNodeToParamSource, OBJECT_MODES, type TypeArg } from './type-builders.js';
@@ -61,6 +62,62 @@ function getLine(node: { source: { sourceString: string; startIdx: number } }): 
         if (contents[i] === '\n') line++;
     }
     return line;
+}
+
+/**
+ * Remove `text` from the front of a field's description, clearing the description entirely when
+ * nothing else remains. Used to undo a comment being attributed to both a contract header and the
+ * first field below it.
+ */
+function stripLeadingDescription(field: FieldNode | undefined, text: string): void {
+    if (!field || field.description === undefined) return;
+    if (field.description === text) {
+        delete field.description;
+    } else if (field.description.startsWith(text + '\n')) {
+        field.description = field.description.slice(text.length + 1);
+    }
+}
+
+/** Options sub-block result `_type` → the scope name comments above it are filed under. */
+const OPTIONS_SCOPE_OF: Record<string, string> = {
+    optionsRequestHeaders: 'request',
+    optionsResponseHeaders: 'response',
+};
+
+/** Matches a gap between two source items that contains a blank line. */
+const BLANK_LINE_RE = /\n[ \t]*\n/;
+
+/** Operation-body item types that correspond to an emitted key, in canonical order. */
+const OP_BODY_KEYS = new Set<OpBodyKey>(['name', 'service', 'sdk', 'mcp', 'signature', 'security', 'plugins', 'query', 'headers', 'request', 'responses']);
+
+/** Strip the leading `#` and one following space from a comment's source text. */
+function commentText(node: { sourceString: string }): string {
+    return node.sourceString.replace(/^#\s?/, '').trimEnd();
+}
+
+/**
+ * Split the `comment*` run preceding a `contract`/`operation` declaration into standalone comments
+ * and the declaration's doc comment.
+ *
+ * Only a run of comments sitting on consecutive lines *immediately* above `declLine` documents the
+ * declaration. Anything above a blank line is standalone — a section divider, a commented-out block,
+ * a file note — and is returned in `leading` so the formatter can re-emit it in place rather than
+ * folding it into the declaration's header.
+ */
+function splitLeadingComments(
+    nodes: Array<{ sourceString: string; source: { sourceString: string; startIdx: number } }>,
+    declLine: number,
+): { leading: string[]; doc?: string } {
+    // Walk back from the declaration, taking comments while each sits on the line above the last.
+    let docStart = nodes.length;
+    let expectedLine = declLine - 1;
+    while (docStart > 0 && getLine(nodes[docStart - 1]!) === expectedLine) {
+        docStart--;
+        expectedLine--;
+    }
+    const leading = nodes.slice(0, docStart).map(commentText);
+    const docNodes = nodes.slice(docStart);
+    return { leading, doc: docNodes.length > 0 ? docNodes.map(commentText).join('\n') : undefined };
 }
 
 /**
@@ -123,9 +180,19 @@ function collectOptionsEntries(
  * Build the Ohm semantics that lower a parsed `.ck` grammar tree into the typed AST
  * (`CkRootNode` and its children). Every action attaches via `toAst(file, diag)`, threading
  * the source file path and diagnostic collector through the walk. Alongside the structural
- * AST, the actions retain formatter round-trip data — trailing comments on field lists, route
- * bodies, and inline objects, plus options-block `keys`/`services` comments — so the prettier
- * plugin can reproduce the source losslessly.
+ * AST, the actions retain formatter round-trip data so the prettier plugin can reproduce the
+ * source losslessly:
+ *
+ * - trailing comments on field lists, route bodies, and inline objects
+ * - options-block comments, both inside `keys`/`services` and directly between sub-blocks
+ * - comment placement: `leadingComments` for standalone blocks (separated by a blank line from
+ *   the declaration below) versus `description` for a doc comment, and `descriptionInline` for
+ *   which side of the header brace the author wrote it on
+ * - `keyOrder` for operation body keys, so formatting never reorders a user's file
+ * - `blankLineBefore` on operations and `inline` on single-line response blocks
+ *
+ * None of this affects codegen — consumers read the structural fields and ignore the rest — but
+ * dropping any of it makes `pnpm format` silently rewrite `.ck` sources.
  */
 export function createSemantics(grammar: Grammar) {
     const semantics = grammar.createSemantics();
@@ -195,9 +262,24 @@ export function createSemantics(grammar: Grammar) {
             let requestHeaders: OpResponseHeaderNode[] | undefined;
             let responseHeaders: OpResponseHeaderNode[] | undefined;
             const optionsComments: OptionsComments = {};
+            // Comments sitting directly in the options block, between its sub-blocks. Each run
+            // attaches to the sub-block below it; whatever is left at the end is trailing.
+            const bodyComments: OptionsScopeComments = {};
+            let pending: string[] = [];
+            const attachPending = (scope: string) => {
+                if (pending.length === 0) return;
+                bodyComments.leading = { ...bodyComments.leading, [scope]: pending };
+                pending = [];
+            };
+
             for (let i = 0; i < items.numChildren; i++) {
                 const itemNode = items.child(i);
                 const result = itemNode.toAst(file, diag);
+                if (result._type === 'comment') {
+                    pending.push(result.value as string);
+                    continue;
+                }
+                attachPending(OPTIONS_SCOPE_OF[result._type as string] ?? (result._type as string));
                 if (result._type === 'security') {
                     security = result.value;
                 } else if (result._type === 'optionsRequestHeaders') {
@@ -223,6 +305,9 @@ export function createSemantics(grammar: Grammar) {
                     }
                 }
             }
+            if (pending.length > 0) bodyComments.trailing = pending;
+            if (Object.keys(bodyComments).length > 0) optionsComments.body = bodyComments;
+
             return {
                 meta,
                 services,
@@ -234,6 +319,9 @@ export function createSemantics(grammar: Grammar) {
         },
 
         OptionsBodyItem(child) {
+            if (child.ctorName === 'comment') {
+                return { _type: 'comment', value: commentText(child) };
+            }
             return child.toAst(this.args.file, this.args.diag);
         },
 
@@ -298,7 +386,6 @@ export function createSemantics(grammar: Grammar) {
             for (let i = 0; i < commentNodes.numChildren; i++) {
                 comments.push(commentNodes.child(i));
             }
-            const description = comments.length > 0 ? comments.map(c => c.sourceString.replace(/^#\s?/, '').trimEnd()).join('\n') : undefined;
 
             const prefix = prefixNode.toAst(file, this.args.diag) as {
                 name: string;
@@ -323,12 +410,21 @@ export function createSemantics(grammar: Grammar) {
             if (prefix.inputCase) result.inputCase = prefix.inputCase;
             if (prefix.outputCase) result.outputCase = prefix.outputCase;
             if (prefix.deprecated) result.deprecated = true;
-            if (description) {
-                result.description = description;
+
+            const { leading, doc } = splitLeadingComments(comments, prefix.line);
+            if (leading.length > 0) result.leadingComments = leading;
+            if (doc) {
+                result.description = doc;
             } else if (body.inlineDescription) {
                 result.description = body.inlineDescription;
+                result.descriptionInline = true;
             } else if (body.firstCommentText && body.firstCommentLine === prefix.line) {
                 result.description = body.firstCommentText;
+                result.descriptionInline = true;
+                // The field list also saw this comment and offered it to the first field as a
+                // leading doc comment. It belongs to the contract header, so take it back —
+                // otherwise the formatter prints it twice.
+                stripLeadingDescription(result.fields[0], body.firstCommentText);
             }
 
             // Comments left after the last field, before `}`. Drop any sitting on the header line
@@ -701,10 +797,10 @@ export function createSemantics(grammar: Grammar) {
             for (let i = 0; i < commentNodes.numChildren; i++) {
                 comments.push(commentNodes.child(i));
             }
-            const description = comments.length > 0 ? comments.map(c => c.sourceString.replace(/^#\s?/, '').trimEnd()).join('\n') : undefined;
 
             const path = routePathNode.toAst(file, diag) as string;
             const line = getLine(routePathNode);
+            const { leading, doc: description } = splitLeadingComments(comments, line);
 
             const kwText = operationKwCallNode.sourceString.trim();
             const modMatch = kwText.match(/^operation\((\w+)\)$/);
@@ -728,6 +824,7 @@ export function createSemantics(grammar: Grammar) {
                 description,
                 loc: { file, line },
             } as OpRouteNode;
+            if (leading.length > 0) route.leadingComments = leading;
             if (routeBody.trailingComments && routeBody.trailingComments.length > 0) {
                 route.trailingComments = routeBody.trailingComments;
             }
@@ -764,12 +861,21 @@ export function createSemantics(grammar: Grammar) {
             // Whatever remains after the loop is trailing/orphan, kept for round-trip.
             let pendingEntries: string[] = [];
 
+            // Start of the route body, used to spot a blank line before the very first item.
+            let prevEnd = items.source.startIdx;
+            // A comment run belongs to the operation below it, so the spacing that matters is the
+            // gap above the *first* comment of the run, not the one just above the method line.
+            let pendingBlank: boolean | undefined;
+
             for (let i = 0; i < items.numChildren; i++) {
                 const child = items.child(i);
+                const gap = items.source.sourceString.slice(prevEnd, child.source.startIdx);
+                prevEnd = child.source.endIdx;
                 const result = child.toAst(file, diag);
                 if (result === null || result === undefined) continue;
                 if (result._type === 'comment') {
                     const text = result.value as string;
+                    if (pendingComment === undefined) pendingBlank = BLANK_LINE_RE.test(gap);
                     pendingComment = pendingComment ? pendingComment + '\n' + text : text;
                     pendingEntries.push(text);
                     continue;
@@ -783,10 +889,13 @@ export function createSemantics(grammar: Grammar) {
                     const op = result.value as OpOperationNode;
                     if (pendingComment && !op.description) {
                         op.description = pendingComment;
+                        op.descriptionInline = false;
                     }
+                    if (pendingBlank ?? BLANK_LINE_RE.test(gap)) op.blankLineBefore = true;
                     operations.push(op);
                 }
                 pendingComment = undefined;
+                pendingBlank = undefined;
                 pendingEntries = [];
             }
 
@@ -864,11 +973,8 @@ export function createSemantics(grammar: Grammar) {
                 comments.push(commentNodes.child(i));
             }
             const inlineComment =
-                (inlineCommentOpt as IterationNode).numChildren > 0
-                    ? (inlineCommentOpt as IterationNode).child(0).sourceString.replace(/^#\s?/, '').trimEnd()
-                    : undefined;
-            const description =
-                inlineComment ?? (comments.length > 0 ? comments.map(c => c.sourceString.replace(/^#\s?/, '').trimEnd()).join('\n') : undefined);
+                (inlineCommentOpt as IterationNode).numChildren > 0 ? commentText((inlineCommentOpt as IterationNode).child(0)) : undefined;
+            const description = inlineComment ?? (comments.length > 0 ? comments.map(commentText).join('\n') : undefined);
 
             const methodText = httpMethodCallNode.sourceString.trim();
             const modMatch = methodText.match(/\((\w+)\)$/);
@@ -894,6 +1000,7 @@ export function createSemantics(grammar: Grammar) {
                 responses: OpResponseNode[];
                 security?: SecurityNode;
                 plugins?: Record<string, PluginValue>;
+                keyOrder?: OpBodyKey[];
             };
 
             const op: OpOperationNode = {
@@ -903,6 +1010,7 @@ export function createSemantics(grammar: Grammar) {
                 description,
                 loc: { file, line },
             };
+            if (description !== undefined) op.descriptionInline = inlineComment !== undefined;
 
             return { _type: 'operation', value: op };
         },
@@ -928,10 +1036,13 @@ export function createSemantics(grammar: Grammar) {
             let responses: OpResponseNode[] = [];
             let security: SecurityNode | undefined;
             let plugins: Record<string, PluginValue> | undefined;
+            // Source order of the body keys, so the formatter can re-emit them as the user wrote them.
+            const keyOrder: OpBodyKey[] = [];
 
             for (let i = 0; i < items.numChildren; i++) {
                 const item = items.child(i).toAst(file, diag);
                 if (!item) continue;
+                if (OP_BODY_KEYS.has(item._type) && !keyOrder.includes(item._type)) keyOrder.push(item._type);
                 switch (item._type) {
                     case 'name':
                         name = item.value;
@@ -977,7 +1088,7 @@ export function createSemantics(grammar: Grammar) {
                 }
             }
 
-            return { name, service, sdk, mcp, signature, signatureDescription, signaturePolicy, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, security, plugins };
+            return { name, service, sdk, mcp, signature, signatureDescription, signaturePolicy, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, security, plugins, keyOrder };
         },
 
         OperationBodyItem(child) {
@@ -1230,6 +1341,8 @@ export function createSemantics(grammar: Grammar) {
             }
 
             const result: OpResponseNode = { statusCode };
+            // `200: { application/json: Pet }` on one line stays on one line.
+            if (!this.sourceString.includes('\n')) result.inline = true;
             if (contentType) result.contentType = contentType;
             if (bodyType) result.bodyType = bodyType;
             if (headers) result.headers = headers;

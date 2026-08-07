@@ -42,33 +42,46 @@ function printOptionsBlock(ast: CkRootNode): string | null {
     const hasRequestHeaders = (ast.requestHeaders?.length ?? 0) > 0;
     const hasResponseHeaders = (ast.responseHeaders?.length ?? 0) > 0;
 
-    if (!hasMeta && !hasServices && !hasSecurity && !hasRequestHeaders && !hasResponseHeaders) return null;
+    const hasBodyComments = ast.optionsComments?.body !== undefined;
+    if (!hasMeta && !hasServices && !hasSecurity && !hasRequestHeaders && !hasResponseHeaders && !hasBodyComments) return null;
 
     const lines: string[] = ['options {'];
+    const body = ast.optionsComments?.body;
+    /** Emit the comment run the author wrote directly above this sub-block. */
+    const emitLeading = (scope: string) => {
+        for (const c of body?.leading?.[scope] ?? []) lines.push(`${INDENT}# ${c}`);
+    };
 
     if (hasMeta) {
+        emitLeading('keys');
         lines.push(`${INDENT}keys: {`);
         emitOptionsEntries(lines, ast.meta, ast.optionsComments?.keys);
         lines.push(`${INDENT}}`);
     }
 
     if (hasServices) {
+        emitLeading('services');
         lines.push(`${INDENT}services: {`);
         emitOptionsEntries(lines, ast.services, ast.optionsComments?.services);
         lines.push(`${INDENT}}`);
     }
 
     if (hasRequestHeaders) {
+        emitLeading('request');
         lines.push(...printOptionsHeaderScope('request', ast.requestHeaders!));
     }
 
     if (hasResponseHeaders) {
+        emitLeading('response');
         lines.push(...printOptionsHeaderScope('response', ast.responseHeaders!));
     }
 
     if (hasSecurity) {
+        emitLeading('security');
         lines.push(...printSecurity(ast.security!, INDENT, INDENT + INDENT));
     }
+
+    for (const c of body?.trailing ?? []) lines.push(`${INDENT}# ${c}`);
 
     lines.push('}');
     return lines.join('\n');
@@ -91,9 +104,15 @@ function printOptionsHeaderScope(keyword: 'request' | 'response', headers: OpRes
 // ─── CK file printer ───────────────────────────────────────────────────────
 
 /**
- * Render a parsed `.ck` AST back to source. Output is byte-identical on
- * round-trip when the input is already canonically formatted: options block
- * first, then contracts, then operations, separated by blank lines.
+ * Render a parsed `.ck` AST back to source: options block first, then contracts, then
+ * operations, separated by blank lines.
+ *
+ * Printing is the inverse of parsing — for well-formed source, `printCk(parseCk(text))` returns
+ * `text` unchanged. That holds because the AST carries the author's layout alongside the
+ * semantics: comment placement (`leadingComments`, `descriptionInline`), operation body key
+ * order (`keyOrder`), blank lines (`blankLineBefore`), and single-line response blocks
+ * (`inline`). Preserve those rather than canonicalizing them, or `pnpm format` silently
+ * rewrites the user's file. See `tests/round-trip.test.ts`.
  *
  * `printWidth` is forwarded to per-model printing for line wrapping inside
  * inline-object types.
@@ -108,7 +127,7 @@ export function printCk(ast: CkRootNode, printWidth: number = DEFAULT_PRINT_WIDT
     // Contracts (models)
     for (const model of ast.models) {
         if (parts.length > 0) parts.push('');
-        parts.push(`contract ${printModelDecl(model, printWidth)}`);
+        parts.push(printDeclLeadIn(model.leadingComments, model.descriptionInline ? undefined : model.description) + `contract ${printModelDecl(model, printWidth)}`);
     }
 
     // Operations (routes)
@@ -117,8 +136,25 @@ export function printCk(ast: CkRootNode, printWidth: number = DEFAULT_PRINT_WIDT
     for (const route of ast.routes) {
         if (parts.length > 0) parts.push('');
         const modPart = route.modifiers?.length ? `(${route.modifiers[0]})` : '';
-        parts.push(`operation${modPart} ${printRoute(route, emptyBlocks, emptyIdx, Infinity)}`);
+        parts.push(printDeclLeadIn(route.leadingComments, route.description) + `operation${modPart} ${printRoute(route, emptyBlocks, emptyIdx, Infinity)}`);
     }
 
     return parts.join('\n') + '\n';
+}
+
+/**
+ * Build the comment lines that precede a top-level declaration: any standalone block (a section
+ * divider and the like, kept separated by the blank line the author wrote), then the declaration's
+ * own doc comment on the lines immediately above it. Returns `''` when there is neither.
+ */
+function printDeclLeadIn(leadingComments: string[] | undefined, description: string | undefined): string {
+    const lines: string[] = [];
+    if (leadingComments?.length) {
+        for (const c of leadingComments) lines.push(`# ${c}`);
+        lines.push('');
+    }
+    if (description) {
+        for (const line of description.split('\n')) lines.push(`# ${line}`);
+    }
+    return lines.length > 0 ? lines.join('\n') + '\n' : '';
 }

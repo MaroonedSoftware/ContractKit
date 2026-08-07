@@ -1575,6 +1575,36 @@ operation /users: { get: {} }`);
         expect(root.meta).toEqual({ area: 'ledger' });
     });
 
+    it('accepts a comment sitting directly in the options block', () => {
+        const { root, diag } = parse(
+            'options {\n    # where these come from\n    keys: {\n        area: ledger\n    }\n}\ncontract User: { name: string }',
+        );
+        expect(diag.hasErrors()).toBe(false);
+        expect(root.meta).toEqual({ area: 'ledger' });
+        expect(root.optionsComments?.body?.leading).toEqual({ keys: ['where these come from'] });
+    });
+
+    it('attaches an options-block comment run to the sub-block below it', () => {
+        const { root, diag } = parse(
+            'options {\n    keys: {\n        area: ledger\n    }\n    # service wiring\n    # one per module\n    services: {\n        UserService: "#src/user.js"\n    }\n}\ncontract User: { name: string }',
+        );
+        expect(diag.hasErrors()).toBe(false);
+        expect(root.optionsComments?.body?.leading).toEqual({ services: ['service wiring', 'one per module'] });
+    });
+
+    it('keeps a trailing options-block comment', () => {
+        const { root, diag } = parse('options {\n    keys: {\n        area: ledger\n    }\n    # nothing below\n}\ncontract User: { name: string }');
+        expect(diag.hasErrors()).toBe(false);
+        expect(root.optionsComments?.body?.trailing).toEqual(['nothing below']);
+    });
+
+    it('accepts an options block containing only a comment', () => {
+        const { root, diag } = parse('options {\n    # a note\n}\ncontract User: { name: string }');
+        expect(diag.hasErrors()).toBe(false);
+        expect(root.meta).toEqual({});
+        expect(root.optionsComments?.body?.trailing).toEqual(['a note']);
+    });
+
     it('defaults to empty meta when no options block', () => {
         expect(parse('contract User: { name: string }').root.meta).toEqual({});
         expect(parse('operation /users: { get: {} }').root.meta).toEqual({});
@@ -1645,6 +1675,93 @@ operation /health: {
 });
 
 // ─── Test fixture ─────────────────────────────────────────────────────────────
+
+// ─── Formatter round-trip metadata ───────────────────────────────────────────
+
+// These fields carry the author's layout alongside the semantics. Codegen ignores them, but the
+// prettier plugin needs them to reproduce a `.ck` file exactly — see the round-trip suite in
+// apps/prettier-plugin.
+describe('round-trip metadata', () => {
+    it('separates a standalone comment block from a doc comment', () => {
+        const { root } = parse('# ─── Section ───\n\n# A pet\ncontract Pet: {\n    id: int\n}');
+        const pet = root.models[0]!;
+        expect(pet.leadingComments).toEqual(['─── Section ───']);
+        expect(pet.description).toBe('A pet');
+        expect(pet.descriptionInline).toBeFalsy();
+    });
+
+    it('treats a comment directly above a declaration as its doc comment', () => {
+        const { root } = parse('# A pet\ncontract Pet: {\n    id: int\n}');
+        expect(root.models[0]!.leadingComments).toBeUndefined();
+        expect(root.models[0]!.description).toBe('A pet');
+    });
+
+    it('attaches a standalone block above an operation to the route', () => {
+        const { root } = parse('# ─── Pets ───\n\noperation /pet: {\n    get: {}\n}');
+        expect(root.routes[0]!.leadingComments).toEqual(['─── Pets ───']);
+        expect(root.routes[0]!.description).toBeUndefined();
+    });
+
+    it('records whether a contract description was written inline', () => {
+        expect(parse('contract Pet: { # A pet\n    id: int\n}').root.models[0]!.descriptionInline).toBe(true);
+        expect(parse('# A pet\ncontract Pet: {\n    id: int\n}').root.models[0]!.descriptionInline).toBeFalsy();
+    });
+
+    it('does not attribute an inline contract comment to the first field as well', () => {
+        const { root } = parse('contract Pet: { # A pet\n    id: int\n}');
+        expect(root.models[0]!.description).toBe('A pet');
+        expect(root.models[0]!.fields[0]!.description).toBeUndefined();
+    });
+
+    it('records whether an operation description was written inline', () => {
+        const inline = parse('operation /pet: {\n    get: { # fetch\n    }\n}').root.routes[0]!.operations[0]!;
+        expect(inline.descriptionInline).toBe(true);
+        expect(inline.description).toBe('fetch');
+
+        const above = parse('operation /pet: {\n    # fetch\n    get: {\n    }\n}').root.routes[0]!.operations[0]!;
+        expect(above.descriptionInline).toBe(false);
+        expect(above.description).toBe('fetch');
+    });
+
+    it('records operation body keys in source order', () => {
+        const { root } = parse('operation /pet: {\n    put: {\n        sdk: updatePet\n        service: PetService.update\n    }\n}');
+        expect(root.routes[0]!.operations[0]!.keyOrder).toEqual(['sdk', 'service']);
+    });
+
+    it('records the reverse order just as faithfully', () => {
+        const { root } = parse('operation /pet: {\n    put: {\n        service: PetService.update\n        sdk: updatePet\n    }\n}');
+        expect(root.routes[0]!.operations[0]!.keyOrder).toEqual(['service', 'sdk']);
+    });
+
+    it('records a blank line before an operation', () => {
+        const { root } = parse('operation /pet: {\n    get: {}\n\n    post: {}\n}');
+        const [get, post] = root.routes[0]!.operations;
+        expect(get!.blankLineBefore).toBeFalsy();
+        expect(post!.blankLineBefore).toBe(true);
+    });
+
+    it('measures the blank line above a comment run, not below it', () => {
+        const { root } = parse('operation /pet: {\n    get: {}\n\n    # creates a pet\n    post: {}\n}');
+        expect(root.routes[0]!.operations[1]!.blankLineBefore).toBe(true);
+    });
+
+    it('records no blank line when operations are packed together', () => {
+        const { root } = parse('operation /pet: {\n    get: {}\n    post: {}\n}');
+        expect(root.routes[0]!.operations[1]!.blankLineBefore).toBeFalsy();
+    });
+
+    it('records a single-line response block as inline', () => {
+        const { root } = parse('operation /pet: {\n    get: {\n        response: {\n            200: { application/json: Pet }\n        }\n    }\n}');
+        expect(root.routes[0]!.operations[0]!.responses[0]!.inline).toBe(true);
+    });
+
+    it('does not mark a multi-line response block as inline', () => {
+        const { root } = parse(
+            'operation /pet: {\n    get: {\n        response: {\n            200: {\n                application/json: Pet\n            }\n        }\n    }\n}',
+        );
+        expect(root.routes[0]!.operations[0]!.responses[0]!.inline).toBeFalsy();
+    });
+});
 
 describe('test.ck fixture', () => {
     it('parses the petstore fixture without errors', () => {

@@ -101,6 +101,66 @@ describe('generateOperation', () => {
             const output = generateOp(root);
             expect(output).not.toContain('luxon');
         });
+
+        // Every conditional import must be justified by a reference in the generated body —
+        // an unused import trips `noUnusedLocals` and lint in the consuming project.
+        it('imports bodyParserMiddleware only when an operation has a request body', () => {
+            const withBody = generateOp(opRoot([opRoute('/users', [opOperation('post', { request: opRequest('CreateUser') })])]));
+            expect(withBody).toContain('bodyParserMiddleware');
+
+            const withoutBody = generateOp(opRoot([opRoute('/users', [opOperation('get')])]));
+            expect(withoutBody).not.toContain('bodyParserMiddleware');
+        });
+
+        it('omits MultipartBody when a multipart body shares its shape with the other MIME types', () => {
+            // Structurally equal bodies collapse to a single parseAndValidate call, so nothing
+            // references MultipartBody even though the operation does declare multipart.
+            const root = opRoot([
+                opRoute('/upload', [
+                    opOperation('post', {
+                        request: opMultiRequest([
+                            ['multipart/form-data', 'UploadForm'],
+                            ['application/json', 'UploadForm'],
+                        ]),
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root);
+            expect(output).not.toContain('MultipartBody');
+        });
+
+        it('imports MultipartBody when the multipart body is handled on its own', () => {
+            const root = opRoot([opRoute('/upload', [opOperation('post', { request: opMultiRequest([['multipart/form-data', 'UploadForm']]) })])]);
+            expect(generateOp(root)).toContain("import { MultipartBody } from '@maroonedsoftware/multipart';");
+        });
+
+        it('leaves no import unreferenced in the generated body', () => {
+            const root = opRoot([
+                opRoute(
+                    '/users/{id}',
+                    [
+                        opOperation('get', { security: SECURITY_NONE }),
+                        opOperation('post', { request: opRequest('CreateUser'), signature: 'webhookKey' }),
+                    ],
+                    [opParam('id', scalarType('uuid'))],
+                ),
+            ]);
+            const output = generateOp(root);
+            const importLines = output.split('\n').filter(l => l.startsWith('import '));
+            expect(importLines.length).toBeGreaterThan(0);
+
+            const bodyText = output
+                .split('\n')
+                .filter(l => !l.startsWith('import '))
+                .join('\n');
+            for (const line of importLines) {
+                const named = line.match(/^import \{([^}]*)\}/);
+                if (!named) continue;
+                for (const symbol of named[1]!.split(',').map(s => s.trim().replace(/^type /, ''))) {
+                    expect(bodyText, `${symbol} is imported but never used`).toMatch(new RegExp(`\\b${symbol}\\b`));
+                }
+            }
+        });
     });
 
     // ─── Handler signature ─────────────────────────────────────────
@@ -974,7 +1034,7 @@ describe('generateOp — route modifiers JSDoc', () => {
             const root = opRoot([opRoute('/users', [op])]);
             const out = generateOp(root);
             expect(out).not.toContain('requireSignature');
-            expect(out).toContain(`import { ServerKitRouter, bodyParserMiddleware, requirePolicy }`);
+            expect(out).toContain(`import { ServerKitRouter, requirePolicy }`);
         });
     });
 
@@ -985,7 +1045,7 @@ describe('generateOp — route modifiers JSDoc', () => {
             const op = opOperation('get');
             const root = opRoot([opRoute('/users', [op])]);
             const out = generateOp(root);
-            expect(out).toContain(`import { ServerKitRouter, bodyParserMiddleware, requirePolicy }`);
+            expect(out).toContain(`import { ServerKitRouter, requirePolicy }`);
             expect(out).toContain(`requirePolicy()`);
         });
 
@@ -1019,7 +1079,7 @@ describe('generateOp — route modifiers JSDoc', () => {
             const op = opOperation('get', { security: SECURITY_NONE });
             const root = opRoot([opRoute('/health', [op])]);
             const out = generateOp(root);
-            expect(out).toContain(`import { ServerKitRouter, bodyParserMiddleware }`);
+            expect(out).toContain(`import { ServerKitRouter } from`);
             expect(out).not.toContain('requirePolicy');
         });
 

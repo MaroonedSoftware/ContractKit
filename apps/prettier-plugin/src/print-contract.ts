@@ -5,11 +5,14 @@ import { INDENT } from './indent.js';
 // ─── Model declaration ───────────────────────────────────────────────────────
 
 /**
- * Render a `contract` body from its `Name: ...` onward (the `contract ` keyword is
- * prepended by the caller). Handles both the type-alias form (`Name: <type>`) and the
- * regular field-block form, including modifiers, base chain, and per-field printing.
- * Any `model.trailingComments` (comments after the last field, before `}`) are emitted
- * as indented `# text` lines so they round-trip.
+ * Render a `contract` body from its `Name: ...` onward (the `contract ` keyword and any
+ * doc comment written above the declaration are prepended by the caller). Handles both the
+ * type-alias form (`Name: <type>`) and the regular field-block form, including modifiers,
+ * base chain, and per-field printing. Any `model.trailingComments` (comments after the last
+ * field, before `}`) are emitted as indented `# text` lines so they round-trip.
+ *
+ * `model.description` is emitted here only when `model.descriptionInline` says the author wrote
+ * it on the header line; otherwise it belongs above the declaration and the caller emits it.
  */
 export function printModelDecl(model: ModelNode, printWidth: number = 80): string {
     // Type alias form: Name : typeExpression
@@ -18,7 +21,9 @@ export function printModelDecl(model: ModelNode, printWidth: number = 80): strin
     }
 
     // Regular model with fields (possibly inherited)
-    const commentSuffix = model.description ? ` # ${model.description}` : '';
+    // A doc comment written above the declaration is re-emitted there by the caller; only an
+    // inline one belongs on the header line.
+    const commentSuffix = model.description && model.descriptionInline ? ` # ${model.description}` : '';
     const modifiers = [
         model.deprecated ? 'deprecated' : '',
         model.inputCase || model.outputCase
@@ -45,7 +50,9 @@ export function printModelDecl(model: ModelNode, printWidth: number = 80): strin
 
 function printTypeAlias(model: ModelNode, printWidth: number): string {
     const type = model.type!;
-    const commentSuffix = model.description ? ` # ${model.description}` : '';
+    // A doc comment written above the declaration is re-emitted there by the caller; only an
+    // inline one belongs on the header line.
+    const commentSuffix = model.description && model.descriptionInline ? ` # ${model.description}` : '';
     const modifiers = [
         model.deprecated ? 'deprecated' : '',
         model.inputCase || model.outputCase

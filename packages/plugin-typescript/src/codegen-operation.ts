@@ -5,7 +5,6 @@ import {
     renderInputType,
     renderQueryType,
     pascalToDotCase,
-    typeNeedsDateTime,
     typeNeedsScalar,
     modeToWrapper,
 } from './codegen-contract.js';
@@ -126,50 +125,20 @@ export interface OpCodegenOptions {
     includeInternal?: boolean;
 }
 
-/** Generate a Koa router module for every operation in `root`, including the imports, type aliases, and handler list. */
+/**
+ * Generate a Koa router module for every operation in `root`, including the imports, type
+ * aliases, and handler list.
+ *
+ * Imports are derived from the generated body — each candidate symbol is emitted only if it
+ * actually appears in the output. Deciding them from predicates over the AST instead means any
+ * drift between predicate and codegen leaves an unused import in every generated file, which
+ * trips `noUnusedLocals` and lint downstream.
+ */
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
     // Collect all referenced types across all routes
     const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput);
     const services = collectServices(root);
     const routerName = deriveRouterName(root.file);
-    const needsParseAndValidate = routeNeedsValidation(root);
-
-    // Generate the body first so we can detect whether `z.` is actually referenced
-    // before deciding whether to emit the zod import.
-    const body: string[] = [];
-    const needsSignature = fileNeedsSignature(root);
-    const needsPolicy = fileNeedsPolicy(root);
-    const koaImports = ['ServerKitRouter', 'bodyParserMiddleware'];
-    if (needsPolicy) koaImports.push('requirePolicy');
-    if (needsSignature) koaImports.push('requireSignature');
-    body.push(`import { ${koaImports.join(', ')} } from '@maroonedsoftware/koa';`);
-
-    for (const svc of services) {
-        const modulePath = root.services?.[svc] ?? root.meta[svc] ?? deriveModulePath(svc, options.servicePathTemplate);
-        body.push(`import { ${svc} } from '${modulePath}';`);
-    }
-
-    if (types.length > 0) {
-        body.push(...generateTypeImports(types, root.file, options));
-    }
-
-    // luxon is needed for date/time/datetime (DateTime), duration (Duration) and interval (Interval);
-    // the rendered Zod schemas and the service-result annotations both reference these classes.
-    const luxonImports: string[] = [];
-    if (opNeedsDateTime(root)) luxonImports.push('DateTime');
-    if (opNeedsScalar(root, 'duration')) luxonImports.push('Duration');
-    if (opNeedsScalar(root, 'interval')) luxonImports.push('Interval');
-    if (luxonImports.length > 0) {
-        body.push(`import { ${luxonImports.join(', ')} } from 'luxon';`);
-    }
-
-    if (needsParseAndValidate) {
-        body.push(`import { parseAndValidate } from '@maroonedsoftware/zod';`);
-    }
-
-    if (fileUsesMultipart(root)) {
-        body.push(`import { MultipartBody } from '@maroonedsoftware/multipart';`);
-    }
 
     const helpers: string[] = [];
     if (opNeedsScalar(root, 'binary')) {
@@ -209,6 +178,43 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
             lines.push(...generateHandler(route, op, root, options));
             lines.push('');
         }
+    }
+
+    // Imports are decided from the code we just generated, not from predicates over the AST that
+    // have to be kept in step with it by hand. A predicate that drifts leaves an unused import in
+    // every generated file, which trips `noUnusedLocals` and lint in consuming projects.
+    const generated = [...(helpers.length ? ['', ...helpers] : []), ...lines].join('\n');
+    const uses = (symbol: string) => new RegExp(`\\b${symbol}\\b`).test(generated);
+
+    const body: string[] = [];
+
+    const koaImports = ['ServerKitRouter', 'bodyParserMiddleware', 'requirePolicy', 'requireSignature'].filter(uses);
+    if (koaImports.length > 0) {
+        body.push(`import { ${koaImports.join(', ')} } from '@maroonedsoftware/koa';`);
+    }
+
+    for (const svc of services) {
+        const modulePath = root.services?.[svc] ?? root.meta[svc] ?? deriveModulePath(svc, options.servicePathTemplate);
+        body.push(`import { ${svc} } from '${modulePath}';`);
+    }
+
+    if (types.length > 0) {
+        body.push(...generateTypeImports(types, root.file, options));
+    }
+
+    // luxon is needed for date/time/datetime (DateTime), duration (Duration) and interval (Interval);
+    // the rendered Zod schemas and the service-result annotations both reference these classes.
+    const luxonImports = ['DateTime', 'Duration', 'Interval'].filter(uses);
+    if (luxonImports.length > 0) {
+        body.push(`import { ${luxonImports.join(', ')} } from 'luxon';`);
+    }
+
+    if (uses('parseAndValidate')) {
+        body.push(`import { parseAndValidate } from '@maroonedsoftware/zod';`);
+    }
+
+    if (uses('MultipartBody')) {
+        body.push(`import { MultipartBody } from '@maroonedsoftware/multipart';`);
     }
 
     const allContent = [...body, ...(helpers.length ? ['', ...helpers] : []), ...lines].join('\n');
@@ -780,26 +786,7 @@ function collectTypeNodeRefs(type: ContractTypeNode, out: Set<string>): void {
     }
 }
 
-function paramSourceNeedsDateTime(source: ParamSource | undefined): boolean {
-    if (!source) return false;
-    if (source.kind === 'ref') return false;
-    if (source.kind === 'params') return source.nodes.some(p => typeNeedsDateTime(p.type));
-    return typeNeedsDateTime(source.node);
-}
 
-function opNeedsDateTime(root: OpRootNode): boolean {
-    return root.routes.some(
-        route =>
-            paramSourceNeedsDateTime(route.params) ||
-            route.operations.some(
-                op =>
-                    !!op.request?.bodies.some(b => typeNeedsDateTime(b.bodyType)) ||
-                    op.responses.some(r => r.bodyType && typeNeedsDateTime(r.bodyType)) ||
-                    paramSourceNeedsDateTime(op.query) ||
-                    paramSourceNeedsDateTime(op.headers),
-            ),
-    );
-}
 
 function paramSourceNeedsScalar(source: ParamSource | undefined, name: string): boolean {
     if (!source) return false;
@@ -838,32 +825,10 @@ function collectServices(root: OpRootNode): string[] {
     return [...services].sort();
 }
 
-function hasParamSource(source?: ParamSource): boolean {
-    if (!source) return false;
-    if (source.kind === 'ref') return true;
-    if (source.kind === 'params') return source.nodes.length > 0;
-    return true; // type
-}
 
-function routeNeedsValidation(root: OpRootNode): boolean {
-    return root.routes.some(
-        r => hasParamSource(r.params) || r.operations.some(op => !!op.request || hasParamSource(op.query) || hasParamSource(op.headers)),
-    );
-}
 
-function fileNeedsPolicy(root: OpRootNode): boolean {
-    return root.routes.some(route => route.operations.some(op => resolveSecurity(route, op, root) !== SECURITY_NONE));
-}
 
-function fileNeedsSignature(root: OpRootNode): boolean {
-    return root.routes.some(route => route.operations.some(op => !!op.signature));
-}
 
-function fileUsesMultipart(root: OpRootNode): boolean {
-    return root.routes.some(route =>
-        route.operations.some(op => (op.request?.bodies ?? []).some(b => b.contentType === 'multipart/form-data')),
-    );
-}
 
 function isValidIdentifier(name: string): boolean {
     return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);

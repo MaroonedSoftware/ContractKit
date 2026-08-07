@@ -9,6 +9,7 @@ import type {
     ObjectMode,
     PluginValue,
     McpConfigNode,
+    OpBodyKey,
 } from '@contractkit/core';
 import { SECURITY_NONE } from '@contractkit/core';
 import { printType, formatDefault } from './print-type.js';
@@ -55,17 +56,20 @@ export function flushBlocks(out: string[], blocks: CommentBlock[], idx: { value:
 // ─── Route ───────────────────────────────────────────────────────────────────
 
 /**
- * Render an `operation` route body from its `path: {` onward (the `operation` keyword and
- * any modifier are prepended by the caller). Emits the params/security blocks and each HTTP
- * operation, interleaving orphan comment `blocks` at their original source positions — `idx`
- * tracks how far through `blocks` we've consumed, and `nextRouteStart` bounds the flush to
- * comments before the following route. Any `route.trailingComments` (comments after the last
- * operation, before `}`) are emitted before the closing brace so they round-trip.
+ * Render an `operation` route body from its `path: {` onward (the `operation` keyword, any
+ * modifier, and the route's leading comments are prepended by the caller). Emits the
+ * params/security blocks and each HTTP operation, interleaving orphan comment `blocks` at their
+ * original source positions — `idx` tracks how far through `blocks` we've consumed, and
+ * `nextRouteStart` bounds the flush to comments before the following route. Any
+ * `route.trailingComments` (comments after the last operation, before `}`) are emitted before
+ * the closing brace so they round-trip.
+ *
+ * Blank lines between operations come from each operation's `blankLineBefore`, so the author's
+ * spacing survives rather than being normalized to one rule or the other.
  */
 export function printRoute(route: OpRouteNode, blocks: CommentBlock[], idx: { value: number }, nextRouteStart: number): string {
     const lines: string[] = [];
-    const commentSuffix = route.description ? ` # ${route.description}` : '';
-    lines.push(`${route.path}: {${commentSuffix}`);
+    lines.push(`${route.path}: {`);
 
     if (route.params !== undefined) {
         lines.push(...printParamsBlock(route.params, I1, route.paramsMode));
@@ -76,6 +80,8 @@ export function printRoute(route: OpRouteNode, blocks: CommentBlock[], idx: { va
     }
 
     for (const op of route.operations) {
+        // Reproduce the author's spacing rather than imposing our own.
+        if (op.blankLineBefore && lines.length > 1) lines.push('');
         // Flush comment blocks that appear before this operation (inside the route)
         flushBlocks(lines, blocks, idx, op.loc.line, I1);
         lines.push(...printOperation(op));
@@ -120,56 +126,81 @@ function printParamsBlock(source: ParamSource, indent: string, mode?: ObjectMode
 
 // ─── HTTP operation ──────────────────────────────────────────────────────────
 
+/** Order the body keys are emitted in when the node carries no source order (built programmatically). */
+const CANONICAL_KEY_ORDER: OpBodyKey[] = ['name', 'service', 'sdk', 'mcp', 'signature', 'security', 'plugins', 'query', 'headers', 'request', 'responses'];
+
+/** Render a single operation-body key. Returns `[]` when the operation doesn't carry that key. */
+function printOperationKey(op: OpOperationNode, key: OpBodyKey): string[] {
+    switch (key) {
+        case 'name':
+            return op.name ? [`${I2}name: ${op.name}`] : [];
+        case 'service':
+            return op.service ? [`${I2}service: ${op.service}`] : [];
+        case 'sdk':
+            return op.sdk ? [`${I2}sdk: ${op.sdk}`] : [];
+        case 'mcp':
+            if (op.mcp === true) return [`${I2}mcp: true`];
+            if (op.mcp === false) return [`${I2}mcp: false`];
+            return op.mcp ? printMcpBlock(op.mcp) : [];
+        case 'signature': {
+            if (!op.signature) return [];
+            const comment = op.signatureDescription ? ` # ${op.signatureDescription}` : '';
+            if (op.signaturePolicy) {
+                return [
+                    `${I2}signature: {`,
+                    `${I3}options: ${formatSignatureValue(op.signature)}${comment}`,
+                    `${I3}policy: ${op.signaturePolicy}`,
+                    `${I2}}`,
+                ];
+            }
+            return [`${I2}signature: ${formatSignatureValue(op.signature)}${comment}`];
+        }
+        case 'security':
+            return op.security !== undefined ? printSecurity(op.security) : [];
+        case 'plugins': {
+            if (!op.plugins || Object.keys(op.plugins).length === 0) return [];
+            const lines = [`${I2}plugins: {`];
+            for (const [k, val] of Object.entries(op.plugins)) lines.push(...printPluginEntry(k, val, I3));
+            lines.push(`${I2}}`);
+            return lines;
+        }
+        case 'query':
+            return op.query !== undefined ? printQueryOrHeaders('query', op.query, op.queryMode) : [];
+        case 'headers':
+            if (op.requestHeadersOptOut) return [`${I2}headers: none`];
+            return op.headers !== undefined ? printQueryOrHeaders('headers', op.headers, op.headersMode) : [];
+        case 'request': {
+            if (!op.request) return [];
+            const lines = [`${I2}request: {`];
+            for (const body of op.request.bodies) lines.push(...printContentTypeLine(body.contentType, body.bodyType, I3));
+            lines.push(`${I2}}`);
+            return lines;
+        }
+        case 'responses':
+            return op.responses.length > 0 ? printResponseBlock(op.responses) : [];
+    }
+}
+
 function printOperation(op: OpOperationNode): string[] {
     const lines: string[] = [];
-    const commentSuffix = op.description ? ` # ${op.description}` : '';
     const modPart = op.modifiers?.length ? `(${op.modifiers[0]})` : '';
+
+    // A doc comment written above the method line goes back above it; only an inline one is
+    // re-emitted as a trailing `#` on the header. Nodes built programmatically carry no placement,
+    // and default to inline — the form most `.ck` sources use and one that round-trips as written.
+    const inlineDescription = op.descriptionInline ?? true;
+    if (op.description && !inlineDescription) {
+        for (const line of op.description.split('\n')) lines.push(`${I1}# ${line}`);
+    }
+    const commentSuffix = op.description && inlineDescription ? ` # ${op.description}` : '';
     lines.push(`${I1}${op.method}${modPart}: {${commentSuffix}`);
 
-    if (op.name) lines.push(`${I2}name: ${op.name}`);
-    if (op.service) lines.push(`${I2}service: ${op.service}`);
-    if (op.sdk) lines.push(`${I2}sdk: ${op.sdk}`);
-    if (op.mcp === true) {
-        lines.push(`${I2}mcp: true`);
-    } else if (op.mcp === false) {
-        lines.push(`${I2}mcp: false`);
-    } else if (op.mcp) {
-        lines.push(...printMcpBlock(op.mcp));
-    }
-    if (op.signature) {
-        const comment = op.signatureDescription ? ` # ${op.signatureDescription}` : '';
-        if (op.signaturePolicy) {
-            lines.push(`${I2}signature: {`);
-            lines.push(`${I3}options: ${formatSignatureValue(op.signature)}${comment}`);
-            lines.push(`${I3}policy: ${op.signaturePolicy}`);
-            lines.push(`${I2}}`);
-        } else {
-            lines.push(`${I2}signature: ${formatSignatureValue(op.signature)}${comment}`);
-        }
-    }
-    if (op.security !== undefined) lines.push(...printSecurity(op.security));
-    if (op.plugins && Object.keys(op.plugins).length > 0) {
-        lines.push(`${I2}plugins: {`);
-        for (const [key, val] of Object.entries(op.plugins)) {
-            lines.push(...printPluginEntry(key, val, I3));
-        }
-        lines.push(`${I2}}`);
-    }
-    if (op.query !== undefined) lines.push(...printQueryOrHeaders('query', op.query, op.queryMode));
-    if (op.requestHeadersOptOut) {
-        lines.push(`${I2}headers: none`);
-    } else if (op.headers !== undefined) {
-        lines.push(...printQueryOrHeaders('headers', op.headers, op.headersMode));
-    }
-    if (op.request) {
-        lines.push(`${I2}request: {`);
-        for (const body of op.request.bodies) {
-            lines.push(...printContentTypeLine(body.contentType, body.bodyType, I3));
-        }
-        lines.push(`${I2}}`);
-    }
-    if (op.responses.length > 0) {
-        lines.push(...printResponseBlock(op.responses));
+    // Emit in source order when the parser recorded it, so formatting never reorders a user's keys.
+    // Any key the source order doesn't mention (e.g. added by a later AST pass) follows in canonical order.
+    const order = op.keyOrder ?? [];
+    const rest = CANONICAL_KEY_ORDER.filter(k => !order.includes(k));
+    for (const key of [...order, ...rest]) {
+        lines.push(...printOperationKey(op, key));
     }
 
     lines.push(`${I1}}`);
@@ -353,7 +384,10 @@ function printResponseBlock(responses: OpResponseNode[]): string[] {
         const hasBody = resp.contentType && resp.bodyType;
         const hasHeaders = resp.headers && resp.headers.length > 0;
         const optOut = resp.headersOptOut;
-        if (hasBody || hasHeaders || optOut) {
+        if (resp.inline && hasBody && !hasHeaders && !optOut && resp.bodyType!.kind !== 'inlineObject') {
+            // Written on one line in the source, so keep it there: `200: { application/json: Pet }`.
+            lines.push(`${I3}${resp.statusCode}: { ${resp.contentType}: ${printType(resp.bodyType!)} }`);
+        } else if (hasBody || hasHeaders || optOut) {
             lines.push(`${I3}${resp.statusCode}: {`);
             if (hasBody) {
                 lines.push(...printContentTypeLine(resp.contentType!, resp.bodyType!, I4));

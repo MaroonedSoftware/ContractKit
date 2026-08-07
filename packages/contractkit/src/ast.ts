@@ -163,6 +163,12 @@ export interface ModelNode {
     outputCase?: 'camel' | 'snake' | 'pascal'; // format(output=) — key casing of emitted data
     deprecated?: boolean;
     description?: string;
+    /** Standalone comment lines preceding the declaration and separated from it by a blank line —
+     * section dividers and the like. Not a doc comment. Preserved for lossless round-trip. */
+    leadingComments?: string[];
+    /** True when `description` was written inline on the header line (`contract X: { # doc`) rather
+     * than on its own line above it. Preserved so the formatter reproduces the source form. */
+    descriptionInline?: boolean;
     loc: SourceLocation;
 }
 
@@ -252,6 +258,9 @@ export interface OpResponseNode {
     headers?: OpResponseHeaderNode[];
     /** Set when the status code body declares `headers: none` — suppresses options-level response header merge for this code. */
     headersOptOut?: boolean;
+    /** True when the whole status-code block was written on a single source line
+     * (`200: { application/json: Pet }`). Preserved so the formatter doesn't expand it. */
+    inline?: boolean;
 }
 
 /**
@@ -312,8 +321,21 @@ export interface OpOperationNode {
     /** Resolved plugin extension values keyed by plugin name. Populated by the CLI resolver — same shape as `plugins`, but every `file://` URL string is replaced with the file's contents. Never set by the parser. */
     pluginExtensions?: Record<string, PluginValue>;
     description?: string;
+    /** True when `description` was written inline on the method line (`get: { # doc`) rather than on
+     * its own line above it. Preserved so the formatter reproduces the source form. */
+    descriptionInline?: boolean;
+    /** True when a blank line separated this operation from whatever preceded it inside the route.
+     * Preserved so the formatter neither inserts nor removes the author's spacing. */
+    blankLineBefore?: boolean;
+    /** Body keys in source order, e.g. `['sdk', 'service', 'request', 'responses']`. The formatter
+     * emits keys in this order instead of a canonical one so it never reorders a user's file.
+     * Absent on programmatically built nodes, in which case canonical order applies. */
+    keyOrder?: OpBodyKey[];
     loc: SourceLocation;
 }
+
+/** A key that can appear in an operation body, as recorded in {@link OpOperationNode.keyOrder}. */
+export type OpBodyKey = 'name' | 'service' | 'sdk' | 'mcp' | 'signature' | 'security' | 'plugins' | 'query' | 'headers' | 'request' | 'responses';
 
 export interface OpRouteNode {
     path: string;
@@ -327,6 +349,9 @@ export interface OpRouteNode {
     /** Route-level security default — cascades to operations that have no explicit security declaration. */
     security?: SecurityNode;
     description?: string;
+    /** Standalone comment lines preceding the declaration and separated from it by a blank line —
+     * section dividers and the like. Not a doc comment. Preserved for lossless round-trip. */
+    leadingComments?: string[];
     loc: SourceLocation;
 }
 
@@ -382,6 +407,9 @@ export interface OptionsScopeComments {
 export interface OptionsComments {
     keys?: OptionsScopeComments;
     services?: OptionsScopeComments;
+    /** Comments sitting directly in the options block between its sub-blocks. `leading` is keyed by
+     * the sub-block the run precedes (`keys`, `services`, `request`, `response`, `security`). */
+    body?: OptionsScopeComments;
 }
 
 export interface CkRootNode {

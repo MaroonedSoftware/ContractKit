@@ -667,6 +667,23 @@ contract User: {
 - A `#` comment on a **type alias** line becomes its description: `contract Status: enum(a, b) # desc`
 - A `#` comment **inline on a field** (same line) becomes the field's `.describe()` string
 - A `#` comment on the line **before** a field becomes that field's description
+- A `#` comment separated from the declaration below it by a **blank line** is standalone — a
+  section divider rather than a description, and is not attached to any node
+- A `#` comment may sit directly inside an `options { ... }` block, between its sub-blocks
+
+```
+options {
+    # resolved from the deploy environment
+    keys: { area: payments }
+}
+
+# ─── Pet endpoints ───
+
+# An order placed for purchasing a pet
+contract Order: {
+    id: readonly int
+}
+```
 
 ---
 

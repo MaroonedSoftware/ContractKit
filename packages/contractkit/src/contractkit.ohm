@@ -29,7 +29,8 @@ Contract {
 
   OptionsBlock = optionsKw "{" OptionsBodyItem* "}"
 
-  OptionsBodyItem = OptionsKeysBlock
+  OptionsBodyItem = comment
+                  | OptionsKeysBlock
                   | OptionsServicesBlock
                   | OptionsRequestBlock
                   | OptionsResponseBlock

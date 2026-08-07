@@ -33,18 +33,27 @@ Most editors with a Prettier integration (VS Code, JetBrains, Neovim) pick the p
 
 ## What it does
 
-The printer round-trips the parser's AST back into canonical `.ck` source:
+The printer round-trips the parser's AST back into `.ck` source:
 
 - 4-space indentation (matches Prettier's default `tabWidth`)
 - Canonical modifier order on fields: `override → deprecated → readonly|writeonly`
-- Stable ordering of `options` block items, route bodies, and operation blocks
-- Inline `# comment` placement preserved on field/operation/status lines
 - Multi-base inheritance: `contract C: A & B & { ... }` with the inline block always last
 - Multi-line unions: a leading `|` is preserved on type aliases like `contract X: A | B | C`
 - Discriminated unions render as `discriminated(by=field, A | B | C)`
 - Options-level header globals (`options { request/response: { headers } }`) are emitted in their original un-merged form so the AST round-trips cleanly
 
 The plugin honours Prettier's `printWidth` for line-wrapping decisions where applicable, but most CK constructs format to a fixed multi-line shape regardless of width.
+
+## What it preserves
+
+Formatting a well-formed `.ck` file leaves it byte-identical. The formatter deliberately does **not** impose a canonical layout where the language allows more than one form — it reproduces what the author wrote:
+
+- **Comment placement.** A `#` block separated from the declaration below it by a blank line stays a standalone divider; one directly above becomes that declaration's doc comment and is re-emitted above it, not folded onto the header line. A comment written inline (`contract Pet: { # ...`) stays inline.
+- **Operation body key order.** `sdk` before `service` stays that way; the printer never sorts a user's keys into a canonical order.
+- **Blank lines** between operations inside a route.
+- **Single-line response blocks.** `200: { application/json: Pet }` is not expanded, and an expanded block is not collapsed.
+
+This is covered by `tests/round-trip.test.ts`, which formats every `.ck` file under `contracts/` and asserts the output is unchanged, plus checks that formatting is a fixed point. Anything that makes the printer normalize rather than preserve will fail it.
 
 ## Source layout
 
