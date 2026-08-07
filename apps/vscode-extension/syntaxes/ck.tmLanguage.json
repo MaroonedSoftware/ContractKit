@@ -51,6 +51,12 @@
                     "include": "#options-services-block"
                 },
                 {
+                    "include": "#options-request-block"
+                },
+                {
+                    "include": "#options-response-block"
+                },
+                {
                     "include": "#security-decl"
                 }
             ]
@@ -1107,6 +1113,90 @@
         "comma": {
             "match": ",",
             "name": "punctuation.separator.comma.ck"
+        },
+        "options-request-block": {
+            "begin": "\\b(request)\\s*(:)\\s*(\\{)",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.request.ck"
+                },
+                "2": {
+                    "name": "punctuation.separator.colon.ck"
+                },
+                "3": {
+                    "name": "punctuation.definition.block.begin.ck"
+                }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": {
+                    "name": "punctuation.definition.block.end.ck"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#comment"
+                },
+                {
+                    "include": "#options-headers-block"
+                }
+            ]
+        },
+        "options-response-block": {
+            "begin": "\\b(response)\\s*(:)\\s*(\\{)",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.response.ck"
+                },
+                "2": {
+                    "name": "punctuation.separator.colon.ck"
+                },
+                "3": {
+                    "name": "punctuation.definition.block.begin.ck"
+                }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": {
+                    "name": "punctuation.definition.block.end.ck"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#comment"
+                },
+                {
+                    "include": "#options-headers-block"
+                }
+            ]
+        },
+        "options-headers-block": {
+            "begin": "\\b(headers)\\s*(:)\\s*(\\{)",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.headers.ck"
+                },
+                "2": {
+                    "name": "punctuation.separator.colon.ck"
+                },
+                "3": {
+                    "name": "punctuation.definition.block.begin.ck"
+                }
+            },
+            "end": "(\\})",
+            "endCaptures": {
+                "1": {
+                    "name": "punctuation.definition.block.end.ck"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#comment"
+                },
+                {
+                    "include": "#param-declaration"
+                }
+            ]
         }
     }
 }
