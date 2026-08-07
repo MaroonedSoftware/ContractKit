@@ -54,3 +54,6 @@ logs/security/
 *.vsix
 
 .npmrc
+
+# TypeScript incremental build cache
+*.tsbuildinfo

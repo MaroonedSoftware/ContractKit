@@ -1,0 +1,14 @@
+{
+    // The webview is bundled for the browser (see the `webviewConfig` esbuild target), not for
+    // Node, so it needs the DOM lib and must not see `@types/node`. Keeping it in its own project
+    // means the client and server code stays honest about running under Node.
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "lib": ["esnext", "dom"],
+        "types": [],
+        "noEmit": true,
+        "rootDir": "."
+    },
+    "include": ["**/*.ts"],
+    "exclude": []
+}

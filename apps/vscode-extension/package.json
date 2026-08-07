@@ -257,7 +257,7 @@
     },
     "scripts": {
         "build": "node esbuild.mjs",
-        "build:ci": "eslint --max-warnings=0 && pnpm run build",
+        "build:ci": "eslint --max-warnings=0 && pnpm run typecheck && pnpm run build",
         "dev": "node esbuild.mjs --watch",
         "lint": "eslint --fix",
         "format": "prettier --write .",
@@ -265,7 +265,8 @@
         "test:ci": "vitest run --coverage",
         "package": "node esbuild.mjs && pnpm exec vsce package --no-dependencies",
         "vscode:install": "pnpm run package && cursor --install-extension contractkit.vsix",
-        "vscode:uninstall": "cursor --uninstall-extension contractkit.vsix"
+        "vscode:uninstall": "cursor --uninstall-extension contractkit.vsix",
+        "typecheck": "tsc --noEmit && tsc --noEmit -p src/webview/tsconfig.json"
     },
     "dependencies": {
         "@contractkit/core": "workspace:*",

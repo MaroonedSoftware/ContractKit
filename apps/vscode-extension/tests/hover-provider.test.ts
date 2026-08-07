@@ -20,6 +20,18 @@ describe('getHover', () => {
         expect(hover!.contents).toMatchObject({ kind: 'markdown', value: expect.stringContaining('User') });
     });
 
+    it('renders a discriminated union field in the hover for a referenced model', () => {
+        // formatType had no `discriminatedUnion` case, so this field rendered as `undefined`.
+        const doc = TextDocument.create('file:///test.ck', 'contract-ck', 1, 'contract M: {\n    ref: Payment\n}');
+        const index = new WorkspaceIndex();
+        index.indexFromSource('file:///payment.ck', 'contract Payment: { method: discriminated(by=kind, Card | Bank) }');
+        const hover = getHover({ textDocument: { uri: doc.uri }, position: { line: 1, character: 10 } }, doc, index);
+        expect(hover).not.toBeNull();
+        const value = (hover!.contents as { value: string }).value;
+        expect(value).toContain('discriminated(by=kind, Card | Bank)');
+        expect(value).not.toContain('undefined');
+    });
+
     it('returns null for unknown words', () => {
         const doc = TextDocument.create('file:///test.ck', 'contract-ck', 1, 'contract M: {\n    f: xyz\n}');
         const index = new WorkspaceIndex();

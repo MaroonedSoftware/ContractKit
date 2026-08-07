@@ -1,4 +1,5 @@
 import * as crypto from 'node:crypto';
+import { basename } from 'node:path';
 import * as vscode from 'vscode';
 import type { ItemSelection } from '@contractkit/explorer-ui';
 import { operationId } from '@contractkit/explorer-ui';
@@ -162,6 +163,7 @@ function selectionKey(selection: ItemSelection): string {
         case 'overview': return 'overview';
         case 'operation': return `op:${selection.id}`;
         case 'model': return `model:${selection.name}`;
+        case 'file': return `file:${selection.path}`;
     }
 }
 
@@ -173,6 +175,7 @@ function selectionKey(selection: ItemSelection): string {
 function resolveTitle(selection: ItemSelection, store: PreviewDataStore): string {
     if (selection.kind === 'overview') return 'ContractKit Overview';
     if (selection.kind === 'model') return selection.name;
+    if (selection.kind === 'file') return basename(selection.path);
     const data = store.getData();
     const op = data?.operations.find(o => operationId(o) === selection.id);
     if (!op) return selection.id;

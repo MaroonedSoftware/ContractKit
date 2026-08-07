@@ -120,6 +120,8 @@ function formatType(type: ContractTypeNode): string {
             return JSON.stringify(type.value);
         case 'union':
             return type.members.map(formatType).join(' | ');
+        case 'discriminatedUnion':
+            return `discriminated(by=${type.discriminator}, ${type.members.map(formatType).join(' | ')})`;
         case 'intersection':
             return type.members.map(formatType).join(' & ');
         case 'ref':

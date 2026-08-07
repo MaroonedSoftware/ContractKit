@@ -5,5 +5,6 @@
         "rootDir": "./src"
     },
     "include": ["src/**/*.ts"],
-    "exclude": ["node_modules", "dist"]
+    // The webview targets the browser and is typechecked by its own project (src/webview/tsconfig.json).
+    "exclude": ["node_modules", "dist", "src/webview"]
 }
