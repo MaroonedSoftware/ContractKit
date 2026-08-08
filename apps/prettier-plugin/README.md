@@ -51,7 +51,9 @@ Formatting a well-formed `.ck` file leaves it byte-identical. The formatter deli
 - **Comment placement.** A `#` block separated from the declaration below it by a blank line stays a standalone divider; one directly above becomes that declaration's doc comment and is re-emitted above it, not folded onto the header line. A comment written inline (`contract Pet: { # ...`) stays inline.
 - **Operation body key order.** `sdk` before `service` stays that way; the printer never sorts a user's keys into a canonical order.
 - **Blank lines** between operations inside a route.
-- **Single-line response blocks.** `200: { application/json: Pet }` is not expanded, and an expanded block is not collapsed.
+- **Single-line response blocks.** `200: { application/json: Pet }` is not expanded, and an expanded block is not collapsed. A status declaring several mimes on one line stays on one line too.
+- **Comments inside a `response` block**, in all four positions: above a status code, above a `mime: Type` line, above a `headers:` block, and before either closing brace.
+- **An empty status block.** `304: {}` and `304:` mean different things to codegen — the first says the service returns that status with no body — so neither is normalized into the other.
 
 This is covered by `tests/round-trip.test.ts`, which formats every `.ck` file under `contracts/` and asserts the output is unchanged, plus checks that formatting is a fixed point. Anything that makes the printer normalize rather than preserve will fail it.
 

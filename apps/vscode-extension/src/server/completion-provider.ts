@@ -54,6 +54,16 @@ const OP_MODIFIERS: Array<{ label: string; detail: string }> = [
     { label: 'public', detail: 'Override route-level internal/deprecated — make this operation public' },
 ];
 
+/**
+ * Completions for a position in a `.ck` document.
+ *
+ * The block the cursor sits in is inferred by scanning backwards for the enclosing `{` and
+ * matching the text before it, so any new syntax between a keyword and its colon — a status
+ * code's `(documented)` modifier, say — has to be reflected in that match or completions
+ * silently stop inside the block.
+ *
+ * @param index Workspace index supplying cross-file model, service and policy names.
+ */
 export function getCompletions(params: TextDocumentPositionParams, document: TextDocument, index: WorkspaceIndex): CompletionItem[] {
     const text = document.getText();
     const lines = text.split('\n');

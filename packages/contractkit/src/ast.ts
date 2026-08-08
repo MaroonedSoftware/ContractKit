@@ -258,6 +258,13 @@ export interface OpResponseBodyNode {
     leadingComments?: string[];
 }
 
+/**
+ * One status code declared under an operation's `response` block.
+ *
+ * Whether the service is expected to produce it is derived, not stored — see
+ * `emittedResponses`/`observableResponses` in `response-sets.ts`, which read {@link hasBlock},
+ * {@link bodies} and {@link emit} to decide.
+ */
 export interface OpResponseNode {
     statusCode: number;
     /**

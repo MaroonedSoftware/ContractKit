@@ -14,6 +14,7 @@ import {
     hasPublicOperations,
     generateSdkPackageJson,
     generateSdkTsconfig,
+    generateErrorBodyAliases,
 } from '../src/codegen-sdk.js';
 import { collectPublicTypeNames } from '@contractkit/core';
 import { renderTsType, renderInputTsType } from '../src/ts-render.js';
@@ -853,6 +854,56 @@ describe('generateSdk', () => {
             ]);
             expect(generateSdk(root, sharedOptions)).not.toContain('ErrorBody');
         });
+    });
+});
+
+describe('generateErrorBodyAliases', () => {
+    it('emits one alias per operation whose thrown statuses declare a body', () => {
+        const root = opRoot([
+            opRoute('/pet', [
+                opOperation('get', {
+                    sdk: 'getPet',
+                    responses: [
+                        opResponse(200, 'Pet', 'application/json'),
+                        { ...opResponse(404, refType('Problem'), 'application/json'), emit: 'documented' as const },
+                    ],
+                }),
+            ]),
+        ]);
+        expect(generateErrorBodyAliases(root, {})).toEqual(['export type GetPetErrorBody = Problem;']);
+    });
+
+    it('merges the bodies of several thrown statuses into one union', () => {
+        const root = opRoot([
+            opRoute('/pet', [
+                opOperation('get', {
+                    sdk: 'getPet',
+                    responses: [
+                        opResponse(200, 'Pet', 'application/json'),
+                        { ...opResponse(404, refType('NotFound'), 'application/json'), emit: 'documented' as const },
+                        { ...opResponse(500, refType('Problem'), 'application/json'), emit: 'documented' as const },
+                    ],
+                }),
+            ]),
+        ]);
+        expect(generateErrorBodyAliases(root, {})).toEqual(['export type GetPetErrorBody = NotFound | Problem;']);
+    });
+
+    it('emits nothing when the thrown statuses are bodyless', () => {
+        const root = opRoot([
+            opRoute('/pet', [opOperation('get', { sdk: 'getPet', responses: [opResponse(200, 'Pet', 'application/json'), opResponse(404)] })]),
+        ]);
+        expect(generateErrorBodyAliases(root, {})).toEqual([]);
+    });
+
+    it('skips internal operations unless asked for them', () => {
+        const responses = [
+            opResponse(200, 'Pet', 'application/json'),
+            { ...opResponse(404, refType('Problem'), 'application/json'), emit: 'documented' as const },
+        ];
+        const root = opRoot([opRoute('/pet', [opOperation('get', { sdk: 'getPet', responses })], undefined, ['internal'])]);
+        expect(generateErrorBodyAliases(root, {})).toEqual([]);
+        expect(generateErrorBodyAliases(root, { includeInternal: true })).toHaveLength(1);
     });
 });
 

@@ -43,6 +43,9 @@ import {
 | `validateInheritance(roots)` | Multi-base inheritance validation — cross-base conflicts, `override` requirement, cycle detection. |
 | `validateOperation(route, root)` | Validates an operation against config constraints (path-param coverage, service references, signature schemes). |
 | `validateProject({ files, fallbackKeys?, getKeysForFile?, diag? })` | Runs parse + `applyOptionsDefaults` + `applyVariableSubstitution` + `decomposeCk` + cross-file `validateRefs`/`validateInheritance`/`validateOp` in one call. Returns `{ diag, contracts, ops, asts }`. `getKeysForFile(filePath)` supplies per-file fallback keys for workspaces with multiple `contractkit.config.json` files; it falls through to `fallbackKeys` when it returns `undefined`. Designed as the shared semantics source for the CLI and the language server. |
+| `emittedResponses(op)` | The declared responses the service returns and a generated router writes: those with a body block, plus bodyless 2xx, minus any marked `(documented)`. Status-sorted. |
+| `observableResponses(op)` | The declared responses a client receives as a value rather than an exception — every emitted one, plus every non-emitted status below 400 (a `304` produced by middleware, say). Status-sorted. |
+| `thrownResponses(op)` | The remainder: non-emitted 4xx/5xx, whose declared bodies form the error contract a client catches. Status-sorted. |
 | `ContractKitPlugin` / `PluginContext` | Interfaces a plugin author implements/consumes. See **Plugin API**. |
 | AST node types | `CkRootNode`, `ContractTypeNode`, `FieldNode`, `ModelNode`, `OpRouteNode`, `OpOperationNode`, `OpParamNode`, etc. |
 

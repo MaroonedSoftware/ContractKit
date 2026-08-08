@@ -147,10 +147,17 @@ Method names follow this priority:
 
 A shared `sdk-options.ts` file is emitted alongside the clients. It exports:
 
-- `SdkOptions` / `SdkFetch` / `SdkError` / `createSdkFetch` — base client primitives. `SdkError` is thrown on any non-2xx response and exposes `status`, `statusText`, `body`, and `headers` (the raw `Headers` instance) for downstream use.
+- `SdkOptions` / `SdkFetch` / `SdkRequestInit` / `SdkError` / `createSdkFetch` — base client primitives. `SdkError<TBody>` exposes `status`, `statusText`, `body`, and `headers` (the raw `Headers` instance); each operation that declares a body on a thrown status also exports a matching `…ErrorBody` alias to narrow `body` to.
 - `buildQueryString(query)` — serialises a query params object to `?key=value` or `''`
 - `parseJson<T>(res)` — deserialises a `Response` body to `T`
+- `readContentType(res)` — the response's mime with any `; charset=…` stripped, used when a status declares several content types
 - `bigIntReplacer` / `bigIntReviver` — JSON replacer/reviver for `bigint` values
+
+`SdkError` is raised for any response at or above 400 **except** the statuses an operation
+declares as values. Those are passed per-call as `expectStatuses`, so a `304` produced by
+conditional-GET middleware, or an error status the service returns deliberately, comes back as a
+normal return value instead of a throw. See the response section of the root README for which
+statuses fall into which set.
 
 ## Programmatic use
 
