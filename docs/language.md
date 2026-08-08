@@ -479,6 +479,11 @@ contract User: {
 - A `#` comment separated from the declaration below it by a **blank line** is standalone — a
   section divider rather than a description, and is not attached to any node
 - A `#` comment may sit directly inside an `options { ... }` block, between its sub-blocks
+- A `#` comment may sit **above** the `options` keyword, as a file header
+- A `#` comment may trail a `keys`/`services` entry, provided a space separates it from the
+  value. A `#` with no space before it belongs to the value, so an unquoted subpath import
+  (`PetService: #modules/pet/pet.service.js`) still parses as one; quote a value that needs a
+  space followed by `#` inside it
 
 ```
 options {

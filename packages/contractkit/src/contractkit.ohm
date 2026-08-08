@@ -27,7 +27,10 @@ Contract {
   // ─── Options block ──────────────────────────────────────────────
   // Structured metadata with named sections.
 
-  OptionsBlock = optionsKw "{" OptionsBodyItem* "}"
+  // The leading `comment*` belongs here rather than on Root: if it sat on Root, its greedy match
+  // would swallow the doc comment above a `contract`/`operation` in a file that has no options
+  // block at all. Failing inside OptionsBlock backtracks the comments too.
+  OptionsBlock = comment* optionsKw "{" OptionsBodyItem* "}"
 
   OptionsBodyItem = comment
                   | OptionsKeysBlock
@@ -45,14 +48,24 @@ Contract {
 
   OptionsServicesBlock = servicesKw ":" "{" (comment | OptionsEntry)* "}"
 
-  OptionsEntry = identifier ":" optionsValue
+  OptionsEntry = identifier ":" optionsEntryValue
+
+  // Lexical, so the optional trailing comment can only be one on the *same line*. As a syntactic
+  // rule it would skip newlines and claim the standalone comment on the line below instead.
+  optionsEntryValue = optionsValue optionsInlineComment?
+
+  optionsInlineComment = (" " | "\t")+ comment
 
   optionsValue = stringLit             -- quoted
                | optionsRawValue       -- unquoted
 
   optionsRawValue = optionsRawChar+
 
-  optionsRawChar = ~("\n" | "\r" | "}") any
+  // Stops before whitespace-then-"#" so a trailing comment stays a comment. Previously the comment
+  // was swallowed into the value, and any "}" inside it — `# see {{area}}` — closed the block early
+  // and silently mis-parsed the rest of the file. A bare "#" still belongs to the value, because an
+  // unquoted Node subpath import (`#modules/pet/pet.service.js`) is the idiomatic `services` value.
+  optionsRawChar = ~("\n" | "\r" | "}" | " #" | "\t#") any
 
   // ─── Models ─────────────────────────────────────────────────────
 

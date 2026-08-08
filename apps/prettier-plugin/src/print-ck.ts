@@ -17,6 +17,14 @@ export const DEFAULT_PRINT_WIDTH = 80;
  * else — paths with slashes, values starting with `#`, values with spaces,
  * etc. — is double-quoted so the round-trip parse is unambiguous.
  */
+/**
+ * Quote an options value unless it is a bare identifier.
+ *
+ * An unquoted path (`PetService: #modules/pet/pet.service.js`) parses but is printed quoted,
+ * because the AST keeps only the string and not whether the author quoted it. Preserving that
+ * choice needs a flag on the entry; quoting is the safe direction, since both forms parse to the
+ * same value and the quoted one is what almost every file uses.
+ */
 function quoteOptionsValue(value: string): string {
     return /^[a-zA-Z_$][a-zA-Z0-9_$\-.]*$/.test(value) ? value : `"${value}"`;
 }
@@ -30,7 +38,8 @@ function emitOptionsEntries(lines: string[], entries: Record<string, string>, co
     const I2 = INDENT + INDENT;
     for (const [key, value] of Object.entries(entries)) {
         for (const c of comments?.leading?.[key] ?? []) lines.push(`${I2}# ${c}`);
-        lines.push(`${I2}${key}: ${quoteOptionsValue(value)}`);
+        const inline = comments?.inline?.[key];
+        lines.push(`${I2}${key}: ${quoteOptionsValue(value)}${inline !== undefined ? ` # ${inline}` : ''}`);
     }
     for (const c of comments?.trailing ?? []) lines.push(`${I2}# ${c}`);
 }
@@ -45,7 +54,8 @@ function printOptionsBlock(ast: CkRootNode): string | null {
     const hasBodyComments = ast.optionsComments?.body !== undefined;
     if (!hasMeta && !hasServices && !hasSecurity && !hasRequestHeaders && !hasResponseHeaders && !hasBodyComments) return null;
 
-    const lines: string[] = ['options {'];
+    // A `#` run above the `options` keyword is the file's header comment.
+    const lines: string[] = [...(ast.optionsComments?.leading ?? []).map(c => `# ${c}`), 'options {'];
     const body = ast.optionsComments?.body;
     /** Emit the comment run the author wrote directly above this sub-block. */
     const emitLeading = (scope: string) => {

@@ -83,6 +83,29 @@ describe('ck.tmLanguage — options block', () => {
         expect(grammar.repository['options-response-block']?.begin).toBe('\\b(response)\\s*(:)\\s*(\\{)');
     });
 
+    describe('options entries', () => {
+        const match = new RegExp(grammar.repository['meta-entry']!.match as string);
+
+        it('highlights an unquoted subpath value as a value, not as a comment', () => {
+            // The unquoted alternative used to accept identifiers only, so `#modules/...` fell
+            // through to the comment pattern and was coloured as though the parser ignored it.
+            const m = match.exec('        PetService: #modules/pet/pet.service.js');
+            expect(m?.[1]).toBe('PetService');
+            expect(m?.[4]).toBe('#modules/pet/pet.service.js');
+        });
+
+        it('stops the value before a trailing comment', () => {
+            const m = match.exec('        area: billing # interpolated as {{area}}');
+            expect(m?.[4]).toBe('billing');
+        });
+
+        it('still prefers the quoted alternative', () => {
+            const m = match.exec('        S: "#modules/pet.js"');
+            expect(m?.[3]).toBe('"#modules/pet.js"');
+            expect(m?.[4]).toBeUndefined();
+        });
+    });
+
     describe('status codes', () => {
         const begin = new RegExp(grammar.repository['status-code-block']!.begin as string);
 

@@ -441,6 +441,8 @@ export interface OpRootNode {
 export interface OptionsScopeComments {
     /** Comment lines appearing immediately before an entry, keyed by that entry's key. */
     leading?: Record<string, string[]>;
+    /** Trailing `# ...` written on an entry's own line, keyed by that entry's key. */
+    inline?: Record<string, string>;
     /** Comment lines after the last entry, before the sub-block's closing `}`. */
     trailing?: string[];
 }
@@ -452,6 +454,8 @@ export interface OptionsComments {
     /** Comments sitting directly in the options block between its sub-blocks. `leading` is keyed by
      * the sub-block the run precedes (`keys`, `services`, `request`, `response`, `security`). */
     body?: OptionsScopeComments;
+    /** Comment lines written above the `options` keyword — a file header. */
+    leading?: string[];
 }
 
 export interface CkRootNode {

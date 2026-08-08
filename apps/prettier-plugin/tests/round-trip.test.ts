@@ -111,6 +111,41 @@ contract Pet: {
 });
 
 describe('round-trip — comments in the options block', () => {
+    it('keeps a header comment above the options keyword', () => {
+        const source = `# ContractKit contracts for billing.
+# Owned by the payments team.
+options {
+    keys: {
+        area: billing
+    }
+}
+
+contract Pet: {
+    id: uuid
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a trailing comment on an options entry, braces and all', () => {
+        // The value used to swallow the comment and stop at the first `}`, which closed the
+        // block early and silently mis-parsed everything after it.
+        const source = `options {
+    keys: {
+        area: billing # interpolated elsewhere as {{area}}
+    }
+    services: {
+        PetService: "#modules/pet/pet.service.js"
+    }
+}
+
+contract Pet: {
+    id: uuid
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
     it('keeps a comment above a sub-block', () => {
         const source = `options {
     # where these come from

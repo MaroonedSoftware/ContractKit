@@ -157,22 +157,25 @@ function collectOptionsEntries(
 ): { _type: 'keys' | 'services'; entries: [string, string][]; comments?: OptionsScopeComments } {
     const entries: [string, string][] = [];
     const leading: Record<string, string[]> = {};
+    const inline: Record<string, string> = {};
     let pending: string[] = [];
     for (let i = 0; i < items.numChildren; i++) {
         const child = items.child(i);
         if (child.ctorName === 'comment') {
-            pending.push(child.sourceString.replace(/^#\s?/, '').trimEnd());
+            pending.push(commentText(child));
             continue;
         }
-        const entry = child.toAst(file, diag) as [string, string];
+        const [key, value, trailing] = child.toAst(file, diag) as [string, string, string | undefined];
         if (pending.length > 0) {
-            leading[entry[0]] = pending;
+            leading[key] = pending;
             pending = [];
         }
-        entries.push(entry);
+        if (trailing !== undefined) inline[key] = trailing;
+        entries.push([key, value]);
     }
     const comments: OptionsScopeComments = {};
     if (Object.keys(leading).length > 0) comments.leading = leading;
+    if (Object.keys(inline).length > 0) comments.inline = inline;
     if (pending.length > 0) comments.trailing = pending;
     return { _type: type, entries, comments: Object.keys(comments).length > 0 ? comments : undefined };
 }
@@ -254,7 +257,7 @@ export function createSemantics(grammar: Grammar) {
 
         // ─── Options block ───────────────────────────────────────────
 
-        OptionsBlock(_optionsKw, _lb, items, _rb) {
+        OptionsBlock(leadingNodes, _optionsKw, _lb, items, _rb) {
             const file = this.args.file;
             const diag = this.args.diag;
             const meta: Record<string, string> = {};
@@ -308,6 +311,13 @@ export function createSemantics(grammar: Grammar) {
             }
             if (pending.length > 0) bodyComments.trailing = pending;
             if (Object.keys(bodyComments).length > 0) optionsComments.body = bodyComments;
+            // A `#` run above the `options` keyword is a file header — kept so formatting
+            // cannot delete it.
+            const leadingIter = leadingNodes as IterationNode;
+            if (leadingIter.numChildren > 0) {
+                optionsComments.leading = [];
+                for (let i = 0; i < leadingIter.numChildren; i++) optionsComments.leading.push(commentText(leadingIter.child(i)));
+            }
 
             return {
                 meta,
@@ -366,8 +376,20 @@ export function createSemantics(grammar: Grammar) {
 
         OptionsEntry(keyNode, _colon, valueNode) {
             const key = keyNode.sourceString;
-            const value = valueNode.toAst(this.args.file, this.args.diag);
-            return [key, value] as [string, string];
+            const [value, inline] = valueNode.toAst(this.args.file, this.args.diag) as [string, string | undefined];
+            return [key, value, inline] as [string, string, string | undefined];
+        },
+
+        // optionsEntryValue = optionsValue optionsInlineComment?
+        optionsEntryValue(valueNode, commentOpt) {
+            const value = valueNode.toAst(this.args.file, this.args.diag) as string;
+            const iter = commentOpt as IterationNode;
+            return [value, iter.numChildren > 0 ? (iter.child(0).toAst(this.args.file, this.args.diag) as string) : undefined];
+        },
+
+        // optionsInlineComment = (" " | "\t")+ comment
+        optionsInlineComment(_ws, commentNode) {
+            return commentText(commentNode);
         },
 
         optionsValue_quoted(strNode) {

@@ -1605,6 +1605,61 @@ contract User: { name: string }`);
         expect(root.meta).toEqual({ area: 'user-management', label: 'User Management' });
     });
 
+    it('accepts a comment above the options keyword', () => {
+        const { root, diag } = parse(`\
+# ContractKit contracts for billing.
+# Owned by the payments team.
+options {
+    keys: {
+        area: billing
+    }
+}
+contract Pet: { id: uuid }`);
+        expect(diag.hasErrors()).toBe(false);
+        expect(root.optionsComments?.leading).toEqual(['ContractKit contracts for billing.', 'Owned by the payments team.']);
+        expect(root.meta).toEqual({ area: 'billing' });
+    });
+
+    it('does not let a leading comment on options steal a contract doc comment', () => {
+        // OptionsBlock owns the `comment*`, so failing to find `options` backtracks the comments
+        // and leaves them to the declaration below. On Root they would be swallowed instead.
+        const { root, diag } = parse('# A pet for sale\ncontract Pet: { id: uuid }');
+        expect(diag.hasErrors()).toBe(false);
+        expect(root.models[0]!.description).toBe('A pet for sale');
+    });
+
+    it('treats a trailing comment on an options entry as a comment, not part of the value', () => {
+        // The value used to swallow the comment and stop at the first `}`, so a brace inside it
+        // closed the block early and silently mis-parsed the rest of the file.
+        const { root, diag } = parse(`\
+options {
+    keys: {
+        area: billing # interpolated elsewhere as {{area}}
+    }
+    services: {
+        PetService: "#m/s.js"
+    }
+}
+contract Pet: { id: uuid }`);
+        expect(diag.hasErrors()).toBe(false);
+        expect(root.meta).toEqual({ area: 'billing' });
+        expect(root.services).toEqual({ PetService: '#m/s.js' });
+        expect(root.optionsComments?.keys?.inline).toEqual({ area: 'interpolated elsewhere as {{area}}' });
+    });
+
+    it('keeps a bare # inside an unquoted value, since subpath imports start with one', () => {
+        const { root, diag } = parse(`\
+options {
+    services: {
+        A: #modules/a/a.service.js # the real service
+    }
+}
+contract Pet: { id: uuid }`);
+        expect(diag.hasErrors()).toBe(false);
+        expect(root.services).toEqual({ A: '#modules/a/a.service.js' });
+        expect(root.optionsComments?.services?.inline).toEqual({ A: 'the real service' });
+    });
+
     it('parses unquoted hash-prefixed service path', () => {
         const { root } = parse(`\
 options {

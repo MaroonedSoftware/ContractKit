@@ -83,10 +83,10 @@ Every construct in the language, in one block. The [language reference](docs/lan
 explains each one.
 
 ```
-options {                                # file metadata: optional, and must come first
+# ─── File metadata (optional, one per file) ──────────────────────────────
+options {
     keys: {
-        # any key here can be interpolated into strings elsewhere in the file
-        area: billing
+        area: billing                    # interpolated elsewhere as {{area}}
     }
     services: {
         PetService: "#modules/pet/pet.service.js"
