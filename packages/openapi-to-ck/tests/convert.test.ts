@@ -155,6 +155,38 @@ describe('convertOpenApiToCk', () => {
         });
     });
 
+    describe('several mimes for one status', () => {
+        it('keeps every content entry rather than narrowing to the first', async () => {
+            const result = await convertOpenApiToCk({
+                input: {
+                    openapi: '3.1.0',
+                    info: { title: 'Art', version: '1.0' },
+                    paths: {
+                        '/art': {
+                            get: {
+                                operationId: 'getArt',
+                                responses: {
+                                    '200': {
+                                        description: 'OK',
+                                        content: {
+                                            'image/png': { schema: { type: 'string', format: 'binary' } },
+                                            'image/jpeg': { schema: { type: 'string', format: 'binary' } },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                split: 'single',
+            });
+
+            const content = result.files.get('api.ck')!;
+            expect(content).toContain('image/png: binary');
+            expect(content).toContain('image/jpeg: binary');
+        });
+    });
+
     describe('response headers', () => {
         it('lifts OpenAPI 3.x response headers into a typed headers block', async () => {
             const result = await convertOpenApiToCk({

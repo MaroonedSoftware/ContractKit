@@ -1,5 +1,6 @@
 import type { ContractRootNode, OpRootNode, ContractTypeNode, ModelNode, FieldNode } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
+import { responseBodies } from './ast.js';
 import { isRedundantDocumented } from './response-sets.js';
 
 /**
@@ -51,9 +52,9 @@ export function validateRefs(contractRoots: ContractRootNode[], opRoots: OpRootN
                     }
                 }
                 for (const resp of op.responses) {
-                    if (resp.bodyType) {
-                        checkTypeRefs(resp.bodyType, root.file, op.loc.line, modelNames, diag);
-                        checkDiscriminatedUnions(resp.bodyType, root.file, op.loc.line, modelMap, diag);
+                    for (const body of responseBodies(resp)) {
+                        checkTypeRefs(body.bodyType, root.file, op.loc.line, modelNames, diag);
+                        checkDiscriminatedUnions(body.bodyType, root.file, op.loc.line, modelMap, diag);
                     }
                     // Runs here rather than in the parser because it depends on the merged view:
                     // once options-level responses exist, a bare `404(documented):` stops being a

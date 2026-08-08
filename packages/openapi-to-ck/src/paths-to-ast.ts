@@ -4,6 +4,7 @@ import type {
     OpParamNode,
     OpRequestNode,
     OpResponseNode,
+    OpResponseBodyNode,
     OpResponseHeaderNode,
     HttpMethod,
     ModelNode,
@@ -266,27 +267,31 @@ function responseToNode(
     ctx: PathsContext,
 ): OpResponseNode {
     const headers = convertResponseHeaders(resp.headers, schemaCtx);
+    const empty = (): OpResponseNode => ({ statusCode, bodies: [], ...(headers ? { headers, hasBlock: true } : {}) });
 
-    if (!resp.content) {
-        return headers ? { statusCode, headers } : { statusCode };
+    if (!resp.content) return empty();
+
+    // Every declared content type is kept — `.ck` can express several mimes for one status, so
+    // there is no reason to narrow a spec down to its first one on the way in.
+    const bodies: OpResponseBodyNode[] = [];
+    for (const [contentType, mediaType] of Object.entries(resp.content)) {
+        if (!mediaType?.schema) continue;
+        // The extracted model is named for the status; a second mime for the same status reuses
+        // that name rather than minting a near-duplicate.
+        const suffix = bodies.length === 0 ? '' : toPascalCase(contentType.replace(/[^a-z0-9]+/gi, ' '));
+        const { typeNode, model } = extractInlineModel(mediaType.schema, `${toPascalCase(operationName)}Response${statusCode}${suffix}`, schemaCtx);
+        if (model) ctx.extractedModels.push(model);
+        bodies.push({ contentType, bodyType: typeNode });
     }
 
-    // Pick the first content type
-    const [contentType, mediaType] = Object.entries(resp.content)[0] ?? [];
-    if (!contentType || !mediaType?.schema) {
-        return headers ? { statusCode, headers } : { statusCode };
-    }
-
-    const { typeNode, model } = extractInlineModel(mediaType.schema, `${toPascalCase(operationName)}Response${statusCode}`, schemaCtx);
-
-    if (model) {
-        ctx.extractedModels.push(model);
-    }
+    if (bodies.length === 0) return empty();
 
     return {
         statusCode,
-        contentType: contentType as 'application/json',
-        bodyType: typeNode,
+        bodies,
+        hasBlock: true,
+        contentType: bodies[0]!.contentType,
+        bodyType: bodies[0]!.bodyType,
         ...(headers ? { headers } : {}),
     };
 }

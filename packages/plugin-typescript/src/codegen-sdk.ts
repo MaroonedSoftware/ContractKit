@@ -824,9 +824,9 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWit
                 }
             }
             for (const resp of op.responses) {
-                if (resp.bodyType) {
-                    collectTypeNodeRefs(resp.bodyType, types);
-                    collectOutputTypeNodeRefs(resp.bodyType, types, modelsWithOutput);
+                for (const body of responseBodies(resp)) {
+                    collectTypeNodeRefs(body.bodyType, types);
+                    collectOutputTypeNodeRefs(body.bodyType, types, modelsWithOutput);
                 }
                 if (resp.headers) {
                     for (const h of resp.headers) {
@@ -985,7 +985,7 @@ function sdkNeedsJson(root: OpRootNode, includeInternal = false): boolean {
             };
             if (
                 !!op.request?.bodies.some(b => typeNeedsScalar(b.bodyType, 'json')) ||
-                op.responses.some(r => r.bodyType && typeNeedsScalar(r.bodyType, 'json')) ||
+                op.responses.some(r => responseBodies(r).some(b => typeNeedsScalar(b.bodyType, 'json'))) ||
                 check(op.query) ||
                 check(op.headers) ||
                 check(route.params)

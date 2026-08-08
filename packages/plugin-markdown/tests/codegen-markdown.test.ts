@@ -475,6 +475,28 @@ describe('generateMarkdown', () => {
             expect(output).toContain('`200 OK` — Returns a [User](#user) object.');
         });
 
+        it('lists every declared mime for a status', () => {
+            const op = opRoot([
+                opRoute('/art', [
+                    opOperation('get', {
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [
+                                    { contentType: 'image/png', bodyType: { kind: 'scalar', name: 'binary' } },
+                                    { contentType: 'image/jpeg', bodyType: { kind: 'scalar', name: 'binary' } },
+                                ],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
+            expect(output).toContain('`image/png`');
+            expect(output).toContain('`image/jpeg`');
+        });
+
         it('renders 204 no content without body', () => {
             const op = opRoot([
                 opRoute('/users/{id}', [opOperation('delete', { responses: [opResponse(204)] })], [opParam('id', scalarType('uuid'))]),

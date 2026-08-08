@@ -361,6 +361,28 @@ describe('generateOpenApi', () => {
             expect(output).toContain("'$ref': '#/components/schemas/User'");
         });
 
+        it('gives a status one content entry per declared mime', () => {
+            const op = opRoot([
+                opRoute('/art', [
+                    opOperation('get', {
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [
+                                    { contentType: 'image/png', bodyType: { kind: 'scalar', name: 'binary' } },
+                                    { contentType: 'image/jpeg', bodyType: { kind: 'scalar', name: 'binary' } },
+                                ],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generateOpenApi({ contractRoots: [], opRoots: [op], config: {} });
+            expect(output).toContain("'image/png':");
+            expect(output).toContain("'image/jpeg':");
+        });
+
         it('generates POST with request body', () => {
             const op = opRoot([
                 opRoute('/users', [

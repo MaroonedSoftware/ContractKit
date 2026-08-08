@@ -14,6 +14,7 @@ import {
     SECURITY_NONE,
     collectPublicTypeNames,
     collectTypeRefs,
+    responseBodies,
 } from '@contractkit/core';
 
 // ─── Local TypeScript type rendering ─────────────────────────────────────
@@ -556,27 +557,36 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
         for (const resp of op.responses) {
             const statusText = STATUS_TEXT[resp.statusCode] ?? '';
             const statusLabel = statusText ? `${resp.statusCode} ${statusText}` : `${resp.statusCode}`;
+            const bodies = responseBodies(resp);
 
-            if (!resp.bodyType) {
+            if (bodies.length === 0) {
                 lines.push(`\`${statusLabel}\``);
                 lines.push('');
-            } else if (resp.bodyType.kind === 'inlineObject') {
-                // Inline objects — expand into field table
-                lines.push(`\`${statusLabel}\``);
-                lines.push('');
-                if (resp.bodyType.fields.length > 0) {
-                    lines.push(
-                        ...wrapCollapsible(
-                            `Attributes (${resp.bodyType.fields.length})`,
-                            renderFieldsTable(resp.bodyType.fields, { excludeReadonly: false }),
-                        ),
-                    );
+            }
+            // A status may serve several formats, so each declared mime gets its own line under
+            // the one status heading.
+            for (const [i, body] of bodies.entries()) {
+                // Repeat the status on the first line only; the rest read as alternatives to it.
+                const label = i === 0 ? `\`${statusLabel}\`` : `\`${resp.statusCode}\``;
+                const mime = bodies.length > 1 ? ` \`${body.contentType}\`` : '';
+                if (body.bodyType.kind === 'inlineObject') {
+                    // Inline objects — expand into field table
+                    lines.push(`${label}${mime}`);
+                    lines.push('');
+                    if (body.bodyType.fields.length > 0) {
+                        lines.push(
+                            ...wrapCollapsible(
+                                `Attributes (${body.bodyType.fields.length})`,
+                                renderFieldsTable(body.bodyType.fields, { excludeReadonly: false }),
+                            ),
+                        );
+                        lines.push('');
+                    }
+                } else {
+                    // Named type — reference it; the Models section has the full definition
+                    lines.push(`${label}${mime} — ${typeProseLink(body.bodyType, 'Returns')}`);
                     lines.push('');
                 }
-            } else {
-                // Named type — reference it; the Models section has the full definition
-                lines.push(`\`${statusLabel}\` — ${typeProseLink(resp.bodyType, 'Returns')}`);
-                lines.push('');
             }
 
             if (resp.headers && resp.headers.length > 0) {
