@@ -1,7 +1,7 @@
 ---
-'@contractkit/core': major
-'@contractkit/plugin-typescript': major
-'@contractkit/plugin-python': major
+'@contractkit/core': minor
+'@contractkit/plugin-typescript': minor
+'@contractkit/plugin-python': minor
 '@contractkit/plugin-openapi': minor
 '@contractkit/plugin-markdown': minor
 '@contractkit/openapi-to-ck': minor
