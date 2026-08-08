@@ -15,7 +15,6 @@ import {
     renderInputType,
     renderQueryType,
     pascalToDotCase,
-    typeNeedsScalar,
     modeToWrapper,
 } from './codegen-contract.js';
 import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted } from './ts-render.js';
@@ -150,27 +149,6 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     const services = collectServices(root);
     const routerName = deriveRouterName(root.file);
 
-    const helpers: string[] = [];
-    if (opNeedsScalar(root, 'binary')) {
-        helpers.push(`const _ZodBinary = z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' });`);
-    }
-    if (opNeedsScalar(root, 'datetime')) {
-        helpers.push(
-            `const _ZodDatetime = z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }));`,
-        );
-    }
-    if (opNeedsScalar(root, 'interval')) {
-        helpers.push(
-            `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' })).transform(val => val.toISO()!);`,
-        );
-    }
-    if (opNeedsScalar(root, 'json')) {
-        helpers.push(`type _JsonValue = string | number | boolean | null | _JsonValue[] | { [key: string]: _JsonValue };`);
-        helpers.push(
-            `const _ZodJson: z.ZodType<_JsonValue> = z.lazy(() => z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(_ZodJson), z.record(z.string(), _ZodJson)]));`,
-        );
-    }
-
     const lines: string[] = [];
 
     lines.push('');
@@ -190,9 +168,40 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
         }
     }
 
-    // Imports are decided from the code we just generated, not from predicates over the AST that
-    // have to be kept in step with it by hand. A predicate that drifts leaves an unused import in
-    // every generated file, which trips `noUnusedLocals` and lint in consuming projects.
+    // Helpers and imports are both decided from the code we just generated, not from predicates
+    // over the AST that have to be kept in step with it by hand. A predicate that drifts leaves an
+    // unused declaration in every generated file, which trips `noUnusedLocals` and lint in
+    // consuming projects — `opNeedsScalar(root, 'binary')` over-approximates exactly that way,
+    // since a binary *response* body is a plain `Buffer` annotation with no schema behind it.
+    const handlerBody = lines.join('\n');
+    const references = (symbol: string) => new RegExp(`\\b${symbol}\\b`).test(handlerBody);
+
+    const helpers: string[] = [];
+    if (references('_ZodBinary')) {
+        helpers.push(`const _ZodBinary = z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' });`);
+    }
+    if (references('_ZodDatetime')) {
+        helpers.push(
+            `const _ZodDatetime = z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }));`,
+        );
+    }
+    if (references('_ZodInterval')) {
+        helpers.push(
+            `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' })).transform(val => val.toISO()!);`,
+        );
+    }
+    // `_ZodJson`'s own declaration is annotated with `_JsonValue`, so the type alias comes along
+    // with it; the alias is also needed on its own for a `json` body's server-side annotation.
+    const needsZodJson = references('_ZodJson');
+    if (needsZodJson || references('_JsonValue')) {
+        helpers.push(`type _JsonValue = string | number | boolean | null | _JsonValue[] | { [key: string]: _JsonValue };`);
+    }
+    if (needsZodJson) {
+        helpers.push(
+            `const _ZodJson: z.ZodType<_JsonValue> = z.lazy(() => z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(_ZodJson), z.record(z.string(), _ZodJson)]));`,
+        );
+    }
+
     const generated = [...(helpers.length ? ['', ...helpers] : []), ...lines].join('\n');
     const uses = (symbol: string) => new RegExp(`\\b${symbol}\\b`).test(generated);
 
@@ -909,29 +918,6 @@ function collectTypeNodeRefs(type: ContractTypeNode, out: Set<string>): void {
             type.fields.forEach(f => collectTypeNodeRefs(f.type, out));
             break;
     }
-}
-
-
-
-function paramSourceNeedsScalar(source: ParamSource | undefined, name: string): boolean {
-    if (!source) return false;
-    if (source.kind === 'ref') return false;
-    if (source.kind === 'params') return source.nodes.some(p => typeNeedsScalar(p.type, name));
-    return typeNeedsScalar(source.node, name);
-}
-
-function opNeedsScalar(root: OpRootNode, name: string): boolean {
-    return root.routes.some(
-        route =>
-            paramSourceNeedsScalar(route.params, name) ||
-            route.operations.some(
-                op =>
-                    !!op.request?.bodies.some(b => typeNeedsScalar(b.bodyType, name)) ||
-                    op.responses.some(r => r.bodies.some(b => typeNeedsScalar(b.bodyType, name))) ||
-                    paramSourceNeedsScalar(op.query, name) ||
-                    paramSourceNeedsScalar(op.headers, name),
-            ),
-    );
 }
 
 function collectServices(root: OpRootNode): string[] {

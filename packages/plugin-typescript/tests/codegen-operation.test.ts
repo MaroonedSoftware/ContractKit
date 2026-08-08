@@ -947,6 +947,32 @@ describe('generateOperation', () => {
                 ]);
                 expect(generateOp(root)).toContain('const result: Buffer[] = await service.list();');
             });
+
+            it('emits no _ZodBinary helper for a binary response body', () => {
+                // A response body is an annotation, not a schema — the handler never validates it,
+                // so declaring the helper would leave it unused and trip `noUnusedLocals`.
+                const root = opRoot([
+                    opRoute('/art', [
+                        opOperation('get', {
+                            responses: [
+                                opResponseMulti(200, [
+                                    { contentType: 'image/png', bodyType: scalarType('binary') },
+                                    { contentType: 'image/jpeg', bodyType: scalarType('binary') },
+                                ]),
+                            ],
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain('body: Buffer');
+                expect(output).not.toContain('_ZodBinary');
+                expect(output).not.toContain("import { z } from 'zod';");
+            });
+
+            it('still emits _ZodBinary when a request body actually validates binary', () => {
+                const root = opRoot([opRoute('/upload', [opOperation('post', { request: opRequest(scalarType('binary')) })])]);
+                expect(generateOp(root)).toContain('const _ZodBinary =');
+            });
         });
 
         describe('luxon imports cover every scalar that references a luxon class', () => {
@@ -955,11 +981,21 @@ describe('generateOperation', () => {
                 expect(generateOp(root)).toContain("import { Duration } from 'luxon';");
             });
 
-            it('imports Interval and emits the _ZodInterval helper for an interval body', () => {
-                const root = opRoot([opRoute('/x', [opOperation('get', { responses: [opResponse(200, scalarType('interval'), 'application/json')] })])]);
+            it('imports Interval and emits the _ZodInterval helper for an interval request body', () => {
+                const root = opRoot([opRoute('/x', [opOperation('post', { request: opRequest(scalarType('interval')) })])]);
                 const output = generateOp(root);
                 expect(output).toContain("import { Interval } from 'luxon';");
                 expect(output).toContain('const _ZodInterval =');
+            });
+
+            it('emits neither for an interval response body, which is a plain string on the way out', () => {
+                // _ZodInterval transforms to an ISO string, so a response-side interval needs no
+                // schema and no luxon class — emitting either would leave both unused.
+                const root = opRoot([opRoute('/x', [opOperation('get', { responses: [opResponse(200, scalarType('interval'), 'application/json')] })])]);
+                const output = generateOp(root);
+                expect(output).toContain('const result: string = await service.list();');
+                expect(output).not.toContain('_ZodInterval');
+                expect(output).not.toContain('luxon');
             });
 
             it('imports DateTime and Duration together when both are used', () => {
