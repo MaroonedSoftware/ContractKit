@@ -1,0 +1,43 @@
+# ContractKit
+
+> A DSL for API contracts. `.ck` files compile to Zod schemas, Koa routers, TypeScript and
+> Python SDK clients, OpenAPI 3.1 YAML, Bruno collections, and Markdown docs. One file is the
+> source of truth; every artefact is generated from it.
+
+The pipeline is: Ohm grammar (`contractkit.ohm`) → `semantics.ts` → typed AST (`ast.ts`) → CLI
+normalization passes → `decomposeCk` → each plugin's `generateTargets`. Everything under
+`packages/plugin-*` consumes that AST; `packages/openapi-to-ck` runs the reverse direction.
+
+Two things trip up readers who skim. Normalization passes (`applyOptionsDefaults`,
+`applyVariableSubstitution`) run in the CLI between `parseCk` and `decomposeCk`, not in the
+parser — the prettier plugin calls `parseCk` directly and needs the unmerged AST to round-trip a
+file. And a grammar change is never a one-file change: every plugin, the formatter, the editor
+grammar and the editor's completion provider consume the same syntax.
+
+## Docs
+
+- [README](README.md): What ContractKit is, install, config skeleton, and a cheat sheet showing every language construct in one block.
+- [Language reference](docs/language.md): Every `.ck` construct in depth — contracts, inheritance, scalar and compound types, constraints, discriminated unions, field syntax, operations, path params, query, headers, request and response blocks, security, service binding, MCP exposure, webhook signatures, per-operation plugin extensions.
+- [Configuration](docs/config.md): `contractkit.config.json` fields, every built-in plugin and its options, and the `ContractKitPlugin` interface for writing your own.
+- [Tooling](docs/tooling.md): SDK generation and subclient grouping, docs generation, incremental compilation, cross-file validation, Prettier integration, VS Code extension setup.
+
+## Packages
+
+- [@contractkit/core](packages/contractkit/README.md): Grammar, parser, AST types, semantics, validation passes, plugin interface. Start here to understand the AST any plugin receives.
+- [@contractkit/plugin-typescript](packages/plugin-typescript/README.md): Koa routers, TypeScript SDK, Zod schemas, plain types, MCP tool handlers.
+- [@contractkit/plugin-python](packages/plugin-python/README.md): Python SDK built on Pydantic v2 and httpx.
+- [@contractkit/plugin-openapi](packages/plugin-openapi/README.md): OpenAPI 3.1 YAML.
+- [@contractkit/plugin-markdown](packages/plugin-markdown/README.md): Markdown API reference.
+- [@contractkit/plugin-bruno](packages/plugin-bruno/README.md): Bruno REST collection.
+- [@contractkit/openapi-to-ck](packages/openapi-to-ck/README.md): Converts an existing OpenAPI spec into `.ck` files.
+- [@contractkit/cli](apps/cli/README.md): The `contractkit` binary — file discovery, config resolution, caching, plugin orchestration.
+- [@contractkit/prettier-plugin](apps/prettier-plugin/README.md): Formats `.ck` files. Documents exactly which authored forms it preserves rather than normalizes.
+- [@contractkit/explorer-ui](packages/explorer-ui/README.md): HTML renderer behind the VS Code API explorer.
+
+## Optional
+
+- [Grammar source](packages/contractkit/src/contractkit.ohm): The Ohm PEG grammar — the authoritative answer to "is this valid `.ck`?" when prose and behaviour disagree.
+- [AST types](packages/contractkit/src/ast.ts): Every node type a plugin consumes, with per-field documentation.
+- [Response sets](packages/contractkit/src/response-sets.ts): Which declared statuses the service produces, which a client receives as a value, and which arrive as errors. Shared by the router and both SDKs so they cannot disagree.
+- [Example contracts](contracts): Working `.ck` files exercising most of the language.
+- [Agent instructions](CLAUDE.md): Repo conventions, gotchas, and pointers to the task-specific skills under `.claude/skills/`.

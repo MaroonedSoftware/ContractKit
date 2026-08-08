@@ -1,6 +1,6 @@
 # @contractkit/contractkit-plugin-openapi
 
-ContractKit plugin that generates an OpenAPI 3.0 YAML specification from `.ck` contract and operation files.
+ContractKit plugin that generates an OpenAPI 3.1 YAML specification from `.ck` contract and operation files.
 
 ## Installation
 

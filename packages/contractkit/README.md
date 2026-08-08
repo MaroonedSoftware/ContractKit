@@ -51,7 +51,7 @@ import {
 
 ## The `.ck` language
 
-See the [root README](../../README.md#dsl-language-reference) for the full language reference. A short example:
+See the [language reference](../../docs/language.md) for the full language. A short example:
 
 ```
 options {
