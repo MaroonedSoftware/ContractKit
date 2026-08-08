@@ -396,11 +396,13 @@ export interface OpRouteNode {
  * array for a bodyless status.
  */
 export function responseBodies(resp: OpResponseNode): OpResponseBodyNode[] {
-    if (resp.bodies) return resp.bodies;
-    if (resp.contentType !== undefined && resp.bodyType !== undefined) {
-        return [{ contentType: resp.contentType, bodyType: resp.bodyType }];
+    if (resp.bodies && resp.bodies.length > 0) return resp.bodies;
+    // A body with no declared mime cannot come from the parser (the grammar is `mime: Type`), but
+    // hand-built nodes leave it off; JSON is the same default the codegen plugins always applied.
+    if (resp.bodyType !== undefined) {
+        return [{ contentType: resp.contentType ?? 'application/json', bodyType: resp.bodyType }];
     }
-    return [];
+    return resp.bodies ?? [];
 }
 
 /**

@@ -1,6 +1,62 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, OpResponseHeaderNode, ContractTypeNode, ParamSource } from '@contractkit/core';
-import { resolveModifiers, classifyContentType } from '@contractkit/core';
+import type {
+    OpRootNode,
+    OpRouteNode,
+    OpOperationNode,
+    OpResponseNode,
+    OpResponseBodyNode,
+    OpResponseHeaderNode,
+    ContractTypeNode,
+    ParamSource,
+} from '@contractkit/core';
+import { resolveModifiers, classifyContentType, observableResponses, responseBodies } from '@contractkit/core';
 import { renderPyType, toPythonFieldName } from './codegen-models.js';
+
+// ─── Response shape ────────────────────────────────────────────────────────
+
+/**
+ * How a method reports what came back, mirroring the TypeScript SDK.
+ *
+ * `simple` is the overwhelmingly common case and generates exactly what it always has: the body
+ * itself, or a `(data, headers)` tuple. The other two exist because the caller cannot otherwise
+ * know which status or which mime it received.
+ */
+type PyResponseShape =
+    | { kind: 'simple'; resp?: OpResponseNode }
+    | { kind: 'multiMime'; resp: OpResponseNode }
+    | { kind: 'multiStatus'; responses: OpResponseNode[] };
+
+function headersClassName(methodBase: string, statusCode?: number): string {
+    return statusCode === undefined ? `${methodBase}Headers` : `${methodBase}${statusCode}Headers`;
+}
+
+function responseClassName(methodBase: string, statusCode?: number): string {
+    return statusCode === undefined ? `${methodBase}Response` : `${methodBase}${statusCode}Response`;
+}
+
+/** The Python type of one response body — non-JSON mimes ignore the schema, as elsewhere. */
+function pyBodyType(body: OpResponseBodyNode, modelsWithInput?: Set<string>): string {
+    const category = classifyContentType(body.contentType);
+    if (category === 'text') return 'str';
+    if (category === 'binary') return 'bytes';
+    return renderPyType(body.bodyType, modelsWithInput);
+}
+
+function pyDataAnnotation(bodies: OpResponseBodyNode[], modelsWithInput?: Set<string>): string {
+    const types = [...new Set(bodies.map(b => pyBodyType(b, modelsWithInput)))];
+    return types.join(' | ');
+}
+
+function pyContentTypeAnnotation(bodies: OpResponseBodyNode[]): string {
+    return `Literal[${bodies.map(b => JSON.stringify(b.contentType)).join(', ')}]`;
+}
+
+function responseShape(op: OpOperationNode): PyResponseShape {
+    const observable = observableResponses(op);
+    if (observable.length > 1) return { kind: 'multiStatus', responses: observable };
+    const resp = observable[0];
+    if (resp && responseBodies(resp).length > 1) return { kind: 'multiMime', resp };
+    return { kind: 'simple', resp };
+}
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -73,15 +129,21 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
             publicOps.push({ route, op });
         }
     }
+    const opShapes = new Map<OpOperationNode, PyResponseShape>(publicOps.map(({ op }) => [op, responseShape(op)]));
     const opsWithRespHeaders = publicOps.filter(({ op }) => {
-        const primary = op.responses.find(r => r.bodyType) ?? op.responses[0];
-        return (primary?.headers?.length ?? 0) > 0;
+        const shape = opShapes.get(op)!;
+        if (shape.kind === 'multiStatus') return shape.responses.some(r => (r.headers?.length ?? 0) > 0);
+        return (shape.resp?.headers?.length ?? 0) > 0;
     });
+    const opsWithResponseDict = publicOps.filter(({ op }) => opShapes.get(op)!.kind !== 'simple');
+    const needsTypedDict = opsWithRespHeaders.length > 0 || opsWithResponseDict.length > 0;
+    const needsLiteral = opsWithResponseDict.length > 0;
 
-    if (needsAny || opsWithRespHeaders.length > 0) {
+    if (needsAny || needsTypedDict) {
         const typingImports: string[] = [];
         if (needsAny) typingImports.push('Any');
-        if (opsWithRespHeaders.length > 0) typingImports.push('TypedDict');
+        if (needsLiteral) typingImports.push('Literal');
+        if (needsTypedDict) typingImports.push('TypedDict');
         lines.push(`from typing import ${typingImports.join(', ')}`);
     }
     lines.push('from ._base_client import BaseClient, SdkError  # noqa: F401');
@@ -105,17 +167,48 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         lines.push(`from ${mod} import ${sorted}`);
     }
 
-    // Per-method response-header TypedDicts.
+    // Per-method response-header TypedDicts. Multi-status methods get one per status, since
+    // each status declares its own headers.
     for (const { route, op } of opsWithRespHeaders) {
-        const primary = op.responses.find(r => r.bodyType) ?? op.responses[0]!;
-        const className = `${snakeToPascal(deriveMethodName(op, route))}Headers`;
-        lines.push('');
-        lines.push('');
-        lines.push(`class ${className}(TypedDict, total=False):`);
-        for (const h of primary.headers!) {
-            const pyName = toPythonFieldName(h.name);
-            const tag = h.optional ? 'optional' : 'required';
-            lines.push(`    ${pyName}: str  # ${h.name} (${tag})`);
+        const shape = opShapes.get(op)!;
+        const base = snakeToPascal(deriveMethodName(op, route));
+        const targets =
+            shape.kind === 'multiStatus'
+                ? shape.responses.filter(r => (r.headers?.length ?? 0) > 0).map(r => ({ name: headersClassName(base, r.statusCode), resp: r }))
+                : [{ name: headersClassName(base), resp: shape.resp! }];
+        for (const { name, resp } of targets) {
+            lines.push('');
+            lines.push('');
+            lines.push(`class ${name}(TypedDict, total=False):`);
+            for (const h of resp.headers!) {
+                const pyName = toPythonFieldName(h.name);
+                const tag = h.optional ? 'optional' : 'required';
+                lines.push(`    ${pyName}: str  # ${h.name} (${tag})`);
+            }
+        }
+    }
+
+    // Per-method response TypedDicts for the shapes that have to report status or mime.
+    for (const { route, op } of opsWithResponseDict) {
+        const shape = opShapes.get(op)!;
+        const base = snakeToPascal(deriveMethodName(op, route));
+        const targets: OpResponseNode[] = shape.kind === 'multiStatus' ? shape.responses : shape.kind === 'multiMime' ? [shape.resp] : [];
+        for (const resp of targets) {
+            lines.push('');
+            lines.push('');
+            lines.push(`class ${responseClassName(base, shape.kind === 'multiStatus' ? resp.statusCode : undefined)}(TypedDict):`);
+            if (shape.kind === 'multiStatus') lines.push(`    status: Literal[${resp.statusCode}]`);
+            const bodies = responseBodies(resp);
+            if (bodies.length > 0) {
+                lines.push(`    content_type: ${pyContentTypeAnnotation(bodies)}`);
+                lines.push(`    data: ${pyDataAnnotation(bodies, opts.modelsWithInput)}`);
+            }
+            if ((resp.headers?.length ?? 0) > 0) {
+                lines.push(`    headers: ${headersClassName(base, shape.kind === 'multiStatus' ? resp.statusCode : undefined)}`);
+            }
+            if (shape.kind !== 'multiStatus' && bodies.length === 0 && (resp.headers?.length ?? 0) === 0) {
+                lines.push('    pass');
+            }
         }
     }
 
@@ -168,22 +261,31 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     const paramStr = allParams.length > 0 ? `, ${allParams.join(', ')}` : '';
 
     // Return type — non-JSON responses ignore the schema and return raw bytes/str.
-    const primaryResponse = op.responses.find(r => r.bodyType) ?? op.responses[0];
-    const isVoid = !primaryResponse?.bodyType;
-    const respCategory = primaryResponse?.contentType ? classifyContentType(primaryResponse.contentType) : 'json';
-    const dataType = isVoid
-        ? 'None'
-        : respCategory === 'text'
-          ? 'str'
-          : respCategory === 'binary'
-            ? 'bytes'
-            : renderPyType(primaryResponse!.bodyType!, modelsWithInput);
-    const isModelReturn = !isVoid && respCategory === 'json' && isModelRef(primaryResponse!.bodyType!, modelsWithInput);
-    const isListModelReturn = !isVoid && respCategory === 'json' && isListModelRef(primaryResponse!.bodyType!, modelsWithInput);
+    //
+    // `observableResponses` is shared with the Koa router and the TypeScript SDK, so all three
+    // agree on which statuses are values and which are errors.
+    const shape = responseShape(op);
+    const methodBase = snakeToPascal(methodName);
+    const primaryResponse = shape.kind === 'multiStatus' ? undefined : shape.resp;
+    const primaryBodies = primaryResponse ? responseBodies(primaryResponse) : [];
+    const isVoid = primaryBodies.length === 0;
+    const respCategory = primaryBodies[0] ? classifyContentType(primaryBodies[0].contentType) : 'json';
+    const dataType = isVoid ? 'None' : pyBodyType(primaryBodies[0]!, modelsWithInput);
+    const isModelReturn = !isVoid && respCategory === 'json' && isModelRef(primaryBodies[0]!.bodyType, modelsWithInput);
+    const isListModelReturn = !isVoid && respCategory === 'json' && isListModelRef(primaryBodies[0]!.bodyType, modelsWithInput);
     const respHeaders = primaryResponse?.headers ?? [];
     const hasRespHeaders = respHeaders.length > 0;
-    const headersTypeName = hasRespHeaders ? `${snakeToPascal(methodName)}Headers` : '';
-    const returnType = hasRespHeaders ? (isVoid ? headersTypeName : `tuple[${dataType}, ${headersTypeName}]`) : dataType;
+    const headersTypeName = hasRespHeaders ? headersClassName(methodBase) : '';
+    const returnType =
+        shape.kind === 'multiStatus'
+            ? shape.responses.map(r => responseClassName(methodBase, r.statusCode)).join(' | ')
+            : shape.kind === 'multiMime'
+              ? responseClassName(methodBase)
+              : hasRespHeaders
+                ? isVoid
+                    ? headersTypeName
+                    : `tuple[${dataType}, ${headersTypeName}]`
+                : dataType;
 
     // Description
     const desc = op.description ?? route.description;
@@ -234,8 +336,19 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
             fetchKwargs.push(`body_kind="${reqCategory}"`);
         }
     }
-    if (respCategory === 'text' || respCategory === 'binary') {
+    if (shape.kind !== 'simple') {
+        // Several mimes or statuses in play — only the response knows how to read itself.
+        fetchKwargs.push(`response_kind="auto"`);
+    } else if (respCategory === 'text' || respCategory === 'binary') {
         fetchKwargs.push(`response_kind="${respCategory}"`);
+    }
+
+    const observable = shape.kind === 'multiStatus' ? shape.responses : shape.resp ? [shape.resp] : [];
+    const expectStatuses = observable.filter(r => r.statusCode < 200 || r.statusCode >= 300).map(r => r.statusCode);
+    if (expectStatuses.length > 0) {
+        // A single-element tuple needs the trailing comma or Python reads it as parentheses.
+        const tuple = expectStatuses.length === 1 ? `(${expectStatuses[0]},)` : `(${expectStatuses.join(', ')})`;
+        fetchKwargs.push(`expect_statuses=${tuple}`);
     }
 
     if (hasQuery) {
@@ -247,6 +360,12 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     }
 
     const kwargsStr = fetchKwargs.length > 1 ? fetchKwargs.join(', ') : (fetchKwargs[0] ?? '');
+
+    if (shape.kind !== 'simple') {
+        lines.push(`        _status, _content_type, result, _response_headers = await self._fetch_full(${urlExpr}, ${kwargsStr})`);
+        lines.push(...buildMultiReturnLines(shape, methodBase, modelsWithInput));
+        return lines;
+    }
 
     if (hasRespHeaders) {
         lines.push(`        result, _response_headers = await self._fetch_with_headers(${urlExpr}, ${kwargsStr})`);
@@ -264,7 +383,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     } else {
         let dataExpr: string;
         if (isListModelReturn) {
-            const innerType = getListItemType(primaryResponse!.bodyType!, modelsWithInput);
+            const innerType = getListItemType(primaryBodies[0]!.bodyType, modelsWithInput);
             dataExpr = `[${innerType}.model_validate(item) for item in result]`;
         } else if (isModelReturn) {
             dataExpr = `${dataType}.model_validate(result)`;
@@ -281,14 +400,89 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     return lines;
 }
 
-/** Build the lines that construct a TypedDict literal of declared response headers. */
-function buildHeadersDictLines(headers: OpResponseHeaderNode[], typeName: string): string[] {
+/** The expression that turns a decoded body into the declared type, validating models. */
+function pyDataExpr(body: OpResponseBodyNode, modelsWithInput?: Set<string>): string {
+    if (classifyContentType(body.contentType) !== 'json') return 'result';
+    if (isListModelRef(body.bodyType, modelsWithInput)) {
+        return `[${getListItemType(body.bodyType, modelsWithInput)}.model_validate(item) for item in result]`;
+    }
+    if (isModelRef(body.bodyType, modelsWithInput)) {
+        return `${renderPyType(body.bodyType, modelsWithInput)}.model_validate(result)`;
+    }
+    return 'result';
+}
+
+/**
+ * Return statements for a method that reports its status or mime.
+ *
+ * Dispatch is a chain of `if`s on the runtime status (or content type), with the first declared
+ * alternative as the fall-through so the function always returns.
+ */
+function buildMultiReturnLines(
+    shape: Extract<PyResponseShape, { kind: 'multiMime' | 'multiStatus' }>,
+    methodBase: string,
+    modelsWithInput?: Set<string>,
+): string[] {
     const lines: string[] = [];
-    lines.push(`        headers: ${typeName} = {}`);
+
+    const returnFor = (resp: OpResponseNode, body: OpResponseBodyNode | undefined, indent: string, includeStatus: boolean, headersVar?: string): string[] => {
+        const entries: string[] = [];
+        if (includeStatus) entries.push(`"status": ${resp.statusCode}`);
+        if (body) {
+            entries.push(`"content_type": ${JSON.stringify(body.contentType)}`);
+            entries.push(`"data": ${pyDataExpr(body, modelsWithInput)}`);
+        }
+        if (headersVar) entries.push(`"headers": ${headersVar}`);
+        return [`${indent}return {${entries.length > 0 ? ` ${entries.join(', ')} ` : ''}}`];
+    };
+
+    /** One status, dispatching over its mimes when they do not all decode the same way. */
+    const emitStatus = (resp: OpResponseNode, indent: string, includeStatus: boolean): string[] => {
+        const out: string[] = [];
+        // Built once per status, under a name of its own: two statuses in the same method can
+        // declare different headers, and Python has no block scope to keep them apart.
+        let headersVar: string | undefined;
+        if ((resp.headers?.length ?? 0) > 0) {
+            headersVar = includeStatus ? `headers_${resp.statusCode}` : 'headers';
+            const typeName = headersClassName(methodBase, includeStatus ? resp.statusCode : undefined);
+            out.push(...buildHeadersDictLines(resp.headers!, typeName, indent, headersVar));
+        }
+
+        const bodies = responseBodies(resp);
+        if (bodies.length <= 1) {
+            out.push(...returnFor(resp, bodies[0], indent, includeStatus, headersVar));
+            return out;
+        }
+        for (const body of bodies.slice(1)) {
+            out.push(`${indent}if _content_type == ${JSON.stringify(body.contentType)}:`);
+            out.push(...returnFor(resp, body, `${indent}    `, includeStatus, headersVar));
+        }
+        out.push(...returnFor(resp, bodies[0], indent, includeStatus, headersVar));
+        return out;
+    };
+
+    if (shape.kind === 'multiMime') {
+        lines.push(...emitStatus(shape.resp, '        ', false));
+        return lines;
+    }
+
+    const [fallback, ...rest] = shape.responses;
+    for (const resp of rest) {
+        lines.push(`        if _status == ${resp.statusCode}:`);
+        lines.push(...emitStatus(resp, '            ', true));
+    }
+    lines.push(...emitStatus(fallback!, '        ', true));
+    return lines;
+}
+
+/** Build the lines that construct a TypedDict literal of declared response headers. */
+function buildHeadersDictLines(headers: OpResponseHeaderNode[], typeName: string, indent = '        ', varName = 'headers'): string[] {
+    const lines: string[] = [];
+    lines.push(`${indent}${varName}: ${typeName} = {}`);
     for (const h of headers) {
         const pyName = toPythonFieldName(h.name);
-        lines.push(`        if ${JSON.stringify(h.name.toLowerCase())} in _response_headers:`);
-        lines.push(`            headers[${JSON.stringify(pyName)}] = _response_headers[${JSON.stringify(h.name.toLowerCase())}]`);
+        lines.push(`${indent}if ${JSON.stringify(h.name.toLowerCase())} in _response_headers:`);
+        lines.push(`${indent}    ${varName}[${JSON.stringify(pyName)}] = _response_headers[${JSON.stringify(h.name.toLowerCase())}]`);
     }
     return lines;
 }
@@ -609,6 +803,8 @@ class BaseClient:
         self._base_url = base_url.rstrip("/")
         self._headers = headers or {}
         self._http = httpx.AsyncClient()
+        self._last_status = 0
+        self._last_content_type = ""
 
     async def _fetch(
         self,
@@ -621,6 +817,7 @@ class BaseClient:
         content_type: str | None = None,
         body_kind: str = "json",
         response_kind: str = "json",
+        expect_statuses: tuple[int, ...] = (),
     ) -> Any:
         result, _ = await self._fetch_with_headers(
             path,
@@ -631,8 +828,40 @@ class BaseClient:
             content_type=content_type,
             body_kind=body_kind,
             response_kind=response_kind,
+            expect_statuses=expect_statuses,
         )
         return result
+
+    async def _fetch_full(
+        self,
+        path: str,
+        *,
+        method: str,
+        body: Any = None,
+        params: dict | None = None,
+        extra_headers: dict | None = None,
+        content_type: str | None = None,
+        body_kind: str = "json",
+        response_kind: str = "json",
+        expect_statuses: tuple[int, ...] = (),
+    ) -> tuple[int, str, Any, dict[str, str]]:
+        """Like _fetch_with_headers, but also reports the status and content type.
+
+        Used by operations that declare more than one status, or more than one mime for a
+        status, where the caller cannot know which it got without being told.
+        """
+        result, headers = await self._fetch_with_headers(
+            path,
+            method=method,
+            body=body,
+            params=params,
+            extra_headers=extra_headers,
+            content_type=content_type,
+            body_kind=body_kind,
+            response_kind=response_kind,
+            expect_statuses=expect_statuses,
+        )
+        return self._last_status, self._last_content_type, result, headers
 
     async def _fetch_with_headers(
         self,
@@ -645,6 +874,7 @@ class BaseClient:
         content_type: str | None = None,
         body_kind: str = "json",
         response_kind: str = "json",
+        expect_statuses: tuple[int, ...] = (),
     ) -> tuple[Any, dict[str, str]]:
         headers = {**self._headers, **(extra_headers or {})}
         if body is not None:
@@ -659,7 +889,10 @@ class BaseClient:
             else:
                 request_kwargs["content"] = body
         response = await self._http.request(**request_kwargs)
-        if not response.is_success:
+        # expect_statuses carries the codes this operation declares as values rather than
+        # errors — a 304 from conditional-GET middleware, or an error status the service
+        # returns deliberately. Anything else outside 2xx still raises.
+        if not response.is_success and response.status_code not in expect_statuses:
             try:
                 error_body = response.json()
             except Exception:
@@ -667,11 +900,24 @@ class BaseClient:
             raise SdkError(response.status_code, response.reason_phrase, error_body)
         # HTTP headers are case-insensitive — normalize to lowercase keys for stable lookup.
         response_headers = {k.lower(): v for k, v in response.headers.items()}
+        self._last_status = response.status_code
+        self._last_content_type = response.headers.get("content-type", "").split(";")[0].strip()
         if response.status_code == 204 or not response.content:
             return None, response_headers
-        if response_kind == "text":
+        # "auto" is for a status declaring several mimes that do not read the same way: the
+        # response itself is the only thing that knows which one came back.
+        kind = response_kind
+        if kind == "auto":
+            ct = self._last_content_type
+            if ct.startswith("text/"):
+                kind = "text"
+            elif ct == "application/json" or ct.endswith("+json"):
+                kind = "json"
+            else:
+                kind = "binary"
+        if kind == "text":
             return response.text, response_headers
-        if response_kind == "binary":
+        if kind == "binary":
             return response.content, response_headers
         return response.json(), response_headers
 `;

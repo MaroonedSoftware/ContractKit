@@ -296,6 +296,99 @@ describe('generatePythonClient', () => {
         expect(output).toContain('body=body.model_dump(mode="json")');
     });
 
+    describe('observable-set returns', () => {
+        const artBodies = [
+            { contentType: 'image/png', bodyType: scalarType('binary') },
+            { contentType: 'image/jpeg', bodyType: scalarType('binary') },
+        ];
+
+        it('leaves the common success-plus-bodyless-errors method alone', () => {
+            const root = opRoot([
+                opRoute('/pets', [
+                    opOperation('get', { sdk: 'listPets', responses: [opResponse(200, 'Pet', 'application/json'), opResponse(404)] }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('-> Pet:');
+            expect(output).toContain('return Pet.model_validate(result)');
+            expect(output).not.toContain('expect_statuses');
+            expect(output).not.toContain('_fetch_full');
+        });
+
+        it('reports which mime came back when a status declares several', () => {
+            const root = opRoot([
+                opRoute('/art', [
+                    opOperation('get', { sdk: 'getArt', responses: [{ statusCode: 200, hasBlock: true, bodies: artBodies }] }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('class GetArtResponse(TypedDict):');
+            expect(output).toContain('    content_type: Literal["image/png", "image/jpeg"]');
+            expect(output).toContain('    data: bytes');
+            expect(output).toContain('-> GetArtResponse:');
+            expect(output).toContain('response_kind="auto"');
+            expect(output).toContain('if _content_type == "image/jpeg":');
+        });
+
+        it('returns a union over every status a client can receive', () => {
+            const root = opRoot([
+                opRoute('/art', [
+                    opOperation('get', {
+                        sdk: 'getArt',
+                        responses: [opResponse(200, 'Art', 'application/json'), opResponse(304), opResponse(404)],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('class GetArt200Response(TypedDict):');
+            expect(output).toContain('    status: Literal[200]');
+            expect(output).toContain('class GetArt304Response(TypedDict):');
+            expect(output).toContain('-> GetArt200Response | GetArt304Response:');
+            expect(output).toContain('expect_statuses=(304,)');
+            expect(output).toContain('if _status == 304:');
+            // The bare 404 still raises SdkError, so it is not a member.
+            expect(output).not.toContain('GetArt404Response');
+        });
+
+        it('stops raising for a status declared as a value rather than an error', () => {
+            const root = opRoot([
+                opRoute('/pets', [
+                    opOperation('get', {
+                        sdk: 'getPet',
+                        responses: [opResponse(200, 'Pet', 'application/json'), opResponse(422, 'Problem', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('expect_statuses=(422,)');
+            expect(output).toContain('if _status == 422:');
+        });
+
+        it('gives each status its own headers dict, since Python has no block scope', () => {
+            const root = opRoot([
+                opRoute('/art', [
+                    opOperation('get', {
+                        sdk: 'getArt',
+                        responses: [
+                            { statusCode: 200, hasBlock: true, bodies: artBodies, headers: [{ name: 'etag', optional: true, type: scalarType('string') }] },
+                            {
+                                statusCode: 202,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: refType('JobRef') }],
+                                headers: [{ name: 'retry-after', optional: false, type: scalarType('string') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('class GetArt200Headers(TypedDict, total=False):');
+            expect(output).toContain('class GetArt202Headers(TypedDict, total=False):');
+            expect(output).toContain('headers_200: GetArt200Headers = {}');
+            expect(output).toContain('headers_202: GetArt202Headers = {}');
+        });
+    });
+
     describe('response headers', () => {
         it('emits a TypedDict and tuple return type when response declares headers', () => {
             const root = opRoot([
