@@ -1414,6 +1414,61 @@ operation /routes: {
             expect(sec.policyDescription).toBe('write scope');
         });
 
+        it('keeps a bare # in a name, and still ends the name at whitespace-#', () => {
+            const nameOf = (s: string) => parse(s).root.routes[0]!.operations[0]!.name;
+            // A bare `#` is data, matching an unquoted options value. It used to end the name,
+            // silently truncating `Generate C# client` to `Generate C`.
+            expect(nameOf('operation /x: { get: { name: Generate C# client\n} }')).toBe('Generate C# client');
+            expect(nameOf('operation /x: { get: { name: List pets # doc\n} }')).toBe('List pets');
+            expect(nameOf('operation /x: { get: { name: List pets } }')).toBe('List pets');
+        });
+
+        it('accepts a comment after the last declaration', () => {
+            const { root, diag } = parse('contract A: enum(a, b)\n\n# TODO: add the archived state\n');
+            expect(diag.hasErrors()).toBe(false);
+            expect(root.trailingComments).toEqual(['TODO: add the archived state']);
+        });
+
+        it('attributes a comment between declarations by line', () => {
+            const { root, diag } = parse('contract A: enum(a, b) # alias doc\n\n# doc for B\ncontract B: { v: string }\n');
+            expect(diag.hasErrors()).toBe(false);
+            expect(root.models[0]!.description).toBe('alias doc');
+            expect(root.models[0]!.descriptionInline).toBe(true);
+            expect(root.models[1]!.description).toBe('doc for B');
+            expect(root.models[1]!.leadingComments).toBeUndefined();
+        });
+
+        it('keeps a standalone comment above the policy line', () => {
+            const { root, diag } = parse('operation /users: { get: { security: {\n# why this floor\npolicy: paymentsWrite\n} } }');
+            expect(diag.hasErrors()).toBe(false);
+            const sec = root.routes[0]!.operations[0]!.security as any;
+            expect(sec.leadingComments).toEqual(['why this floor']);
+            expect(sec.policyDescription).toBeUndefined();
+        });
+
+        it('keeps a standalone comment after the policy line', () => {
+            const { root, diag } = parse('operation /users: { get: { security: {\npolicy: paymentsWrite\n# not scoped yet\n} } }');
+            expect(diag.hasErrors()).toBe(false);
+            const sec = root.routes[0]!.operations[0]!.security as any;
+            expect(sec.trailingComments).toEqual(['not scoped yet']);
+            // A comment on the *next* line is prose, not the policy's inline description.
+            expect(sec.policyDescription).toBeUndefined();
+        });
+
+        it('keeps a comment run above the security key in an operation body', () => {
+            const { root, diag } = parse('operation /users: { get: {\nname: List\n# a read, so it drops\nsecurity: { policy: view }\n} }');
+            expect(diag.hasErrors()).toBe(false);
+            expect(root.routes[0]!.operations[0]!.bodyLeadingComments?.security).toEqual(['a read, so it drops']);
+        });
+
+        it('keeps a comment run above a verb that has its own inline doc comment', () => {
+            const { root, diag } = parse('operation /users: {\n# operator only\nget: { # Lists users\nname: List\n} }');
+            expect(diag.hasErrors()).toBe(false);
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.description).toBe('Lists users');
+            expect(op.leadingComments).toEqual(['operator only']);
+        });
+
         it('parses SecuritySignatureLine inside security block', () => {
             const { root, diag } = parse('operation /hooks: { post: { security: { signature: "hmac-key"\n  policy: webhookIn } } }');
             expect(diag.hasErrors()).toBe(false);

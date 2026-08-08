@@ -55,6 +55,10 @@ Formatting a well-formed `.ck` file leaves it byte-identical. The formatter deli
 - **Comments inside a `response` block**, in all four positions: above a status code, above a `mime: Type` line, above a `headers:` block, and before either closing brace.
 - **An empty status block.** `304: {}` and `304:` mean different things to codegen — the first says the service returns that status with no body — so neither is normalized into the other.
 - **Comments in the `options` block**, including a header comment above the `options` keyword and a trailing comment on a `keys`/`services` entry.
+- **Comments in and around a `security { }` block**: inside it above or below `policy:`, above a `security:` key on a verb, and above a `security: none` line. This is where the rationale for a policy floor is written, so losing it loses the reason the contract looks the way it does.
+- **Comments above any operation body key**, and after the last one. A `#` block above a verb survives even when the verb carries its own inline `# ...` — they are separate, and only the inline one is the description.
+- **Comments between declarations.** A comment trailing a one-line contract stays on that line; one directly above the next declaration stays its doc comment. A comment after the last declaration in the file is kept too.
+- **Comments on a nested object's brace** (`rp: { # ... }`) and trailing a field whose type wraps over several lines.
 - **Unquoted options values.** `PetService: #modules/pet/pet.service.js` stays bare and a quoted value stays quoted. Both parse to the same string, so the parser records which form was written; a value that could not be read back bare is quoted regardless.
 
 This is covered by `tests/round-trip.test.ts`, which formats every `.ck` file under `contracts/` and asserts the output is unchanged, plus checks that formatting is a fixed point. Anything that makes the printer normalize rather than preserve will fail it.

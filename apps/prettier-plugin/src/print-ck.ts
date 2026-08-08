@@ -120,10 +120,11 @@ function printOptionsHeaderScope(keyword: 'request' | 'response', headers: OpRes
  *
  * Printing is the inverse of parsing — for well-formed source, `printCk(parseCk(text))` returns
  * `text` unchanged. That holds because the AST carries the author's layout alongside the
- * semantics: comment placement (`leadingComments`, `descriptionInline`), operation body key
- * order (`keyOrder`), blank lines (`blankLineBefore`), and single-line response blocks
- * (`inline`). Preserve those rather than canonicalizing them, or `pnpm format` silently
- * rewrites the user's file. See `tests/round-trip.test.ts`.
+ * semantics: comment placement (`leadingComments`, `descriptionInline`, `bodyLeadingComments`,
+ * the various `trailingComments`), operation body key order (`keyOrder`), blank lines
+ * (`blankLineBefore`), and single-line response blocks (`inline`). Preserve those rather than
+ * canonicalizing them, or `pnpm format` silently rewrites the user's file. A comment the AST
+ * cannot represent is not merely unformatted — it is deleted. See `tests/round-trip.test.ts`.
  *
  * `printWidth` is forwarded to per-model printing for line wrapping inside
  * inline-object types.
@@ -148,6 +149,13 @@ export function printCk(ast: CkRootNode, printWidth: number = DEFAULT_PRINT_WIDT
         if (parts.length > 0) parts.push('');
         const modPart = route.modifiers?.length ? `(${route.modifiers[0]})` : '';
         parts.push(printDeclLeadIn(route.leadingComments, route.description) + `operation${modPart} ${printRoute(route, emptyBlocks, emptyIdx, Infinity)}`);
+    }
+
+    // A comment run after the last declaration. Separated by a blank line, matching how every
+    // other top-level item is spaced.
+    if (ast.trailingComments?.length) {
+        if (parts.length > 0) parts.push('');
+        for (const c of ast.trailingComments) parts.push(`# ${c}`);
     }
 
     return parts.join('\n') + '\n';

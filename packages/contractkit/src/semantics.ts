@@ -80,6 +80,48 @@ function stripLeadingDescription(field: FieldNode | undefined, text: string): vo
     }
 }
 
+/**
+ * Transient slot for the first comment inside an inline brace object, so the field that owns the
+ * brace can claim it. Keyed by symbol so it never shows up in AST output or serialization.
+ */
+const HEADER_COMMENT = Symbol('headerComment');
+type InlineObjectWithHeader = InlineObjectTypeNode & { [HEADER_COMMENT]?: { line: number; text: string } };
+
+/** The inline brace object a field's type ends with, if any — directly or as the last intersection member. */
+function trailingInlineObject(type: ContractTypeNode | undefined): InlineObjectWithHeader | undefined {
+    if (!type) return undefined;
+    if (type.kind === 'inlineObject') return type as InlineObjectWithHeader;
+    if (type.kind === 'intersection') {
+        const last = type.members[type.members.length - 1];
+        if (last?.kind === 'inlineObject') return last as InlineObjectWithHeader;
+    }
+    return undefined;
+}
+
+/**
+ * Move a comment written on a field's opening brace onto the field itself.
+ *
+ * `rp: { # The relying party` reads as documentation for `rp`, but the brace object's field list
+ * is what saw the comment, and it offered it to the first field *inside* the object — which
+ * already had its own comment, so it was dropped. Mirrors how a `contract A: { # ...` header
+ * comment is reclaimed from the field list.
+ */
+function claimHeaderComment(field: FieldNode): void {
+    const obj = trailingInlineObject(field.type);
+    if (!obj) return;
+    const header = obj[HEADER_COMMENT];
+    delete obj[HEADER_COMMENT];
+    if (!header || header.line !== field.loc.line || field.description !== undefined) return;
+    field.description = header.text;
+    stripLeadingDescription(obj.fields[0], header.text);
+}
+
+/** Inverse of {@link stripLeadingDescription}, for when a doc comment outranks the body's inline one. */
+function restoreLeadingDescription(field: FieldNode | undefined, text: string): void {
+    if (!field) return;
+    field.description = field.description === undefined ? text : `${text}\n${field.description}`;
+}
+
 /** Options sub-block result `_type` → the scope name comments above it are filed under. */
 const OPTIONS_SCOPE_OF: Record<string, string> = {
     optionsRequestHeaders: 'request',
@@ -104,29 +146,51 @@ function commentText(node: { sourceString: string }): string {
     return node.sourceString.replace(/^#\s?/, '').trimEnd();
 }
 
+/** A declaration-level comment, carried with its source line so `Root` can place it. */
+type CommentNode = { _ckType: 'comment'; line: number; text: string };
+
+/** `OpRouteNode` carries no discriminant, so narrow on the model's. */
+function isModelNode(node: ModelNode | OpRouteNode): node is ModelNode {
+    return (node as ModelNode).kind === 'model';
+}
+
+/** Source line a node *ends* on — the line an inline trailing comment would share. */
+function getEndLine(node: { source: { sourceString: string; endIdx: number } }): number {
+    const contents = node.source.sourceString;
+    let line = 1;
+    for (let i = 0; i < node.source.endIdx; i++) {
+        if (contents[i] === '\n') line++;
+    }
+    return line;
+}
+
 /**
- * Split the `comment*` run preceding a `contract`/`operation` declaration into standalone comments
- * and the declaration's doc comment.
+ * Attach a declaration's pending comment run: the lines directly above it are its doc comment,
+ * anything further up is a standalone block that keeps its own position.
  *
- * Only a run of comments sitting on consecutive lines *immediately* above `declLine` documents the
- * declaration. Anything above a blank line is standalone — a section divider, a commented-out block,
- * a file note — and is returned in `leading` so the formatter can re-emit it in place rather than
- * folding it into the declaration's header.
+ * A doc comment wins over a description the body already supplied (an inline `#` on the opening
+ * brace), matching the precedence the parser has always used.
  */
-function splitLeadingComments(
-    nodes: Array<{ sourceString: string; source: { sourceString: string; startIdx: number } }>,
-    declLine: number,
-): { leading: string[]; doc?: string } {
-    // Walk back from the declaration, taking comments while each sits on the line above the last.
-    let docStart = nodes.length;
-    let expectedLine = declLine - 1;
-    while (docStart > 0 && getLine(nodes[docStart - 1]!) === expectedLine) {
+function finishDeclComments(result: { value: ModelNode | OpRouteNode; onDocComment?: (doc: string) => void }, pending: CommentNode[]): ModelNode | OpRouteNode {
+    const node = result.value;
+    if (pending.length === 0) return node;
+
+    let docStart = pending.length;
+    let expectedLine = node.loc.line - 1;
+    while (docStart > 0 && pending[docStart - 1]!.line === expectedLine) {
         docStart--;
         expectedLine--;
     }
-    const leading = nodes.slice(0, docStart).map(commentText);
-    const docNodes = nodes.slice(docStart);
-    return { leading, doc: docNodes.length > 0 ? docNodes.map(commentText).join('\n') : undefined };
+
+    const leading = pending.slice(0, docStart).map(c => c.text);
+    const docLines = pending.slice(docStart).map(c => c.text);
+    if (leading.length > 0) node.leadingComments = leading;
+    if (docLines.length > 0) {
+        node.description = docLines.join('\n');
+        if (isModelNode(node)) node.descriptionInline = false;
+        result.onDocComment?.(node.description);
+    }
+    return node;
 }
 
 /**
@@ -244,21 +308,58 @@ export function createSemantics(grammar: Grammar) {
             const models: ModelNode[] = [];
             const routes: OpRouteNode[] = [];
 
+            // Declaration-level comments arrive as items in this list, so their placement is
+            // decided here rather than inside each declaration:
+            //   - on the same line a declaration ended → that declaration's inline description
+            //     (`contract Status: enum(a, b) # Lifecycle state`);
+            //   - on the lines directly above the next declaration → its doc comment;
+            //   - otherwise a standalone block, kept where the author put it;
+            //   - left over at the end of the file → `root.trailingComments`.
+            let pending: CommentNode[] = [];
+            let previous: ModelNode | OpRouteNode | undefined;
+            let previousEndLine = -1;
+
             for (let i = 0; i < decls.numChildren; i++) {
-                const result = decls.child(i).toAst(file, this.args.diag);
-                if (result?._ckType === 'route') {
-                    routes.push(result.value);
-                } else if (result?._ckType === 'model') {
-                    models.push(result.value);
+                const child = decls.child(i);
+                const result = child.toAst(file, this.args.diag);
+                if (result?._ckType === 'comment') {
+                    // An inline comment can only trail the declaration it shares a line with, and
+                    // only if that declaration has no description already.
+                    // Only a `contract` can carry one: a route is a brace block whose printed form
+                    // has no inline description slot, so a comment sharing its closing line stays
+                    // a standalone comment.
+                    if (result.line === previousEndLine && previous !== undefined && isModelNode(previous) && previous.description === undefined) {
+                        previous.description = result.text;
+                        previous.descriptionInline = true;
+                    } else {
+                        pending.push(result);
+                    }
+                    continue;
                 }
+                if (result?._ckType !== 'route' && result?._ckType !== 'model') continue;
+
+                const node = finishDeclComments(result, pending);
+                pending = [];
+                if (result._ckType === 'route') routes.push(node as OpRouteNode);
+                else models.push(node as ModelNode);
+                previous = node;
+                previousEndLine = getEndLine(child);
             }
 
             const root: CkRootNode = { kind: 'ckRoot', meta, services, security, models, routes, file };
+            if (pending.length > 0) root.trailingComments = pending.map(c => c.text);
             if (requestHeaders) root.requestHeaders = requestHeaders;
             if (responseHeaders) root.responseHeaders = responseHeaders;
             if (optionsComments) root.optionsComments = optionsComments;
             if (optionsUnquoted) root.optionsUnquoted = optionsUnquoted;
             return root;
+        },
+
+        DeclItem(child) {
+            if (child.ctorName === 'comment') {
+                return { _ckType: 'comment', line: getLine(child), text: commentText(child) } satisfies CommentNode;
+            }
+            return child.toAst(this.args.file, this.args.diag);
         },
 
         Decl(child) {
@@ -267,10 +368,10 @@ export function createSemantics(grammar: Grammar) {
             const result = child.toAst(file, diag);
             if (child.ctorName === 'RouteDecl') {
                 return { _ckType: 'route', value: result };
-            } else {
-                // ModelDecl
-                return { _ckType: 'model', value: result };
             }
+            // ModelDecl hands back the hook it needs when a doc comment wins over the inline
+            // description its body supplied.
+            return { _ckType: 'model', value: result.model, onDocComment: result.onDocComment };
         },
 
         // ─── Options block ───────────────────────────────────────────
@@ -429,13 +530,8 @@ export function createSemantics(grammar: Grammar) {
 
         // ─── Models ──────────────────────────────────────────────────
 
-        ModelDecl(commentNodes, _contractKw, prefixNode, _colon, bodyNode) {
+        ModelDecl(_contractKw, prefixNode, _colon, bodyNode) {
             const file = this.args.file as string;
-
-            const comments = [];
-            for (let i = 0; i < commentNodes.numChildren; i++) {
-                comments.push(commentNodes.child(i));
-            }
 
             const prefix = prefixNode.toAst(file, this.args.diag) as {
                 name: string;
@@ -461,21 +557,27 @@ export function createSemantics(grammar: Grammar) {
             if (prefix.outputCase) result.outputCase = prefix.outputCase;
             if (prefix.deprecated) result.deprecated = true;
 
-            const { leading, doc } = splitLeadingComments(comments, prefix.line);
-            if (leading.length > 0) result.leadingComments = leading;
-            if (doc) {
-                result.description = doc;
-            } else if (body.inlineDescription) {
-                result.description = body.inlineDescription;
-                result.descriptionInline = true;
-            } else if (body.firstCommentText && body.firstCommentLine === prefix.line) {
+            // A description the body supplied — an inline `#` on the opening brace. `Root` may
+            // still override it with a doc comment written above the declaration, in which case
+            // `onDocComment` undoes the field-list fixup below.
+            let reclaimedFrom: FieldNode | undefined;
+            if (body.firstCommentText && body.firstCommentLine === prefix.line) {
                 result.description = body.firstCommentText;
                 result.descriptionInline = true;
                 // The field list also saw this comment and offered it to the first field as a
                 // leading doc comment. It belongs to the contract header, so take it back —
                 // otherwise the formatter prints it twice.
-                stripLeadingDescription(result.fields[0], body.firstCommentText);
+                reclaimedFrom = body.firstCommentOwner;
+                stripLeadingDescription(reclaimedFrom, body.firstCommentText);
             }
+
+            const onDocComment = () => {
+                // A doc comment above the declaration outranks the body's inline one, which then
+                // goes back to being the first field's leading comment.
+                if (reclaimedFrom !== undefined && body.firstCommentText) {
+                    restoreLeadingDescription(reclaimedFrom, body.firstCommentText);
+                }
+            };
 
             // Comments left after the last field, before `}`. Drop any sitting on the header line
             // (those are an inline description on the `{`, already consumed above).
@@ -483,7 +585,7 @@ export function createSemantics(grammar: Grammar) {
             const trailingTexts = trailing.filter(c => c.line !== prefix.line).map(c => c.text);
             if (trailingTexts.length > 0) result.trailingComments = trailingTexts;
 
-            return result;
+            return { model: result, onDocComment };
         },
 
         ModelPrefix(modifiers, nameNode) {
@@ -526,6 +628,7 @@ export function createSemantics(grammar: Grammar) {
                 fields: FieldNode[];
                 firstCommentLine?: number;
                 firstCommentText?: string;
+                firstCommentOwner?: FieldNode;
                 trailingComments?: Array<{ line: number; text: string }>;
             };
             const bases = [firstBaseNode.sourceString];
@@ -538,6 +641,7 @@ export function createSemantics(grammar: Grammar) {
                 fields: result.fields,
                 firstCommentLine: result.firstCommentLine,
                 firstCommentText: result.firstCommentText,
+                firstCommentOwner: result.firstCommentOwner,
                 trailingComments: result.trailingComments,
             };
         },
@@ -547,23 +651,24 @@ export function createSemantics(grammar: Grammar) {
                 fields: FieldNode[];
                 firstCommentLine?: number;
                 firstCommentText?: string;
+                firstCommentOwner?: FieldNode;
                 trailingComments?: Array<{ line: number; text: string }>;
             };
             return {
                 fields: result.fields,
                 firstCommentLine: result.firstCommentLine,
                 firstCommentText: result.firstCommentText,
+                firstCommentOwner: result.firstCommentOwner,
                 trailingComments: result.trailingComments,
             };
         },
 
-        ModelBody_alias(typeExprNode, inlineCommentOpt) {
+        // No trailing comment here: an alias body ends at its type, and `Root` attaches a comment
+        // sharing the declaration's last line. Matching it here would instead claim the standalone
+        // comment on the line below, because a syntactic rule skips newlines before an optional.
+        ModelBody_alias(typeExprNode) {
             const type = typeExprNode.toAst(this.args.file, this.args.diag) as ContractTypeNode;
-            const inlineDescription =
-                (inlineCommentOpt as IterationNode).numChildren > 0
-                    ? (inlineCommentOpt as IterationNode).child(0).sourceString.replace(/^#\s?/, '').trimEnd()
-                    : undefined;
-            return { type, fields: [], inlineDescription };
+            return { type, fields: [] };
         },
 
         FieldList(items) {
@@ -575,6 +680,12 @@ export function createSemantics(grammar: Grammar) {
             let pendingEntries: Array<{ line: number; text: string }> = [];
             let firstCommentLine: number | undefined;
             let firstCommentText: string | undefined;
+            let firstCommentOwner: FieldNode | undefined;
+            // The line the previous field *ended* on, which is where its inline comment sits. A
+            // field whose type wraps — `enum(\n  a,\n  b\n) # note` — ends lines below where it
+            // started, and comparing against the start line filed that note as a standalone
+            // comment for the next field instead.
+            let lastFieldEndLine = -1;
 
             for (let i = 0; i < items.numChildren; i++) {
                 const child = items.child(i);
@@ -583,7 +694,7 @@ export function createSemantics(grammar: Grammar) {
                     const commentText = child.sourceString.replace(/^#\s?/, '').trimEnd();
                     if (fields.length > 0) {
                         const lastField = fields[fields.length - 1]!;
-                        if (commentLine === lastField.loc.line) {
+                        if (commentLine === lastField.loc.line || commentLine === lastFieldEndLine) {
                             lastField.description = commentText; // inline comment always wins
                             continue;
                         }
@@ -599,14 +710,23 @@ export function createSemantics(grammar: Grammar) {
                     if (field) {
                         if (pendingComment && !field.description) {
                             field.description = pendingComment;
+                            // Remember which field actually took the run containing the very first
+                            // comment. A contract header comment (`contract A: { # ...`) is offered
+                            // here first and reclaimed by `ModelDecl`; identifying the field by
+                            // reference rather than by matching text avoids clobbering an unrelated
+                            // field that happens to carry the same wording.
+                            if (firstCommentOwner === undefined && pendingEntries.some(e => e.line === firstCommentLine)) {
+                                firstCommentOwner = field;
+                            }
                         }
                         fields.push(field);
+                        lastFieldEndLine = getEndLine(child);
                     }
                     pendingComment = undefined;
                     pendingEntries = [];
                 }
             }
-            return { fields, firstCommentLine, firstCommentText, trailingComments: pendingEntries };
+            return { fields, firstCommentLine, firstCommentText, firstCommentOwner, trailingComments: pendingEntries };
         },
 
         FieldEntry(fieldNode, _comma) {
@@ -629,6 +749,7 @@ export function createSemantics(grammar: Grammar) {
             const field: FieldNode = { name, optional, nullable, visibility: body.visibility, type, default: body.default, loc: { file, line } };
             if (body.deprecated) field.deprecated = true;
             if (body.override) field.override = true;
+            claimHeaderComment(field);
             return field;
         },
 
@@ -768,10 +889,17 @@ export function createSemantics(grammar: Grammar) {
         InlineBraceObject(_lb, fieldsNode, _rb) {
             const result = fieldsNode.toAst(this.args.file, this.args.diag) as {
                 fields: FieldNode[];
+                firstCommentLine?: number;
+                firstCommentText?: string;
                 trailingComments?: string[];
             };
             const node: InlineObjectTypeNode = { kind: 'inlineObject', fields: result.fields };
             if (result.trailingComments && result.trailingComments.length > 0) node.trailingComments = result.trailingComments;
+            // Carried so the enclosing field can claim a comment written on its own `{` line
+            // (`rp: { # The relying party`). Consumed and removed by `claimHeaderComment`.
+            if (result.firstCommentText !== undefined) {
+                (node as InlineObjectWithHeader)[HEADER_COMMENT] = { line: result.firstCommentLine!, text: result.firstCommentText };
+            }
             return node;
         },
 
@@ -782,6 +910,9 @@ export function createSemantics(grammar: Grammar) {
             // Parallel to pendingComment: comment lines not yet attached to a field.
             // Whatever remains after the loop is trailing/orphan, kept for round-trip.
             let pendingEntries: string[] = [];
+            let firstCommentLine: number | undefined;
+            let firstCommentText: string | undefined;
+            let lastFieldEndLine = -1;
             for (let i = 0; i < items.numChildren; i++) {
                 const child = items.child(i);
                 if (child.ctorName === 'comment') {
@@ -789,10 +920,14 @@ export function createSemantics(grammar: Grammar) {
                     const commentText = child.sourceString.replace(/^#\s?/, '').trimEnd();
                     if (fields.length > 0) {
                         const lastField = fields[fields.length - 1]!;
-                        if (commentLine === lastField.loc.line) {
+                        if (commentLine === lastField.loc.line || commentLine === lastFieldEndLine) {
                             lastField.description = commentText; // inline comment always wins
                             continue;
                         }
+                    }
+                    if (firstCommentLine === undefined) {
+                        firstCommentLine = commentLine;
+                        firstCommentText = commentText;
                     }
                     pendingComment = pendingComment ? pendingComment + '\n' + commentText : commentText;
                     pendingEntries.push(commentText);
@@ -801,12 +936,13 @@ export function createSemantics(grammar: Grammar) {
                     if (field) {
                         if (pendingComment && !field.description) field.description = pendingComment;
                         fields.push(field);
+                        lastFieldEndLine = getEndLine(child);
                     }
                     pendingComment = undefined;
                     pendingEntries = [];
                 }
             }
-            return { fields, trailingComments: pendingEntries };
+            return { fields, firstCommentLine, firstCommentText, trailingComments: pendingEntries };
         },
 
         InlineFieldEntry(fieldNode, _comma) {
@@ -829,6 +965,7 @@ export function createSemantics(grammar: Grammar) {
             const field: FieldNode = { name, optional, nullable, visibility: body.visibility, type, default: body.default, loc: { file, line } };
             if (body.deprecated) field.deprecated = true;
             if (body.override) field.override = true;
+            claimHeaderComment(field);
             return field;
         },
 
@@ -838,19 +975,13 @@ export function createSemantics(grammar: Grammar) {
 
         // ─── Routes ───────────────────────────────────────────────────
 
-        // RouteDecl = comment* operationKwCall RoutePath ":" "{" RouteBody "}"
-        RouteDecl(commentNodes, operationKwCallNode, routePathNode, _colon, _lb, routeBodyNode, _rb) {
+        // RouteDecl = operationKwCall RoutePath ":" "{" RouteBody "}"
+        RouteDecl(operationKwCallNode, routePathNode, _colon, _lb, routeBodyNode, _rb) {
             const file = this.args.file as string;
             const diag = this.args.diag as DiagnosticCollector;
 
-            const comments = [];
-            for (let i = 0; i < commentNodes.numChildren; i++) {
-                comments.push(commentNodes.child(i));
-            }
-
             const path = routePathNode.toAst(file, diag) as string;
             const line = getLine(routePathNode);
-            const { leading, doc: description } = splitLeadingComments(comments, line);
 
             const kwText = operationKwCallNode.sourceString.trim();
             const modMatch = kwText.match(/^operation\((\w+)\)$/);
@@ -871,10 +1002,8 @@ export function createSemantics(grammar: Grammar) {
                 security: routeBody.security,
                 operations: routeBody.operations,
                 modifiers: modifiers.length > 0 ? modifiers : undefined,
-                description,
                 loc: { file, line },
             } as OpRouteNode;
-            if (leading.length > 0) route.leadingComments = leading;
             if (routeBody.trailingComments && routeBody.trailingComments.length > 0) {
                 route.trailingComments = routeBody.trailingComments;
             }
@@ -940,6 +1069,11 @@ export function createSemantics(grammar: Grammar) {
                     if (pendingComment && !op.description) {
                         op.description = pendingComment;
                         op.descriptionInline = false;
+                    } else if (pendingEntries.length > 0) {
+                        // The verb already carries an inline doc comment, so the run above it is
+                        // separate prose — usually why this verb overrides the file's security
+                        // floor. Keep it rather than letting the inline comment win outright.
+                        op.leadingComments = [...(op.leadingComments ?? []), ...pendingEntries];
                     }
                     if (pendingBlank ?? BLANK_LINE_RE.test(gap)) op.blankLineBefore = true;
                     operations.push(op);
@@ -1089,11 +1223,31 @@ export function createSemantics(grammar: Grammar) {
             let plugins: Record<string, PluginValue> | undefined;
             // Source order of the body keys, so the formatter can re-emit them as the user wrote them.
             const keyOrder: OpBodyKey[] = [];
+            // Standalone comments between body keys, held until the key they belong above shows up.
+            let bodyLeadingComments: Partial<Record<OpBodyKey, string[]>> | undefined;
+            let bodyTrailingComments: string[] | undefined;
+            let pendingComments: string[] = [];
 
             for (let i = 0; i < items.numChildren; i++) {
                 const item = items.child(i).toAst(file, diag);
                 if (!item) continue;
+                if (item._type === 'comment') {
+                    pendingComments.push(item.text);
+                    continue;
+                }
                 if (OP_BODY_KEYS.has(item._type) && !keyOrder.includes(item._type)) keyOrder.push(item._type);
+                if (pendingComments.length > 0) {
+                    if (OP_BODY_KEYS.has(item._type)) {
+                        bodyLeadingComments ??= {};
+                        const key = item._type as OpBodyKey;
+                        bodyLeadingComments[key] = [...(bodyLeadingComments[key] ?? []), ...pendingComments];
+                    } else {
+                        // Not a recorded key, so there is nothing to hang the run on; keep it as a
+                        // trailing run rather than losing it.
+                        bodyTrailingComments = [...(bodyTrailingComments ?? []), ...pendingComments];
+                    }
+                    pendingComments = [];
+                }
                 switch (item._type) {
                     case 'name':
                         name = item.value;
@@ -1140,11 +1294,16 @@ export function createSemantics(grammar: Grammar) {
                 }
             }
 
-            return { name, service, sdk, mcp, signature, signatureDescription, signaturePolicy, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, responsesTrailingComments, security, plugins, keyOrder };
+            // Whatever is still pending sits after the last key, before the closing brace.
+            if (pendingComments.length > 0) bodyTrailingComments = [...(bodyTrailingComments ?? []), ...pendingComments];
+
+            return { name, service, sdk, mcp, signature, signatureDescription, signaturePolicy, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, responsesTrailingComments, security, plugins, keyOrder, bodyLeadingComments, bodyTrailingComments };
         },
 
         OperationBodyItem(child) {
-            if (child.ctorName === 'comment') return null;
+            // Surfaced as a node rather than dropped so `OperationBody` can attach it to the key
+            // it precedes; returning null here is what used to delete it.
+            if (child.ctorName === 'comment') return { _type: 'comment', text: commentText(child) };
             return child.toAst(this.args.file, this.args.diag);
         },
 
@@ -1504,14 +1663,45 @@ export function createSemantics(grammar: Grammar) {
             const file = this.args.file as string;
             const fields: SecurityFields = { loc: { file, line: getLine(this) } };
 
+            // Comments are collected rather than skipped: a security block is where the reason for
+            // a policy floor gets written down, and dropping them here loses them for good — the
+            // printer can only re-emit what the AST carries.
+            //
+            // A comment on the same source line as the field before it is that field's inline
+            // description; one on a later line is standalone prose that belongs on its own line.
+            let pending: string[] = [];
+            let seenField = false;
+            let lastFieldLine = -1;
+
             for (let i = 0; i < items.numChildren; i++) {
                 const child = items.child(i);
-                if (child.ctorName === 'comment') continue;
+                if (child.ctorName === 'comment') {
+                    if (getLine(child) === lastFieldLine && fields.policyDescription === undefined) {
+                        fields.policyDescription = commentText(child);
+                    } else {
+                        pending.push(commentText(child));
+                    }
+                    continue;
+                }
                 const result = child.toAst(file, this.args.diag);
                 if (result._type === 'policy') {
                     fields.policy = result.value;
-                    if (result.description) fields.policyDescription = result.description;
+                    lastFieldLine = result.line;
+                } else {
+                    lastFieldLine = -1;
                 }
+                if (pending.length > 0) {
+                    fields.leadingComments = [...(fields.leadingComments ?? []), ...pending];
+                    pending = [];
+                }
+                seenField = true;
+            }
+
+            // Anything left over sits after the last field. With no field at all it is still a
+            // leading run, so an otherwise-empty block keeps its note.
+            if (pending.length > 0) {
+                if (seenField) fields.trailingComments = pending;
+                else fields.leadingComments = [...(fields.leadingComments ?? []), ...pending];
             }
 
             return fields;
@@ -1521,13 +1711,11 @@ export function createSemantics(grammar: Grammar) {
             return child.toAst(this.args.file, this.args.diag);
         },
 
-        SecurityPolicyLine(_kw, _colon, valueNode, commentOpt) {
+        SecurityPolicyLine(_kw, _colon, valueNode) {
             const value = valueNode.toAst(this.args.file, this.args.diag) as string | false;
-            let description: string | undefined;
-            if ((commentOpt as IterationNode).numChildren > 0) {
-                description = (commentOpt as IterationNode).child(0).sourceString.replace(/^#\s?/, '').trimEnd();
-            }
-            return { _type: 'policy', value, description };
+            // The inline description is attached by `SecurityBody_fields`, which can see whether a
+            // following comment is on this line or the next one.
+            return { _type: 'policy', value, line: getLine(this) };
         },
 
         PolicyValue_none(_noneKw) {
@@ -1538,7 +1726,7 @@ export function createSemantics(grammar: Grammar) {
             return identNode.sourceString;
         },
 
-        SecuritySignatureLine(_signatureKw, _colon, valueNode, _commentOpt) {
+        SecuritySignatureLine(_signatureKw, _colon, valueNode) {
             const raw = valueNode.sourceString;
             const value = raw.startsWith('"') || raw.startsWith("'") ? raw.slice(1, -1) : raw;
             return { _type: 'signatureField', value };

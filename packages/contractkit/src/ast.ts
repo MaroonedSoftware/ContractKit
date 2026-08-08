@@ -191,6 +191,15 @@ export interface SecurityFields {
     policy?: string | false;
     /** Inline comment attached to the `policy:` line. */
     policyDescription?: string;
+    /**
+     * Standalone comment lines written above the `policy:` line, in source order.
+     *
+     * Security blocks are where authors record *why* a floor is set where it is, so these are
+     * load-bearing prose rather than incidental notes — the formatter has to round-trip them.
+     */
+    leadingComments?: string[];
+    /** Standalone comment lines after the last field, before the closing `}`. */
+    trailingComments?: string[];
     loc: SourceLocation;
 }
 
@@ -371,6 +380,24 @@ export interface OpOperationNode {
      * emits keys in this order instead of a canonical one so it never reorders a user's file.
      * Absent on programmatically built nodes, in which case canonical order applies. */
     keyOrder?: OpBodyKey[];
+    /**
+     * Standalone comment lines written above a body key, keyed by the key they precede.
+     *
+     * A note above `security:` explaining why a verb overrides the file's floor is the common
+     * case, and it has to survive formatting. Emitted with the key, so it moves with it if the
+     * key order ever changes.
+     */
+    bodyLeadingComments?: Partial<Record<OpBodyKey, string[]>>;
+    /**
+     * Standalone comment lines above the verb that are *not* its doc comment.
+     *
+     * A verb with an inline `# ...` on its own line already has a description, so a `#` block
+     * written above it is separate prose — usually the rationale for the verb's security floor.
+     * It used to be discarded in favour of the inline comment; it is kept here instead.
+     */
+    leadingComments?: string[];
+    /** Comment lines after the last body key, before the operation's closing brace. */
+    bodyTrailingComments?: string[];
     /** Comment lines left over before the `response` block's closing brace, after the last status. */
     responsesTrailingComments?: string[];
     loc: SourceLocation;
@@ -487,5 +514,7 @@ export interface CkRootNode {
     responseHeaders?: OpResponseHeaderNode[];
     models: ModelNode[];
     routes: OpRouteNode[];
+    /** Comment lines after the last declaration in the file. Previously a parse error. */
+    trailingComments?: string[];
     file: string;
 }

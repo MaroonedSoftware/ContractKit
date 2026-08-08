@@ -501,7 +501,7 @@
             ]
         },
         "name-decl": {
-            "match": "\\b(name)\\s*(:)\\s*(.+)",
+            "match": "\\b(name)\\s*(:)\\s*(.+?)(?=[ \\t]#|$)",
             "captures": {
                 "1": {
                     "name": "keyword.control.name.ck"

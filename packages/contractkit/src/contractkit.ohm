@@ -19,7 +19,14 @@ Contract {
 
   // ─── Top-level ──────────────────────────────────────────────────
 
-  Root = OptionsBlock? Decl* end
+  // Declaration-level comments are items in this list rather than a `comment*` prefix on each
+  // declaration. A declaration cannot see what came before it, so it cannot tell an inline comment
+  // trailing the PREVIOUS declaration from its own doc comment — `Root` can, by comparing lines.
+  // It also gives a comment after the last declaration somewhere to live.
+  Root = OptionsBlock? DeclItem* end
+
+  DeclItem = comment
+           | Decl
 
   Decl = RouteDecl
        | ModelDecl
@@ -69,7 +76,7 @@ Contract {
 
   // ─── Models ─────────────────────────────────────────────────────
 
-  ModelDecl = comment* contractKw ModelPrefix ":" ModelBody
+  ModelDecl = contractKw ModelPrefix ":" ModelBody
 
   ModelPrefix = modelModifier* identifier
 
@@ -77,7 +84,7 @@ Contract {
 
   ModelBody = identifier ("&" identifier)* "&" "{" FieldList "}"  -- inheritance
             | "{" FieldList "}"                                    -- fields
-            | TypeExpression comment?                              -- alias
+            | TypeExpression                                       -- alias
 
   // ─── Fields ─────────────────────────────────────────────────────
 
@@ -155,7 +162,7 @@ Contract {
 
   // ─── Routes ─────────────────────────────────────────────────────
 
-  RouteDecl = comment* operationKwCall RoutePath ":" "{" RouteBody "}"
+  RouteDecl = operationKwCall RoutePath ":" "{" RouteBody "}"
 
   operationKwCall = operationKw "(" routeModifier ")"  -- modified
                   | operationKw                         -- plain
@@ -210,7 +217,11 @@ Contract {
   // ─── Service & SDK ──────────────────────────────────────────────
 
   NameDecl = nameKw ":" nameText
-  nameText = (~("\n" | "#" | "}") any)+
+
+  // Stops before whitespace-then-"#" rather than before any "#", matching `optionsRawChar`. A bare
+  // "#" is data: `name: Issue #42 tracker` is prose, and treating the "#" as a comment marker
+  // silently truncated the name to "Issue" and dropped the rest with no diagnostic.
+  nameText = (~("\n" | "}" | " #" | "\t#") any)+
 
   ServiceDecl = serviceKw ":" identifier
 
@@ -305,12 +316,16 @@ Contract {
   SecurityField = SecurityPolicyLine
                 | SecuritySignatureLine
 
-  SecurityPolicyLine = policyKw ":" PolicyValue comment?
+  // No trailing `comment?` here: whitespace skipping in a syntactic rule crosses newlines, so it
+  // would swallow a standalone comment written on the NEXT line and re-emit it as this line's
+  // inline description. `SecurityBody_fields` collects every comment instead and decides which is
+  // inline by comparing source lines.
+  SecurityPolicyLine = policyKw ":" PolicyValue
 
   PolicyValue = noneKw     -- none
               | identifier -- name
 
-  SecuritySignatureLine = signatureKw ":" (stringLit | identifier) comment?
+  SecuritySignatureLine = signatureKw ":" (stringLit | identifier)
 
   // ─── Keywords (lexical to avoid whitespace-skipping issues) ─────
 

@@ -471,6 +471,211 @@ describe('round-trip — comments in the response block', () => {
     });
 });
 
+// ─── Security blocks ─────────────────────────────────────────────────────────
+
+/**
+ * A `security { }` block is where authors record *why* a policy floor sits where it does, so the
+ * prose in and around it is load-bearing. Every position here used to be deleted outright on
+ * format: the parser skipped standalone comments inside the block, dropped comment runs above a
+ * body key, and let a comment run above a verb lose to the verb's own inline doc comment.
+ */
+describe('round-trip — security block comments', () => {
+    it('keeps a comment above the policy line in the options block', () => {
+        const source = `options {
+    security: {
+        # The floor for every operation in this file.
+        # Reads override it downward at their own verb.
+        policy: platform.manage
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a comment after the policy line, before the closing brace', () => {
+        const source = `options {
+    security: {
+        policy: platform.manage
+        # Object-scoped permissions cannot be named here yet.
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('distinguishes an inline policy comment from one on the next line', () => {
+        const source = `options {
+    security: {
+        # Why this floor
+        policy: platform.manage # the operator gate
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a comment above a security block inside an operation body', () => {
+        const source = `operation /plugins: {
+    get: {
+        name: List plugins
+        # A read, so it drops to the view floor.
+        security: {
+            policy: platform.view
+        }
+        response: {
+            200:
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a comment above a security: none line', () => {
+        const source = `operation /plugins/callback: {
+    get: {
+        name: OAuth callback
+        # The provider redirects a browser here, so it cannot carry a session.
+        security: none
+        response: {
+            200:
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a comment run above a verb that also has an inline doc comment', () => {
+        const source = `operation /plugins/{id}/logs: {
+    params: {
+        id: uuid
+    }
+    # Log output is whatever the plugin chose to write, including upstream error
+    # bodies. Treat it as operator-only until the log store can promise otherwise.
+    get: { # Returns the plugin's buffered log lines
+        name: Get plugin logs
+        response: {
+            200:
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a comment left after the last key in an operation body', () => {
+        const source = `operation /plugins: {
+    get: {
+        name: List plugins
+        response: {
+            200:
+        }
+        # TODO: gate this behind the object-scoped permission once it exists
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+});
+
+// ─── Declaration-boundary comments ───────────────────────────────────────────
+
+/**
+ * A comment between two top-level declarations is ambiguous: it can be an inline comment trailing
+ * the one above, a doc comment for the one below, or a standalone block. A declaration could not
+ * see what preceded it, so `ModelBody`'s optional trailing comment claimed the *next* line's
+ * comment — deleting a doc comment, or silently re-filing it as the previous contract's
+ * description. `Root` places these now, by comparing source lines.
+ */
+describe('round-trip — comments between declarations', () => {
+    it('keeps a doc comment on a contract that follows a one-line alias contract', () => {
+        const source = `contract ConfigFieldType: enum(string, url, secret)
+
+# One choice of a \`select\` config field
+contract ConfigFieldOption: {
+    value: string
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps an inline comment on an alias contract where it was written', () => {
+        const source = `contract PluginStatus: enum(discovered, active) # Lifecycle state
+
+contract ConfigFieldOption: {
+    value: string
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('tells an inline comment apart from the doc comment below it', () => {
+        const source = `contract PluginStatus: enum(discovered, active) # Lifecycle state
+
+# One choice of a \`select\` config field
+contract ConfigFieldOption: {
+    value: string
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps an inline comment on the last declaration in the file', () => {
+        const source = `contract PluginStatus: enum(discovered, active) # Lifecycle state
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a comment after the last declaration', () => {
+        const source = `contract PluginStatus: enum(discovered, active)
+
+# TODO: add the archived state once the store supports it
+`;
+        expect(format(source)).toBe(source);
+    });
+});
+
+// ─── Field comments ──────────────────────────────────────────────────────────
+
+describe('round-trip — field comments', () => {
+    it('keeps a comment on a nested inline object opening brace', () => {
+        const source = `contract FidoFactorAttestation: {
+    rp: { # The relying party
+        name: string # The relying party name
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a nested brace comment that repeats the contract header wording', () => {
+        // The header comment is reclaimed from the field list by matching text; when a nested
+        // field carried the same wording, the reclaim deleted the wrong one.
+        const source = `contract FidoFactorAttestation: { # The FIDO factor attestation information
+    rp: { # The FIDO factor attestation information
+        name: string # The relying party name
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a trailing comment on a field whose enum type wraps', () => {
+        const source = `contract LineupEntry: {
+    segmentState?: enum(
+        planned,
+        rendering,
+        ready,
+        failed,
+        gone
+    ) # How far along the segment is
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+});
+
 // ─── Idempotence ─────────────────────────────────────────────────────────────
 
 describe('round-trip — idempotence', () => {

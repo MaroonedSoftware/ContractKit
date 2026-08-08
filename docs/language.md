@@ -480,10 +480,17 @@ contract User: {
   section divider rather than a description, and is not attached to any node
 - A `#` comment may sit directly inside an `options { ... }` block, between its sub-blocks
 - A `#` comment may sit **above** the `options` keyword, as a file header
-- A `#` comment may trail a `keys`/`services` entry, provided a space separates it from the
-  value. A `#` with no space before it belongs to the value, so an unquoted subpath import
-  (`PetService: #modules/pet/pet.service.js`) still parses as one; quote a value that needs a
-  space followed by `#` inside it
+- A `#` comment may sit inside a `security { ... }` block, above or below `policy:`, and above a
+  `security:` key on a verb. This is where the reason for a policy floor is normally written
+- A `#` comment may sit above any key in an operation body, and after the last one
+- A `#` comment may sit above a verb that already has its own inline `# ...`; the two are
+  separate, and only the inline one becomes the operation's description
+- A `#` comment may sit **after the last declaration** in a file
+- A `#` comment may trail a `keys`/`services` entry or a `name:` value, provided a space
+  separates it from the value. A `#` with no space before it belongs to the value, so an
+  unquoted subpath import (`PetService: #modules/pet/pet.service.js`) and a name containing a
+  `#` (`name: Generate C# client`) both parse as written; quote a value that needs a space
+  followed by `#` inside it
 
 ```
 options {

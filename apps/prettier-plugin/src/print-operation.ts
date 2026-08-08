@@ -189,6 +189,9 @@ function printOperation(op: OpOperationNode): string[] {
     // re-emitted as a trailing `#` on the header. Nodes built programmatically carry no placement,
     // and default to inline — the form most `.ck` sources use and one that round-trips as written.
     const inlineDescription = op.descriptionInline ?? true;
+    // Standalone prose above the verb, kept apart from the doc comment when the verb carries an
+    // inline one. Emitted first so it stays above the line it was written above.
+    for (const c of op.leadingComments ?? []) lines.push(`${I1}# ${c}`);
     if (op.description && !inlineDescription) {
         for (const line of op.description.split('\n')) lines.push(`${I1}# ${line}`);
     }
@@ -199,9 +202,21 @@ function printOperation(op: OpOperationNode): string[] {
     // Any key the source order doesn't mention (e.g. added by a later AST pass) follows in canonical order.
     const order = op.keyOrder ?? [];
     const rest = CANONICAL_KEY_ORDER.filter(k => !order.includes(k));
+    // A comment run whose key turned out to print nothing has nowhere to sit; rather than drop it,
+    // it falls through to the trailing run at the end of the body.
+    const orphaned: string[] = [];
     for (const key of [...order, ...rest]) {
-        lines.push(...printOperationKey(op, key));
+        const keyLines = printOperationKey(op, key);
+        const comments = op.bodyLeadingComments?.[key] ?? [];
+        if (keyLines.length === 0) {
+            orphaned.push(...comments);
+            continue;
+        }
+        for (const c of comments) lines.push(`${I2}# ${c}`);
+        lines.push(...keyLines);
     }
+
+    for (const c of [...orphaned, ...(op.bodyTrailingComments ?? [])]) lines.push(`${I2}# ${c}`);
 
     lines.push(`${I1}}`);
     return lines;
@@ -311,8 +326,11 @@ function formatSignatureValue(value: string): string {
 
 /**
  * Print a `security:` declaration. Returns `["${indent}security: none"]` for the public-endpoint
- * sentinel, a multi-line block when `policy` is set, or an empty array when there's nothing
- * meaningful to emit.
+ * sentinel, a multi-line block when `policy` is set or the block carries comments, or an empty
+ * array when there is nothing meaningful to emit.
+ *
+ * A block holding only comments still prints: the rationale for a policy floor is the reason
+ * authors write in here, and collapsing the braces away would delete it.
  *
  * @param indent indentation for the `security` keyword line
  * @param innerIndent indentation for field lines inside the block
@@ -320,11 +338,19 @@ function formatSignatureValue(value: string): string {
 export function printSecurity(security: SecurityNode, indent = I2, innerIndent = I3): string[] {
     if (security === SECURITY_NONE) return [`${indent}security: none`];
     const fields = security as SecurityFields;
-    if (fields.policy === undefined) return [];
+    const leading = fields.leadingComments ?? [];
+    const trailing = fields.trailingComments ?? [];
+    // A block with no policy still has to be emitted when it carries comments, or the author's
+    // rationale disappears along with the empty braces.
+    if (fields.policy === undefined && leading.length === 0 && trailing.length === 0) return [];
     const lines = [`${indent}security: {`];
-    const comment = fields.policyDescription ? ` # ${fields.policyDescription}` : '';
-    const value = fields.policy === false ? 'none' : fields.policy;
-    lines.push(`${innerIndent}policy: ${value}${comment}`);
+    for (const c of leading) lines.push(`${innerIndent}# ${c}`);
+    if (fields.policy !== undefined) {
+        const comment = fields.policyDescription ? ` # ${fields.policyDescription}` : '';
+        const value = fields.policy === false ? 'none' : fields.policy;
+        lines.push(`${innerIndent}policy: ${value}${comment}`);
+    }
+    for (const c of trailing) lines.push(`${innerIndent}# ${c}`);
     lines.push(`${indent}}`);
     return lines;
 }
