@@ -453,7 +453,7 @@ describe('printCk — request blocks', () => {
             makeRoute('/users', [
                 makeOp('post', {
                     request: { bodies: [{ contentType: 'application/vnd.api+json', bodyType: { kind: 'ref', name: 'CreateUser' } }] },
-                    responses: [{ statusCode: 201, contentType: 'application/vnd.api+json', bodyType: { kind: 'ref', name: 'User' } }],
+                    responses: [{ statusCode: 201, hasBlock: true, bodies: [{ contentType: 'application/vnd.api+json', bodyType: { kind: 'ref', name: 'User' } }] }],
                 }),
             ]),
         ]);
@@ -493,8 +493,8 @@ describe('printCk — response headers', () => {
                     responses: [
                         {
                             statusCode: 200,
-                            contentType: 'application/json',
-                            bodyType: { kind: 'ref', name: 'Transfer' },
+                            hasBlock: true,
+                            bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Transfer' } }],
                             headers: [
                                 { name: 'preference-applied', optional: true, type: { kind: 'scalar', name: 'string' } },
                                 { name: 'etag', optional: false, type: { kind: 'scalar', name: 'string' }, description: 'cache validator' },
@@ -519,6 +519,8 @@ describe('printCk — response headers', () => {
                     responses: [
                         {
                             statusCode: 204,
+                            hasBlock: true,
+                            bodies: [],
                             headers: [{ name: 'x-deleted-at', optional: false, type: { kind: 'scalar', name: 'string' } }],
                         },
                     ],

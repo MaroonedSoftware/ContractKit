@@ -644,8 +644,8 @@ describe('generateOperation', () => {
                             responses: [
                                 {
                                     statusCode: 200,
-                                    contentType: 'application/json',
-                                    bodyType: { kind: 'ref', name: 'Transfer' },
+                                    hasBlock: true,
+                                    bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Transfer' } }],
                                     headers: [
                                         { name: 'preference-applied', optional: true, type: { kind: 'scalar', name: 'string' } },
                                         { name: 'etag', optional: false, type: { kind: 'scalar', name: 'string' } },
@@ -675,6 +675,8 @@ describe('generateOperation', () => {
                             responses: [
                                 {
                                     statusCode: 204,
+                                    hasBlock: true,
+                                    bodies: [],
                                     headers: [{ name: 'x-deleted-at', optional: false, type: { kind: 'scalar', name: 'string' } }],
                                 },
                             ],

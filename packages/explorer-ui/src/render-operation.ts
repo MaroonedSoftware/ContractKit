@@ -199,19 +199,25 @@ function renderResponses(responses: OpResponseNode[], ctx: RenderContext): strin
 
 function renderResponse(response: OpResponseNode, ctx: RenderContext): string {
     const statusClass = `ce-status-${Math.floor(response.statusCode / 100)}xx`;
-    const contentTypeHtml = response.contentType
-        ? `<span class="ce-content-type"><code>${escapeHtml(response.contentType)}</code></span>`
-        : '';
-    const bodyHtml = response.bodyType
-        ? renderSchemaTree(response.bodyType, ctx, { exclude: 'writeonly' })
-        : '<p class="ce-empty">No response body.</p>';
     const headersHtml = renderResponseHeaders(response.headers, ctx);
+    // A status may serve several formats; each gets its own mime label and schema tree so the
+    // reader can see that, say, PNG and JPEG carry the same bytes while CSV does not.
+    const bodyBlocks =
+        response.bodies.length === 0
+            ? '<p class="ce-empty">No response body.</p>'
+            : response.bodies
+                  .map(
+                      body => `<div class="ce-body-header">
+            <span class="ce-content-type"><code>${escapeHtml(body.contentType)}</code></span>
+        </div>
+        ${renderSchemaTree(body.bodyType, ctx, { exclude: 'writeonly' })}`,
+                  )
+                  .join('');
     return `<div class="ce-response-block" id="response-${response.statusCode}">
         <div class="ce-body-header">
             <span class="ce-status ${statusClass}">${response.statusCode}</span>
-            ${contentTypeHtml}
         </div>
-        ${bodyHtml}
+        ${bodyBlocks}
         ${headersHtml}
     </div>`;
 }

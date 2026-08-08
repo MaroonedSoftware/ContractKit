@@ -23,7 +23,6 @@ import {
     serializeIncrementalManifest,
     hashFingerprint,
     INCREMENTAL_MANIFEST_VERSION,
-    responseBodies,
 } from '@contractkit/core';
 import { basename } from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
@@ -321,7 +320,7 @@ function collectOpTypeNodes(route: OpRouteNode, op: OpOperationNode): ContractTy
         for (const body of op.request.bodies) out.push(body.bodyType);
     }
     for (const resp of op.responses) {
-        for (const body of responseBodies(resp)) out.push(body.bodyType);
+        for (const body of resp.bodies) out.push(body.bodyType);
         if (resp.headers) {
             for (const h of resp.headers) out.push(h.type);
         }

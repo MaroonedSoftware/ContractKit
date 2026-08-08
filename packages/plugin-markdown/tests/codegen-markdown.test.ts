@@ -512,8 +512,8 @@ describe('generateMarkdown', () => {
                         responses: [
                             {
                                 statusCode: 200,
-                                contentType: 'application/json',
-                                bodyType: { kind: 'ref', name: 'Transfer' },
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Transfer' } }],
                                 headers: [
                                     { name: 'preference-applied', optional: true, type: scalarType('string') },
                                     { name: 'etag', optional: false, type: scalarType('string'), description: 'cache validator' },
@@ -575,7 +575,7 @@ describe('generateMarkdown', () => {
             const op = opRoot([
                 opRoute('/users', [
                     opOperation('get', {
-                        responses: [{ statusCode: 200, contentType: 'application/json', bodyType }],
+                        responses: [{ statusCode: 200, hasBlock: true, bodies: [{ contentType: 'application/json', bodyType }] }],
                     }),
                 ]),
             ]);
@@ -602,7 +602,7 @@ describe('generateMarkdown', () => {
             const op = opRoot([
                 opRoute('/search', [
                     opOperation('get', {
-                        responses: [{ statusCode: 200, contentType: 'application/json', bodyType }],
+                        responses: [{ statusCode: 200, hasBlock: true, bodies: [{ contentType: 'application/json', bodyType }] }],
                     }),
                 ]),
             ]);
@@ -797,7 +797,7 @@ describe('generateMarkdown', () => {
             const op = opRoot([
                 opRoute('/users', [
                     opOperation('get', {
-                        responses: [{ statusCode: 200, contentType: 'application/json', bodyType }],
+                        responses: [{ statusCode: 200, hasBlock: true, bodies: [{ contentType: 'application/json', bodyType }] }],
                     }),
                 ]),
             ]);

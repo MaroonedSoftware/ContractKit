@@ -37,13 +37,12 @@ describe('renderTryIt', () => {
         const html = renderTryIt(
             resolvedOp('/users', op('post', {
                 request: {
-                    bodies: [{
-                        contentType: 'application/json',
-                        bodyType: inlineObj([
-                            field('id', scalar('uuid'), { visibility: 'readonly' }),
-                            field('email', scalar('string')),
-                        ]),
-                    }],
+                    bodies: [
+                        {
+                            contentType: 'application/json',
+                            bodyType: inlineObj([field('id', scalar('uuid'), { visibility: 'readonly' }), field('email', scalar('string'))]),
+                        },
+                    ],
                 },
             })),
             'https://api.example.com',

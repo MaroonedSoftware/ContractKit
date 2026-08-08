@@ -20,7 +20,6 @@ import {
     hashFingerprint,
     collectTransitiveModelRefs,
     collectTypeRefs,
-    responseBodies,
 } from '@contractkit/core';
 import {
     generateSdk,
@@ -263,7 +262,7 @@ function collectOpRootRefs(root: OpRootNode, modelMap: Map<string, ModelNode>): 
                 for (const body of op.request.bodies) seeds.push(body.bodyType);
             }
             for (const resp of op.responses) {
-                for (const body of responseBodies(resp)) seeds.push(body.bodyType);
+                for (const body of resp.bodies) seeds.push(body.bodyType);
                 if (resp.headers) {
                     for (const h of resp.headers) seeds.push(h.type);
                 }

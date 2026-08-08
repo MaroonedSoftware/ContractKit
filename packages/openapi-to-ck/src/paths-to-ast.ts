@@ -290,8 +290,6 @@ function responseToNode(
         statusCode,
         bodies,
         hasBlock: true,
-        contentType: bodies[0]!.contentType,
-        bodyType: bodies[0]!.bodyType,
         ...(headers ? { headers } : {}),
     };
 }

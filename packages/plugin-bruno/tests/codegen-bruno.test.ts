@@ -932,8 +932,8 @@ describe('generateOpenCollection', () => {
                             responses: [
                                 {
                                     statusCode: 200,
-                                    contentType: 'application/json',
-                                    bodyType: { kind: 'ref', name: 'Transfer' },
+                                    hasBlock: true,
+                                    bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Transfer' } }],
                                     headers: [
                                         { name: 'preference-applied', optional: true, type: { kind: 'scalar', name: 'string' } },
                                         { name: 'ETag', optional: false, type: { kind: 'scalar', name: 'string' }, description: 'cache validator' },

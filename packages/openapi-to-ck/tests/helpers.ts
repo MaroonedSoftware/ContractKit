@@ -126,7 +126,8 @@ export function opRequest(bodyType: ContractTypeNode, contentType: string = 'app
 }
 
 export function opResponse(statusCode: number, bodyType?: ContractTypeNode, contentType?: 'application/json'): OpResponseNode {
-    return { statusCode, contentType, bodyType };
+    const bodies = bodyType === undefined ? [] : [{ contentType: contentType ?? 'application/json', bodyType }];
+    return { statusCode, bodies, ...(bodyType !== undefined ? { hasBlock: true } : {}) };
 }
 
 /** Normalize a raw param value (old bare format or new discriminated union) to ParamSource. */

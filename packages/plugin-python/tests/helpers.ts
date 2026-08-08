@@ -149,7 +149,10 @@ export function opRequest(bodyType: string | ContractTypeNode, contentType: stri
 export function opResponse(statusCode: number, bodyType?: string | ContractTypeNode, contentType?: string): OpResponseNode {
     const bt: ContractTypeNode | undefined =
         bodyType === undefined ? undefined : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
-    return { statusCode, contentType, bodyType: bt };
+    // A body with no explicit mime defaults to JSON, matching how every plugin used to read
+    // the old singular contentType field.
+    const bodies = bt === undefined ? [] : [{ contentType: contentType ?? 'application/json', bodyType: bt }];
+    return { statusCode, bodies, ...(bt !== undefined ? { hasBlock: true } : {}) };
 }
 
 function parseBodyTypeString(s: string): ContractTypeNode {

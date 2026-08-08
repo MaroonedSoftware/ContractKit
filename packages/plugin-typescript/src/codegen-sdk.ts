@@ -9,7 +9,7 @@ import type {
     ContractTypeNode,
     ParamSource,
 } from '@contractkit/core';
-import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses, responseBodies } from '@contractkit/core';
+import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses } from '@contractkit/core';
 import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
@@ -304,7 +304,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
     const thrown = thrownResponses(op);
     const isMultiStatus = observable.length > 1;
     const primaryResponse = observable[0];
-    const primaryBodies = primaryResponse ? responseBodies(primaryResponse) : [];
+    const primaryBodies = primaryResponse ? primaryResponse.bodies : [];
     const isVoid = primaryBodies.length === 0;
     const respHeaders = primaryResponse?.headers ?? [];
     const hasRespHeaders = respHeaders.length > 0;
@@ -333,7 +333,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
 
     // JSDoc
     const desc = op.description ?? route.description;
-    const errorBodyName = thrown.some(r => responseBodies(r).length > 0) ? errorBodyTypeName(route, op) : undefined;
+    const errorBodyName = thrown.some(r => r.bodies.length > 0) ? errorBodyTypeName(route, op) : undefined;
     if (op.name || desc || errorBodyName) {
         const tags: string[] = [];
         if (op.name) tags.push(`@name ${op.name}`);
@@ -517,7 +517,7 @@ function sdkHeaderEntries(headers: OpResponseHeaderNode[]): string {
  * same data type; otherwise one member per mime, so `contentType` and `data` stay correlated.
  */
 function sdkResponseMembers(resp: OpResponseNode, modelsWithOutput: Set<string> | undefined, includeStatus: boolean): string[] {
-    const bodies = responseBodies(resp);
+    const bodies = resp.bodies;
     const headers = resp.headers ?? [];
     const leading = includeStatus ? [`status: ${resp.statusCode}`] : [];
     const trailing = headers.length > 0 ? [`headers: ${renderSdkHeadersShape(headers, modelsWithOutput)}`] : [];
@@ -536,7 +536,7 @@ function sdkResponseMembers(resp: OpResponseNode, modelsWithOutput: Set<string> 
 
 /** The `return` statement(s) that build one response's member of the return union. */
 function sdkReturnLines(resp: OpResponseNode, modelsWithOutput: Set<string> | undefined, indent: string, includeStatus: boolean): string[] {
-    const bodies = responseBodies(resp);
+    const bodies = resp.bodies;
     const headers = resp.headers ?? [];
     const leading = includeStatus ? [`status: ${resp.statusCode}`] : [];
     const trailing = headers.length > 0 ? [`headers: { ${sdkHeaderEntries(headers)} }`] : [];
@@ -595,7 +595,7 @@ export function generateErrorBodyAliases(root: OpRootNode, options: SdkCodegenOp
             if (!includeInternal && mods.includes('internal')) continue;
             const types = new Set<string>();
             for (const resp of thrownResponses(op)) {
-                for (const body of responseBodies(resp)) types.add(sdkDataType(body, options.modelsWithOutput));
+                for (const body of resp.bodies) types.add(sdkDataType(body, options.modelsWithOutput));
             }
             if (types.size === 0) continue;
             lines.push(`export type ${errorBodyTypeName(route, op)} = ${[...types].join(' | ')};`);
@@ -824,7 +824,7 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWit
                 }
             }
             for (const resp of op.responses) {
-                for (const body of responseBodies(resp)) {
+                for (const body of resp.bodies) {
                     collectTypeNodeRefs(body.bodyType, types);
                     collectOutputTypeNodeRefs(body.bodyType, types, modelsWithOutput);
                 }
@@ -938,7 +938,7 @@ function sdkNeedsReadContentType(root: OpRootNode, includeInternal = false): boo
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
-            if (observableResponses(op).some(r => responseBodies(r).length > 1)) return true;
+            if (observableResponses(op).some(r => r.bodies.length > 1)) return true;
         }
     }
     return false;
@@ -960,13 +960,8 @@ function sdkNeedsBigIntReviver(root: OpRootNode, includeInternal = false): boole
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
-            if (
-                op.responses.some(r => {
-                    if (!r.bodyType) return false;
-                    // Only JSON-shaped responses use parseJson — text/binary read raw.
-                    return !r.contentType || classifyContentType(r.contentType) === 'json';
-                })
-            ) {
+            // Only JSON-shaped responses use parseJson — text/binary read raw.
+            if (op.responses.some(r => r.bodies.some(b => classifyContentType(b.contentType) === 'json'))) {
                 return true;
             }
         }
@@ -985,7 +980,7 @@ function sdkNeedsJson(root: OpRootNode, includeInternal = false): boolean {
             };
             if (
                 !!op.request?.bodies.some(b => typeNeedsScalar(b.bodyType, 'json')) ||
-                op.responses.some(r => responseBodies(r).some(b => typeNeedsScalar(b.bodyType, 'json'))) ||
+                op.responses.some(r => r.bodies.some(b => typeNeedsScalar(b.bodyType, 'json'))) ||
                 check(op.query) ||
                 check(op.headers) ||
                 check(route.params)

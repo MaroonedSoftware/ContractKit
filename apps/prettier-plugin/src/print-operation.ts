@@ -11,7 +11,7 @@ import type {
     McpConfigNode,
     OpBodyKey,
 } from '@contractkit/core';
-import { SECURITY_NONE, responseBodies } from '@contractkit/core';
+import { SECURITY_NONE } from '@contractkit/core';
 import { printType, formatDefault } from './print-type.js';
 import { INDENT } from './indent.js';
 
@@ -381,7 +381,7 @@ function printResponseBlock(responses: OpResponseNode[]): string[] {
     const lines: string[] = [`${I2}response: {`];
 
     for (const resp of responses) {
-        const bodies = responseBodies(resp);
+        const bodies = resp.bodies;
         const hasHeaders = resp.headers && resp.headers.length > 0;
         const optOut = resp.headersOptOut;
         const onlyBody = bodies.length === 1 ? bodies[0]! : undefined;

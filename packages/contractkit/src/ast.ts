@@ -262,16 +262,8 @@ export interface OpResponseNode {
      * Every `mime: Type` line declared for this status, in source order. Empty when the status
      * carries no body. A status with more than one entry lets the service pick the mime at
      * runtime; the router then sets `ctx.type` from the returned `contentType`.
-     *
-     * Always populated by the parser. Optional only so that programmatically built nodes may
-     * still use the deprecated `contentType`/`bodyType` pair; read it through
-     * {@link responseBodies}, which normalizes both forms.
      */
-    bodies?: OpResponseBodyNode[];
-    /** @deprecated Mirror of `bodies[0].contentType`. Read {@link responseBodies} instead. */
-    contentType?: string;
-    /** @deprecated Mirror of `bodies[0].bodyType`. Read {@link responseBodies} instead. */
-    bodyType?: ContractTypeNode;
+    bodies: OpResponseBodyNode[];
     /** Declared response headers for this status code. Undefined = none declared. */
     headers?: OpResponseHeaderNode[];
     /** Set when the status code body declares `headers: none` — suppresses options-level response header merge for this code. */
@@ -386,23 +378,6 @@ export interface OpRouteNode {
      * section dividers and the like. Not a doc comment. Preserved for lossless round-trip. */
     leadingComments?: string[];
     loc: SourceLocation;
-}
-
-/**
- * The `mime: Type` lines declared for a response, normalizing the two AST forms.
- *
- * Prefers `bodies`, which the parser always sets, and falls back to the deprecated
- * `contentType`/`bodyType` pair so programmatically built nodes still work. Returns an empty
- * array for a bodyless status.
- */
-export function responseBodies(resp: OpResponseNode): OpResponseBodyNode[] {
-    if (resp.bodies && resp.bodies.length > 0) return resp.bodies;
-    // A body with no declared mime cannot come from the parser (the grammar is `mime: Type`), but
-    // hand-built nodes leave it off; JSON is the same default the codegen plugins always applied.
-    if (resp.bodyType !== undefined) {
-        return [{ contentType: resp.contentType ?? 'application/json', bodyType: resp.bodyType }];
-    }
-    return resp.bodies ?? [];
 }
 
 /**

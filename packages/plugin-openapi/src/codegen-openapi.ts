@@ -8,7 +8,7 @@ import type {
     OpOperationNode,
     ParamSource,
 } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, responseBodies } from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@contractkit/core';
 
 /** A single entry for the OpenAPI `servers` array. */
 export interface OpenApiServerEntry {
@@ -99,7 +99,7 @@ function collectPublicTypeRefs(opRoots: OpRootNode[], includeInternal = false): 
                     for (const body of op.request.bodies) collectRefsFromType(body.bodyType, refs);
                 }
                 for (const resp of op.responses) {
-                    for (const body of responseBodies(resp)) collectRefsFromType(body.bodyType, refs);
+                    for (const body of resp.bodies) collectRefsFromType(body.bodyType, refs);
                     if (resp.headers) {
                         for (const h of resp.headers) collectRefsFromType(h.type, refs);
                     }
@@ -564,7 +564,7 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode): Record<string,
         const responseObject: Record<string, unknown> = {
             description: statusDescription(resp.statusCode),
         };
-        const bodies = responseBodies(resp);
+        const bodies = resp.bodies;
         if (bodies.length > 0) {
             // One `content` entry per declared mime — this is where a status serving several
             // formats becomes visible to every consumer of the spec.

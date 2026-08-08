@@ -14,7 +14,6 @@ import {
     SECURITY_NONE,
     collectPublicTypeNames,
     collectTypeRefs,
-    responseBodies,
 } from '@contractkit/core';
 
 // ─── Local TypeScript type rendering ─────────────────────────────────────
@@ -557,7 +556,7 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
         for (const resp of op.responses) {
             const statusText = STATUS_TEXT[resp.statusCode] ?? '';
             const statusLabel = statusText ? `${resp.statusCode} ${statusText}` : `${resp.statusCode}`;
-            const bodies = responseBodies(resp);
+            const bodies = resp.bodies;
 
             if (bodies.length === 0) {
                 lines.push(`\`${statusLabel}\``);

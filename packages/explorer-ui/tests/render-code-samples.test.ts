@@ -6,7 +6,7 @@ import { field, inlineObj, model, op, ref, resolvedModel, resolvedOp, scalar } f
 describe('renderCodeSamples', () => {
     it('renders a curl request with method and url', () => {
         const html = renderCodeSamples(
-            resolvedOp('/todos', op('get', { responses: [{ statusCode: 200 }] })),
+            resolvedOp('/todos', op('get', { responses: [{ statusCode: 200, bodies: [] }] })),
             'https://api.example.com',
         );
         expect(html).toContain('Request Sample');
@@ -17,7 +17,7 @@ describe('renderCodeSamples', () => {
     it('adds an Accept header when a JSON response is declared', () => {
         const html = renderCodeSamples(
             resolvedOp('/todos', op('get', {
-                responses: [{ statusCode: 200, contentType: 'application/json', bodyType: scalar('string') }],
+                responses: [{ statusCode: 200, hasBlock: true, bodies: [{ contentType: 'application/json', bodyType: scalar('string') }] }],
             })),
             'https://api.example.com',
         );
@@ -28,15 +28,14 @@ describe('renderCodeSamples', () => {
         const html = renderCodeSamples(
             resolvedOp('/todos', op('post', {
                 request: {
-                    bodies: [{
-                        contentType: 'application/json',
-                        bodyType: inlineObj([
-                            field('title', scalar('string')),
-                            field('id', scalar('uuid'), { visibility: 'readonly' }),
-                        ]),
-                    }],
+                    bodies: [
+                        {
+                            contentType: 'application/json',
+                            bodyType: inlineObj([field('title', scalar('string')), field('id', scalar('uuid'), { visibility: 'readonly' })]),
+                        },
+                    ],
                 },
-                responses: [{ statusCode: 201 }],
+                responses: [{ statusCode: 201, bodies: [] }],
             })),
             'https://api.example.com',
         );
@@ -59,7 +58,7 @@ describe('renderCodeSamples', () => {
         };
         const html = renderCodeSamples(
             resolvedOp('/todos/{id}', op('get', {
-                responses: [{ statusCode: 200, contentType: 'application/json', bodyType: ref('Todo') }],
+                responses: [{ statusCode: 200, hasBlock: true, bodies: [{ contentType: 'application/json', bodyType: ref('Todo') }] }],
             })),
             'https://api.example.com',
             ctx,
@@ -77,8 +76,8 @@ describe('renderCodeSamples', () => {
             resolvedOp('/users', op('get', {
                 responses: [{
                     statusCode: 200,
-                    contentType: 'application/json',
-                    bodyType: inlineObj([field('email', scalar('string'))]),
+                    hasBlock: true,
+                    bodies: [{ contentType: 'application/json', bodyType: inlineObj([field('email', scalar('string'))]) }],
                 }],
             })),
             'https://api.example.com',
@@ -92,8 +91,8 @@ describe('renderCodeSamples', () => {
             resolvedOp('/todos', op('get', {
                 responses: [{
                     statusCode: 200,
-                    contentType: 'application/json',
-                    bodyType: inlineObj([field('id', scalar('uuid'))]),
+                    hasBlock: true,
+                    bodies: [{ contentType: 'application/json', bodyType: inlineObj([field('id', scalar('uuid'))]) }],
                 }],
             })),
             'https://api.example.com',
@@ -106,8 +105,8 @@ describe('renderCodeSamples', () => {
             resolvedOp('/events', op('get', {
                 responses: [{
                     statusCode: 200,
-                    contentType: 'application/json',
-                    bodyType: inlineObj([field('createdAt', scalar('datetime'))]),
+                    hasBlock: true,
+                    bodies: [{ contentType: 'application/json', bodyType: inlineObj([field('createdAt', scalar('datetime'))]) }],
                 }],
             })),
             'https://api.example.com',
@@ -121,8 +120,8 @@ describe('renderCodeSamples', () => {
             resolvedOp('/users', op('get', {
                 responses: [{
                     statusCode: 200,
-                    contentType: 'application/json',
-                    bodyType: inlineObj([field('email', scalar('string'))]),
+                    hasBlock: true,
+                    bodies: [{ contentType: 'application/json', bodyType: inlineObj([field('email', scalar('string'))]) }],
                 }],
             })),
             'https://api.example.com',
@@ -142,7 +141,7 @@ describe('renderCodeSamples', () => {
         };
         const html = renderCodeSamples(
             resolvedOp('/users/{id}', op('get', {
-                responses: [{ statusCode: 200, contentType: 'application/json', bodyType: ref('User') }],
+                responses: [{ statusCode: 200, hasBlock: true, bodies: [{ contentType: 'application/json', bodyType: ref('User') }] }],
             })),
             'https://api.example.com',
             ctx,
@@ -161,7 +160,7 @@ describe('renderCodeSamples', () => {
 
     it('omits Response Example when no 2xx JSON response is declared', () => {
         const html = renderCodeSamples(
-            resolvedOp('/todos', op('get', { responses: [{ statusCode: 204 }] })),
+            resolvedOp('/todos', op('get', { responses: [{ statusCode: 204, bodies: [] }] })),
             'https://api.example.com',
         );
         expect(html).not.toContain('Response Example');
@@ -172,8 +171,8 @@ describe('renderCodeSamples', () => {
             resolvedOp('/todos', op('get', {
                 responses: [{
                     statusCode: 200,
-                    contentType: 'application/json',
-                    bodyType: inlineObj([field('id', scalar('int')), field('name', scalar('string'))]),
+                    hasBlock: true,
+                    bodies: [{ contentType: 'application/json', bodyType: inlineObj([field('id', scalar('int')), field('name', scalar('string'))]) }],
                 }],
             })),
             'https://api.example.com',
@@ -204,8 +203,8 @@ describe('renderCodeSamples', () => {
             resolvedOp('/x', op('get', {
                 responses: [{
                     statusCode: 200,
-                    contentType: 'application/json',
-                    bodyType: ref('BusinessPagination'),
+                    hasBlock: true,
+                    bodies: [{ contentType: 'application/json', bodyType: ref('BusinessPagination') }],
                 }],
             })),
             'https://api.example.com',
@@ -223,14 +222,14 @@ describe('renderCodeSamples', () => {
             resolvedOp('/x', op('get', {
                 responses: [{
                     statusCode: 200,
-                    contentType: 'application/json',
-                    bodyType: {
+                    hasBlock: true,
+                    bodies: [{ contentType: 'application/json', bodyType: {
                         kind: 'intersection',
                         members: [
                             inlineObj([field('a', scalar('boolean'))]),
                             inlineObj([field('b', scalar('int'))]),
                         ],
-                    },
+                    } }],
                 }],
             })),
             'https://api.example.com',

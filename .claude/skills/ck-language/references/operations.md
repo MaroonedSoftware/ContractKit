@@ -35,6 +35,43 @@ and an optional `mcp.router.ts`. The `@maroonedsoftware/mcp` runtime owns the JS
 lifecycle, sessions, Streamable HTTP transport, and auth. Python/OpenAPI/Markdown/Bruno do
 not consume `op.mcp`.
 
+## Which responses the service produces
+
+Every generator derives its shape from three helpers in `packages/contractkit/src/response-sets.ts`,
+so the router and the clients cannot disagree about a contract. Each takes an operation node and
+nothing else, which is what lets options-level responses merge upstream later without touching
+any consumer.
+
+- `emittedResponses(op)` — what the service returns and the router writes.
+- `observableResponses(op)` — what a client receives as a value: every emitted response, plus
+  every non-emitted one below 400 (a `304` from conditional-GET middleware is a real outcome).
+- `thrownResponses(op)` — the rest, i.e. non-emitted 4xx/5xx. Their bodies are the error contract.
+
+The derivation is one line: **a status is emitted if it has a block, or is 2xx.** Braces say
+"this is what the response consists of", which only the service can produce; a bare status says
+it is documented and something else produces it. Bare bodyless 2xx (`204:`) is the one carve-out.
+`OpResponseNode.hasBlock` records whether braces were written, so `304: {}` and `304:` mean
+different things and the prettier plugin must not normalize one into the other.
+
+`404(documented): { … }` (`OpResponseNode.emit`) is the only override, forcing a
+block-carrying status back out. The reverse direction is structural — add `{}`. A `(documented)`
+that changes nothing warns from `validateRefs`, deliberately *not* the parser: once options-level
+responses exist, the same marker on the same status becomes a real override of a global.
+
+All three helpers return status-sorted arrays so generated output does not depend on whether a
+response was authored locally or merged in.
+
+## Several content types for one status
+
+`OpResponseNode.bodies: OpResponseBodyNode[]` holds every `mime: Type` line for a status, in
+source order. The grammar always allowed repeats under a status; only the semantics action used
+to reject them. Repeating the *same* mime is still a warning.
+
+With more than one body, the service picks the mime at runtime: the router types the result with
+a `contentType` field and assigns `ctx.type = result.contentType`. Bodies that are structurally
+equal (`bodyTypesStructurallyEqual`) collapse to one member with a union of mime literals;
+differing bodies produce one member per mime so `contentType` and `body` stay correlated.
+
 ## Response headers
 
 A status code body can declare `headers: { name?: type, ... }` alongside
@@ -75,9 +112,8 @@ done by `apply-options-defaults.ts`, run by the CLI between `parseCk` and decomp
 - **Path-param collision**: a global request header colliding with a path parameter name
   on any route is an error.
 
-Asymmetry to know about: TS server `ctx.set()` emission and TS SDK return shape only honor
-headers on the **primary response** (first response with a body, falling back to the first
-response). OpenAPI and Markdown iterate every status code, so options-level response
-headers fully surface there. Treat global response headers as a spec/docs feature —
-runtime emission for a non-primary status still requires inlining the header on that
-status.
+Asymmetry to know about: OpenAPI and Markdown iterate every status code, while the TS server
+emits `ctx.set()` only for statuses in `emittedResponses` and the clients only for those in
+`observableResponses`. A global header on a status that is documented rather than emitted
+therefore surfaces in the spec and the docs but has no runtime counterpart — nothing generated
+writes it, because nothing generated writes that status.

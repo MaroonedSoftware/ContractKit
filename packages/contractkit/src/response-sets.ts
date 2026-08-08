@@ -18,7 +18,6 @@
  * unchanged.
  */
 import type { OpOperationNode, OpResponseNode } from './ast.js';
-import { responseBodies } from './ast.js';
 
 /**
  * True when the generated router writes this response and the service returns it.
@@ -29,7 +28,7 @@ import { responseBodies } from './ast.js';
  */
 function isEmitted(resp: OpResponseNode): boolean {
     if (resp.emit === 'documented') return false;
-    if (resp.hasBlock || responseBodies(resp).length > 0) return true;
+    if (resp.hasBlock || resp.bodies.length > 0) return true;
     return resp.statusCode >= 200 && resp.statusCode < 300;
 }
 
@@ -75,5 +74,5 @@ export function thrownResponses(op: OpOperationNode): OpResponseNode[] {
  */
 export function isRedundantDocumented(resp: OpResponseNode): boolean {
     if (resp.emit !== 'documented') return false;
-    return !resp.hasBlock && responseBodies(resp).length === 0 && !(resp.statusCode >= 200 && resp.statusCode < 300);
+    return !resp.hasBlock && resp.bodies.length === 0 && !(resp.statusCode >= 200 && resp.statusCode < 300);
 }

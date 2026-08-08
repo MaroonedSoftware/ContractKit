@@ -9,7 +9,7 @@ import type {
     ParamSource,
     ObjectMode,
 } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType, emittedResponses, responseBodies } from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType, emittedResponses } from '@contractkit/core';
 import {
     renderType,
     renderInputType,
@@ -369,7 +369,7 @@ function generateSingleStatusResult(
     options: OpCodegenOptions,
 ): string[] {
     const lines: string[] = [];
-    const bodies = resp ? responseBodies(resp) : [];
+    const bodies = resp ? resp.bodies : [];
     const respHeaders = resp?.headers ?? [];
     const hasRespHeaders = respHeaders.length > 0;
     const headersAnnotation = hasRespHeaders ? renderHeadersAnnotation(respHeaders, options.modelsWithOutput) : '';
@@ -441,7 +441,7 @@ function generateMultiStatusResult(emitted: OpResponseNode[], className: string,
     for (const resp of emitted) {
         lines.push(`        case ${resp.statusCode}:`);
         lines.push(...headerSetLines(resp.headers ?? [], '            '));
-        if (responseBodies(resp).length > 0) {
+        if (resp.bodies.length > 0) {
             lines.push(`            ctx.type = result.contentType;`);
             lines.push(`            ctx.body = result.body;`);
         }
@@ -465,7 +465,7 @@ function renderResponseMembers(
     options: OpCodegenOptions,
     opts: { includeStatus: boolean; varPrefix: string },
 ): { members: string[]; preludes: string[] } {
-    const bodies = responseBodies(resp);
+    const bodies = resp.bodies;
     const headers = resp.headers ?? [];
     const leading = opts.includeStatus ? [`status: ${resp.statusCode}`] : [];
     const trailing = headers.length > 0 ? [`headers: ${renderHeadersAnnotation(headers, options.modelsWithOutput)}`] : [];
@@ -765,7 +765,7 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWit
                 }
             }
             for (const resp of op.responses) {
-                for (const body of responseBodies(resp)) {
+                for (const body of resp.bodies) {
                     collectTypeNodeRefs(body.bodyType, types);
                     collectOutputTypeNodeRefs(body.bodyType, types, modelsWithOutput);
                 }
@@ -927,7 +927,7 @@ function opNeedsScalar(root: OpRootNode, name: string): boolean {
             route.operations.some(
                 op =>
                     !!op.request?.bodies.some(b => typeNeedsScalar(b.bodyType, name)) ||
-                    op.responses.some(r => responseBodies(r).some(b => typeNeedsScalar(b.bodyType, name))) ||
+                    op.responses.some(r => r.bodies.some(b => typeNeedsScalar(b.bodyType, name))) ||
                     paramSourceNeedsScalar(op.query, name) ||
                     paramSourceNeedsScalar(op.headers, name),
             ),

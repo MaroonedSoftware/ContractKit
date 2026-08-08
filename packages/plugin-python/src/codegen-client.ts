@@ -8,7 +8,7 @@ import type {
     ContractTypeNode,
     ParamSource,
 } from '@contractkit/core';
-import { resolveModifiers, classifyContentType, observableResponses, responseBodies } from '@contractkit/core';
+import { resolveModifiers, classifyContentType, observableResponses } from '@contractkit/core';
 import { renderPyType, toPythonFieldName } from './codegen-models.js';
 
 // ─── Response shape ────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ function responseShape(op: OpOperationNode): PyResponseShape {
     const observable = observableResponses(op);
     if (observable.length > 1) return { kind: 'multiStatus', responses: observable };
     const resp = observable[0];
-    if (resp && responseBodies(resp).length > 1) return { kind: 'multiMime', resp };
+    if (resp && resp.bodies.length > 1) return { kind: 'multiMime', resp };
     return { kind: 'simple', resp };
 }
 
@@ -198,7 +198,7 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
             lines.push('');
             lines.push(`class ${responseClassName(base, shape.kind === 'multiStatus' ? resp.statusCode : undefined)}(TypedDict):`);
             if (shape.kind === 'multiStatus') lines.push(`    status: Literal[${resp.statusCode}]`);
-            const bodies = responseBodies(resp);
+            const bodies = resp.bodies;
             if (bodies.length > 0) {
                 lines.push(`    content_type: ${pyContentTypeAnnotation(bodies)}`);
                 lines.push(`    data: ${pyDataAnnotation(bodies, opts.modelsWithInput)}`);
@@ -267,7 +267,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     const shape = responseShape(op);
     const methodBase = snakeToPascal(methodName);
     const primaryResponse = shape.kind === 'multiStatus' ? undefined : shape.resp;
-    const primaryBodies = primaryResponse ? responseBodies(primaryResponse) : [];
+    const primaryBodies = primaryResponse ? primaryResponse.bodies : [];
     const isVoid = primaryBodies.length === 0;
     const respCategory = primaryBodies[0] ? classifyContentType(primaryBodies[0].contentType) : 'json';
     const dataType = isVoid ? 'None' : pyBodyType(primaryBodies[0]!, modelsWithInput);
@@ -448,7 +448,7 @@ function buildMultiReturnLines(
             out.push(...buildHeadersDictLines(resp.headers!, typeName, indent, headersVar));
         }
 
-        const bodies = responseBodies(resp);
+        const bodies = resp.bodies;
         if (bodies.length <= 1) {
             out.push(...returnFor(resp, bodies[0], indent, includeStatus, headersVar));
             return out;
@@ -632,7 +632,7 @@ function collectReferencedModels(root: OpRootNode, modelsWithInput?: Set<string>
                 for (const body of op.request.bodies) collectTypeRefs(body.bodyType, refs, modelsWithInput, true);
             }
             for (const resp of op.responses) {
-                if (resp.bodyType) collectTypeRefs(resp.bodyType, refs, modelsWithInput, false);
+                for (const body of resp.bodies) collectTypeRefs(body.bodyType, refs, modelsWithInput, false);
             }
             if (op.query) collectParamSourceRefs(op.query, refs, modelsWithInput);
             if (op.headers) collectParamSourceRefs(op.headers, refs, modelsWithInput);

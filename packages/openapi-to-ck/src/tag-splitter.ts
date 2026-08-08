@@ -1,5 +1,4 @@
 import type { CkRootNode, ModelNode, OpRouteNode, ContractTypeNode } from '@contractkit/core';
-import { responseBodies } from '@contractkit/core';
 
 /**
  * Split models and routes into per-tag CkRootNode instances.
@@ -128,7 +127,7 @@ function collectRouteRefs(route: OpRouteNode, refs: Set<string>): void {
             for (const body of op.request.bodies) collectTypeRefs(body.bodyType, refs);
         }
         for (const resp of op.responses) {
-            for (const body of responseBodies(resp)) collectTypeRefs(body.bodyType, refs);
+            for (const body of resp.bodies) collectTypeRefs(body.bodyType, refs);
         }
     }
 }

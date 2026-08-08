@@ -240,7 +240,7 @@ options {
 - **`keys`** — arbitrary key/value pairs attached to the file's metadata (e.g. `area` is used for grouping in generated docs). Any key can also be referenced from any string in the file as `{{name}}`; see [Variable substitution](#variable-substitution).
 - **`services`** — maps service identifiers to import paths; used in `service:` bindings within operations. Paths starting with `#` are resolved as package-relative imports.
 - **`request: { headers }`** — request headers applied to every operation in the file. Op-level headers with the same name override; an operation can opt out entirely with `headers: none`. A name collision with a path parameter raises an error.
-- **`response: { headers }`** — response headers applied to every status code on every operation. Per-status override is `headers: { same-name: <type> }`; per-status opt-out is `headers: none`. Note: OpenAPI and Markdown reflect these on every status; the TS server (`ctx.set`) and SDK return shape only emit headers on the primary response (first body-bearing response), matching existing inline-headers behavior.
+- **`response: { headers }`** — response headers applied to every status code on every operation. Per-status override is `headers: { same-name: <type> }`; per-status opt-out is `headers: none`. Note: OpenAPI and Markdown reflect these on every status, while the TS server and the SDKs only emit them for statuses the service actually produces or a client can receive — a header on a documentation-only status has nowhere to be written at runtime.
 - **`security`** — file-level default security applied to all operations unless overridden at the route or operation level. Accepts the same syntax as operation-level `security:` blocks.
 
 #### Variable substitution
@@ -959,6 +959,69 @@ delete: {
     }
 }
 ```
+
+#### Several content types for one status
+
+A status may declare more than one mime. The service picks which it produced, and the router
+sets `ctx.type` from that choice rather than from a fixed literal.
+
+```
+get: {
+    response: {
+        200: {
+            image/png: binary
+            image/jpeg: binary
+        }
+    }
+}
+```
+
+The service returns `{ contentType: 'image/png' | 'image/jpeg'; body: Buffer }`, and the SDK
+reports which mime came back alongside the data. When the declared bodies have different types,
+`contentType` and `body` stay correlated as a union of members.
+
+#### Which statuses the service produces
+
+A status is **emitted** — returned by the service and written by the router — if it has a block,
+or is 2xx. Everything else is **documented**: it appears in OpenAPI, the SDKs and the docs, but
+something other than the service produces it (middleware, a framework short-circuit, or the
+thrown-error path).
+
+| Declaration | Default | Why |
+| --- | --- | --- |
+| any status with a block — `200: { … }`, `422: { application/json: Problem }` | emitted | the block describes what the service produces |
+| 2xx bare — `204:` | emitted | a real outcome the handler chooses |
+| 3xx/4xx/5xx bare — `304:`, `400:`, `404:` | documented | middleware or the error path produces it |
+
+Two ways to override the default:
+
+```
+304: {}                                  # empty block: the service returns this, with no body
+404(documented): { application/json: Problem }   # declared shape, but thrown rather than returned
+```
+
+An error status carrying a body is emitted like any other, so the handler returns the problem
+document instead of throwing:
+
+```
+get: {
+    response: {
+        200: { application/json: Pet }
+        422: { application/json: Problem }
+        404:
+    }
+}
+```
+
+The service returns `{ status: 200; … } | { status: 422; … }` and the router switches on
+`result.status`. Marking the 422 `(documented)` puts it back on the throw path and restores the
+single-status shape. `(documented)` on a bare bodyless 3xx/4xx/5xx changes nothing and warns.
+
+Client-side, the SDK's return type covers every status a caller can *receive* as a value: every
+emitted status, plus non-emitted ones below 400 such as a `304` produced by conditional-GET
+middleware. Those are passed to the shared fetch as `expectStatuses` so they no longer surface as
+`SdkError`. What remains — non-emitted 4xx/5xx — is the throw path, typed via a per-operation
+`…ErrorBody` alias referenced from the method's `@throws` tag.
 
 #### Typed response headers
 

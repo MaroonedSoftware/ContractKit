@@ -1350,11 +1350,6 @@ export function createSemantics(grammar: Grammar) {
             // so the presence of the braces is meaningful and cannot be normalized away.
             if (outer.numChildren > 0) result.hasBlock = true;
             if (modifiers.includes('documented')) result.emit = 'documented';
-            // Deprecated mirrors of bodies[0], kept until every consumer reads `bodies`.
-            if (bodies[0]) {
-                result.contentType = bodies[0].contentType;
-                result.bodyType = bodies[0].bodyType;
-            }
             if (headers) result.headers = headers;
             if (headersOptOut) result.headersOptOut = true;
             return result;

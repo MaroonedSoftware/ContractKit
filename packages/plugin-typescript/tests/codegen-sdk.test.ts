@@ -352,8 +352,8 @@ describe('generateSdk', () => {
                             responses: [
                                 {
                                     statusCode: 200,
-                                    contentType: 'application/json',
-                                    bodyType: { kind: 'ref', name: 'Transfer' },
+                                    hasBlock: true,
+                                    bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Transfer' } }],
                                     headers: [
                                         { name: 'preference-applied', optional: true, type: scalarType('string') },
                                         { name: 'etag', optional: false, type: scalarType('string') },
@@ -382,6 +382,8 @@ describe('generateSdk', () => {
                             responses: [
                                 {
                                     statusCode: 204,
+                                    hasBlock: true,
+                                    bodies: [],
                                     headers: [{ name: 'x-deleted-at', optional: false, type: scalarType('string') }],
                                 },
                             ],

@@ -131,9 +131,9 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWit
                 }
             }
             for (const resp of op.responses) {
-                if (resp.bodyType) {
-                    collectTypeNodeRefs(resp.bodyType, types);
-                    collectOutputTypeNodeRefs(resp.bodyType, types, modelsWithOutput);
+                for (const body of resp.bodies) {
+                    collectTypeNodeRefs(body.bodyType, types);
+                    collectOutputTypeNodeRefs(body.bodyType, types, modelsWithOutput);
                 }
             }
             collectParamSourceRefs(op.query, types);

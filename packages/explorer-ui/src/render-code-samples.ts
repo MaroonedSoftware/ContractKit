@@ -26,7 +26,7 @@ function renderCurlSample(op: ResolvedOperation, baseUrl: string, ctx: RenderCon
     lines.push(`curl --request ${op.method.toUpperCase()} \\`);
     lines.push(`  --url ${url}`);
 
-    const hasJsonResponse = op.op.responses.some(r => r.contentType?.includes('json'));
+    const hasJsonResponse = op.op.responses.some(r => r.bodies.some(b => b.contentType.includes('json')));
     const jsonBody = op.op.request?.bodies.find(
         b => b.contentType === 'application/json' || b.contentType.endsWith('+json'),
     );
@@ -58,15 +58,18 @@ function renderCurlSample(op: ResolvedOperation, baseUrl: string, ctx: RenderCon
 }
 
 function renderResponseExample(op: ResolvedOperation, ctx: RenderContext): string {
-    const primary = op.op.responses.find(
-        r =>
-            r.statusCode >= 200 &&
-            r.statusCode < 300 &&
-            r.bodyType !== undefined &&
-            r.contentType !== undefined &&
-            r.contentType.includes('json'),
-    );
-    if (!primary || !primary.bodyType) return '';
+    // The first JSON body on a success status — a status may declare several mimes, but only a
+    // JSON one has a sample worth rendering.
+    let primary: { statusCode: number; bodyType: ContractTypeNode } | undefined;
+    for (const resp of op.op.responses) {
+        if (resp.statusCode < 200 || resp.statusCode >= 300) continue;
+        const body = resp.bodies.find(b => b.contentType.includes('json'));
+        if (body) {
+            primary = { statusCode: resp.statusCode, bodyType: body.bodyType };
+            break;
+        }
+    }
+    if (!primary) return '';
 
     // Seed faker deterministically off the operation + status code so re-renders are stable.
     faker.seed(hashString(`${op.method}:${op.routePath}:${primary.statusCode}`));

@@ -10,7 +10,7 @@ describe('renderApp', () => {
             resolvedOp('/payments', op('get', { sdk: 'listPayments' }), { fileGroup: 'payments' }),
             resolvedOp(
                 '/payments/{id}',
-                op('get', { sdk: 'getPayment', responses: [{ statusCode: 200, bodyType: ref('Payment') }] }),
+                op('get', { sdk: 'getPayment', responses: [{ statusCode: 200, hasBlock: true, bodies: [{ contentType: 'application/json', bodyType: ref('Payment') }] }] }),
                 { fileGroup: 'payments' },
             ),
             resolvedOp('/users', op('post', { sdk: 'createUser' }), { fileGroup: 'users' }),

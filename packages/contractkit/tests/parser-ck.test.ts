@@ -847,7 +847,7 @@ operation /foo: {
 }`);
             const op = root.routes[0]!.operations[0]!;
             expect(op.request!.bodies[0]!.contentType).toBe('application/vnd.api+json');
-            expect(op.responses[0]!.contentType).toBe('application/vnd.api+json');
+            expect(op.responses[0]!.bodies[0]!.contentType).toBe('application/vnd.api+json');
             expect(diag.getAll()).toEqual([]);
         });
 
@@ -861,7 +861,7 @@ operation /foo: {
 }`);
             const op = root.routes[0]!.operations[0]!;
             expect(op.request!.bodies[0]!.contentType).toBe('application/json');
-            expect(op.responses[0]!.contentType).toBe('application/json');
+            expect(op.responses[0]!.bodies[0]!.contentType).toBe('application/json');
         });
 
         it('warns and dedupes when the same content type is declared twice', () => {
@@ -899,15 +899,15 @@ operation /users: {
             const responses = root.routes[0]!.operations[0]!.responses;
             expect(responses).toHaveLength(1);
             expect(responses[0]!.statusCode).toBe(200);
-            expect(responses[0]!.contentType).toBe('application/json');
-            expect(responses[0]!.bodyType).toEqual({ kind: 'array', item: { kind: 'ref', name: 'User' } });
+            expect(responses[0]!.bodies[0]!.contentType).toBe('application/json');
+            expect(responses[0]!.bodies[0]!.bodyType).toEqual({ kind: 'array', item: { kind: 'ref', name: 'User' } });
         });
 
         it('parses response with no body', () => {
             const { root } = parse('operation /r: { delete: { response: { 204: } } }');
             const responses = root.routes[0]!.operations[0]!.responses;
             expect(responses[0]!.statusCode).toBe(204);
-            expect(responses[0]!.bodyType).toBeUndefined();
+            expect(responses[0]!.bodies).toHaveLength(0);
         });
 
         it('parses multiple response status codes', () => {
@@ -929,11 +929,11 @@ operation /users/{id}: {
             const responses = root.routes[0]!.operations[0]!.responses;
             expect(responses).toHaveLength(3);
             expect(responses[0]!.statusCode).toBe(200);
-            expect(responses[0]!.bodyType).toEqual({ kind: 'ref', name: 'User' });
+            expect(responses[0]!.bodies[0]!.bodyType).toEqual({ kind: 'ref', name: 'User' });
             expect(responses[1]!.statusCode).toBe(404);
-            expect(responses[1]!.bodyType).toEqual({ kind: 'ref', name: 'ErrorBody' });
+            expect(responses[1]!.bodies[0]!.bodyType).toEqual({ kind: 'ref', name: 'ErrorBody' });
             expect(responses[2]!.statusCode).toBe(204);
-            expect(responses[2]!.bodyType).toBeUndefined();
+            expect(responses[2]!.bodies).toHaveLength(0);
         });
 
         it('distinguishes a bare status from one with an empty block', () => {
@@ -986,7 +986,7 @@ operation /art/{id}: {
                 { contentType: 'image/jpeg', bodyType: { kind: 'scalar', name: 'binary' } },
             ]);
             // Deprecated mirrors still point at the first declared body.
-            expect(responses[0]!.contentType).toBe('image/png');
+            expect(responses[0]!.bodies[0]!.contentType).toBe('image/png');
         });
 
         it('warns only when the same mime is declared twice for one status', () => {
@@ -1025,7 +1025,7 @@ operation /transfers/{id}: {
             expect(diag.hasErrors()).toBe(false);
             const responses = root.routes[0]!.operations[0]!.responses;
             expect(responses).toHaveLength(1);
-            expect(responses[0]!.bodyType).toEqual({ kind: 'ref', name: 'Transfer' });
+            expect(responses[0]!.bodies[0]!.bodyType).toEqual({ kind: 'ref', name: 'Transfer' });
             const headers = responses[0]!.headers!;
             expect(headers).toHaveLength(3);
             expect(headers[0]).toMatchObject({ name: 'preference-applied', optional: true });
@@ -1051,7 +1051,7 @@ operation /resources/{id}: {
             const responses = root.routes[0]!.operations[0]!.responses;
             expect(responses).toHaveLength(1);
             expect(responses[0]!.statusCode).toBe(204);
-            expect(responses[0]!.bodyType).toBeUndefined();
+            expect(responses[0]!.bodies).toHaveLength(0);
             expect(responses[0]!.headers).toHaveLength(1);
             expect(responses[0]!.headers![0]!.name).toBe('x-deleted-at');
         });

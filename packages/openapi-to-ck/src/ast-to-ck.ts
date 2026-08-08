@@ -13,7 +13,6 @@ import type {
     ObjectMode,
     RouteModifier,
 } from '@contractkit/core';
-import { responseBodies } from '@contractkit/core';
 
 const INDENT = '    '; // 4 spaces
 
@@ -424,7 +423,7 @@ function serializeResponses(lines: string[], responses: OpResponseNode[], depth:
     const indent = INDENT.repeat(depth);
     lines.push(`${indent}response: {`);
     for (const resp of responses) {
-        const bodies = responseBodies(resp);
+        const bodies = resp.bodies;
         const hasHeaders = resp.headers && resp.headers.length > 0;
         if (bodies.length > 0 || hasHeaders) {
             lines.push(`${INDENT.repeat(depth + 1)}${resp.statusCode}: {`);

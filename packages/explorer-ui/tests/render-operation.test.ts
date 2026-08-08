@@ -56,8 +56,8 @@ describe('renderOperation', () => {
                 op('post', {
                     request: { bodies: [{ contentType: 'application/json', bodyType: ref('PaymentInput') }] },
                     responses: [
-                        { statusCode: 200, contentType: 'application/json', bodyType: ref('Payment') },
-                        { statusCode: 404 },
+                        { statusCode: 200, hasBlock: true, bodies: [{ contentType: 'application/json', bodyType: ref('Payment') }] },
+                        { statusCode: 404, bodies: [] },
                     ],
                 }),
             ),
@@ -83,7 +83,7 @@ describe('renderOperation', () => {
     it('skips the status-summary row when there is only one response', () => {
         const html = renderOperation(
             resolvedOp('/payments', op('post', {
-                responses: [{ statusCode: 201, contentType: 'application/json' }],
+                responses: [{ statusCode: 201, hasBlock: true, bodies: [] }],
             })),
         );
         expect(html).not.toContain('class="ce-status-summary"');

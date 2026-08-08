@@ -1,5 +1,5 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, McpConfigNode, ParamSource, ContractTypeNode } from '@contractkit/core';
-import { resolveModifiers } from '@contractkit/core';
+import { resolveModifiers, emittedResponses } from '@contractkit/core';
 import { renderType, renderInputType, pascalToDotCase } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted } from './ts-render.js';
@@ -155,14 +155,22 @@ function argsSchemaExpr(props: ArgsProp[]): string {
 
 // ─── Output schema ──────────────────────────────────────────────────────────
 
-/** Primary response = first with a body, else the first response. */
-function primaryResponse(op: OpOperationNode) {
-    return op.responses.find(r => r.bodyType) ?? op.responses[0];
+/**
+ * The body an MCP tool reports as its output: the first body the service can actually return.
+ *
+ * Documented and thrown statuses are skipped — an MCP tool describes what a successful call
+ * produces, not what the operation is allowed to document.
+ */
+function primaryResponseBody(op: OpOperationNode): ContractTypeNode | undefined {
+    for (const resp of emittedResponses(op)) {
+        if (resp.bodies[0]) return resp.bodies[0].bodyType;
+    }
+    return undefined;
 }
 
 /** MCP output schemas must be objects — only model refs and inline objects qualify. */
 function outputSchemaExpr(op: OpOperationNode): string | undefined {
-    const body = primaryResponse(op)?.bodyType;
+    const body = primaryResponseBody(op);
     if (!body) return undefined;
     if (body.kind === 'ref') return body.name;
     if (body.kind === 'inlineObject') return renderType(body);
@@ -233,7 +241,7 @@ function collectSchemaIds(ops: { route: OpRouteNode; op: OpOperationNode }[], mo
         walkSourceRefs(op.query, ids, modelsWithInput);
         walkSourceRefs(op.headers, ids, modelsWithInput);
 
-        const body = primaryResponse(op)?.bodyType;
+        const body = primaryResponseBody(op);
         if (body && (body.kind === 'ref' || body.kind === 'inlineObject')) walkTypeRefs(body, ids, 'read');
     }
     return ids;
@@ -356,7 +364,7 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     const props = buildArgsProps(route, op, options.modelsWithInput);
     const destructure = props.map(p => p.key);
     const callArgs = buildArgs(route, op);
-    const isVoid = !primaryResponse(op)?.bodyType;
+    const isVoid = !primaryResponseBody(op);
     const structured = !!outExpr;
 
     lines.push('    async handle(args: Record<string, unknown>, _context: McpToolContext): Promise<CallToolResult> {');

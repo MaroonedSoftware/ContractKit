@@ -509,8 +509,8 @@ describe('generateOpenApi', () => {
                         responses: [
                             {
                                 statusCode: 200,
-                                contentType: 'application/json',
-                                bodyType: refType('Transfer'),
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: refType('Transfer') }],
                                 headers: [
                                     { name: 'preference-applied', optional: true, type: scalarType('string') },
                                     { name: 'etag', optional: false, type: scalarType('string'), description: 'cache validator' },
