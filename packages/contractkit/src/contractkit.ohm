@@ -241,9 +241,15 @@ Contract {
 
   ResponseBlock = responseKw ":" "{" (comment | StatusCodeBlock)* "}"
 
-  StatusCodeBlock = numberLit StatusModifiers? ":" ("{" StatusCodeBodyItem* "}")?
+  StatusCodeBlock = statusCodeCall ":" ("{" StatusCodeBodyItem* "}")?
 
-  StatusModifiers = "(" statusModifier ("," statusModifier)* ")"
+  // Lexical throughout, mirroring httpMethodCall, so `404 (documented)` is rejected the same way
+  // `get (internal)` is. A syntactic rule would skip whitespace between the code and the paren —
+  // whitespace the TextMate grammar and the printer both assume is absent.
+  statusCodeCall = numberLit statusModifiers  -- modified
+                 | numberLit                  -- plain
+
+  statusModifiers = "(" statusModifier ("," " "* statusModifier)* ")"
 
   statusModifier = "documented" ~identPart
 

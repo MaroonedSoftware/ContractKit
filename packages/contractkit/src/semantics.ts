@@ -1313,14 +1313,18 @@ export function createSemantics(grammar: Grammar) {
             return { _type: 'responses', value: responses, trailingComments: pending.length > 0 ? pending : undefined };
         },
 
-        // StatusCodeBlock = numberLit StatusModifiers? ":" ("{" StatusCodeBodyItem* "}")?
+        // StatusCodeBlock = statusCodeCall ":" ("{" StatusCodeBodyItem* "}")?
         // The optional inline group desugars to three IterationNodes for its children.
-        // Total: codeNode, modsOpt, _colon, _lbOpt, itemsOpt, _rbOpt = 6
-        StatusCodeBlock(codeNode, modsOpt, _colon, _lbOpt, itemsOpt, _rbOpt) {
+        // Total: codeNode, _colon, _lbOpt, itemsOpt, _rbOpt = 5
+        StatusCodeBlock(codeNode, _colon, _lbOpt, itemsOpt, _rbOpt) {
             const file = this.args.file;
             const diag = this.args.diag;
-            const statusCode = parseInt(codeNode.sourceString, 10);
-            const modifiers = (modsOpt as IterationNode).numChildren > 0 ? ((modsOpt as IterationNode).child(0).toAst(file, diag) as string[]) : [];
+            // `statusCodeCall` is lexical, so its source is `404` or `404(documented)` with no
+            // interior whitespace — read the modifiers off it the way HttpOperation does.
+            const callText = codeNode.sourceString;
+            const statusCode = parseInt(callText, 10);
+            const modMatch = /\(([^)]*)\)$/.exec(callText);
+            const modifiers = modMatch ? modMatch[1]!.split(',').map(m => m.trim()) : [];
             const bodies: OpResponseBodyNode[] = [];
             let headers: OpResponseHeaderNode[] | undefined;
             let headersOptOut: boolean | undefined;
@@ -1388,14 +1392,6 @@ export function createSemantics(grammar: Grammar) {
             if (headers) result.headers = headers;
             if (headersOptOut) result.headersOptOut = true;
             return result;
-        },
-
-        // StatusModifiers = "(" statusModifier ("," statusModifier)* ")"
-        StatusModifiers(_lp, first, _commas, rest, _rp) {
-            const out = [first.sourceString];
-            const more = rest as IterationNode;
-            for (let i = 0; i < more.numChildren; i++) out.push(more.child(i).sourceString);
-            return out;
         },
 
         StatusCodeBodyItem(child) {

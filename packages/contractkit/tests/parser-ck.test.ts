@@ -944,6 +944,16 @@ operation /users/{id}: {
             expect(responses[1]!.hasBlock).toBe(true);
         });
 
+        it('rejects whitespace around the status modifier, as `get (internal)` is rejected', () => {
+            // The rule is lexical for a reason: a syntactic one would skip whitespace that the
+            // TextMate grammar and the prettier printer both assume is absent, so a spaced form
+            // would parse, never highlight, and get silently reformatted.
+            for (const written of ['404 (documented):', '404( documented ):', '404 ( documented ) :']) {
+                const { diag } = parse(`operation /p: { get: { response: { ${written} } } }`);
+                expect(diag.hasErrors(), `${written} should not parse`).toBe(true);
+            }
+        });
+
         it('parses the documented status modifier', () => {
             const { root, diag } = parse(`\
 operation /pet: {
