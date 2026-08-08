@@ -11,6 +11,7 @@ import type {
     OpRequestNode,
     OpRequestBodyNode,
     OpResponseNode,
+    OpResponseBodyNode,
     OpResponseHeaderNode,
     ContractTypeNode,
     FieldNode,
@@ -1305,8 +1306,7 @@ export function createSemantics(grammar: Grammar) {
             const file = this.args.file;
             const diag = this.args.diag;
             const statusCode = parseInt(codeNode.sourceString, 10);
-            let contentType: string | undefined;
-            let bodyType: ContractTypeNode | undefined;
+            const bodies: OpResponseBodyNode[] = [];
             let headers: OpResponseHeaderNode[] | undefined;
             let headersOptOut: boolean | undefined;
             let sawResponseHeaders = false;
@@ -1331,20 +1331,25 @@ export function createSemantics(grammar: Grammar) {
                         headers = item.value;
                     }
                 } else if (item.contentType !== undefined && item.bodyType !== undefined) {
-                    if (contentType !== undefined) {
-                        diag?.warn(file, getLine(itemNode), `Duplicate response body for status ${statusCode}`);
+                    // Several mimes per status are allowed — the service picks one at runtime.
+                    // Only a repeat of the same mime is a mistake.
+                    const contentType = normalizeContentType(item.contentType);
+                    if (bodies.some(b => b.contentType === contentType)) {
+                        diag?.warn(file, getLine(itemNode), `Duplicate response body for '${contentType}' on status ${statusCode}`);
                         continue;
                     }
-                    contentType = normalizeContentType(item.contentType);
-                    bodyType = item.bodyType;
+                    bodies.push({ contentType, bodyType: item.bodyType });
                 }
             }
 
-            const result: OpResponseNode = { statusCode };
+            const result: OpResponseNode = { statusCode, bodies };
             // `200: { application/json: Pet }` on one line stays on one line.
             if (!this.sourceString.includes('\n')) result.inline = true;
-            if (contentType) result.contentType = contentType;
-            if (bodyType) result.bodyType = bodyType;
+            // Deprecated mirrors of bodies[0], kept until every consumer reads `bodies`.
+            if (bodies[0]) {
+                result.contentType = bodies[0].contentType;
+                result.bodyType = bodies[0].bodyType;
+            }
             if (headers) result.headers = headers;
             if (headersOptOut) result.headersOptOut = true;
             return result;

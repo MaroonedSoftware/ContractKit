@@ -11,7 +11,7 @@ import type {
     McpConfigNode,
     OpBodyKey,
 } from '@contractkit/core';
-import { SECURITY_NONE } from '@contractkit/core';
+import { SECURITY_NONE, responseBodies } from '@contractkit/core';
 import { printType, formatDefault } from './print-type.js';
 import { INDENT } from './indent.js';
 
@@ -381,16 +381,17 @@ function printResponseBlock(responses: OpResponseNode[]): string[] {
     const lines: string[] = [`${I2}response: {`];
 
     for (const resp of responses) {
-        const hasBody = resp.contentType && resp.bodyType;
+        const bodies = responseBodies(resp);
         const hasHeaders = resp.headers && resp.headers.length > 0;
         const optOut = resp.headersOptOut;
-        if (resp.inline && hasBody && !hasHeaders && !optOut && resp.bodyType!.kind !== 'inlineObject') {
+        const onlyBody = bodies.length === 1 ? bodies[0]! : undefined;
+        if (resp.inline && onlyBody && !hasHeaders && !optOut && onlyBody.bodyType.kind !== 'inlineObject') {
             // Written on one line in the source, so keep it there: `200: { application/json: Pet }`.
-            lines.push(`${I3}${resp.statusCode}: { ${resp.contentType}: ${printType(resp.bodyType!)} }`);
-        } else if (hasBody || hasHeaders || optOut) {
+            lines.push(`${I3}${resp.statusCode}: { ${onlyBody.contentType}: ${printType(onlyBody.bodyType)} }`);
+        } else if (bodies.length > 0 || hasHeaders || optOut) {
             lines.push(`${I3}${resp.statusCode}: {`);
-            if (hasBody) {
-                lines.push(...printContentTypeLine(resp.contentType!, resp.bodyType!, I4));
+            for (const body of bodies) {
+                lines.push(...printContentTypeLine(body.contentType, body.bodyType, I4));
             }
             if (optOut) {
                 lines.push(`${I4}headers: none`);

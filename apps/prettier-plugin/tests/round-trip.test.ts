@@ -248,6 +248,24 @@ describe('round-trip — layout', () => {
 `;
         expect(format(source)).toBe(source);
     });
+
+    it('keeps every declared mime for a status, in source order', () => {
+        const source = `operation /art/{id}: {
+    get: {
+        response: {
+            200: {
+                image/png: binary
+                image/jpeg: binary
+                headers: {
+                    etag?: string
+                }
+            }
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
 });
 
 // ─── Idempotence ─────────────────────────────────────────────────────────────

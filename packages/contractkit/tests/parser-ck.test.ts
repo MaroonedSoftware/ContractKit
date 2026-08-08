@@ -936,6 +936,45 @@ operation /users/{id}: {
             expect(responses[2]!.bodyType).toBeUndefined();
         });
 
+        it('parses several content types under one status code', () => {
+            const { root, diag } = parse(`\
+operation /art/{id}: {
+    get: {
+        response: {
+            200: {
+                image/png: binary
+                image/jpeg: binary
+            }
+        }
+    }
+}`);
+            expect(diag.hasErrors()).toBe(false);
+            const responses = root.routes[0]!.operations[0]!.responses;
+            expect(responses[0]!.bodies).toEqual([
+                { contentType: 'image/png', bodyType: { kind: 'scalar', name: 'binary' } },
+                { contentType: 'image/jpeg', bodyType: { kind: 'scalar', name: 'binary' } },
+            ]);
+            // Deprecated mirrors still point at the first declared body.
+            expect(responses[0]!.contentType).toBe('image/png');
+        });
+
+        it('warns only when the same mime is declared twice for one status', () => {
+            const { root, diag } = parse(`\
+operation /art/{id}: {
+    get: {
+        response: {
+            200: {
+                image/png: binary
+                image/png: binary
+            }
+        }
+    }
+}`);
+            expect(diag.hasErrors()).toBe(false);
+            expect(diag.getAll().some(d => d.message.includes("Duplicate response body for 'image/png' on status 200"))).toBe(true);
+            expect(root.routes[0]!.operations[0]!.responses[0]!.bodies).toHaveLength(1);
+        });
+
         it('parses response headers alongside content type', () => {
             const { root, diag } = parse(`\
 operation /transfers/{id}: {
