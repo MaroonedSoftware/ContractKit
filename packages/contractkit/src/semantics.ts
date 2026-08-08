@@ -1035,6 +1035,7 @@ export function createSemantics(grammar: Grammar) {
             let requestHeadersOptOut: boolean | undefined;
             let request: OpRequestNode | undefined;
             let responses: OpResponseNode[] = [];
+            let responsesTrailingComments: string[] | undefined;
             let security: SecurityNode | undefined;
             let plugins: Record<string, PluginValue> | undefined;
             // Source order of the body keys, so the formatter can re-emit them as the user wrote them.
@@ -1079,6 +1080,7 @@ export function createSemantics(grammar: Grammar) {
                         break;
                     case 'responses':
                         responses = item.value;
+                        responsesTrailingComments = item.trailingComments;
                         break;
                     case 'security':
                         security = item.value;
@@ -1089,7 +1091,7 @@ export function createSemantics(grammar: Grammar) {
                 }
             }
 
-            return { name, service, sdk, mcp, signature, signatureDescription, signaturePolicy, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, security, plugins, keyOrder };
+            return { name, service, sdk, mcp, signature, signatureDescription, signaturePolicy, query, queryMode, headers, headersMode, requestHeadersOptOut, request, responses, responsesTrailingComments, security, plugins, keyOrder };
         },
 
         OperationBodyItem(child) {
@@ -1291,12 +1293,24 @@ export function createSemantics(grammar: Grammar) {
 
         ResponseBlock(_responseKw, _colon, _lb, items, _rb) {
             const responses: OpResponseNode[] = [];
+            // A comment run attaches to the status code it precedes; anything left over sat
+            // before the closing brace. Dropping either silently deletes the author's notes on
+            // `pnpm format`, which is the one thing the formatter must never do.
+            let pending: string[] = [];
             for (let i = 0; i < items.numChildren; i++) {
                 const child = items.child(i);
-                if (child.ctorName === 'comment') continue;
-                responses.push(child.toAst(this.args.file, this.args.diag));
+                if (child.ctorName === 'comment') {
+                    pending.push(commentText(child));
+                    continue;
+                }
+                const node = child.toAst(this.args.file, this.args.diag) as OpResponseNode;
+                if (pending.length > 0) {
+                    node.leadingComments = pending;
+                    pending = [];
+                }
+                responses.push(node);
             }
-            return { _type: 'responses', value: responses };
+            return { _type: 'responses', value: responses, trailingComments: pending.length > 0 ? pending : undefined };
         },
 
         // StatusCodeBlock = numberLit StatusModifiers? ":" ("{" StatusCodeBodyItem* "}")?
@@ -1316,8 +1330,18 @@ export function createSemantics(grammar: Grammar) {
             // around the StatusCodeBodyItem* iteration; child(0) is the inner iteration when present.
             const outer = itemsOpt as IterationNode;
             const items = outer.numChildren > 0 ? (outer.child(0) as IterationNode) : null;
+            // A comment run attaches to whichever item it precedes; leftovers sat before the
+            // closing brace. Each is kept so formatting cannot delete an author's note.
+            let pending: string[] = [];
+            let headersLeadingComments: string[] | undefined;
             for (let i = 0; items && i < items.numChildren; i++) {
                 const itemNode = items.child(i);
+                // `StatusCodeBodyItem` wraps its alternation, so the comment is one level down.
+                const isComment = itemNode.ctorName === 'comment' || (itemNode.numChildren === 1 && itemNode.child(0).ctorName === 'comment');
+                if (isComment) {
+                    pending.push(commentText(itemNode));
+                    continue;
+                }
                 const item = itemNode.toAst(file, diag);
                 if (!item) continue;
                 if (item._type === 'responseHeaders') {
@@ -1326,6 +1350,10 @@ export function createSemantics(grammar: Grammar) {
                         continue;
                     }
                     sawResponseHeaders = true;
+                    if (pending.length > 0) {
+                        headersLeadingComments = pending;
+                        pending = [];
+                    }
                     if (item.optOut) {
                         headersOptOut = true;
                     } else {
@@ -1339,11 +1367,18 @@ export function createSemantics(grammar: Grammar) {
                         diag?.warn(file, getLine(itemNode), `Duplicate response body for '${contentType}' on status ${statusCode}`);
                         continue;
                     }
-                    bodies.push({ contentType, bodyType: item.bodyType });
+                    const body: OpResponseBodyNode = { contentType, bodyType: item.bodyType };
+                    if (pending.length > 0) {
+                        body.leadingComments = pending;
+                        pending = [];
+                    }
+                    bodies.push(body);
                 }
             }
 
             const result: OpResponseNode = { statusCode, bodies };
+            if (headersLeadingComments) result.headersLeadingComments = headersLeadingComments;
+            if (pending.length > 0) result.trailingComments = pending;
             // `200: { application/json: Pet }` on one line stays on one line.
             if (!this.sourceString.includes('\n')) result.inline = true;
             // An empty block (`304: {}`) is how a bodyless status says the service returns it,

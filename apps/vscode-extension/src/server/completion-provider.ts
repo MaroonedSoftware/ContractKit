@@ -307,6 +307,18 @@ function getOpCompletions(textBefore: string, lines: string[], line: number, ind
         }
     }
 
+    // Just after a complete status code — offer the modifier that keeps it out of the router.
+    if (context === 'response-body' && /^\s*\d{3}$/.test(textBefore)) {
+        return [
+            {
+                label: '(documented)',
+                kind: CompletionItemKind.Keyword,
+                insertText: '(documented): ',
+                detail: 'In the spec, SDKs and docs — never emitted by the generated router',
+            },
+        ];
+    }
+
     // Inside response body — offer status codes
     if (context === 'response-body' && /^\s*\d*$/.test(textBefore)) {
         return [
@@ -345,7 +357,8 @@ function getOpContext(lines: string[], currentLine: number): OpContext {
                 } else {
                     // This opening brace is the one enclosing the cursor
                     const textBefore = line.slice(0, j).trim();
-                    if (/\d{3}\s*:?\s*$/.test(textBefore)) {
+                    // The optional `(documented)` sits between the code and the colon.
+                    if (/\d{3}(?:\(\w+\))?\s*:?\s*$/.test(textBefore)) {
                         contextStack.push('status-code-body');
                     } else if (/\bresponse\s*:?\s*$/.test(textBefore)) {
                         contextStack.push('response-body');

@@ -105,6 +105,35 @@ describe('getCompletions', () => {
         });
     });
 
+    describe('response completions', () => {
+        const RESPONSE_BLOCK = 'operation /users: {\n    get: {\n        response: {\n            \n        }\n    }\n}';
+
+        it('offers status codes inside a response block', () => {
+            const doc = makeDoc('file:///test.ck', RESPONSE_BLOCK);
+            const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 3, character: 12 } }, doc, new WorkspaceIndex());
+            expect(items.some(i => i.label === '200')).toBe(true);
+            expect(items.some(i => i.label === '404')).toBe(true);
+        });
+
+        it('offers the documented modifier once a status code is typed', () => {
+            const doc = makeDoc('file:///test.ck', RESPONSE_BLOCK.replace('            \n', '            404\n'));
+            const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 3, character: 15 } }, doc, new WorkspaceIndex());
+            expect(items.some(i => i.label === '(documented)')).toBe(true);
+        });
+
+        it('still recognizes a status block that carries the modifier', () => {
+            // The context walk keys off the text before the opening brace; `(documented)` sits
+            // between the code and the colon, so a naive status-code pattern misses it and the
+            // content-type completions silently stop working inside that block.
+            const doc = makeDoc(
+                'file:///test.ck',
+                'operation /users: {\n    get: {\n        response: {\n            404(documented): {\n                \n            }\n        }\n    }\n}',
+            );
+            const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 4, character: 16 } }, doc, new WorkspaceIndex());
+            expect(items.some(i => i.label === 'application/json')).toBe(true);
+        });
+    });
+
     describe('modifier completions', () => {
         it('offers internal and deprecated inside operation( at top-level', () => {
             const doc = makeDoc('file:///test.ck', 'operation(');

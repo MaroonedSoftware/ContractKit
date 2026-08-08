@@ -82,4 +82,24 @@ describe('ck.tmLanguage — options block', () => {
         expect(grammar.repository['options-request-block']?.begin).toBe('\\b(request)\\s*(:)\\s*(\\{)');
         expect(grammar.repository['options-response-block']?.begin).toBe('\\b(response)\\s*(:)\\s*(\\{)');
     });
+
+    describe('status codes', () => {
+        const begin = new RegExp(grammar.repository['status-code-block']!.begin as string);
+
+        it('matches a bare status code', () => {
+            expect(begin.exec('            404:')?.[1]).toBe('404');
+        });
+
+        it('matches a status code carrying the documented modifier', () => {
+            const m = begin.exec('            404(documented): {');
+            expect(m?.[1]).toBe('404');
+            expect(m?.[2]).toBe('documented');
+        });
+
+        it('scopes the modifier as a keyword, like the http-method modifiers', () => {
+            const captures = grammar.repository['status-code-block']?.beginCaptures as Record<string, { name: string }>;
+            expect(captures['2']?.name).toBe('keyword.control.modifier.ck');
+            expect(captures['3']?.name).toBe('punctuation.separator.colon.ck');
+        });
+    });
 });

@@ -306,6 +306,89 @@ describe('round-trip — layout', () => {
 `;
         expect(format(source)).toBe(source);
     });
+
+    it('keeps several mimes on one line when the source has them there', () => {
+        const source = `operation /art/{id}: {
+    get: {
+        response: {
+            200: { image/png: binary image/jpeg: binary }
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+});
+
+// ─── Comments in the response block ──────────────────────────────────────────
+
+describe('round-trip — comments in the response block', () => {
+    it('keeps a comment run above a status code', () => {
+        const source = `operation /art/{id}: {
+    get: {
+        response: {
+            # One declared mime per format, because the router pins ctx.type from this line
+            # and a service cannot vary it per request.
+            200: {
+                image/png: binary
+            }
+            # Produced by the conditional-GET middleware, not by the handler.
+            304:
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a comment above a mime line inside a status block', () => {
+        const source = `operation /art/{id}: {
+    get: {
+        response: {
+            200: {
+                # served straight from object storage
+                image/png: binary
+            }
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a comment above a headers block', () => {
+        const source = `operation /art/{id}: {
+    get: {
+        response: {
+            200: {
+                image/png: binary
+                # set by the CDN, echoed here so the SDK types it
+                headers: {
+                    etag?: string
+                }
+            }
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps trailing comments before either closing brace', () => {
+        const source = `operation /art/{id}: {
+    get: {
+        response: {
+            200: {
+                image/png: binary
+                # TODO: add image/avif once the encoder lands
+            }
+            # TODO: document the 429 the rate limiter returns
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
 });
 
 // ─── Idempotence ─────────────────────────────────────────────────────────────

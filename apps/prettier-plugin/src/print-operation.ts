@@ -177,7 +177,7 @@ function printOperationKey(op: OpOperationNode, key: OpBodyKey): string[] {
             return lines;
         }
         case 'responses':
-            return op.responses.length > 0 ? printResponseBlock(op.responses) : [];
+            return op.responses.length > 0 ? printResponseBlock(op.responses, op.responsesTrailingComments) : [];
     }
 }
 
@@ -377,28 +377,33 @@ function printContentTypeLine(contentType: string, bodyType: ContractTypeNode, l
 
 // ─── Response block ──────────────────────────────────────────────────────────
 
-function printResponseBlock(responses: OpResponseNode[]): string[] {
+function printResponseBlock(responses: OpResponseNode[], trailingComments?: string[]): string[] {
     const lines: string[] = [`${I2}response: {`];
 
     for (const resp of responses) {
+        for (const comment of resp.leadingComments ?? []) lines.push(`${I3}# ${comment}`);
         const bodies = resp.bodies;
         const hasHeaders = resp.headers && resp.headers.length > 0;
         const optOut = resp.headersOptOut;
-        const onlyBody = bodies.length === 1 ? bodies[0]! : undefined;
         // `404(documented):` — the modifier changes what codegen does, so it has to survive.
         const code = resp.emit ? `${resp.statusCode}(${resp.emit})` : `${resp.statusCode}`;
-        if (resp.inline && onlyBody && !hasHeaders && !optOut && onlyBody.bodyType.kind !== 'inlineObject') {
+        const inlinable = resp.inline && bodies.length > 0 && !hasHeaders && !optOut && bodies.every(b => b.bodyType.kind !== 'inlineObject');
+        if (inlinable) {
             // Written on one line in the source, so keep it there: `200: { application/json: Pet }`.
-            lines.push(`${I3}${code}: { ${onlyBody.contentType}: ${printType(onlyBody.bodyType)} }`);
+            // Several mimes on that line stay on it too, space-separated as the grammar has them.
+            const inner = bodies.map(b => `${b.contentType}: ${printType(b.bodyType)}`).join(' ');
+            lines.push(`${I3}${code}: { ${inner} }`);
         } else if (bodies.length === 0 && !hasHeaders && !optOut && resp.hasBlock) {
             // An empty block means "emitted, no body" — collapsing it to `304:` would change
             // the generated router, so it is not a formatting detail.
             lines.push(`${I3}${code}: {}`);
-        } else if (bodies.length > 0 || hasHeaders || optOut) {
+        } else if (bodies.length > 0 || hasHeaders || optOut || (resp.trailingComments?.length ?? 0) > 0) {
             lines.push(`${I3}${code}: {`);
             for (const body of bodies) {
+                for (const comment of body.leadingComments ?? []) lines.push(`${I4}# ${comment}`);
                 lines.push(...printContentTypeLine(body.contentType, body.bodyType, I4));
             }
+            for (const comment of resp.headersLeadingComments ?? []) lines.push(`${I4}# ${comment}`);
             if (optOut) {
                 lines.push(`${I4}headers: none`);
             } else if (hasHeaders) {
@@ -410,12 +415,14 @@ function printResponseBlock(responses: OpResponseNode[]): string[] {
                 }
                 lines.push(`${I4}}`);
             }
+            for (const comment of resp.trailingComments ?? []) lines.push(`${I4}# ${comment}`);
             lines.push(`${I3}}`);
         } else {
             lines.push(`${I3}${code}:`);
         }
     }
 
+    for (const comment of trailingComments ?? []) lines.push(`${I3}# ${comment}`);
     lines.push(`${I2}}`);
     return lines;
 }

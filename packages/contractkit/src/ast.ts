@@ -254,6 +254,8 @@ export interface OpResponseHeaderNode {
 export interface OpResponseBodyNode {
     contentType: string;
     bodyType: ContractTypeNode;
+    /** Comment lines written directly above this mime line. Preserved for lossless round-trip. */
+    leadingComments?: string[];
 }
 
 export interface OpResponseNode {
@@ -286,6 +288,12 @@ export interface OpResponseNode {
     /** True when the whole status-code block was written on a single source line
      * (`200: { application/json: Pet }`). Preserved so the formatter doesn't expand it. */
     inline?: boolean;
+    /** Comment lines written directly above this status code, inside the `response` block. */
+    leadingComments?: string[];
+    /** Comment lines written directly above this status's `headers:` block. */
+    headersLeadingComments?: string[];
+    /** Comment lines left over before the status block's closing brace. */
+    trailingComments?: string[];
 }
 
 /**
@@ -356,6 +364,8 @@ export interface OpOperationNode {
      * emits keys in this order instead of a canonical one so it never reorders a user's file.
      * Absent on programmatically built nodes, in which case canonical order applies. */
     keyOrder?: OpBodyKey[];
+    /** Comment lines left over before the `response` block's closing brace, after the last status. */
+    responsesTrailingComments?: string[];
     loc: SourceLocation;
 }
 

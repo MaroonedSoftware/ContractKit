@@ -20,15 +20,21 @@ A grammar change is never a one-file change. Work through all of these explicitl
 2. `ast.ts` — the AST node type.
 3. `apps/vscode-extension/syntaxes/ck.tmLanguage.json` — the highlighting regex must accept
    the same characters the parser does. Reload locally with `pnpm run vscode:install`.
-4. `apps/prettier-plugin/src/print-*.ts` — round-trip the new syntax, plus a round-trip test
-   in `apps/prettier-plugin/tests/print-ck.test.ts`.
-5. `packages/contractkit/tests/parser-ck.test.ts` — a parser test.
-6. **Every codegen plugin that consumes the affected AST shape**, not just the TypeScript
+4. `apps/vscode-extension/src/server/completion-provider.ts` — it decides what block the
+   cursor is in by regex-matching the text before the enclosing `{`. New syntax between a
+   keyword and its colon (a modifier, say) makes that match fail, and completions silently
+   stop working inside the block with no error anywhere.
+5. `apps/prettier-plugin/src/print-*.ts` — round-trip the new syntax, plus a round-trip test
+   in `apps/prettier-plugin/tests/round-trip.test.ts`. Anything the printer does not know
+   about is *deleted* from the user's file on the next `pnpm format`, comments included —
+   so a construct is not done until it round-trips.
+6. `packages/contractkit/tests/parser-ck.test.ts` — a parser test.
+7. **Every codegen plugin that consumes the affected AST shape**, not just the TypeScript
    one. Check each: `plugin-typescript` (server, SDK, Zod, plain types), `plugin-python`,
    `plugin-openapi`, `plugin-markdown`, `plugin-bruno`, and `openapi-to-ck` (the reverse
    direction). Update codegen *and* tests for each.
-7. `apps/cli` — if file discovery, config schema, or cache fingerprinting is affected.
-8. `README.md` — if the surface syntax changed.
+8. `apps/cli` — if file discovery, config schema, or cache fingerprinting is affected.
+9. `README.md` — if the surface syntax changed.
 
 ## Verify
 
