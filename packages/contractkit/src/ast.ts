@@ -276,6 +276,21 @@ export interface OpResponseNode {
     headers?: OpResponseHeaderNode[];
     /** Set when the status code body declares `headers: none` — suppresses options-level response header merge for this code. */
     headersOptOut?: boolean;
+    /**
+     * True when the status was written with braces, including an empty pair (`304: {}`).
+     *
+     * The braces are the signal that the *service* produces this response: an empty block says
+     * "returned, carries nothing", while a bare `304:` says the status is documented and
+     * something else (middleware, the error path) produces it. Distinct from a bodyless block
+     * that only declares headers, which is also braced and also emitted.
+     */
+    hasBlock?: boolean;
+    /**
+     * `'documented'` when the status is marked `404(documented):` — part of the OpenAPI, SDK and
+     * docs surface, but never written by the generated router. Undefined means the default
+     * derivation applies (emitted if it has a block or is 2xx).
+     */
+    emit?: 'documented';
     /** True when the whole status-code block was written on a single source line
      * (`200: { application/json: Pet }`). Preserved so the formatter doesn't expand it. */
     inline?: boolean;

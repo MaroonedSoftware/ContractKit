@@ -1299,13 +1299,14 @@ export function createSemantics(grammar: Grammar) {
             return { _type: 'responses', value: responses };
         },
 
-        // StatusCodeBlock = numberLit ":" ("{" StatusCodeBodyItem* "}")?
+        // StatusCodeBlock = numberLit StatusModifiers? ":" ("{" StatusCodeBodyItem* "}")?
         // The optional inline group desugars to three IterationNodes for its children.
-        // Total: codeNode, _colon, _lbOpt, itemsOpt, _rbOpt = 5
-        StatusCodeBlock(codeNode, _colon, _lbOpt, itemsOpt, _rbOpt) {
+        // Total: codeNode, modsOpt, _colon, _lbOpt, itemsOpt, _rbOpt = 6
+        StatusCodeBlock(codeNode, modsOpt, _colon, _lbOpt, itemsOpt, _rbOpt) {
             const file = this.args.file;
             const diag = this.args.diag;
             const statusCode = parseInt(codeNode.sourceString, 10);
+            const modifiers = (modsOpt as IterationNode).numChildren > 0 ? ((modsOpt as IterationNode).child(0).toAst(file, diag) as string[]) : [];
             const bodies: OpResponseBodyNode[] = [];
             let headers: OpResponseHeaderNode[] | undefined;
             let headersOptOut: boolean | undefined;
@@ -1345,6 +1346,10 @@ export function createSemantics(grammar: Grammar) {
             const result: OpResponseNode = { statusCode, bodies };
             // `200: { application/json: Pet }` on one line stays on one line.
             if (!this.sourceString.includes('\n')) result.inline = true;
+            // An empty block (`304: {}`) is how a bodyless status says the service returns it,
+            // so the presence of the braces is meaningful and cannot be normalized away.
+            if (outer.numChildren > 0) result.hasBlock = true;
+            if (modifiers.includes('documented')) result.emit = 'documented';
             // Deprecated mirrors of bodies[0], kept until every consumer reads `bodies`.
             if (bodies[0]) {
                 result.contentType = bodies[0].contentType;
@@ -1353,6 +1358,14 @@ export function createSemantics(grammar: Grammar) {
             if (headers) result.headers = headers;
             if (headersOptOut) result.headersOptOut = true;
             return result;
+        },
+
+        // StatusModifiers = "(" statusModifier ("," statusModifier)* ")"
+        StatusModifiers(_lp, first, _commas, rest, _rp) {
+            const out = [first.sourceString];
+            const more = rest as IterationNode;
+            for (let i = 0; i < more.numChildren; i++) out.push(more.child(i).sourceString);
+            return out;
         },
 
         StatusCodeBodyItem(child) {

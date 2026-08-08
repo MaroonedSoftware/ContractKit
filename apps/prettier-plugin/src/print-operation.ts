@@ -385,11 +385,17 @@ function printResponseBlock(responses: OpResponseNode[]): string[] {
         const hasHeaders = resp.headers && resp.headers.length > 0;
         const optOut = resp.headersOptOut;
         const onlyBody = bodies.length === 1 ? bodies[0]! : undefined;
+        // `404(documented):` — the modifier changes what codegen does, so it has to survive.
+        const code = resp.emit ? `${resp.statusCode}(${resp.emit})` : `${resp.statusCode}`;
         if (resp.inline && onlyBody && !hasHeaders && !optOut && onlyBody.bodyType.kind !== 'inlineObject') {
             // Written on one line in the source, so keep it there: `200: { application/json: Pet }`.
-            lines.push(`${I3}${resp.statusCode}: { ${onlyBody.contentType}: ${printType(onlyBody.bodyType)} }`);
+            lines.push(`${I3}${code}: { ${onlyBody.contentType}: ${printType(onlyBody.bodyType)} }`);
+        } else if (bodies.length === 0 && !hasHeaders && !optOut && resp.hasBlock) {
+            // An empty block means "emitted, no body" — collapsing it to `304:` would change
+            // the generated router, so it is not a formatting detail.
+            lines.push(`${I3}${code}: {}`);
         } else if (bodies.length > 0 || hasHeaders || optOut) {
-            lines.push(`${I3}${resp.statusCode}: {`);
+            lines.push(`${I3}${code}: {`);
             for (const body of bodies) {
                 lines.push(...printContentTypeLine(body.contentType, body.bodyType, I4));
             }
@@ -406,7 +412,7 @@ function printResponseBlock(responses: OpResponseNode[]): string[] {
             }
             lines.push(`${I3}}`);
         } else {
-            lines.push(`${I3}${resp.statusCode}:`);
+            lines.push(`${I3}${code}:`);
         }
     }
 

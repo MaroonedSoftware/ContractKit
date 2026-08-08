@@ -249,6 +249,46 @@ describe('round-trip — layout', () => {
         expect(format(source)).toBe(source);
     });
 
+    it('keeps an empty status block, which means emitted with no body', () => {
+        const source = `operation /art/{id}: {
+    get: {
+        response: {
+            200: { application/json: Art }
+            304: {}
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a bare status bare', () => {
+        const source = `operation /art/{id}: {
+    get: {
+        response: {
+            200: { application/json: Art }
+            304:
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps the documented modifier on a status', () => {
+        const source = `operation /pet: {
+    get: {
+        response: {
+            200: { application/json: Pet }
+            404(documented): { application/json: Problem }
+            410(documented):
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
     it('keeps every declared mime for a status, in source order', () => {
         const source = `operation /art/{id}: {
     get: {

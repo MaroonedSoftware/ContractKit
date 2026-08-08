@@ -241,7 +241,11 @@ Contract {
 
   ResponseBlock = responseKw ":" "{" (comment | StatusCodeBlock)* "}"
 
-  StatusCodeBlock = numberLit ":" ("{" StatusCodeBodyItem* "}")?
+  StatusCodeBlock = numberLit StatusModifiers? ":" ("{" StatusCodeBodyItem* "}")?
+
+  StatusModifiers = "(" statusModifier ("," statusModifier)* ")"
+
+  statusModifier = "documented" ~identPart
 
   StatusCodeBodyItem = comment
                      | ResponseHeadersBlock

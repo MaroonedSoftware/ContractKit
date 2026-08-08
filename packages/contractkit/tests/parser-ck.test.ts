@@ -936,6 +936,37 @@ operation /users/{id}: {
             expect(responses[2]!.bodyType).toBeUndefined();
         });
 
+        it('distinguishes a bare status from one with an empty block', () => {
+            const { root, diag } = parse('operation /r: { get: { response: { 304: \n 404: {} } } }');
+            expect(diag.hasErrors()).toBe(false);
+            const responses = root.routes[0]!.operations[0]!.responses;
+            expect(responses[0]!.hasBlock).toBeUndefined();
+            expect(responses[1]!.hasBlock).toBe(true);
+        });
+
+        it('parses the documented status modifier', () => {
+            const { root, diag } = parse(`\
+operation /pet: {
+    get: {
+        response: {
+            200: { application/json: Pet }
+            404(documented): { application/json: Problem }
+        }
+    }
+}`);
+            expect(diag.hasErrors()).toBe(false);
+            const responses = root.routes[0]!.operations[0]!.responses;
+            expect(responses[0]!.emit).toBeUndefined();
+            expect(responses[1]!.emit).toBe('documented');
+            expect(responses[1]!.bodies).toHaveLength(1);
+        });
+
+        it('parses the documented modifier on a bodyless status', () => {
+            const { root, diag } = parse('operation /r: { get: { response: { 202(documented): } } }');
+            expect(diag.hasErrors()).toBe(false);
+            expect(root.routes[0]!.operations[0]!.responses[0]!.emit).toBe('documented');
+        });
+
         it('parses several content types under one status code', () => {
             const { root, diag } = parse(`\
 operation /art/{id}: {

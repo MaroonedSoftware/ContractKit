@@ -825,12 +825,15 @@
             ]
         },
         "status-code-block": {
-            "begin": "\\b(\\d{3})\\b\\s*(:)\\s*",
+            "begin": "\\b(\\d{3})\\b(?:\\((documented)\\))?\\s*(:)\\s*",
             "beginCaptures": {
                 "1": {
                     "name": "keyword.control.status-code.ck"
                 },
                 "2": {
+                    "name": "keyword.control.modifier.ck"
+                },
+                "3": {
                     "name": "punctuation.separator.colon.ck"
                 }
             },
