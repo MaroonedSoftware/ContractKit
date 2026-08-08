@@ -1660,6 +1660,25 @@ contract Pet: { id: uuid }`);
         expect(root.optionsComments?.services?.inline).toEqual({ A: 'the real service' });
     });
 
+    it('records which entry values were written without quotes', () => {
+        const { root, diag } = parse(`\
+options {
+    keys: {
+        area: billing
+    }
+    services: {
+        Bare: #modules/a/a.service.js
+        Quoted: "#modules/b/b.service.js"
+    }
+}
+contract Pet: { id: uuid }`);
+        expect(diag.hasErrors()).toBe(false);
+        // Formatting only — both forms yield the same string.
+        expect(root.services).toEqual({ Bare: '#modules/a/a.service.js', Quoted: '#modules/b/b.service.js' });
+        expect(root.optionsUnquoted?.services).toEqual(['Bare']);
+        expect(root.optionsUnquoted?.keys).toEqual(['area']);
+    });
+
     it('parses unquoted hash-prefixed service path', () => {
         const { root } = parse(`\
 options {

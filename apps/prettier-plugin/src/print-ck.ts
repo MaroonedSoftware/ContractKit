@@ -10,23 +10,18 @@ export const DEFAULT_PRINT_WIDTH = 80;
 // ─── Options block ──────────────────────────────────────────────────────────
 
 /**
- * Quote an options-block value if it isn't a plain identifier.
+ * Render an options value in the form the author wrote it.
  *
- * Plain identifiers (starts with letter/underscore/dollar, rest are
- * alphanumeric/underscore/dollar/hyphen/dot) are left bare. Everything
- * else — paths with slashes, values starting with `#`, values with spaces,
- * etc. — is double-quoted so the round-trip parse is unambiguous.
+ * `wasUnquoted` comes from the parser, so an unquoted subpath import
+ * (`PetService: #modules/pet/pet.service.js`) stays unquoted instead of being normalized. The
+ * conditions still gate it: a value the grammar could not read back bare — one containing a
+ * newline, a `}`, whitespace-then-`#`, or leading/trailing space — is quoted regardless, which
+ * matters for values built programmatically rather than parsed.
  */
-/**
- * Quote an options value unless it is a bare identifier.
- *
- * An unquoted path (`PetService: #modules/pet/pet.service.js`) parses but is printed quoted,
- * because the AST keeps only the string and not whether the author quoted it. Preserving that
- * choice needs a flag on the entry; quoting is the safe direction, since both forms parse to the
- * same value and the quoted one is what almost every file uses.
- */
-function quoteOptionsValue(value: string): string {
-    return /^[a-zA-Z_$][a-zA-Z0-9_$\-.]*$/.test(value) ? value : `"${value}"`;
+function quoteOptionsValue(value: string, wasUnquoted = false): string {
+    if (/^[a-zA-Z_$][a-zA-Z0-9_$\-.]*$/.test(value)) return value;
+    const roundTripsBare = value.length > 0 && value === value.trim() && !/[\n\r}]/.test(value) && !/[ \t]#/.test(value) && !/^["']/.test(value);
+    return wasUnquoted && roundTripsBare ? value : `"${value}"`;
 }
 
 /**
@@ -34,12 +29,18 @@ function quoteOptionsValue(value: string): string {
  * retained comments: leading comments before the entry they precede, and trailing comments
  * after the last entry (before the closing `}`). Keeps comments inside these sub-blocks lossless.
  */
-function emitOptionsEntries(lines: string[], entries: Record<string, string>, comments: OptionsScopeComments | undefined): void {
+function emitOptionsEntries(
+    lines: string[],
+    entries: Record<string, string>,
+    comments: OptionsScopeComments | undefined,
+    unquoted: string[] | undefined,
+): void {
     const I2 = INDENT + INDENT;
+    const wasUnquoted = new Set(unquoted ?? []);
     for (const [key, value] of Object.entries(entries)) {
         for (const c of comments?.leading?.[key] ?? []) lines.push(`${I2}# ${c}`);
         const inline = comments?.inline?.[key];
-        lines.push(`${I2}${key}: ${quoteOptionsValue(value)}${inline !== undefined ? ` # ${inline}` : ''}`);
+        lines.push(`${I2}${key}: ${quoteOptionsValue(value, wasUnquoted.has(key))}${inline !== undefined ? ` # ${inline}` : ''}`);
     }
     for (const c of comments?.trailing ?? []) lines.push(`${I2}# ${c}`);
 }
@@ -65,14 +66,14 @@ function printOptionsBlock(ast: CkRootNode): string | null {
     if (hasMeta) {
         emitLeading('keys');
         lines.push(`${INDENT}keys: {`);
-        emitOptionsEntries(lines, ast.meta, ast.optionsComments?.keys);
+        emitOptionsEntries(lines, ast.meta, ast.optionsComments?.keys, ast.optionsUnquoted?.keys);
         lines.push(`${INDENT}}`);
     }
 
     if (hasServices) {
         emitLeading('services');
         lines.push(`${INDENT}services: {`);
-        emitOptionsEntries(lines, ast.services, ast.optionsComments?.services);
+        emitOptionsEntries(lines, ast.services, ast.optionsComments?.services, ast.optionsUnquoted?.services);
         lines.push(`${INDENT}}`);
     }
 

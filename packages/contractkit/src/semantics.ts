@@ -25,6 +25,7 @@ import type {
     PluginValue,
     OptionsComments,
     OptionsScopeComments,
+    OptionsUnquotedValues,
     McpConfigNode,
     OpBodyKey,
 } from './ast.js';
@@ -91,6 +92,13 @@ const BLANK_LINE_RE = /\n[ \t]*\n/;
 /** Operation-body item types that correspond to an emitted key, in canonical order. */
 const OP_BODY_KEYS = new Set<OpBodyKey>(['name', 'service', 'sdk', 'mcp', 'signature', 'security', 'plugins', 'query', 'headers', 'request', 'responses']);
 
+/** An options `key: value` entry as authored: the value, whether it was quoted, and any trailing comment. */
+interface OptionsEntryValue {
+    value: string;
+    quoted: boolean;
+    inline?: string;
+}
+
 /** Strip the leading `#` and one following space from a comment's source text. */
 function commentText(node: { sourceString: string }): string {
     return node.sourceString.replace(/^#\s?/, '').trimEnd();
@@ -154,10 +162,11 @@ function collectOptionsEntries(
     items: IterationNode,
     file: string,
     diag: DiagnosticCollector | undefined,
-): { _type: 'keys' | 'services'; entries: [string, string][]; comments?: OptionsScopeComments } {
+): { _type: 'keys' | 'services'; entries: [string, string][]; comments?: OptionsScopeComments; unquoted?: string[] } {
     const entries: [string, string][] = [];
     const leading: Record<string, string[]> = {};
     const inline: Record<string, string> = {};
+    const unquoted: string[] = [];
     let pending: string[] = [];
     for (let i = 0; i < items.numChildren; i++) {
         const child = items.child(i);
@@ -165,19 +174,25 @@ function collectOptionsEntries(
             pending.push(commentText(child));
             continue;
         }
-        const [key, value, trailing] = child.toAst(file, diag) as [string, string, string | undefined];
+        const entry = child.toAst(file, diag) as OptionsEntryValue & { key: string };
         if (pending.length > 0) {
-            leading[key] = pending;
+            leading[entry.key] = pending;
             pending = [];
         }
-        if (trailing !== undefined) inline[key] = trailing;
-        entries.push([key, value]);
+        if (entry.inline !== undefined) inline[entry.key] = entry.inline;
+        if (!entry.quoted) unquoted.push(entry.key);
+        entries.push([entry.key, entry.value]);
     }
     const comments: OptionsScopeComments = {};
     if (Object.keys(leading).length > 0) comments.leading = leading;
     if (Object.keys(inline).length > 0) comments.inline = inline;
     if (pending.length > 0) comments.trailing = pending;
-    return { _type: type, entries, comments: Object.keys(comments).length > 0 ? comments : undefined };
+    return {
+        _type: type,
+        entries,
+        comments: Object.keys(comments).length > 0 ? comments : undefined,
+        unquoted: unquoted.length > 0 ? unquoted : undefined,
+    };
 }
 
 /**
@@ -213,6 +228,7 @@ export function createSemantics(grammar: Grammar) {
             let requestHeaders: OpResponseHeaderNode[] | undefined;
             let responseHeaders: OpResponseHeaderNode[] | undefined;
             let optionsComments: OptionsComments | undefined;
+            let optionsUnquoted: OptionsUnquotedValues | undefined;
 
             if (preambleOpt.numChildren > 0) {
                 const result = preambleOpt.child(0).toAst(file, this.args.diag);
@@ -222,6 +238,7 @@ export function createSemantics(grammar: Grammar) {
                 requestHeaders = result.requestHeaders;
                 responseHeaders = result.responseHeaders;
                 optionsComments = result.optionsComments;
+                optionsUnquoted = result.optionsUnquoted;
             }
 
             const models: ModelNode[] = [];
@@ -240,6 +257,7 @@ export function createSemantics(grammar: Grammar) {
             if (requestHeaders) root.requestHeaders = requestHeaders;
             if (responseHeaders) root.responseHeaders = responseHeaders;
             if (optionsComments) root.optionsComments = optionsComments;
+            if (optionsUnquoted) root.optionsUnquoted = optionsUnquoted;
             return root;
         },
 
@@ -266,6 +284,7 @@ export function createSemantics(grammar: Grammar) {
             let requestHeaders: OpResponseHeaderNode[] | undefined;
             let responseHeaders: OpResponseHeaderNode[] | undefined;
             const optionsComments: OptionsComments = {};
+            const optionsUnquoted: OptionsUnquotedValues = {};
             // Comments sitting directly in the options block, between its sub-blocks. Each run
             // attaches to the sub-block below it; whatever is left at the end is trailing.
             const bodyComments: OptionsScopeComments = {};
@@ -307,6 +326,10 @@ export function createSemantics(grammar: Grammar) {
                         if (result._type === 'keys') optionsComments.keys = result.comments;
                         else if (result._type === 'services') optionsComments.services = result.comments;
                     }
+                    if (result.unquoted) {
+                        if (result._type === 'keys') optionsUnquoted.keys = result.unquoted;
+                        else if (result._type === 'services') optionsUnquoted.services = result.unquoted;
+                    }
                 }
             }
             if (pending.length > 0) bodyComments.trailing = pending;
@@ -326,6 +349,7 @@ export function createSemantics(grammar: Grammar) {
                 requestHeaders,
                 responseHeaders,
                 optionsComments: Object.keys(optionsComments).length > 0 ? optionsComments : undefined,
+                optionsUnquoted: Object.keys(optionsUnquoted).length > 0 ? optionsUnquoted : undefined,
             };
         },
 
@@ -376,15 +400,16 @@ export function createSemantics(grammar: Grammar) {
 
         OptionsEntry(keyNode, _colon, valueNode) {
             const key = keyNode.sourceString;
-            const [value, inline] = valueNode.toAst(this.args.file, this.args.diag) as [string, string | undefined];
-            return [key, value, inline] as [string, string, string | undefined];
+            const parsed = valueNode.toAst(this.args.file, this.args.diag) as OptionsEntryValue;
+            return { key, ...parsed };
         },
 
         // optionsEntryValue = optionsValue optionsInlineComment?
         optionsEntryValue(valueNode, commentOpt) {
-            const value = valueNode.toAst(this.args.file, this.args.diag) as string;
+            const { value, quoted } = valueNode.toAst(this.args.file, this.args.diag) as { value: string; quoted: boolean };
             const iter = commentOpt as IterationNode;
-            return [value, iter.numChildren > 0 ? (iter.child(0).toAst(this.args.file, this.args.diag) as string) : undefined];
+            const inline = iter.numChildren > 0 ? (iter.child(0).toAst(this.args.file, this.args.diag) as string) : undefined;
+            return { value, quoted, inline };
         },
 
         // optionsInlineComment = (" " | "\t")+ comment
@@ -392,12 +417,14 @@ export function createSemantics(grammar: Grammar) {
             return commentText(commentNode);
         },
 
+        // Both forms yield the same string; `quoted` is kept so the formatter can reproduce the
+        // authored form instead of normalizing every value to the quoted one.
         optionsValue_quoted(strNode) {
-            return strNode.sourceString.slice(1, -1);
+            return { value: strNode.sourceString.slice(1, -1), quoted: true };
         },
 
         optionsValue_unquoted(rawNode) {
-            return rawNode.sourceString.trim();
+            return { value: rawNode.sourceString.trim(), quoted: false };
         },
 
         // ─── Models ──────────────────────────────────────────────────

@@ -146,6 +146,51 @@ contract Pet: {
         expect(format(source)).toBe(source);
     });
 
+    it('keeps an unquoted subpath value unquoted', () => {
+        // Both forms parse to the same string, so the parser records which one the author wrote;
+        // without that the formatter normalizes every value to the quoted form.
+        const source = `options {
+    services: {
+        PetService: #modules/pet/pet.service.js
+    }
+}
+
+contract Pet: {
+    id: uuid
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a quoted value quoted', () => {
+        const source = `options {
+    services: {
+        PetService: "#modules/pet/pet.service.js"
+    }
+}
+
+contract Pet: {
+    id: uuid
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps both forms side by side, with their comments', () => {
+        const source = `options {
+    services: {
+        Bare: #modules/a/a.service.js # unquoted
+        Quoted: "#modules/b/b.service.js" # quoted
+    }
+}
+
+contract Pet: {
+    id: uuid
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
     it('keeps a comment above a sub-block', () => {
         const source = `options {
     # where these come from

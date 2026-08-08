@@ -458,12 +458,27 @@ export interface OptionsComments {
     leading?: string[];
 }
 
+/**
+ * Which `keys`/`services` entries had their value written without quotes.
+ *
+ * Both forms parse to the same string, so this carries no meaning for codegen — it exists only so
+ * the formatter can reproduce the authored form. Without it an unquoted subpath import
+ * (`PetService: #modules/pet/pet.service.js`) comes back quoted, since quoting is the safe default
+ * for a value whose original form is unknown.
+ */
+export interface OptionsUnquotedValues {
+    keys?: string[];
+    services?: string[];
+}
+
 export interface CkRootNode {
     kind: 'ckRoot';
     meta: Record<string, string>;
     services: Record<string, string>;
     /** Comments retained from inside the options block's `keys`/`services` sub-blocks. Preserved for lossless round-trip. */
     optionsComments?: OptionsComments;
+    /** Entries whose value was authored without quotes. Formatting only — see {@link OptionsUnquotedValues}. */
+    optionsUnquoted?: OptionsUnquotedValues;
     /** File-level security default — cascades to all routes/operations unless overridden. */
     security?: SecurityNode;
     /** File-level request headers from `options { request: { headers { ... } } }` — merged into every operation's request headers. */
