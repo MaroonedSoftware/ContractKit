@@ -1,5 +1,6 @@
 import type { ContractRootNode, OpRootNode, ContractTypeNode, ModelNode, FieldNode } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
+import { isRedundantDocumented } from './response-sets.js';
 
 /**
  * After all files are parsed, validate that type references point to
@@ -53,6 +54,17 @@ export function validateRefs(contractRoots: ContractRootNode[], opRoots: OpRootN
                     if (resp.bodyType) {
                         checkTypeRefs(resp.bodyType, root.file, op.loc.line, modelNames, diag);
                         checkDiscriminatedUnions(resp.bodyType, root.file, op.loc.line, modelMap, diag);
+                    }
+                    // Runs here rather than in the parser because it depends on the merged view:
+                    // once options-level responses exist, a bare `404(documented):` stops being a
+                    // no-op and becomes a real override of a global body-bearing 404.
+                    if (isRedundantDocumented(resp)) {
+                        diag.warn(
+                            root.file,
+                            op.loc.line,
+                            `Status ${resp.statusCode} is already not emitted by the generated router, so '(documented)' changes nothing`,
+                            'redundant-documented',
+                        );
                     }
                 }
                 checkParamSourceRefs(op.query, root.file, op.loc.line, modelNames, diag);

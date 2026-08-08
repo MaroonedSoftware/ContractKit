@@ -29,6 +29,24 @@ describe('validateProject', () => {
         expect(msgs.some(m => /GhostModel/.test(m))).toBe(true);
     });
 
+    it('warns when (documented) marks a status that was never emitted anyway', () => {
+        const result = validateProject({
+            files: [{ filePath: 'b.ck', source: `operation /users: { get: { response: { 200: {} \n 404(documented): } } }` }],
+        });
+        expect(errors(result.diag)).toHaveLength(0);
+        expect(warnings(result.diag).some(m => /Status 404 is already not emitted/.test(m))).toBe(true);
+    });
+
+    it('accepts (documented) where it changes what the router emits', () => {
+        const result = validateProject({
+            files: [
+                { filePath: 'a.ck', source: `contract Problem: { detail: string }` },
+                { filePath: 'b.ck', source: `operation /users: { get: { response: { 200: {} \n 404(documented): { application/json: Problem } } } }` },
+            ],
+        });
+        expect(warnings(result.diag).some(m => /already not emitted/.test(m))).toBe(false);
+    });
+
     it('aggregates diagnostics from multiple files', () => {
         const result = validateProject({
             files: [
