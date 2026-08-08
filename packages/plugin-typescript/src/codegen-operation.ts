@@ -1,5 +1,15 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, ContractTypeNode, ScalarTypeNode, ParamSource, ObjectMode } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType } from '@contractkit/core';
+import type {
+    OpRootNode,
+    OpRouteNode,
+    OpOperationNode,
+    OpResponseNode,
+    OpResponseHeaderNode,
+    ContractTypeNode,
+    ScalarTypeNode,
+    ParamSource,
+    ObjectMode,
+} from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType, emittedResponses, responseBodies } from '@contractkit/core';
 import {
     renderType,
     renderInputType,
@@ -327,64 +337,175 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
         }
     }
 
-    // Service call — use the first response with a body as the primary response
-    const primaryResponse = op.responses.find(r => r.bodyType) ?? op.responses[0];
+    // Service call. `emittedResponses` decides which of the declared statuses the service is
+    // responsible for producing; the rest are documentation, or the thrown-error path.
+    const emitted = emittedResponses(op);
     const serviceParts = inferService(op, route, file);
-    const respHeaders = primaryResponse?.headers ?? [];
-    const hasRespHeaders = respHeaders.length > 0;
-    const headersAnnotation = hasRespHeaders
-        ? `{ ${respHeaders
-              .map(
-                  h =>
-                      `${quoteKey(headerNameToProperty(h.name))}${h.optional ? '?' : ''}: ${renderOutputTsType(h.type, options.modelsWithOutput, 'server')}`,
-              )
-              .join('; ')} }`
-        : '';
+    const call = `await service.${serviceParts.methodName}(${buildArgs(route, op)})`;
 
-    if (primaryResponse?.bodyType) {
-        const { annotation, prelude } = formatTypeAnnotation(primaryResponse.bodyType!, options.modelsWithOutput);
-        if (prelude) {
-            lines.push(`    ${prelude}`);
-        }
-        lines.push(`    const service = ctx.container.get(${serviceParts.className});`);
-        if (hasRespHeaders) {
-            lines.push(
-                `    const result: { body: ${annotation}; headers: ${headersAnnotation} } = await service.${serviceParts.methodName}(${buildArgs(route, op)});`,
-            );
-        } else {
-            lines.push(`    const result: ${annotation} = await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
-        }
+    if (emitted.length > 1) {
+        lines.push(...generateMultiStatusResult(emitted, serviceParts.className, call, options));
     } else {
-        lines.push(`    const service = ctx.container.get(${serviceParts.className});`);
-        if (hasRespHeaders) {
-            lines.push(`    const result: { headers: ${headersAnnotation} } = await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
-        } else {
-            lines.push(`    await service.${serviceParts.methodName}(${buildArgs(route, op)});`);
-        }
-    }
-
-    lines.push('');
-    lines.push(`    ctx.status = ${primaryResponse?.statusCode ?? 200};`);
-
-    if (hasRespHeaders) {
-        for (const h of respHeaders) {
-            const accessor = `result.headers[${JSON.stringify(headerNameToProperty(h.name))}]`;
-            if (h.optional) {
-                lines.push(`    if (${accessor} !== undefined) ctx.set('${h.name}', String(${accessor}));`);
-            } else {
-                lines.push(`    ctx.set('${h.name}', String(${accessor}));`);
-            }
-        }
-    }
-
-    if (primaryResponse?.bodyType && primaryResponse.contentType) {
-        lines.push(`    ctx.type = '${primaryResponse.contentType}';`);
-        lines.push(`    ctx.body = ${hasRespHeaders ? 'result.body' : 'result'};`);
+        lines.push(...generateSingleStatusResult(emitted[0], op, serviceParts.className, call, options));
     }
 
     lines.push(`});`);
 
     return lines;
+}
+
+/**
+ * The service produces exactly one status (or none): the result is the body itself, or
+ * `{ body, headers }` when the status declares headers, and `ctx.status` is a constant.
+ *
+ * A status declaring several mimes also gains a `contentType` the service picks, which is the
+ * only thing here that can turn `ctx.type` from a literal into an expression.
+ */
+function generateSingleStatusResult(
+    resp: OpResponseNode | undefined,
+    op: OpOperationNode,
+    className: string,
+    call: string,
+    options: OpCodegenOptions,
+): string[] {
+    const lines: string[] = [];
+    const bodies = resp ? responseBodies(resp) : [];
+    const respHeaders = resp?.headers ?? [];
+    const hasRespHeaders = respHeaders.length > 0;
+    const headersAnnotation = hasRespHeaders ? renderHeadersAnnotation(respHeaders, options.modelsWithOutput) : '';
+
+    if (bodies.length === 1) {
+        const { annotation, prelude } = formatTypeAnnotation(bodies[0]!.bodyType, options.modelsWithOutput);
+        if (prelude) lines.push(`    ${prelude}`);
+        lines.push(`    const service = ctx.container.get(${className});`);
+        if (hasRespHeaders) {
+            lines.push(`    const result: { body: ${annotation}; headers: ${headersAnnotation} } = ${call};`);
+        } else {
+            lines.push(`    const result: ${annotation} = ${call};`);
+        }
+    } else if (bodies.length > 1) {
+        const { members, preludes } = renderResponseMembers(resp!, options, { includeStatus: false, varPrefix: 'result' });
+        for (const prelude of preludes) lines.push(`    ${prelude}`);
+        lines.push(`    const service = ctx.container.get(${className});`);
+        lines.push(`    const result: ${members.join(' | ')} = ${call};`);
+    } else {
+        lines.push(`    const service = ctx.container.get(${className});`);
+        if (hasRespHeaders) {
+            lines.push(`    const result: { headers: ${headersAnnotation} } = ${call};`);
+        } else {
+            lines.push(`    ${call};`);
+        }
+    }
+
+    lines.push('');
+    // With nothing emitted, the status is still declared somewhere — fall back to the first
+    // one written, which is what a documentation-only 3xx/4xx operation means.
+    lines.push(`    ctx.status = ${resp?.statusCode ?? op.responses[0]?.statusCode ?? 200};`);
+    lines.push(...headerSetLines(respHeaders, '    '));
+
+    if (bodies.length === 1) {
+        lines.push(`    ctx.type = '${bodies[0]!.contentType}';`);
+        lines.push(`    ctx.body = ${hasRespHeaders ? 'result.body' : 'result'};`);
+    } else if (bodies.length > 1) {
+        lines.push(`    ctx.type = result.contentType;`);
+        lines.push(`    ctx.body = result.body;`);
+    }
+
+    return lines;
+}
+
+/**
+ * The service chooses between several statuses: the result is a union discriminated on
+ * `status`, and the handler switches on it so each status writes only its own headers, mime
+ * and body.
+ */
+function generateMultiStatusResult(emitted: OpResponseNode[], className: string, call: string, options: OpCodegenOptions): string[] {
+    const lines: string[] = [];
+    const members: string[] = [];
+    const preludes: string[] = [];
+
+    for (const resp of emitted) {
+        const rendered = renderResponseMembers(resp, options, { includeStatus: true, varPrefix: `result${resp.statusCode}` });
+        members.push(...rendered.members);
+        preludes.push(...rendered.preludes);
+    }
+
+    for (const prelude of preludes) lines.push(`    ${prelude}`);
+    lines.push(`    const service = ctx.container.get(${className});`);
+    lines.push(`    const result:`);
+    for (const member of members) lines.push(`        | ${member}`);
+    lines.push(`        = ${call};`);
+    lines.push('');
+    lines.push(`    ctx.status = result.status;`);
+    lines.push(`    switch (result.status) {`);
+    for (const resp of emitted) {
+        lines.push(`        case ${resp.statusCode}:`);
+        lines.push(...headerSetLines(resp.headers ?? [], '            '));
+        if (responseBodies(resp).length > 0) {
+            lines.push(`            ctx.type = result.contentType;`);
+            lines.push(`            ctx.body = result.body;`);
+        }
+        lines.push(`            break;`);
+    }
+    lines.push(`    }`);
+
+    return lines;
+}
+
+/**
+ * Render one status as the members of the service-result union — its `contentType`, `body` and
+ * `headers`, plus `status` when the operation emits more than one.
+ *
+ * A status declaring several mimes collapses to a single member with a union of mime literals
+ * when the bodies are structurally identical (`image/png` and `image/jpeg` both `binary`).
+ * When they differ, it produces one member per mime so `contentType` and `body` stay correlated.
+ */
+function renderResponseMembers(
+    resp: OpResponseNode,
+    options: OpCodegenOptions,
+    opts: { includeStatus: boolean; varPrefix: string },
+): { members: string[]; preludes: string[] } {
+    const bodies = responseBodies(resp);
+    const headers = resp.headers ?? [];
+    const leading = opts.includeStatus ? [`status: ${resp.statusCode}`] : [];
+    const trailing = headers.length > 0 ? [`headers: ${renderHeadersAnnotation(headers, options.modelsWithOutput)}`] : [];
+    const preludes: string[] = [];
+
+    if (bodies.length === 0) {
+        return { members: [`{ ${[...leading, ...trailing].join('; ')} }`], preludes };
+    }
+
+    const uniform = bodies.every(b => bodyTypesStructurallyEqual(b.bodyType, bodies[0]!.bodyType));
+    if (uniform) {
+        const { annotation, prelude } = formatTypeAnnotation(bodies[0]!.bodyType, options.modelsWithOutput, `${opts.varPrefix}Type`);
+        if (prelude) preludes.push(prelude);
+        const contentType = bodies.map(b => `'${b.contentType}'`).join(' | ');
+        return { members: [`{ ${[...leading, `contentType: ${contentType}`, `body: ${annotation}`, ...trailing].join('; ')} }`], preludes };
+    }
+
+    const members = bodies.map((b, i) => {
+        const { annotation, prelude } = formatTypeAnnotation(b.bodyType, options.modelsWithOutput, `${opts.varPrefix}Type${i}`);
+        if (prelude) preludes.push(prelude);
+        return `{ ${[...leading, `contentType: '${b.contentType}'`, `body: ${annotation}`, ...trailing].join('; ')} }`;
+    });
+    return { members, preludes };
+}
+
+function renderHeadersAnnotation(headers: OpResponseHeaderNode[], modelsWithOutput?: Set<string>): string {
+    const fields = headers.map(
+        h => `${quoteKey(headerNameToProperty(h.name))}${h.optional ? '?' : ''}: ${renderOutputTsType(h.type, modelsWithOutput, 'server')}`,
+    );
+    return `{ ${fields.join('; ')} }`;
+}
+
+/** `ctx.set(...)` calls for a status's declared response headers, guarding the optional ones. */
+function headerSetLines(headers: OpResponseHeaderNode[], indent: string): string[] {
+    return headers.map(h => {
+        const accessor = `result.headers[${JSON.stringify(headerNameToProperty(h.name))}]`;
+        return h.optional
+            ? `${indent}if (${accessor} !== undefined) ctx.set('${h.name}', String(${accessor}));`
+            : `${indent}ctx.set('${h.name}', String(${accessor}));`;
+    });
 }
 
 // ─── Inference helpers ─────────────────────────────────────────────────────
@@ -508,9 +629,13 @@ function serverTsScalar(name: ScalarTypeNode['name']): string {
     }
 }
 
-function formatTypeAnnotation(bodyType: ContractTypeNode, modelsWithOutput?: Set<string>): { annotation: string; prelude?: string } {
+/**
+ * @param varName Name for the extracted schema variable. Distinct per status and per mime when
+ *   an operation emits several, so two complex bodies in one handler cannot collide.
+ */
+function formatTypeAnnotation(bodyType: ContractTypeNode, modelsWithOutput?: Set<string>, varName = 'resultType'): { annotation: string; prelude?: string } {
     if (bodyType.kind === 'array') {
-        const inner = formatTypeAnnotation(bodyType.item, modelsWithOutput);
+        const inner = formatTypeAnnotation(bodyType.item, modelsWithOutput, varName);
         return { annotation: `${inner.annotation}[]`, prelude: inner.prelude };
     }
     if (bodyType.kind === 'ref') {
@@ -521,8 +646,8 @@ function formatTypeAnnotation(bodyType: ContractTypeNode, modelsWithOutput?: Set
     // For complex types, extract schema into a variable so the result line stays readable
     const schema = renderType(bodyType);
     return {
-        annotation: 'z.infer<typeof resultType>',
-        prelude: `const resultType = ${schema};`,
+        annotation: `z.infer<typeof ${varName}>`,
+        prelude: `const ${varName} = ${schema};`,
     };
 }
 

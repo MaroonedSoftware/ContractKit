@@ -11,6 +11,7 @@ import {
     opRequest,
     opMultiRequest,
     opResponse,
+    opResponseMulti,
     opOperation,
     opRoute,
     opRoot,
@@ -692,6 +693,188 @@ describe('generateOperation', () => {
             const root = opRoot([opRoute('/users', [opOperation('get')])]);
             const output = generateOp(root);
             expect(output).toContain('ctx.status = 200');
+        });
+
+        // ─── Which statuses the service produces ─────────────────────────
+
+        describe('emitted-set dispatch', () => {
+            const artBodies = [
+                { contentType: 'image/png', bodyType: scalarType('binary') },
+                { contentType: 'image/jpeg', bodyType: scalarType('binary') },
+            ];
+
+            it('leaves the common success-plus-bodyless-errors operation alone', () => {
+                const root = opRoot([
+                    opRoute('/pet', [
+                        opOperation('get', {
+                            responses: [opResponse(200, 'Pet', 'application/json'), opResponse(400), opResponse(404)],
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain('const result: Pet = await service.list();');
+                expect(output).toContain('ctx.status = 200;');
+                expect(output).toContain("ctx.type = 'application/json';");
+                expect(output).toContain('ctx.body = result;');
+                expect(output).not.toContain('switch (result.status)');
+            });
+
+            it('lets the service pick the mime when a status declares several', () => {
+                const root = opRoot([
+                    opRoute('/art', [
+                        opOperation('get', {
+                            responses: [
+                                opResponseMulti(200, artBodies, {
+                                    headers: [{ name: 'etag', optional: true, type: scalarType('string') }],
+                                }),
+                                opResponse(304),
+                            ],
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain(
+                    "const result: { contentType: 'image/png' | 'image/jpeg'; body: Buffer; headers: { etag?: string } } = await service.list();",
+                );
+                expect(output).toContain('ctx.status = 200;');
+                expect(output).toContain('ctx.type = result.contentType;');
+                expect(output).toContain('ctx.body = result.body;');
+                // The bare 304 is documentation — middleware produces it, not the service.
+                expect(output).not.toContain('switch (result.status)');
+                expect(output).not.toContain('304');
+            });
+
+            it('keeps contentType correlated with body when the mimes carry different types', () => {
+                const root = opRoot([
+                    opRoute('/pet', [
+                        opOperation('get', {
+                            responses: [
+                                opResponseMulti(200, [
+                                    { contentType: 'application/json', bodyType: refType('Pet') },
+                                    { contentType: 'text/csv', bodyType: scalarType('string') },
+                                ]),
+                            ],
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain(
+                    "const result: { contentType: 'application/json'; body: Pet } | { contentType: 'text/csv'; body: string } = await service.list();",
+                );
+            });
+
+            it('switches on status when the service produces more than one', () => {
+                const root = opRoot([
+                    opRoute('/art', [
+                        opOperation('get', {
+                            responses: [
+                                opResponseMulti(200, artBodies, {
+                                    headers: [{ name: 'etag', optional: true, type: scalarType('string') }],
+                                }),
+                                opResponse(202, 'JobRef', 'application/json'),
+                                opResponse(304),
+                                opResponse(404),
+                            ],
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain("| { status: 200; contentType: 'image/png' | 'image/jpeg'; body: Buffer; headers: { etag?: string } }");
+                expect(output).toContain("| { status: 202; contentType: 'application/json'; body: JobRef }");
+                expect(output).toContain('ctx.status = result.status;');
+                expect(output).toContain('switch (result.status) {');
+                expect(output).toContain('        case 200:');
+                expect(output).toContain('        case 202:');
+                // Neither the middleware-produced 304 nor the thrown 404 is a case.
+                expect(output).not.toContain('case 304:');
+                expect(output).not.toContain('case 404:');
+            });
+
+            it('returns a body-bearing error status rather than leaving it to be thrown', () => {
+                const root = opRoot([
+                    opRoute('/pet', [
+                        opOperation('get', {
+                            responses: [
+                                opResponse(200, 'Pet', 'application/json'),
+                                opResponse(422, 'Problem', 'application/json'),
+                                opResponse(404),
+                            ],
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain("| { status: 200; contentType: 'application/json'; body: Pet }");
+                expect(output).toContain("| { status: 422; contentType: 'application/json'; body: Problem }");
+                expect(output).toContain('        case 422:');
+            });
+
+            it('puts a documented status back on the throw path', () => {
+                const root = opRoot([
+                    opRoute('/pet', [
+                        opOperation('get', {
+                            responses: [
+                                opResponse(200, 'Pet', 'application/json'),
+                                { ...opResponse(422, 'Problem', 'application/json'), emit: 'documented' },
+                            ],
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain('const result: Pet = await service.list();');
+                expect(output).not.toContain('switch (result.status)');
+                expect(output).not.toContain('422');
+            });
+
+            it('emits a bodyless status the service opts into with an empty block', () => {
+                const root = opRoot([
+                    opRoute('/art', [
+                        opOperation('get', {
+                            responses: [opResponse(200, 'Art', 'application/json'), { statusCode: 304, bodies: [], hasBlock: true }],
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain("| { status: 200; contentType: 'application/json'; body: Art }");
+                expect(output).toContain('| { status: 304 }');
+                expect(output).toContain('        case 304:');
+                // Nothing to write for a bodyless member beyond the status itself.
+                expect(output).toMatch(/case 304:\n\s+break;/);
+            });
+
+            it('gives each status its own schema variable so two complex bodies cannot collide', () => {
+                const root = opRoot([
+                    opRoute('/pet', [
+                        opOperation('get', {
+                            responses: [
+                                opResponse(200, inlineObjectType([field('id', scalarType('int'))]), 'application/json'),
+                                opResponse(422, inlineObjectType([field('detail', scalarType('string'))]), 'application/json'),
+                            ],
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain('const result200Type = ');
+                expect(output).toContain('const result422Type = ');
+            });
+
+            it('writes only the headers belonging to the status that was returned', () => {
+                const root = opRoot([
+                    opRoute('/art', [
+                        opOperation('get', {
+                            responses: [
+                                opResponse(200, 'Art', 'application/json'),
+                                {
+                                    ...opResponse(202, 'JobRef', 'application/json'),
+                                    headers: [{ name: 'retry-after', optional: false, type: scalarType('string') }],
+                                },
+                            ],
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toMatch(/case 202:\n\s+ctx\.set\('retry-after'/);
+                expect(output).not.toMatch(/case 200:\n\s+ctx\.set/);
+            });
         });
 
         it('uses Output variant for result type when response model has format(output=...)', () => {

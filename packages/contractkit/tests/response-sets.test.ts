@@ -52,6 +52,14 @@ describe('the emission derivation', () => {
         });
     }
 
+    it('emits a body-bearing status built without hasBlock, as openapi-to-ck and tests do', () => {
+        const handBuilt: OpResponseNode = {
+            statusCode: 422,
+            bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Problem' } }],
+        };
+        expect(codes(emittedResponses(op(handBuilt)))).toEqual([422]);
+    });
+
     it('forces any emitted status back out with (documented)', () => {
         for (const resp of [withBody(200, 'documented'), bare(204, 'documented'), emptyBlock(304, 'documented'), withBody(422, 'documented')]) {
             expect(emittedResponses(op(resp))).toHaveLength(0);

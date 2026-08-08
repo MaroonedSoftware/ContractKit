@@ -18,11 +18,18 @@
  * unchanged.
  */
 import type { OpOperationNode, OpResponseNode } from './ast.js';
+import { responseBodies } from './ast.js';
 
-/** True when the generated router writes this response and the service returns it. */
+/**
+ * True when the generated router writes this response and the service returns it.
+ *
+ * A declared body implies a block for anything the parser produces, but nodes built
+ * programmatically (`openapi-to-ck`, tests) may set bodies without `hasBlock`, so both are
+ * checked rather than trusting one to stand in for the other.
+ */
 function isEmitted(resp: OpResponseNode): boolean {
     if (resp.emit === 'documented') return false;
-    if (resp.hasBlock) return true;
+    if (resp.hasBlock || responseBodies(resp).length > 0) return true;
     return resp.statusCode >= 200 && resp.statusCode < 300;
 }
 
@@ -68,5 +75,5 @@ export function thrownResponses(op: OpOperationNode): OpResponseNode[] {
  */
 export function isRedundantDocumented(resp: OpResponseNode): boolean {
     if (resp.emit !== 'documented') return false;
-    return !resp.hasBlock && !(resp.statusCode >= 200 && resp.statusCode < 300);
+    return !resp.hasBlock && responseBodies(resp).length === 0 && !(resp.statusCode >= 200 && resp.statusCode < 300);
 }

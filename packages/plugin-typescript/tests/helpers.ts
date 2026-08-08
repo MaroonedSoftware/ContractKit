@@ -135,7 +135,28 @@ export function opMultiRequest(entries: Array<[string, string | ContractTypeNode
 export function opResponse(statusCode: number, bodyType?: string | ContractTypeNode, contentType?: string): OpResponseNode {
     const bt: ContractTypeNode | undefined =
         bodyType === undefined ? undefined : typeof bodyType === 'string' ? parseBodyTypeString(bodyType) : bodyType;
-    return { statusCode, contentType, bodyType: bt };
+    const bodies = bt !== undefined && contentType !== undefined ? [{ contentType, bodyType: bt }] : [];
+    return { statusCode, bodies, contentType, bodyType: bt };
+}
+
+/** A status declaring several mimes, as `200: { image/png: binary, image/jpeg: binary }` parses. */
+export function opResponseMulti(
+    statusCode: number,
+    bodies: { contentType: string; bodyType: string | ContractTypeNode }[],
+    extra?: Partial<OpResponseNode>,
+): OpResponseNode {
+    const resolved = bodies.map(b => ({
+        contentType: b.contentType,
+        bodyType: typeof b.bodyType === 'string' ? parseBodyTypeString(b.bodyType) : b.bodyType,
+    }));
+    return {
+        statusCode,
+        bodies: resolved,
+        hasBlock: true,
+        contentType: resolved[0]?.contentType,
+        bodyType: resolved[0]?.bodyType,
+        ...extra,
+    };
 }
 
 function parseBodyTypeString(s: string): ContractTypeNode {
