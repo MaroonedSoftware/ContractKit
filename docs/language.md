@@ -526,6 +526,11 @@ operation(internal) /admin/users: { get: {} }
 operation(deprecated) /v1/users: { get: {} }
 ```
 
+Every modifier binds tightly to the keyword it follows — `operation (internal)`, `get (public)`
+and `404 (documented)` are all parse errors. The rule is deliberate: the syntax highlighter and
+the formatter both assume there is no gap, so allowing one would mean a file that parses, never
+highlights, and gets rewritten on save.
+
 | Modifier     | Effect                                                                                                  |
 | ------------ | ------------------------------------------------------------------------------------------------------- |
 | `internal`   | By default: excluded from SDK / Python SDK / OpenAPI / Markdown output, included in the server router and Bruno collection. Each plugin accepts an `includeInternal: boolean` config option to override its default. |

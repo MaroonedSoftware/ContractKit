@@ -54,6 +54,8 @@ Formatting a well-formed `.ck` file leaves it byte-identical. The formatter deli
 - **Single-line response blocks.** `200: { application/json: Pet }` is not expanded, and an expanded block is not collapsed. A status declaring several mimes on one line stays on one line too.
 - **Comments inside a `response` block**, in all four positions: above a status code, above a `mime: Type` line, above a `headers:` block, and before either closing brace.
 - **An empty status block.** `304: {}` and `304:` mean different things to codegen — the first says the service returns that status with no body — so neither is normalized into the other.
+- **Comments in the `options` block**, including a header comment above the `options` keyword and a trailing comment on a `keys`/`services` entry.
+- **Unquoted options values.** `PetService: #modules/pet/pet.service.js` stays bare and a quoted value stays quoted. Both parse to the same string, so the parser records which form was written; a value that could not be read back bare is quoted regardless.
 
 This is covered by `tests/round-trip.test.ts`, which formats every `.ck` file under `contracts/` and asserts the output is unchanged, plus checks that formatting is a fixed point. Anything that makes the printer normalize rather than preserve will fail it.
 

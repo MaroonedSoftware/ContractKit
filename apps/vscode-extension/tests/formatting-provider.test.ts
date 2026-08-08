@@ -15,6 +15,41 @@ describe('getFormattingEdits', () => {
         expect(edits[0]!.newText).toMatch(/\n$/);
     });
 
+    it('preserves every construct the CLI formatter preserves', () => {
+        // Format-on-save runs this path, so anything the printer drops is deleted from the user's
+        // file the moment they hit save. The editor gets the behaviour by depending on the same
+        // printCk as the Prettier plugin — this pins that they cannot drift apart.
+        const source = `# ContractKit contracts for billing.
+options {
+    keys: {
+        area: billing # interpolated as {{area}}
+    }
+    services: {
+        PetService: #modules/pet/pet.service.js
+    }
+}
+
+operation /art/{id}: {
+    params: {
+        id: uuid
+    }
+    get: {
+        response: {
+            200: {
+                # served straight from object storage
+                image/png: binary
+                image/jpeg: binary
+            }
+            304: {}
+            404(documented): { application/json: Problem }
+        }
+    }
+}
+`;
+        const doc = makeDoc(source);
+        expect(getFormattingEdits({ textDocument: { uri: doc.uri }, options: { tabSize: 4, insertSpaces: true } }, doc)).toEqual([]);
+    });
+
     it('returns no edits when the document is already formatted', () => {
         const formatted = 'contract User: {\n    name: string\n}\n';
         const doc = makeDoc(formatted);
