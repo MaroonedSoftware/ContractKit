@@ -25,6 +25,7 @@ import {
     opRequest,
     opMultiRequest,
     opResponse,
+    opResponseMulti,
     scalarType,
     refType,
     arrayType,
@@ -649,7 +650,7 @@ describe('generateSdk', () => {
             expect(out).toContain('baseUrl: string');
             expect(out).toContain('headers?:');
             expect(out).toContain('fetch?: SdkFetch');
-            expect(out).toContain('export class SdkError extends Error');
+            expect(out).toContain('export class SdkError<TBody = unknown> extends Error');
             expect(out).toContain('public readonly headers: Headers');
             expect(out).toContain('throw new SdkError(res.status, res.statusText, body, res.headers)');
         });
@@ -721,10 +722,134 @@ describe('generateSdk', () => {
             const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])]);
             const out = generateSdk(root);
             expect(out).toContain('export interface SdkOptions');
-            expect(out).toContain('export class SdkError extends Error');
+            expect(out).toContain('export class SdkError<TBody = unknown> extends Error');
             expect(out).toContain('export type SdkFetch');
             expect(out).toContain('export function createSdkFetch(');
             expect(out).toContain('fetch?: SdkFetch');
+        });
+    });
+
+    // ─── What the client can receive ─────────────────────────────────────
+
+    describe('observable-set returns', () => {
+        const sharedOptions = { sdkOptionsPath: '/x/sdk-options.ts', outPath: '/x/client.ts' };
+        const artBodies = [
+            { contentType: 'image/png', bodyType: scalarType('binary') },
+            { contentType: 'image/jpeg', bodyType: scalarType('binary') },
+        ];
+
+        it('leaves the common success-plus-bodyless-errors method alone', () => {
+            const root = opRoot([
+                opRoute('/pet', [
+                    opOperation('get', {
+                        sdk: 'listPets',
+                        responses: [opResponse(200, 'Pet', 'application/json'), opResponse(400), opResponse(404)],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root, sharedOptions);
+            expect(out).toContain('async listPets(): Promise<Pet> {');
+            expect(out).toContain('return await parseJson<Pet>(result);');
+            expect(out).not.toContain('expectStatuses');
+            expect(out).not.toContain('switch (result.status)');
+        });
+
+        it('tells the caller which mime came back when a status declares several', () => {
+            const root = opRoot([
+                opRoute('/art', [opOperation('get', { sdk: 'getArt', responses: [opResponseMulti(200, artBodies)] })]),
+            ]);
+            const out = generateSdk(root, sharedOptions);
+            expect(out).toContain("async getArt(): Promise<{ contentType: 'image/png' | 'image/jpeg'; data: Blob }> {");
+            expect(out).toContain("contentType: readContentType(result) as 'image/png' | 'image/jpeg'");
+            expect(out).toContain('data: await result.blob()');
+            expect(out).toContain("import { readContentType } from '/x/sdk-options.js'".replace('/x/', './'));
+        });
+
+        it('dispatches on the response content type when the mimes read differently', () => {
+            const root = opRoot([
+                opRoute('/pet', [
+                    opOperation('get', {
+                        sdk: 'getPet',
+                        responses: [
+                            opResponseMulti(200, [
+                                { contentType: 'application/json', bodyType: refType('Pet') },
+                                { contentType: 'text/csv', bodyType: scalarType('string') },
+                            ]),
+                        ],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root, sharedOptions);
+            expect(out).toContain("| { contentType: 'application/json'; data: Pet }");
+            expect(out).toContain("| { contentType: 'text/csv'; data: string }");
+            expect(out).toContain('switch (readContentType(result)) {');
+            expect(out).toContain("case 'text/csv':");
+        });
+
+        it('returns a union over every status a client can receive, including one middleware produces', () => {
+            const root = opRoot([
+                opRoute('/art', [
+                    opOperation('get', {
+                        sdk: 'getArt',
+                        responses: [opResponse(200, 'Art', 'application/json'), opResponse(304), opResponse(404)],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root, sharedOptions);
+            expect(out).toContain("| { status: 200; contentType: 'application/json'; data: Art }");
+            expect(out).toContain('| { status: 304 }');
+            // The bare 404 still throws, so it is not a member.
+            expect(out).not.toContain('status: 404');
+            expect(out).toContain('switch (result.status) {');
+        });
+
+        it('stops throwing for a status declared as a value rather than an error', () => {
+            const root = opRoot([
+                opRoute('/pet', [
+                    opOperation('get', {
+                        sdk: 'getPet',
+                        responses: [opResponse(200, 'Pet', 'application/json'), opResponse(422, 'Problem', 'application/json'), opResponse(404)],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root, sharedOptions);
+            expect(out).toContain('expectStatuses: [422]');
+            expect(out).toContain("| { status: 422; contentType: 'application/json'; data: Problem }");
+            expect(out).toContain('case 422:');
+        });
+
+        it('passes expectStatuses so a declared 304 does not surface as SdkError', () => {
+            const root = opRoot([
+                opRoute('/art', [opOperation('get', { sdk: 'getArt', responses: [opResponse(200, 'Art', 'application/json'), opResponse(304)] })]),
+            ]);
+            expect(generateSdk(root, sharedOptions)).toContain('expectStatuses: [304]');
+        });
+
+        it('types the throw path from the statuses that stay errors', () => {
+            const root = opRoot([
+                opRoute('/pet', [
+                    opOperation('get', {
+                        sdk: 'getPet',
+                        responses: [
+                            opResponse(200, 'Pet', 'application/json'),
+                            { ...opResponse(404, refType('Problem'), 'application/json'), emit: 'documented' as const },
+                            opResponse(500),
+                        ],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root, sharedOptions);
+            expect(out).toContain('export type GetPetErrorBody = Problem;');
+            expect(out).toContain('/** @throws {SdkError<GetPetErrorBody>} on 404, 500 */');
+            // Documented, so it is not a return-union member.
+            expect(out).toContain('async getPet(): Promise<Pet> {');
+        });
+
+        it('emits no alias when the error statuses declare no body', () => {
+            const root = opRoot([
+                opRoute('/pet', [opOperation('get', { sdk: 'getPet', responses: [opResponse(200, 'Pet', 'application/json'), opResponse(404)] })]),
+            ]);
+            expect(generateSdk(root, sharedOptions)).not.toContain('ErrorBody');
         });
     });
 });
@@ -757,9 +882,9 @@ describe('generateSdkOptions', () => {
         expect(out).toContain('headers?:');
         expect(out).toContain('fetch?: SdkFetch');
         expect(out).toContain('requestIdFactory?: () => string');
-        expect(out).toContain('export class SdkError extends Error');
+        expect(out).toContain('export class SdkError<TBody = unknown> extends Error');
         expect(out).toContain('public readonly status: number');
-        expect(out).toContain('public readonly body: unknown');
+        expect(out).toContain('public readonly body: TBody');
         expect(out).toContain('public readonly headers: Headers');
         expect(out).toContain('throw new SdkError(res.status, res.statusText, body, res.headers)');
         expect(out).toContain('export type SdkFetch');

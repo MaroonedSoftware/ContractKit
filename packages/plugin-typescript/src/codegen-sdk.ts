@@ -1,5 +1,15 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, OpRequestBodyNode, ContractTypeNode, ParamSource } from '@contractkit/core';
-import { resolveModifiers, isJsonMime, classifyContentType } from '@contractkit/core';
+import type {
+    OpRootNode,
+    OpRouteNode,
+    OpOperationNode,
+    OpRequestBodyNode,
+    OpResponseNode,
+    OpResponseBodyNode,
+    OpResponseHeaderNode,
+    ContractTypeNode,
+    ParamSource,
+} from '@contractkit/core';
+import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses, responseBodies } from '@contractkit/core';
 import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
@@ -128,16 +138,17 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         if (sdkNeedsBigIntReplacer(root, includeInternal)) valueImports.push('bigIntReplacer');
         if (sdkNeedsBigIntReviver(root, includeInternal)) valueImports.push('parseJson');
         if (sdkNeedsQueryString(root, includeInternal)) valueImports.push('buildQueryString');
+        if (sdkNeedsReadContentType(root, includeInternal)) valueImports.push('readContentType');
         if (valueImports.length > 0) {
             lines.push(`import { ${valueImports.join(', ')} } from '${rel}';`);
         }
     } else {
         lines.push('');
-        lines.push('export class SdkError extends Error {');
+        lines.push('export class SdkError<TBody = unknown> extends Error {');
         lines.push('    constructor(');
         lines.push('        public readonly status: number,');
         lines.push('        public readonly statusText: string,');
-        lines.push('        public readonly body: unknown,');
+        lines.push('        public readonly body: TBody,');
         lines.push('        public readonly headers: Headers,');
         lines.push('    ) {');
         lines.push('        super(`${status} ${statusText}`);');
@@ -145,7 +156,16 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('    }');
         lines.push('}');
         lines.push('');
-        lines.push('export type SdkFetch = (url: string, init: RequestInit) => Promise<Response>;');
+        lines.push('export interface SdkRequestInit extends RequestInit {');
+        lines.push('    /**');
+        lines.push('     * Statuses this operation declares as values rather than errors — a 304 from');
+        lines.push('     * conditional-GET middleware, or an error status the service returns deliberately.');
+        lines.push('     * Anything else at or above 400 still throws SdkError.');
+        lines.push('     */');
+        lines.push('    expectStatuses?: number[];');
+        lines.push('}');
+        lines.push('');
+        lines.push('export type SdkFetch = (url: string, init: SdkRequestInit) => Promise<Response>;');
         lines.push('');
         lines.push('export interface SdkOptions {');
         lines.push('    baseUrl: string;');
@@ -155,9 +175,13 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('    requestIdFactory?: () => string;');
         lines.push('}');
         lines.push('');
+        lines.push('export function readContentType(res: Response): string {');
+        lines.push("    return res.headers.get('content-type')?.split(';')[0]?.trim() ?? '';");
+        lines.push('}');
+        lines.push('');
         lines.push('export function createSdkFetch(options: SdkOptions): SdkFetch {');
         lines.push('    const getRequestId = options.requestIdFactory ?? (() => crypto.randomUUID());');
-        lines.push('    return async (url: string, init: RequestInit): Promise<Response> => {');
+        lines.push('    return async (url: string, init: SdkRequestInit): Promise<Response> => {');
         lines.push("        const baseHeaders = typeof options.headers === 'function'");
         lines.push('            ? await options.headers()');
         lines.push('            : options.headers ?? {};');
@@ -165,7 +189,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('            ...init,');
         lines.push("            headers: { ...baseHeaders, 'X-Request-ID': getRequestId(), ...init.headers as Record<string, string> },");
         lines.push('        });');
-        lines.push('        if (!res.ok) {');
+        lines.push('        if (!res.ok && !(init.expectStatuses ?? []).includes(res.status)) {');
         lines.push('            const text = await res.text();');
         lines.push('            let body: unknown;');
         lines.push('            try { body = JSON.parse(text); } catch { body = text; }');
@@ -198,6 +222,12 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     }
 
     lines.push('');
+
+    const errorAliases = generateErrorBodyAliases(root, options);
+    if (errorAliases.length > 0) {
+        lines.push(...errorAliases);
+        lines.push('');
+    }
 
     // Client class
     lines.push('/**');
@@ -266,29 +296,49 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
 
     // Determine return type — response side uses Output variants (post-transform wire shape).
     // For non-JSON responses the schema is ignored: text/* is read as string, binary as Blob.
-    const primaryResponse = op.responses.find(r => r.bodyType) ?? op.responses[0];
-    const isVoid = !primaryResponse?.bodyType;
-    const respCategory = primaryResponse?.contentType ? classifyContentType(primaryResponse.contentType) : 'json';
-    const dataType = isVoid
-        ? 'void'
-        : respCategory === 'text'
-          ? 'string'
-          : respCategory === 'binary'
-            ? 'Blob'
-            : renderOutputTsType(primaryResponse!.bodyType!, modelsWithOutput);
+    //
+    // `observableResponses` is the client-side mirror of the router's `emittedResponses`: it also
+    // covers statuses the service never writes but a client can still receive, such as a 304 from
+    // conditional-GET middleware. Anything left over reaches the caller as a thrown SdkError.
+    const observable = observableResponses(op);
+    const thrown = thrownResponses(op);
+    const isMultiStatus = observable.length > 1;
+    const primaryResponse = observable[0];
+    const primaryBodies = primaryResponse ? responseBodies(primaryResponse) : [];
+    const isVoid = primaryBodies.length === 0;
     const respHeaders = primaryResponse?.headers ?? [];
     const hasRespHeaders = respHeaders.length > 0;
-    const headersShape = hasRespHeaders
-        ? `{ ${respHeaders.map(h => `${quoteKey(headerNameToProperty(h.name))}${h.optional ? '?' : ''}: ${renderOutputTsType(h.type, modelsWithOutput)}`).join('; ')} }`
-        : '';
-    const returnType = hasRespHeaders ? (isVoid ? `{ headers: ${headersShape} }` : `{ data: ${dataType}; headers: ${headersShape} }`) : dataType;
+    const headersShape = hasRespHeaders ? renderSdkHeadersShape(respHeaders, modelsWithOutput) : '';
+
+    // A union of more than one member is broken across lines — a four-status operation runs to
+    // several hundred characters on one line otherwise.
+    let returnMembers: string[] | undefined;
+    let returnType = '';
+    if (isMultiStatus) {
+        returnMembers = observable.flatMap(r => sdkResponseMembers(r, modelsWithOutput, true));
+    } else if (primaryBodies.length > 1) {
+        returnMembers = sdkResponseMembers(primaryResponse!, modelsWithOutput, false);
+    } else {
+        const dataType = isVoid ? 'void' : sdkDataType(primaryBodies[0]!, modelsWithOutput);
+        returnType = hasRespHeaders ? (isVoid ? `{ headers: ${headersShape} }` : `{ data: ${dataType}; headers: ${headersShape} }`) : dataType;
+    }
+    if (returnMembers?.length === 1) {
+        returnType = returnMembers[0]!;
+        returnMembers = undefined;
+    }
+
+    // Statuses the shared fetch would otherwise reject. All-2xx operations pass nothing, so the
+    // overwhelmingly common case keeps its existing call shape.
+    const expectStatuses = observable.filter(r => r.statusCode < 200 || r.statusCode >= 300).map(r => r.statusCode);
 
     // JSDoc
     const desc = op.description ?? route.description;
-    if (op.name || desc) {
+    const errorBodyName = thrown.some(r => responseBodies(r).length > 0) ? errorBodyTypeName(route, op) : undefined;
+    if (op.name || desc || errorBodyName) {
         const tags: string[] = [];
         if (op.name) tags.push(`@name ${op.name}`);
         if (desc) tags.push(`@description ${desc}`);
+        if (errorBodyName) tags.push(`@throws {SdkError<${errorBodyName}>} on ${thrown.map(r => r.statusCode).join(', ')}`);
         const contentLines = tags.flatMap(t => escapeJsDocLines(t));
         if (contentLines.length === 1) {
             lines.push(`    /** ${contentLines[0]} */`);
@@ -299,7 +349,13 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
         }
     }
 
-    lines.push(`    async ${methodName}(${paramStr}): Promise<${returnType}> {`);
+    if (returnMembers) {
+        lines.push(`    async ${methodName}(${paramStr}): Promise<`);
+        for (const member of returnMembers) lines.push(`        | ${member}`);
+        lines.push(`    > {`);
+    } else {
+        lines.push(`    async ${methodName}(${paramStr}): Promise<${returnType}> {`);
+    }
 
     // Build URL with path params
     const urlExpr = buildUrlExpression(route.path, route.params);
@@ -378,7 +434,10 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
         }
     }
 
-    const resultPrefix = isVoid && !hasRespHeaders ? '' : 'const result = ';
+    if (expectStatuses.length > 0) fetchArgs.push(`expectStatuses: [${expectStatuses.join(', ')}]`);
+
+    const needsResult = isMultiStatus || !isVoid || hasRespHeaders;
+    const resultPrefix = needsResult ? 'const result = ' : '';
     if (fetchArgs.length === 2 && !hasBody && !hasOpHeaders && !hasQuery) {
         // Simple case — inline
         lines.push(`        ${resultPrefix}await this.fetch(\`${fetchUrl}\`, { method: '${httpMethod}' });`);
@@ -390,25 +449,158 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
         lines.push(`        });`);
     }
 
-    const readBodyExpr =
-        respCategory === 'text' ? `await result.text()` : respCategory === 'binary' ? `await result.blob()` : `await parseJson<${dataType}>(result)`;
-
-    if (hasRespHeaders) {
-        const headerEntries = respHeaders
-            .map(h => `${quoteKey(headerNameToProperty(h.name))}: result.headers.get('${h.name}') ?? undefined`)
-            .join(', ');
+    if (isMultiStatus) {
+        // The status is only known at runtime, so the caller gets a union to narrow. The lowest
+        // status is the default branch, which keeps the function exhaustively returning.
+        const [fallback, ...rest] = observable;
+        lines.push(`        switch (result.status) {`);
+        for (const resp of rest) {
+            lines.push(`            case ${resp.statusCode}:`);
+            lines.push(...sdkReturnLines(resp, modelsWithOutput, '                ', true));
+        }
+        lines.push(`            default:`);
+        lines.push(...sdkReturnLines(fallback!, modelsWithOutput, '                ', true));
+        lines.push(`        }`);
+    } else if (primaryBodies.length > 1) {
+        lines.push(...sdkReturnLines(primaryResponse!, modelsWithOutput, '        ', false));
+    } else if (hasRespHeaders) {
+        const headerEntries = sdkHeaderEntries(respHeaders);
         if (isVoid) {
             lines.push(`        return { headers: { ${headerEntries} } };`);
         } else {
-            lines.push(`        const data = ${readBodyExpr};`);
+            lines.push(`        const data = ${sdkReadExpr(primaryBodies[0]!, modelsWithOutput)};`);
             lines.push(`        return { data, headers: { ${headerEntries} } };`);
         }
     } else if (!isVoid) {
-        lines.push(`        return ${readBodyExpr};`);
+        lines.push(`        return ${sdkReadExpr(primaryBodies[0]!, modelsWithOutput)};`);
     }
 
     lines.push('    }');
 
+    return lines;
+}
+
+// ─── Response shapes ──────────────────────────────────────────────────────
+
+/** The TypeScript type a client sees for one response body. */
+function sdkDataType(body: OpResponseBodyNode, modelsWithOutput?: Set<string>): string {
+    const category = classifyContentType(body.contentType);
+    if (category === 'text') return 'string';
+    if (category === 'binary') return 'Blob';
+    return renderOutputTsType(body.bodyType, modelsWithOutput);
+}
+
+/** How a client reads one response body off the `Response`. */
+function sdkReadExpr(body: OpResponseBodyNode, modelsWithOutput?: Set<string>): string {
+    const category = classifyContentType(body.contentType);
+    if (category === 'text') return 'await result.text()';
+    if (category === 'binary') return 'await result.blob()';
+    return `await parseJson<${renderOutputTsType(body.bodyType, modelsWithOutput)}>(result)`;
+}
+
+function renderSdkHeadersShape(headers: OpResponseHeaderNode[], modelsWithOutput?: Set<string>): string {
+    const fields = headers.map(
+        h => `${quoteKey(headerNameToProperty(h.name))}${h.optional ? '?' : ''}: ${renderOutputTsType(h.type, modelsWithOutput)}`,
+    );
+    return `{ ${fields.join('; ')} }`;
+}
+
+function sdkHeaderEntries(headers: OpResponseHeaderNode[]): string {
+    return headers.map(h => `${quoteKey(headerNameToProperty(h.name))}: result.headers.get('${h.name}') ?? undefined`).join(', ');
+}
+
+/**
+ * Render one response as the members of the client's return union — the mirror of the router's
+ * service-result members, with `data` in place of `body`.
+ *
+ * Collapses to a single member with a union of mime literals when every declared mime yields the
+ * same data type; otherwise one member per mime, so `contentType` and `data` stay correlated.
+ */
+function sdkResponseMembers(resp: OpResponseNode, modelsWithOutput: Set<string> | undefined, includeStatus: boolean): string[] {
+    const bodies = responseBodies(resp);
+    const headers = resp.headers ?? [];
+    const leading = includeStatus ? [`status: ${resp.statusCode}`] : [];
+    const trailing = headers.length > 0 ? [`headers: ${renderSdkHeadersShape(headers, modelsWithOutput)}`] : [];
+
+    if (bodies.length === 0) {
+        return [`{ ${[...leading, ...trailing].join('; ')} }`];
+    }
+
+    const dataTypes = bodies.map(b => sdkDataType(b, modelsWithOutput));
+    if (dataTypes.every(t => t === dataTypes[0])) {
+        const contentType = bodies.map(b => `'${b.contentType}'`).join(' | ');
+        return [`{ ${[...leading, `contentType: ${contentType}`, `data: ${dataTypes[0]}`, ...trailing].join('; ')} }`];
+    }
+    return bodies.map((b, i) => `{ ${[...leading, `contentType: '${b.contentType}'`, `data: ${dataTypes[i]}`, ...trailing].join('; ')} }`);
+}
+
+/** The `return` statement(s) that build one response's member of the return union. */
+function sdkReturnLines(resp: OpResponseNode, modelsWithOutput: Set<string> | undefined, indent: string, includeStatus: boolean): string[] {
+    const bodies = responseBodies(resp);
+    const headers = resp.headers ?? [];
+    const leading = includeStatus ? [`status: ${resp.statusCode}`] : [];
+    const trailing = headers.length > 0 ? [`headers: { ${sdkHeaderEntries(headers)} }`] : [];
+
+    if (bodies.length === 0) {
+        return [`${indent}return { ${[...leading, ...trailing].join(', ')} };`];
+    }
+    if (bodies.length === 1) {
+        const fields = [...leading, `contentType: '${bodies[0]!.contentType}'`, `data: ${sdkReadExpr(bodies[0]!, modelsWithOutput)}`, ...trailing];
+        return [`${indent}return { ${fields.join(', ')} };`];
+    }
+
+    const dataTypes = bodies.map(b => sdkDataType(b, modelsWithOutput));
+    if (dataTypes.every(t => t === dataTypes[0])) {
+        // Every mime reads the same way, so only the label has to come off the wire.
+        const cast = bodies.map(b => `'${b.contentType}'`).join(' | ');
+        const fields = [...leading, `contentType: readContentType(result) as ${cast}`, `data: ${sdkReadExpr(bodies[0]!, modelsWithOutput)}`, ...trailing];
+        return [`${indent}return { ${fields.join(', ')} };`];
+    }
+
+    // The mimes read differently, so the client has to dispatch on what actually came back.
+    const lines = [`${indent}switch (readContentType(result)) {`];
+    for (const body of bodies.slice(1)) {
+        const fields = [...leading, `contentType: '${body.contentType}'`, `data: ${sdkReadExpr(body, modelsWithOutput)}`, ...trailing];
+        lines.push(`${indent}    case '${body.contentType}':`);
+        lines.push(`${indent}        return { ${fields.join(', ')} };`);
+    }
+    const first = bodies[0]!;
+    const fallbackFields = [...leading, `contentType: '${first.contentType}'`, `data: ${sdkReadExpr(first, modelsWithOutput)}`, ...trailing];
+    lines.push(`${indent}    default:`);
+    lines.push(`${indent}        return { ${fallbackFields.join(', ')} };`);
+    lines.push(`${indent}}`);
+    return lines;
+}
+
+// ─── Error body typing ────────────────────────────────────────────────────
+
+function errorBodyTypeName(route: OpRouteNode, op: OpOperationNode): string {
+    const method = deriveMethodName(op, route);
+    return `${method.charAt(0).toUpperCase()}${method.slice(1)}ErrorBody`;
+}
+
+/**
+ * Module-level `…ErrorBody` aliases for every operation whose thrown statuses declare a body.
+ *
+ * TypeScript cannot type a `throw`, so the alias plus the method's `@throws` tag is as far as the
+ * error contract can be carried: it gives callers something to narrow `SdkError.body` to instead
+ * of leaving them with `unknown`.
+ */
+export function generateErrorBodyAliases(root: OpRootNode, options: SdkCodegenOptions): string[] {
+    const includeInternal = options.includeInternal ?? false;
+    const lines: string[] = [];
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            const mods = resolveModifiers(route, op);
+            if (!includeInternal && mods.includes('internal')) continue;
+            const types = new Set<string>();
+            for (const resp of thrownResponses(op)) {
+                for (const body of responseBodies(resp)) types.add(sdkDataType(body, options.modelsWithOutput));
+            }
+            if (types.size === 0) continue;
+            lines.push(`export type ${errorBodyTypeName(route, op)} = ${[...types].join(' | ')};`);
+        }
+    }
     return lines;
 }
 
@@ -738,6 +930,20 @@ function sdkNeedsQueryString(root: OpRootNode, includeInternal = false): boolean
     return false;
 }
 
+/**
+ * True if any emitted operation has a status declaring several mimes, so the client has to read
+ * the actual content type off the response to know which it got.
+ */
+function sdkNeedsReadContentType(root: OpRootNode, includeInternal = false): boolean {
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
+            if (observableResponses(op).some(r => responseBodies(r).length > 1)) return true;
+        }
+    }
+    return false;
+}
+
 /** True if any emitted operation serializes a JSON request body (uses bigIntReplacer). */
 function sdkNeedsBigIntReplacer(root: OpRootNode, includeInternal = false): boolean {
     for (const route of root.routes) {
@@ -882,11 +1088,11 @@ function deriveTypeImportPath(file: string, template?: string): string {
 /** Generate the shared SdkOptions interface file. */
 export function generateSdkOptions(): string {
     return [
-        'export class SdkError extends Error {',
+        'export class SdkError<TBody = unknown> extends Error {',
         '    constructor(',
         '        public readonly status: number,',
         '        public readonly statusText: string,',
-        '        public readonly body: unknown,',
+        '        public readonly body: TBody,',
         '        public readonly headers: Headers,',
         '    ) {',
         '        super(`${status} ${statusText}`);',
@@ -894,7 +1100,16 @@ export function generateSdkOptions(): string {
         '    }',
         '}',
         '',
-        'export type SdkFetch = (url: string, init: RequestInit) => Promise<Response>;',
+        'export interface SdkRequestInit extends RequestInit {',
+        '    /**',
+        '     * Statuses this operation declares as values rather than errors — a 304 from',
+        '     * conditional-GET middleware, or an error status the service returns deliberately.',
+        '     * Anything else at or above 400 still throws SdkError.',
+        '     */',
+        '    expectStatuses?: number[];',
+        '}',
+        '',
+        'export type SdkFetch = (url: string, init: SdkRequestInit) => Promise<Response>;',
         '',
         'export interface SdkOptions {',
         '    baseUrl: string;',
@@ -920,9 +1135,13 @@ export function generateSdkOptions(): string {
         '',
         JSON_VALUE_TYPE_DECL,
         '',
+        'export function readContentType(res: Response): string {',
+        "    return res.headers.get('content-type')?.split(';')[0]?.trim() ?? '';",
+        '}',
+        '',
         'export function createSdkFetch(options: SdkOptions): SdkFetch {',
         '    const getRequestId = options.requestIdFactory ?? (() => crypto.randomUUID());',
-        '    return async (url: string, init: RequestInit): Promise<Response> => {',
+        '    return async (url: string, init: SdkRequestInit): Promise<Response> => {',
         "        const baseHeaders = typeof options.headers === 'function'",
         '            ? await options.headers()',
         '            : options.headers ?? {};',
@@ -930,7 +1149,7 @@ export function generateSdkOptions(): string {
         '            ...init,',
         "            headers: { ...baseHeaders, 'X-Request-ID': getRequestId(), ...init.headers as Record<string, string> },",
         '        });',
-        '        if (!res.ok) {',
+        '        if (!res.ok && !(init.expectStatuses ?? []).includes(res.status)) {',
         '            const text = await res.text();',
         '            let body: unknown;',
         '            try { body = JSON.parse(text); } catch { body = text; }',
@@ -1116,6 +1335,8 @@ export function generateAreaClient(input: AreaClientInput): string {
 
     // ── Merge inputs across all inline files ────────────────────────────────
     const collectedMethodLines: string[] = [];
+    // Aliases are keyed off method names, which already collide-check below, so a Set is enough.
+    const collectedErrorAliases = new Set<string>();
     const seenMethods = new Set<string>();
     const typesByImportPath = new Map<string, Set<string>>();
     const unresolvedTypes = new Set<string>();
@@ -1123,6 +1344,7 @@ export function generateAreaClient(input: AreaClientInput): string {
     let needsBigIntReplacer = false;
     let needsBigIntReviver = false;
     let needsQueryString = false;
+    let needsReadContentType = false;
 
     for (const inline of inlineFiles) {
         const includeInternal = inline.codegenOptions.includeInternal ?? false;
@@ -1136,10 +1358,12 @@ export function generateAreaClient(input: AreaClientInput): string {
             seenMethods.add(name);
         }
         collectedMethodLines.push(...methodLines);
+        for (const alias of generateErrorBodyAliases(inline.root, inline.codegenOptions)) collectedErrorAliases.add(alias);
         if (sdkNeedsJson(inline.root, includeInternal)) needsJson = true;
         if (sdkNeedsBigIntReplacer(inline.root, includeInternal)) needsBigIntReplacer = true;
         if (sdkNeedsBigIntReviver(inline.root, includeInternal)) needsBigIntReviver = true;
         if (sdkNeedsQueryString(inline.root, includeInternal)) needsQueryString = true;
+        if (sdkNeedsReadContentType(inline.root, includeInternal)) needsReadContentType = true;
 
         // Resolve each file's type refs against THIS file's modelOutPaths, but
         // produce import paths relative to the area client's outPath (not the
@@ -1179,6 +1403,7 @@ export function generateAreaClient(input: AreaClientInput): string {
     if (needsBigIntReplacer) valueImports.push('bigIntReplacer');
     if (needsBigIntReviver) valueImports.push('parseJson');
     if (needsQueryString) valueImports.push('buildQueryString');
+    if (needsReadContentType) valueImports.push('readContentType');
     if (valueImports.length > 0) {
         lines.push(`import { ${valueImports.join(', ')} } from '${sdkOptionsRel}';`);
     }
@@ -1200,6 +1425,11 @@ export function generateAreaClient(input: AreaClientInput): string {
         lines.push(`import { ${sc.client.className} } from '${sc.client.importPath}';`);
     }
     lines.push('');
+
+    if (collectedErrorAliases.size > 0) {
+        lines.push(...collectedErrorAliases);
+        lines.push('');
+    }
 
     // ── <Area>Client class ──────────────────────────────────────────────────
     lines.push(`export class ${className} {`);
