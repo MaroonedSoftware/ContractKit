@@ -1,6 +1,6 @@
 ---
 name: ck-language
-description: Semantics of the ContractKit `.ck` language — contract/field modifiers, multi-base inheritance, Zod schema shapes, discriminated unions, the `mcp` field, response headers, options-level header globals, variable substitution, and scalar types. Use when reading, writing, or changing `.ck` files, the AST, or any code that interprets these constructs.
+description: Semantics of the ContractKit `.ck` language — contract/field modifiers, multi-base inheritance, Zod schema shapes, discriminated unions, the `mcp` field, the response block (which statuses the service produces, several content types per status, the `(documented)` modifier, response headers), options-level header globals, variable substitution, and scalar types. Use when reading, writing, or changing `.ck` files, the AST, or any code that interprets these constructs.
 ---
 
 # The `.ck` language
@@ -50,7 +50,7 @@ Read the one that covers what you're touching; don't read all of them.
 | File | Covers |
 | ---- | ------ |
 | `references/models.md` | Contract + field modifiers, multi-base inheritance, Zod schema shapes, discriminated unions, scalar types |
-| `references/operations.md` | The `mcp` field, response headers, options-level header globals |
+| `references/operations.md` | The `mcp` field, which responses the service produces, several mimes per status, response headers, options-level header globals |
 | `references/variables.md` | `{{name}}` substitution, lookup order, escaping, built-ins |
 
 ## Pass ordering (a recurring source of bugs)

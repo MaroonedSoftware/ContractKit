@@ -26,8 +26,16 @@ merge **throw at codegen** — disambiguate with `sdk:` or split into a subarea.
 ## Shared runtime
 
 The SDK emits `sdk-options.ts` alongside the client files, containing `SdkOptions`,
-`createSdkFetch`, `buildQueryString`, `parseJson<T>`, and bigint JSON helpers. Void
-operations (no response body) skip body consumption entirely.
+`createSdkFetch`, `buildQueryString`, `parseJson<T>`, `readContentType`, and bigint JSON
+helpers. Void operations (no response body) skip body consumption entirely.
+
+`createSdkFetch` throws `SdkError` for a response at or above 400 **unless** its status is in
+the `expectStatuses` the method passed — the operation's observable set, which covers a `304`
+produced by middleware and any error status the service returns deliberately. `SdkError<TBody>`
+carries the parsed body, and each operation whose thrown statuses declare a body also exports a
+`…ErrorBody` alias to narrow it to. A method's return type comes from `observableResponses`, so
+an operation a client can see more than one status from returns a union discriminated on
+`status`. See the `ck-language` skill for which statuses land in which set.
 
 ## `sdk.scaffold`
 

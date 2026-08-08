@@ -13,7 +13,8 @@ direction. All packages publish under the `@contractkit` scope.
 Load these rather than rediscovering the semantics from source:
 
 - **`ck-language`** — contract/field modifiers, multi-base inheritance, Zod schema shapes,
-  discriminated unions, the `mcp` field, response headers, header globals, `{{variable}}`
+  discriminated unions, the `mcp` field, the response block (emitted vs documented statuses,
+  several content types per status, response headers), header globals, `{{variable}}`
   substitution.
 - **`ck-plugins`** — plugin config and hooks, per-operation plugin extensions, `emitFile`
   and write-once `ifAbsent` files, TS SDK client grouping and scaffold.
