@@ -5,12 +5,14 @@ Contract files use the `.ck` extension. A file can contain an optional `options`
 ## File Structure
 
 ```
-options { ... }          # optional — file metadata
+options { keys: { area: billing } }   # optional — file metadata
 
-contract Foo: { ... }    # type declarations
-contract Bar: Foo & { ... }
+contract Foo: { id: uuid }            # type declarations
+contract Bar: Foo & { name: string }
 
-operation /path: { ... } # route declarations
+operation /path: {                    # route declarations
+    get: {}
+}
 ```
 
 ---
@@ -502,11 +504,11 @@ contract Order: {
 
 ```
 operation /path: {
-    get: { ... }
-    post: { ... }
-    put: { ... }
-    patch: { ... }
-    delete: { ... }
+    get: {}
+    post: {}
+    put: {}
+    patch: {}
+    delete: {}
 }
 ```
 
@@ -515,8 +517,8 @@ operation /path: {
 Modifiers use function-call syntax on the `operation` keyword:
 
 ```
-operation(internal) /admin/users: { ... }
-operation(deprecated) /v1/users: { ... }
+operation(internal) /admin/users: { get: {} }
+operation(deprecated) /v1/users: { get: {} }
 ```
 
 | Modifier     | Effect                                                                                                  |
@@ -537,7 +539,7 @@ operation /users/{id}: {
     params: {
         id: uuid
     }
-    get: { ... }
+    get: {}
 }
 ```
 
@@ -549,7 +551,7 @@ operation /orgs/{orgId}/members/{memberId}: {
         orgId: uuid
         memberId: uuid # the member to fetch
     }
-    get: { ... }
+    get: {}
 }
 ```
 
@@ -558,7 +560,7 @@ The `params` block can also reference a named contract type:
 ```
 operation /users/{id}: {
     params: UserParams
-    get: { ... }
+    get: {}
 }
 ```
 
@@ -577,14 +579,14 @@ operation /orders/{orderId}: {
     params: {
         orderId: int(min=1, max=5)
     }
-    get: { ... }
+    get: {}
 }
 
 operation /pets/{status}: {
     params: {
         status: enum(available, pending, sold)
     }
-    get: { ... }
+    get: {}
 }
 ```
 
@@ -894,12 +896,11 @@ operation /admin/users: {
         policy: adminWrite
     }
 
-    get: { ... }     # requires the adminWrite policy
-    post: { ... }    # requires the adminWrite policy
+    get: {}      # requires the adminWrite policy
+    post: {}     # requires the adminWrite policy
 
     delete: {
         security: none   # overridden — public
-        ...
     }
 }
 ```
