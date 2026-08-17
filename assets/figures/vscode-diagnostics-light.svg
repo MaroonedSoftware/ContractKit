@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="518.8" height="234" viewBox="0 0 518.8 234" role="img" aria-label="A misspelled model reference flagged as you type, with a quick fix offering the closest name">
+<title>A misspelled model reference flagged as you type, with a quick fix offering the closest name</title>
+<defs><clipPath id="vscode-diagnostics-clip"><rect x="0" y="0" width="518.8" height="234" rx="8" /></clipPath></defs>
+<rect x="0" y="0" width="518.8" height="234" rx="8" fill="#FFFFFF" />
+<g clip-path="url(#vscode-diagnostics-clip)">
+<rect x="0" y="0" width="518.8" height="234" fill="#FFFFFF" />
+<rect x="0" y="0" width="518.8" height="36" fill="#F8F8F8" />
+<rect x="0" y="35" width="518.8" height="1" fill="#E5E5E5" />
+<rect x="0" y="0" width="117" height="36" fill="#FFFFFF" />
+<rect x="0" y="0" width="117" height="1" fill="#005FB8" />
+<circle cx="18" cy="18" r="4" fill="#005FB8" />
+<text x="30" y="22" fill="#3B3B3B" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="13" xml:space="preserve">orders.ck</text>
+<text x="34" y="60" fill="#8A8A8A" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">61</text>
+<text x="58" y="60" fill="#AF00DB" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">contract</text>
+<text x="128.2" y="60" fill="#267F99" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="39" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Order</text>
+<text x="167.2" y="60" fill="#000000" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">: {</text>
+<text x="34" y="80" fill="#8A8A8A" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">62</text>
+<text x="89.2" y="80" fill="#001080" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="15.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">id</text>
+<text x="104.8" y="80" fill="#000000" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="120.4" y="80" fill="#0000FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">readonly</text>
+<text x="190.6" y="80" fill="#267F99" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="31.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">uuid</text>
+<text x="34" y="100" fill="#8A8A8A" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">63</text>
+<text x="89.2" y="100" fill="#001080" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="78" lengthAdjust="spacingAndGlyphs" xml:space="preserve">customerId</text>
+<text x="167.2" y="100" fill="#000000" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="182.8" y="100" fill="#267F99" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="31.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">uuid</text>
+<text x="34" y="120" fill="#8A8A8A" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">64</text>
+<text x="89.2" y="120" fill="#001080" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="54.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">payment</text>
+<text x="143.8" y="120" fill="#000000" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="159.4" y="120" fill="#267F99" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="93.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">PaymentMehod</text>
+<text x="34" y="140" fill="#8A8A8A" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">65</text>
+<text x="89.2" y="140" fill="#001080" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="46.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">shipTo</text>
+<text x="136" y="140" fill="#000000" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="151.6" y="140" fill="#267F99" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="54.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Address</text>
+<text x="34" y="160" fill="#8A8A8A" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">66</text>
+<text x="58" y="160" fill="#000000" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+<path d="M 159.4 123 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0 q 1.5 -3 3 0 q 1.5 3 3 0" fill="none" stroke="#BF8803" stroke-width="1.2" />
+<g transform="translate(120.4, 130)">
+<rect x="2" y="3" width="246.2" height="96" rx="6" fill="#000000" opacity="0.16" />
+<rect x="0" y="0" width="246.2" height="96" rx="6" fill="#F8F8F8" stroke="#CECECE" stroke-width="1" />
+<text x="10" y="24" fill="#3B3B3B" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" font-weight="bold" xml:space="preserve">Unknown model: PaymentMehod</text>
+<text x="10" y="44" fill="#616161" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" xml:space="preserve">ContractKit · unknown-model</text>
+<text x="10" y="64" fill="#616161" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" xml:space="preserve"></text>
+<text x="10" y="84" fill="#616161" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" xml:space="preserve">Quick Fix…  Change to PaymentMethod</text>
+</g>
+</g>
+<rect x="0.5" y="0.5" width="517.8" height="233" rx="8" fill="none" stroke="#D0D7DE" stroke-width="1" />
+</svg>

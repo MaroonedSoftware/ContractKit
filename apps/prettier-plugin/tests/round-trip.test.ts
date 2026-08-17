@@ -24,7 +24,11 @@ function format(source: string, file = 'test.ck'): string {
 // ─── Repository contracts ────────────────────────────────────────────────────
 
 const CONTRACTS_DIR = new URL('../../../contracts', import.meta.url).pathname;
-const ckFiles = readdirSync(CONTRACTS_DIR).filter(f => f.endsWith('.ck'));
+// Recursive: the example contracts under `contracts/examples/<domain>/` are what the README and
+// the docs figures are cut from, so they have to survive a format too.
+const ckFiles = readdirSync(CONTRACTS_DIR, { recursive: true })
+    .map(String)
+    .filter(f => f.endsWith('.ck'));
 
 describe('round-trip — repository .ck files', () => {
     it('finds .ck files to check', () => {

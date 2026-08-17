@@ -37,7 +37,16 @@ Load these rather than rediscovering the semantics from source:
   `mcp?: boolean | McpConfigNode`) exist specifically to preserve the source form; don't
   normalize them away.
 - Tests live in a top-level `tests/` folder per package, mirroring `src/`.
-- After editing `ck.tmLanguage.json`, run `pnpm run vscode:install` to reload the extension.
+- After editing `ck.tmLanguage.json`, run `pnpm run vscode:install` to reload the extension, and
+  `pnpm docs:images` to re-render the documentation figures, which are coloured by that same
+  grammar.
+- **Documentation figures are generated, never hand-drawn or screenshotted.** Everything under
+  `assets/figures/` comes from `packages/docs-images`, which cuts excerpts out of the contracts in
+  `contracts/` and highlights them with the extension's TextMate grammar. Edit the figure
+  definition or the contract, then re-render; never hand-edit an SVG.
+- **The contracts in `contracts/` are documentation.** They are validated as one project by
+  `packages/contractkit/tests/example-contracts.test.ts` (no errors, no warnings) and must survive
+  a prettier round-trip. Adding an example means adding it there, not inlining it in Markdown.
 
 ## Testing
 

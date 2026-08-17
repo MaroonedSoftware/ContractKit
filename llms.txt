@@ -16,10 +16,11 @@ grammar and the editor's completion provider consume the same syntax.
 
 ## Docs
 
-- [README](README.md): What ContractKit is, install, config skeleton, and a cheat sheet showing every language construct in one block.
+- [README](README.md): What ContractKit is, a quickstart, and a cheat sheet showing every language construct in one block.
 - [Language reference](docs/language.md): Every `.ck` construct in depth — contracts, inheritance, scalar and compound types, constraints, discriminated unions, field syntax, operations, path params, query, headers, request and response blocks, security, service binding, MCP exposure, webhook signatures, per-operation plugin extensions.
 - [Configuration](docs/config.md): `contractkit.config.json` fields, every built-in plugin and its options, and the `ContractKitPlugin` interface for writing your own.
-- [Tooling](docs/tooling.md): SDK generation and subclient grouping, docs generation, incremental compilation, cross-file validation, Prettier integration, VS Code extension setup.
+- [Tooling](docs/tooling.md): SDK generation and subclient grouping, docs generation, incremental compilation, cross-file validation, Prettier integration, VS Code extension setup, and how the documentation's figures are generated.
+- [Example contracts](contracts/examples/README.md): Five complete, realistic APIs — billing, catalog, orders, webhooks, identity — validated as one project by the test suite. The place to look for idiomatic usage rather than isolated syntax.
 
 ## Packages
 
@@ -40,4 +41,5 @@ grammar and the editor's completion provider consume the same syntax.
 - [AST types](packages/contractkit/src/ast.ts): Every node type a plugin consumes, with per-field documentation.
 - [Response sets](packages/contractkit/src/response-sets.ts): Which declared statuses the service produces, which a client receives as a value, and which arrive as errors. Shared by the router and both SDKs so they cannot disagree.
 - [Example contracts](contracts): Working `.ck` files exercising most of the language.
+- [Docs figures](packages/docs-images/README.md): Renders the documentation's code figures from the checked-in contracts using the extension's TextMate grammar. Explains the GitHub constraints the SVGs are written against.
 - [Agent instructions](CLAUDE.md): Repo conventions, gotchas, and pointers to the task-specific skills under `.claude/skills/`.

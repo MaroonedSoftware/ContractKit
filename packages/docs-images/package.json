@@ -1,0 +1,21 @@
+{
+    "name": "@repo/docs-images",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "description": "Renders the documentation's .ck code figures to SVG using the VS Code extension's own TextMate grammar",
+    "scripts": {
+        "render": "node src/render.ts",
+        "lint": "eslint --fix",
+        "format": "prettier --write .",
+        "test": "vitest run",
+        "test:ci": "vitest run"
+    },
+    "dependencies": {
+        "shiki": "^3.14.0"
+    },
+    "devDependencies": {
+        "@repo/config-eslint": "workspace:*",
+        "@repo/config-typescript": "workspace:*"
+    }
+}

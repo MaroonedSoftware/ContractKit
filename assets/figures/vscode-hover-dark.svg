@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="698.2" height="342" viewBox="0 0 698.2 342" role="img" aria-label="Hovering a model reference shows its declaration, pulled from the file that declares it">
+<title>Hovering a model reference shows its declaration, pulled from the file that declares it</title>
+<defs><clipPath id="vscode-hover-clip"><rect x="0" y="0" width="698.2" height="342" rx="8" /></clipPath></defs>
+<rect x="0" y="0" width="698.2" height="342" rx="8" fill="#1F1F1F" />
+<g clip-path="url(#vscode-hover-clip)">
+<rect x="0" y="0" width="698.2" height="342" fill="#1F1F1F" />
+<rect x="0" y="0" width="698.2" height="36" fill="#181818" />
+<rect x="0" y="35" width="698.2" height="1" fill="#2B2B2B" />
+<rect x="0" y="0" width="117" height="36" fill="#1F1F1F" />
+<rect x="0" y="0" width="117" height="1" fill="#0078D4" />
+<circle cx="18" cy="18" r="4" fill="#0078D4" />
+<text x="30" y="22" fill="#CCCCCC" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="13" xml:space="preserve">orders.ck</text>
+<text x="34" y="60" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">55</text>
+<text x="58" y="60" fill="#6A9955" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="616.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"># `Product` and `Money` come from catalog.ck — references resolve across files.</text>
+<text x="34" y="80" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">56</text>
+<text x="58" y="80" fill="#C586C0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">contract</text>
+<text x="128.2" y="80" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">LineItem</text>
+<text x="190.6" y="80" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">: {</text>
+<text x="34" y="100" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">57</text>
+<text x="89.2" y="100" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="70.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">productId</text>
+<text x="159.4" y="100" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="175" y="100" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="31.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">uuid</text>
+<text x="34" y="120" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">58</text>
+<text x="89.2" y="120" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="78" lengthAdjust="spacingAndGlyphs" xml:space="preserve">variantSku</text>
+<text x="167.2" y="120" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="182.8" y="120" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="46.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">string</text>
+<text x="34" y="140" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">59</text>
+<text x="89.2" y="140" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">quantity</text>
+<text x="151.6" y="140" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="167.2" y="140" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">int</text>
+<text x="190.6" y="140" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">(</text>
+<text x="198.4" y="140" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">min</text>
+<text x="221.8" y="140" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">=</text>
+<text x="229.6" y="140" fill="#B5CEA8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1</text>
+<text x="237.4" y="140" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">,</text>
+<text x="253" y="140" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">max</text>
+<text x="276.4" y="140" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">=</text>
+<text x="284.2" y="140" fill="#B5CEA8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">999</text>
+<text x="307.6" y="140" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">)</text>
+<text x="34" y="160" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">60</text>
+<text x="89.2" y="160" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="70.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">unitPrice</text>
+<text x="159.4" y="160" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="175" y="160" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="39" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Money</text>
+<text x="34" y="180" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">61</text>
+<text x="89.2" y="180" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">subtotal</text>
+<text x="151.6" y="180" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="167.2" y="180" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="39" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Money</text>
+<text x="34" y="200" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">62</text>
+<text x="58" y="200" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+<g transform="translate(120.4, 170)">
+<rect x="2" y="3" width="324.2" height="164" rx="6" fill="#000000" opacity="0.16" />
+<rect x="0" y="0" width="324.2" height="164" rx="6" fill="#202020" stroke="#454545" stroke-width="1" />
+<text x="10" y="24" fill="#C586C0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">contract</text>
+<text x="80.2" y="24" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="39" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Money</text>
+<text x="119.2" y="24" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">: {</text>
+<text x="41.2" y="44" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="46.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">amount</text>
+<text x="88" y="44" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="103.6" y="44" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">int</text>
+<text x="41.2" y="64" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">currency</text>
+<text x="103.6" y="64" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="119.2" y="64" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="46.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">string</text>
+<text x="166" y="64" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">(</text>
+<text x="173.8" y="64" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">len</text>
+<text x="197.2" y="64" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">=</text>
+<text x="205" y="64" fill="#B5CEA8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">3</text>
+<text x="212.8" y="64" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">)</text>
+<text x="10" y="84" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+<rect x="0" y="94" width="324.2" height="1" fill="#454545" />
+<text x="10" y="112" fill="#CCCCCC" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" font-weight="bold" xml:space="preserve">catalog.ck</text>
+<text x="10" y="132" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" xml:space="preserve">An amount in the smallest unit of its currency,</text>
+<text x="10" y="152" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" xml:space="preserve">so nothing is ever a float.</text>
+</g>
+</g>
+<rect x="0.5" y="0.5" width="697.2" height="341" rx="8" fill="none" stroke="#3C3C3C" stroke-width="1" />
+</svg>

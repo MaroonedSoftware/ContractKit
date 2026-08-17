@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="854.2" height="532" viewBox="0 0 854.2 532" role="img" aria-label="Inlay hints listing inherited fields, with a reference count above each declaration">
+<title>Inlay hints listing inherited fields, with a reference count above each declaration</title>
+<defs><clipPath id="vscode-inlay-hints-clip"><rect x="0" y="0" width="854.2" height="532" rx="8" /></clipPath></defs>
+<rect x="0" y="0" width="854.2" height="532" rx="8" fill="#1F1F1F" />
+<g clip-path="url(#vscode-inlay-hints-clip)">
+<rect x="0" y="0" width="854.2" height="532" fill="#1F1F1F" />
+<rect x="0" y="0" width="854.2" height="36" fill="#181818" />
+<rect x="0" y="35" width="854.2" height="1" fill="#2B2B2B" />
+<rect x="0" y="0" width="103" height="36" fill="#1F1F1F" />
+<rect x="0" y="0" width="103" height="1" fill="#0078D4" />
+<circle cx="18" cy="18" r="4" fill="#0078D4" />
+<text x="30" y="22" fill="#CCCCCC" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="13" xml:space="preserve">auth.ck</text>
+<text x="34" y="60" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">18</text>
+<text x="58" y="60" fill="#6A9955" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="538.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"># Fields every persisted row carries. Inherited rather than repeated.</text>
+<text x="58" y="79" fill="#8C8C8C" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="11" xml:space="preserve">2 references</text>
+<text x="34" y="98" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">19</text>
+<text x="58" y="98" fill="#C586C0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">contract</text>
+<text x="128.2" y="98" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="70.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Auditable</text>
+<text x="198.4" y="98" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">: {</text>
+<text x="34" y="118" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">20</text>
+<text x="89.2" y="118" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="70.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">createdAt</text>
+<text x="159.4" y="118" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="175" y="118" fill="#569CD6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">readonly</text>
+<text x="245.2" y="118" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">datetime</text>
+<text x="34" y="138" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">21</text>
+<text x="89.2" y="138" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="70.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">updatedAt</text>
+<text x="159.4" y="138" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="175" y="138" fill="#569CD6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">readonly</text>
+<text x="245.2" y="138" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">datetime</text>
+<text x="34" y="158" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">22</text>
+<text x="58" y="158" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+<text x="34" y="178" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">23</text>
+<text x="58" y="197" fill="#8C8C8C" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="11" xml:space="preserve">4 references</text>
+<text x="34" y="216" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">24</text>
+<text x="58" y="216" fill="#C586C0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">contract</text>
+<text x="128.2" y="216" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="31.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">User</text>
+<text x="159.4" y="216" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="175" y="216" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="70.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Auditable</text>
+<text x="253" y="216" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">&amp; {</text>
+<text x="34" y="236" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">25</text>
+<text x="89.2" y="236" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="15.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">id</text>
+<text x="104.8" y="236" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="120.4" y="236" fill="#569CD6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">readonly</text>
+<text x="190.6" y="236" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="31.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">uuid</text>
+<text x="34" y="256" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">26</text>
+<text x="89.2" y="256" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="39" lengthAdjust="spacingAndGlyphs" xml:space="preserve">email</text>
+<text x="128.2" y="256" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="143.8" y="256" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="39" lengthAdjust="spacingAndGlyphs" xml:space="preserve">email</text>
+<text x="34" y="276" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">27</text>
+<text x="89.2" y="276" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="85.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">displayName</text>
+<text x="175" y="276" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="190.6" y="276" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="46.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">string</text>
+<text x="237.4" y="276" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">(</text>
+<text x="245.2" y="276" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">min</text>
+<text x="268.6" y="276" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">=</text>
+<text x="276.4" y="276" fill="#B5CEA8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1</text>
+<text x="284.2" y="276" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">,</text>
+<text x="299.8" y="276" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">max</text>
+<text x="323.2" y="276" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">=</text>
+<text x="331" y="276" fill="#B5CEA8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="15.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">80</text>
+<text x="346.6" y="276" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">)</text>
+<text x="34" y="296" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">28</text>
+<text x="89.2" y="296" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="62.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">password</text>
+<text x="151.6" y="296" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="167.2" y="296" fill="#569CD6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="70.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">writeonly</text>
+<text x="245.2" y="296" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="46.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">string</text>
+<text x="292" y="296" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">(</text>
+<text x="299.8" y="296" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">min</text>
+<text x="323.2" y="296" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">=</text>
+<text x="331" y="296" fill="#B5CEA8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="15.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">12</text>
+<text x="346.6" y="296" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">,</text>
+<text x="362.2" y="296" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">max</text>
+<text x="385.6" y="296" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">=</text>
+<text x="393.4" y="296" fill="#B5CEA8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">128</text>
+<text x="416.8" y="296" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">)</text>
+<text x="432.4" y="296" fill="#6A9955" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="397.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"># accepted on the way in, never serialized back out</text>
+<text x="34" y="316" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">29</text>
+<text x="89.2" y="316" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="70.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">avatarUrl</text>
+<text x="159.4" y="316" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="15.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">?:</text>
+<text x="182.8" y="316" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="23.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">url</text>
+<text x="34" y="336" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">30</text>
+<text x="89.2" y="336" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="46.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">locale</text>
+<text x="136" y="336" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="151.6" y="336" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="46.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">string</text>
+<text x="206.2" y="336" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">=</text>
+<text x="221.8" y="336" fill="#CE9178" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="39" lengthAdjust="spacingAndGlyphs" xml:space="preserve">en-GB</text>
+<text x="34" y="356" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">31</text>
+<text x="89.2" y="356" fill="#9CDCFE" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="78" lengthAdjust="spacingAndGlyphs" xml:space="preserve">mfaEnabled</text>
+<text x="167.2" y="356" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">:</text>
+<text x="182.8" y="356" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="54.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">boolean</text>
+<text x="245.2" y="356" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">=</text>
+<text x="260.8" y="356" fill="#569CD6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="39" lengthAdjust="spacingAndGlyphs" xml:space="preserve">false</text>
+<text x="34" y="376" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">32</text>
+<text x="58" y="376" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+<text x="34" y="396" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">33</text>
+<text x="34" y="416" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">34</text>
+<text x="58" y="416" fill="#6A9955" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="514.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"># Two bases: an admin is a user, plus the fields that make it one.</text>
+<text x="34" y="436" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">35</text>
+<text x="58" y="436" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="280.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">contract Admin: User &amp; Auditable &amp; {</text>
+<text x="58" y="455" fill="#8C8C8C" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="11" xml:space="preserve">1 reference</text>
+<text x="34" y="474" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">36</text>
+<text x="89.2" y="474" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="304.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">role: enum(support, billing, superuser)</text>
+<text x="34" y="494" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">37</text>
+<text x="89.2" y="494" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="218.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">scopes: array(string, min=1)</text>
+<text x="34" y="514" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">38</text>
+<text x="58" y="514" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+<rect x="284.2" y="205" width="168.4" height="14" rx="3" fill="#3A3D41" />
+<text x="289.2" y="216" fill="#A0A0A0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">+ createdAt, updatedAt</text>
+<rect x="401.2" y="463" width="204.4" height="14" rx="3" fill="#3A3D41" />
+<text x="406.2" y="474" fill="#A0A0A0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">+ id, email, displayName, …</text>
+</g>
+<rect x="0.5" y="0.5" width="853.2" height="531" rx="8" fill="none" stroke="#3C3C3C" stroke-width="1" />
+</svg>

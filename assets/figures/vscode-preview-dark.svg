@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="833.2" height="516" viewBox="0 0 833.2 516" role="img" aria-label="The API preview panel for POST /orders, rendered from the contract and refreshed as you type">
+<title>The API preview panel for POST /orders, rendered from the contract and refreshed as you type</title>
+<defs><clipPath id="vscode-preview-clip"><rect x="0" y="0" width="833.2" height="516" rx="8" /></clipPath></defs>
+<rect x="0" y="0" width="833.2" height="516" rx="8" fill="#1F1F1F" />
+<g clip-path="url(#vscode-preview-clip)">
+<rect x="0" y="0" width="833.2" height="516" fill="#1F1F1F" />
+<rect x="0" y="0" width="833.2" height="34" fill="#181818" />
+<rect x="0" y="33" width="833.2" height="1" fill="#2B2B2B" />
+<circle cx="18" cy="17" r="5" fill="#FF5F57" />
+<circle cx="36" cy="17" r="5" fill="#FEBC2E" />
+<circle cx="54" cy="17" r="5" fill="#28C840" />
+<text x="416.6" y="21" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" text-anchor="middle" xml:space="preserve">orders.ck — acme-api</text>
+<rect x="0" y="34" width="503.2" height="458" fill="#1F1F1F" />
+<g transform="translate(0, 34)">
+<rect x="0" y="0" width="503.2" height="458" fill="#1F1F1F" />
+<rect x="0" y="0" width="503.2" height="36" fill="#181818" />
+<rect x="0" y="35" width="503.2" height="1" fill="#2B2B2B" />
+<rect x="0" y="0" width="117" height="36" fill="#1F1F1F" />
+<rect x="0" y="0" width="117" height="1" fill="#0078D4" />
+<circle cx="18" cy="18" r="4" fill="#0078D4" />
+<text x="30" y="22" fill="#CCCCCC" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="13" xml:space="preserve">orders.ck</text>
+<text x="34" y="60" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">115</text>
+<text x="89.2" y="60" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="54.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">post: {</text>
+<text x="151.6" y="60" fill="#6A9955" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="124.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"># place an order</text>
+<text x="34" y="80" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">116</text>
+<text x="120.4" y="80" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="156" lengthAdjust="spacingAndGlyphs" xml:space="preserve">name: Place an order</text>
+<text x="34" y="100" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">117</text>
+<text x="120.4" y="100" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="85.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">sdk: create</text>
+<text x="34" y="120" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">118</text>
+<text x="120.4" y="120" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="210.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">service: OrderService.place</text>
+<text x="34" y="140" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">119</text>
+<text x="120.4" y="140" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="85.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">security: {</text>
+<text x="34" y="160" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">120</text>
+<text x="151.6" y="160" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="148.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">policy: ordersWrite</text>
+<text x="34" y="180" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">121</text>
+<text x="120.4" y="180" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+<text x="34" y="200" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">122</text>
+<text x="120.4" y="200" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="78" lengthAdjust="spacingAndGlyphs" xml:space="preserve">headers: {</text>
+<text x="34" y="220" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">123</text>
+<text x="151.6" y="220" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="319.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">x-idempotency-key: string(min=8, max=255)</text>
+<text x="34" y="240" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">124</text>
+<text x="120.4" y="240" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+<text x="34" y="260" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">125</text>
+<text x="120.4" y="260" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="78" lengthAdjust="spacingAndGlyphs" xml:space="preserve">request: {</text>
+<text x="34" y="280" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">126</text>
+<text x="151.6" y="280" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="226.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">application/json: CreateOrder</text>
+<text x="34" y="300" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">127</text>
+<text x="120.4" y="300" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+<text x="34" y="320" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">128</text>
+<text x="120.4" y="320" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="85.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">response: {</text>
+<text x="34" y="340" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">129</text>
+<text x="151.6" y="340" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="249.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">201: { application/json: Order }</text>
+<text x="34" y="360" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">130</text>
+<text x="151.6" y="360" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="265.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">402: { application/json: Problem }</text>
+<text x="34" y="380" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">131</text>
+<text x="151.6" y="380" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="265.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">409: { application/json: Problem }</text>
+<text x="34" y="400" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">132</text>
+<text x="151.6" y="400" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="265.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">422: { application/json: Problem }</text>
+<text x="34" y="420" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">133</text>
+<text x="120.4" y="420" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+<text x="34" y="440" fill="#6E7681" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" text-anchor="end" xml:space="preserve">134</text>
+<text x="89.2" y="440" fill="#D4D4D4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" textLength="7.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+</g>
+<g transform="translate(503.2, 34)">
+<rect x="0" y="0" width="330" height="458" fill="#1F1F1F" />
+<rect x="0" y="0" width="1" height="458" fill="#2B2B2B" />
+<rect x="16" y="16" width="42" height="18" rx="4" fill="#569CD6" opacity="0.18" /><text x="37" y="29" fill="#569CD6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" xml:space="preserve">POST</text>
+<text x="68" y="28" fill="#CCCCCC" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="14" xml:space="preserve">/orders</text>
+<text x="16" y="56" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" xml:space="preserve">Place an order</text>
+<text x="16" y="86" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="10" font-weight="bold" xml:space="preserve">SECURITY</text>
+<text x="16" y="111" fill="#CCCCCC" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">policy</text>
+<text x="72.8" y="111" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">ordersWrite</text>
+<text x="16" y="142" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="10" font-weight="bold" xml:space="preserve">HEADERS</text>
+<text x="16" y="167" fill="#CCCCCC" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">authorization</text>
+<text x="127.4" y="167" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">string</text>
+<text x="314" y="167" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="11" text-anchor="end" xml:space="preserve">from options</text>
+<text x="16" y="189" fill="#CCCCCC" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">x-idempotency-key</text>
+<text x="158.6" y="189" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">string</text>
+<text x="314" y="189" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="11" text-anchor="end" xml:space="preserve">min 8</text>
+<text x="16" y="220" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="10" font-weight="bold" xml:space="preserve">REQUEST</text>
+<text x="16" y="245" fill="#CCCCCC" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">application/json</text>
+<text x="150.8" y="245" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">CreateOrder</text>
+<text x="314" y="245" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="11" text-anchor="end" xml:space="preserve">expand</text>
+<text x="16" y="276" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="10" font-weight="bold" xml:space="preserve">RESPONSES</text>
+<rect x="16" y="288" width="34" height="17" rx="4" fill="#4EC9B0" opacity="0.16" />
+<text x="33" y="301" fill="#4EC9B0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" font-weight="bold" text-anchor="middle" xml:space="preserve">201</text>
+<text x="60" y="301" fill="#CCCCCC" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">Order</text>
+<rect x="16" y="310" width="34" height="17" rx="4" fill="#F14C4C" opacity="0.16" />
+<text x="33" y="323" fill="#F14C4C" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" font-weight="bold" text-anchor="middle" xml:space="preserve">402</text>
+<text x="60" y="323" fill="#CCCCCC" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">Problem</text>
+<rect x="16" y="332" width="34" height="17" rx="4" fill="#F14C4C" opacity="0.16" />
+<text x="33" y="345" fill="#F14C4C" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" font-weight="bold" text-anchor="middle" xml:space="preserve">409</text>
+<text x="60" y="345" fill="#CCCCCC" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">Problem</text>
+<rect x="16" y="354" width="34" height="17" rx="4" fill="#F14C4C" opacity="0.16" />
+<text x="33" y="367" fill="#F14C4C" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="11" font-weight="bold" text-anchor="middle" xml:space="preserve">422</text>
+<text x="60" y="367" fill="#CCCCCC" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" xml:space="preserve">Problem</text>
+</g>
+<rect x="0" y="492" width="833.2" height="24" fill="#181818" />
+<rect x="0" y="492" width="833.2" height="1" fill="#2B2B2B" />
+<text x="12" y="508" fill="#CCCCCC" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" xml:space="preserve">Acme API</text>
+<text x="84.8" y="508" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" xml:space="preserve">Try it out</text>
+<text x="170.8" y="508" fill="#9D9D9D" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Ubuntu, Cantarell, sans-serif" font-size="12" xml:space="preserve">Copy as cURL</text>
+</g>
+<rect x="0.5" y="0.5" width="832.2" height="515" rx="8" fill="none" stroke="#3C3C3C" stroke-width="1" />
+</svg>

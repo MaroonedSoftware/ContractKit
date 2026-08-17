@@ -2,6 +2,15 @@
 
 Contract files use the `.ck` extension. A file can contain an optional `options` block followed by any number of `contract` and `operation` declarations in any order.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../assets/figures/hero-dark.svg">
+  <img alt="A ContractKit contract: a Subscription model with readonly and defaulted fields, and the operation that creates one, with an idempotency header, a security policy and four declared responses." src="../assets/figures/hero-light.svg" width="543">
+</picture>
+
+This page is the reference: every construct, in depth. If you would rather read a complete file
+first, the [example contracts](../contracts/examples) are five realistic APIs that between them use
+almost everything documented here, and are compiled by the test suite so they cannot go stale.
+
 ## File Structure
 
 ```

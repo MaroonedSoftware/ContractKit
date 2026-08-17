@@ -1,51 +1,113 @@
-# ContractKit (VS Code extension)
+# ContractKit for VS Code
 
-Language support for ContractKit `.ck` contract files in VS Code and Cursor. Includes syntax highlighting, completion, hover, go-to-definition, document symbols, and live diagnostics from a Language Server.
-
-## Features
-
-- **Syntax highlighting** via TextMate grammar (`syntaxes/ck.tmLanguage.json`)
-- **Auto-completion** for built-in types, modifiers, keywords, HTTP methods, content types, security blocks, and cross-file model references
-- **Hover information** for built-in types and referenced models
-- **Go-to-definition** — jumps from a model reference to its `contract` declaration, or from a `service:` reference (e.g. `PaymentsService.foo`) to its entry in the file's `options { services { ... } }` block. Resolves across any indexed `.ck` file in the workspace. Placing the cursor on the **method** segment (the `foo` in `PaymentsService.foo`) jumps straight to that method in the TypeScript service source. The service's module path is resolved relative to the TS plugin's `server.baseDir` (from `contractkit.config.json`) via the generated server's `package.json` `imports` map **or** the nearest `tsconfig.json` `compilerOptions.paths`, mapping the compiled `.js` back to `.ts`.
-- **Document symbols** outline — `contract` and `operation` declarations show in the breadcrumb / outline panel
-- **Workspace symbols** (Cmd+T) — jump to any contract, route, or service declaration across the workspace, filtered by query
-- **Document formatting** — Format Document runs the ContractKit prettier printer over the file
-- **Document links** — Cmd+click on `https://`, `file://`, and relative `./` paths inside string literals (e.g. plugin extension templates)
-- **Folding ranges** — collapse `contract`, `operation`, `options`, and inline object blocks; consecutive comment lines fold as a region
-- **Find all references / Document highlights** — right-click → Find All References, or Cmd+F2 to highlight every occurrence of a model or service name in the current document
-- **CodeLens reference counts** — every model and service declaration shows a "N references" lens that opens the references peek view on click
-- **Rename Symbol** (F2) — renames a model or service across every file in the workspace. Validates the new name is a legal ContractKit identifier and rejects collisions with existing symbols.
-- **Code Actions** — quick-fixes for `missing-override` (insert `override`), `spurious-override` (remove `override`), and `unknown-model` (offer fuzzy-matched name suggestions) diagnostics
-- **Signature help** — parameter docs inside scalar constraint calls like `string(min=...)`, `int(min, max)`, `discriminated(by=...)`
-- **Inlay hints** — show inherited field names next to a model declaration that has bases (e.g. `contract Admin: User & {` displays `+ name, email` inline)
-- **Semantic tokens** — precise classification of keywords, modifiers, scalar types, model names (as `class`), and service names (as `interface`) for richer highlighting
-- **Live diagnostics** — parser errors and warnings as you type, now with stable diagnostic codes that quick-fixes dispatch on
-- **Cross-file model index** — referenced models from other open `.ck` files participate in completion and hover
-- **ContractKit Explorer view** in the Explorer sidebar — browse every endpoint and model across the workspace, grouped by file/area/HTTP method (or flat). Tooltips show description, source location, and per-group warning counts.
-- **Filter & grouping** — title-bar buttons let you filter by path/name/method/sdk/service and switch the grouping mode (persisted per workspace)
-- **Right-click actions** on tree nodes — Reveal in Editor, Copy Path (`METHOD /route`), Copy as cURL
-- **API preview panel** — click any tree node to open a Stoplight-style detail panel beside the editor showing description, params, request/response schemas (with **inline-expandable** model refs), security badges, plugin extensions, and source-jump buttons. Lives refreshes on edit.
-- **Overview endpoints list** — the API Overview page shows a collapsible list of every operation grouped by area (method badge, route, and optional human-readable name). Areas auto-expand when there are three or fewer; click any row to open that operation in its own panel.
-- **Markdown in descriptions** — `description:` blocks render with paragraphs, headings, lists, fenced code, bold/italic, inline code, and http(s) links (in the preview panel and tree tooltips).
-- **Try-it-out** — every operation card includes a collapsible form prefilled with the schema's path params, query, headers, and (for JSON bodies) an editable body textarea. Send button fires the request from the extension host (Node `fetch`, full network access), shows status/headers/body in-place.
-- **Status bar** — left-aligned entry shows the API title, endpoint and model counts, and a warning badge. Click to open the preview.
+Language support for `.ck` contract files in VS Code and Cursor: syntax highlighting, a language
+server that indexes your whole workspace, and an API explorer that renders your contracts as
+browsable documentation you can send requests from.
 
 Requires VS Code or Cursor 1.105.1+.
 
-## Installation
+## Install
 
-The extension is workspace-internal and built/installed from source:
+The extension is workspace-internal and built from source:
 
 ```bash
 # From the repo root
 pnpm run vscode:install
+```
 
-# To uninstall
+That packages the extension with `vsce` and installs the resulting `.vsix` into your local `code`
+(or `cursor`) binary. To remove it:
+
+```bash
 pnpm run vscode:uninstall
 ```
 
-The install script packages the extension with `vsce`, then installs the resulting `.vsix` into the local `code` (or `cursor`) binary.
+## What you get
+
+### Browse the whole API
+
+The **ContractKit Explorer** in the sidebar lists every endpoint and model across the workspace.
+Group it by file, area, or HTTP method, filter it by path, name, `sdk`, or `service`, and it
+remembers your choice per workspace. Groups carry a badge when something in them has a warning.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../assets/figures/vscode-explorer-dark.svg">
+  <img alt="The ContractKit Explorer in the sidebar, listing every endpoint in the workspace grouped by area, beside the contract source." src="../../assets/figures/vscode-explorer-light.svg" width="816">
+</picture>
+
+Right-click any node for **Reveal in Editor**, **Copy Path** (`METHOD /route`), or **Copy as cURL**.
+
+### Preview an endpoint, and send it
+
+Click an endpoint to open a detail panel beside the editor: description, params, request and
+response schemas with inline-expandable model refs, security badges, and plugin extensions. It
+refreshes as you type. `description:` blocks render as Markdown — headings, lists, fenced code,
+links.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../assets/figures/vscode-preview-dark.svg">
+  <img alt="The API preview panel for POST /orders, showing its security policy, headers, request body and four declared responses beside the contract source." src="../../assets/figures/vscode-preview-light.svg" width="833">
+</picture>
+
+Every operation card includes a **Try it out** form, prefilled from the schema's path params,
+query, headers, and JSON body. Requests are sent from the extension host with Node `fetch`, so
+they are not subject to browser CORS, and the status, headers and body come back in place. Set a
+default base URL with `contractkit.tryItOut.baseUrl`.
+
+### Understand a model without leaving the file
+
+Hover a model reference to see its declaration and doc comment, wherever in the workspace it was
+declared:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../assets/figures/vscode-hover-dark.svg">
+  <img alt="Hovering the Money type in orders.ck shows its declaration and doc comment from catalog.ck." src="../../assets/figures/vscode-hover-light.svg" width="698">
+</picture>
+
+Inheritance is spelled out inline, and every model and service declaration carries a reference
+count that opens the peek view on click:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../assets/figures/vscode-inlay-hints-dark.svg">
+  <img alt="Inlay hints listing the fields User and Admin inherit from their bases, with a reference count above each contract declaration." src="../../assets/figures/vscode-inlay-hints-light.svg" width="620">
+</picture>
+
+### Catch mistakes as you type
+
+Parser errors and warnings appear live, with stable diagnostic codes that quick-fixes dispatch on:
+`unknown-model` offers fuzzy-matched suggestions, `missing-override` inserts `override`, and
+`spurious-override` removes it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../assets/figures/vscode-diagnostics-dark.svg">
+  <img alt="A misspelled model reference underlined as you type, with a quick fix offering the closest matching name." src="../../assets/figures/vscode-diagnostics-light.svg" width="519">
+</picture>
+
+Completion covers built-in types, modifiers, keywords, HTTP methods, content types, security
+blocks, and model references from every indexed file — not only the open one:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../assets/figures/vscode-completion-dark.svg">
+  <img alt="Completion listing the payment models declared across the workspace, each labelled with the file it comes from." src="../../assets/figures/vscode-completion-light.svg" width="519">
+</picture>
+
+### Navigate and refactor
+
+| Action | What it does |
+| --- | --- |
+| **Go to Definition** | Jumps from a model reference to its `contract`, or from a `service:` binding to its entry in `options { services { … } }`. Put the cursor on the **method** segment (`foo` in `PaymentsService.foo`) and it jumps into the TypeScript service source itself, resolving the module path through the generated server's `package.json` `imports` map or the nearest `tsconfig.json` `paths` |
+| **Find All References** / **Document Highlights** | Every occurrence of a model or service name, across the workspace |
+| **Rename Symbol** (F2) | Renames a model or service everywhere, rejecting illegal identifiers and collisions |
+| **Workspace Symbols** (Cmd+T) | Any contract, route, or service declaration, filtered by query |
+| **Document Symbols** | `contract` and `operation` declarations in the outline and breadcrumbs |
+| **Document Links** | Cmd+click `https://`, `file://`, and relative `./` paths inside string literals |
+| **Folding** | `contract`, `operation`, `options` and inline object blocks; runs of comments fold as a region |
+| **Format Document** | Runs the ContractKit prettier printer over the file |
+| **Signature help** | Parameter docs inside constraint calls like `string(min=…)` or `discriminated(by=…)` |
+| **Semantic tokens** | Classifies keywords, modifiers, scalars, models (as `class`) and services (as `interface`) for highlighting that follows meaning, not just shape |
+
+A status bar entry on the left shows the API title, endpoint and model counts, and a warning badge;
+clicking it opens the preview.
 
 ## Settings
 
@@ -58,16 +120,14 @@ The install script packages the extension with `vsce`, then installs the resulti
 | Command | Title | Notes |
 | --- | --- | --- |
 | `contractkit.previewApi` | ContractKit: Open API Preview | Reveals the tree view and opens the overview |
-| `contractkit.refreshExplorer` | ContractKit: Refresh Explorer | Forces the LSP server to re-walk every `.ck` file from disk, then re-fetches the snapshot. Also available as the title-bar button on the Explorer view and on every preview panel. |
+| `contractkit.refreshExplorer` | ContractKit: Refresh Explorer | Forces the LSP server to re-walk every `.ck` file from disk, then re-fetches the snapshot. Also a title-bar button on the Explorer view and on every preview panel |
 | `contractkit.setGrouping` | ContractKit: Set Grouping… | QuickPick for `file` / `area` / `method` / `flat` (persisted per workspace) |
 | `contractkit.filterExplorer` | ContractKit: Filter Explorer… | InputBox; matches path, method, name, sdk, service, group |
 | `contractkit.clearExplorerFilter` | ContractKit: Clear Explorer Filter | Resets the filter |
 
-Right-click on tree nodes also surfaces **Reveal in Editor**, **Copy Path**, and **Copy as cURL** (operations only).
-
 ## Architecture
 
-The extension is split into a thin client and a Language Server, communicating over LSP.
+A thin client and a Language Server, over LSP.
 
 | Path | Purpose |
 | --- | --- |
@@ -107,4 +167,10 @@ The extension is split into a thin client and a Language Server, communicating o
 
 ## Maintaining the syntax grammar
 
-The TextMate grammar must accept the same character classes as the Ohm parser. When `packages/contractkit/src/contractkit.ohm` changes, update `syntaxes/ck.tmLanguage.json` accordingly and re-run `pnpm run vscode:install` to reload locally.
+The TextMate grammar must accept the same character classes as the Ohm parser. When
+`packages/contractkit/src/contractkit.ohm` changes, update `syntaxes/ck.tmLanguage.json` to match
+and re-run `pnpm run vscode:install` to reload locally.
+
+The grammar has a second consumer: `packages/docs-images` renders every code figure in the
+documentation through it, so `pnpm docs:images` shows you what your grammar change looks like
+without opening the editor.

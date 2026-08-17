@@ -65,22 +65,55 @@ The `@contractkit/prettier-plugin` package formats `.ck` files themselves. Add i
 
 ## VS Code Extension
 
-The `@contractkit/vscode-extension` extension provides:
+`@contractkit/vscode-extension` is a language server, not just a colour scheme. It indexes every
+`.ck` file in the workspace, so hover, completion, go-to-definition, find-references and rename all
+work across files.
 
-- Syntax highlighting for `.ck` files
-- Autocompletion for types, keywords, modifiers, and model references
-- Hover information for built-in types and referenced models
-- Cross-file model indexing
-- Real-time diagnostics from the language server
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../assets/figures/vscode-explorer-dark.svg">
+  <img alt="The ContractKit Explorer in the sidebar, listing every endpoint in the workspace grouped by area, beside the contract source." src="../assets/figures/vscode-explorer-light.svg" width="816">
+</picture>
 
-Requires VS Code or Cursor 1.105.1+.
+The **ContractKit Explorer** view lists every endpoint and model, grouped by file, area or method.
+Clicking one opens a preview panel with its params, schemas and responses, plus a Try-it form that
+sends the request from the extension host:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../assets/figures/vscode-preview-dark.svg">
+  <img alt="The API preview panel for POST /orders, showing its security policy, headers, request body and four declared responses beside the contract source." src="../assets/figures/vscode-preview-light.svg" width="833">
+</picture>
+
+Diagnostics from the same validation passes the CLI runs appear as you type, with quick fixes:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../assets/figures/vscode-diagnostics-dark.svg">
+  <img alt="A misspelled model reference underlined as you type, with a quick fix offering the closest matching name." src="../assets/figures/vscode-diagnostics-light.svg" width="519">
+</picture>
+
+The full feature list, settings, and commands are in the
+[extension README](../apps/vscode-extension/README.md). Requires VS Code or Cursor 1.105.1+.
 
 ### Setup
 
 ```bash
-cd apps/vscode-extension
-pnpm install
+# From the repo root
 pnpm run vscode:install
 ```
+
+---
+
+## Documentation Figures
+
+The code figures in this repository's Markdown are rendered, not screenshotted. `pnpm docs:images`
+runs [`packages/docs-images`](../packages/docs-images), which colours excerpts of the checked-in
+contracts under [`contracts/`](../contracts) with the VS Code extension's own TextMate grammar and
+writes a dark and a light SVG per figure into `assets/figures/`.
+
+Two consequences worth knowing:
+
+- Changing `contractkit.ohm` and `ck.tmLanguage.json` changes the documentation's highlighting on
+  the next run. There is no second copy of the colouring rules to update.
+- Figures are anchored to text in the contracts, not line numbers. Editing a contract moves its
+  figure; deleting the anchored declaration fails the render instead of showing the wrong lines.
 
 ---
