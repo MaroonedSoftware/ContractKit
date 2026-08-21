@@ -1,4 +1,4 @@
-import type { CkRootNode, ModelNode, OpRouteNode, ContractTypeNode } from '@contractkit/core';
+import type { CkRootNode, ModelNode, OpRouteNode, ContractTypeNode, ParamSource } from '@contractkit/core';
 
 /**
  * Split models and routes into per-tag CkRootNode instances.
@@ -132,21 +132,26 @@ function collectRouteRefs(route: OpRouteNode, refs: Set<string>): void {
     }
 }
 
-function collectParamSourceRefs(source: unknown, refs: Set<string>): void {
-    if (typeof source === 'string') {
-        refs.add(source);
-        return;
-    }
-    if (Array.isArray(source)) {
-        for (const param of source) {
-            if (param && typeof param === 'object' && 'type' in param) {
-                collectTypeRefs(param.type as ContractTypeNode, refs);
-            }
-        }
-        return;
-    }
-    if (source && typeof source === 'object' && 'kind' in source) {
-        collectTypeRefs(source as ContractTypeNode, refs);
+/**
+ * Collect the model names a `params`/`query`/`headers` source refers to.
+ *
+ * `ParamSource` is a tagged union, and this was written against the shape it had before that:
+ * a bare string, an array of params, or a type node. Only `kind: 'ref'` still worked, and only
+ * by coincidence — it happens to look like a `ModelRefTypeNode`. `'params'` and `'type'` fell
+ * through to `collectTypeRefs`, whose switch has neither case, so a model reached only from a
+ * query or header block collected no tags at all and was filed under `shared.ck`.
+ */
+function collectParamSourceRefs(source: ParamSource, refs: Set<string>): void {
+    switch (source.kind) {
+        case 'ref':
+            refs.add(source.name);
+            return;
+        case 'params':
+            for (const param of source.nodes) collectTypeRefs(param.type, refs);
+            return;
+        case 'type':
+            collectTypeRefs(source.node, refs);
+            return;
     }
 }
 

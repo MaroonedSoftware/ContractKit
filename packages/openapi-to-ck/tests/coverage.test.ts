@@ -140,3 +140,42 @@ describe('spec-level security', () => {
         expect(post!.security).toBeUndefined();
     });
 });
+
+describe('schema name sanitization', () => {
+    it('prefixes a name that would start with a digit', async () => {
+        // `identStart` excludes digits, so "3DModel" would otherwise emit a name the parser rejects.
+        const { root } = await convertAndParse({
+            input: spec({ get: { operationId: 'x', responses: ok } }, {
+                components: { schemas: { '3DModel': { type: 'object', properties: { id: { type: 'string' } } } } },
+            }),
+        });
+        expect(root.models.map(m => m.name)).toContain('_3DModel');
+    });
+});
+
+describe('tag splitting', () => {
+    it('files a model reached only from a query param under its own tag', async () => {
+        // `collectParamSourceRefs` was written against the pre-tagged-union `ParamSource`, so a
+        // `kind: 'params'` source collected nothing and the model fell through to shared.ck.
+        const result = await (await import('../src/convert.js')).convertOpenApiToCk({
+            input: {
+                openapi: '3.1.0',
+                info: { title: 'T', version: '1.0' },
+                paths: {
+                    '/pets': {
+                        get: {
+                            operationId: 'listPets',
+                            tags: ['pets'],
+                            parameters: [{ name: 'filter', in: 'query', schema: { $ref: '#/components/schemas/PetFilter' } }],
+                            responses: ok,
+                        },
+                    },
+                },
+                components: { schemas: { PetFilter: { type: 'object', properties: { status: { type: 'string' } } } } },
+            },
+            split: 'by-tag',
+        });
+        expect(result.files.get('pets.ck')).toContain('contract PetFilter:');
+        expect(result.files.has('shared.ck')).toBe(false);
+    });
+});

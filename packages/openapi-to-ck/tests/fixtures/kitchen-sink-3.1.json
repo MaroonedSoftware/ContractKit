@@ -1,0 +1,100 @@
+{
+    "openapi": "3.1.0",
+    "info": { "title": "Kitchen Sink", "version": "1.0.0" },
+    "security": [{ "apiKey": [] }],
+    "paths": {
+        "/widgets/{widgetId}": {
+            "parameters": [{ "$ref": "#/components/parameters/WidgetId" }],
+            "get": {
+                "operationId": "getWidget",
+                "summary": "Fetch a widget } with # awkward chars",
+                "description": "Long prose.\nAcross several lines.",
+                "tags": ["widgets"],
+                "parameters": [
+                    { "$ref": "#/components/parameters/Expand" },
+                    { "name": "sid", "in": "cookie", "schema": { "type": "string" } }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": { "schema": { "$ref": "#/components/schemas/Widget" } },
+                            "text/csv": { "schema": { "type": "string" } }
+                        },
+                        "headers": { "X-Rate-Limit": { "$ref": "#/components/headers/RateLimit" } }
+                    },
+                    "204": { "description": "no content" },
+                    "304": { "description": "not modified" },
+                    "404": { "$ref": "#/components/responses/NotFound" },
+                    "429": { "description": "slow down" },
+                    "503": { "description": "unavailable", "headers": { "Retry-After": { "schema": { "type": "integer" } } } },
+                    "default": { "description": "dropped" },
+                    "4XX": { "description": "also dropped" }
+                }
+            },
+            "head": { "responses": { "200": { "description": "ok" } } },
+            "trace": { "responses": { "200": { "description": "ok" } } }
+        },
+        "/widgets": {
+            "post": {
+                "operationId": "createWidget",
+                "tags": ["widgets"],
+                "security": [],
+                "requestBody": {
+                    "content": {
+                        "application/json": { "schema": { "$ref": "#/components/schemas/Widget" } },
+                        "application/vnd.api+json": { "schema": { "type": "object", "properties": { "data": { "type": "string" } } } },
+                        "text/plain; charset=utf-8": { "schema": { "type": "string" } }
+                    }
+                },
+                "responses": { "201": { "description": "created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Widget" } } } } }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": { "apiKey": { "type": "apiKey", "name": "X-Key", "in": "header" } },
+        "parameters": {
+            "WidgetId": { "name": "widgetId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+            "Expand": { "name": "expand", "in": "query", "description": "expand nested", "schema": { "type": "boolean" } }
+        },
+        "headers": { "RateLimit": { "description": "requests left", "schema": { "type": "integer" } } },
+        "responses": {
+            "NotFound": { "description": "missing", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+        },
+        "schemas": {
+            "Widget": {
+                "type": "object",
+                "description": "A widget.\nDocumented across lines.",
+                "required": ["id", "kind"],
+                "properties": {
+                    "id": { "type": "string", "format": "uuid", "readOnly": true },
+                    "secret": { "type": "string", "writeOnly": true },
+                    "kind": { "type": "string", "enum": ["basic", "on hold", "a \"quoted\" kind"] },
+                    "datePattern": { "type": "string", "pattern": "^\\d{2}/\\d{2}$" },
+                    "ttl": { "type": "string", "format": "duration" },
+                    "contact": { "type": "string", "format": "idn-email" },
+                    "site": { "type": "string", "format": "uri-reference" },
+                    "size": { "type": "integer", "exclusiveMinimum": 0, "multipleOf": 5 },
+                    "tags": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
+                    "legacy": { "type": "string", "deprecated": true },
+                    "nickname": { "type": ["string", "null"] },
+                    "parent": { "$ref": "#/components/schemas/Widget" },
+                    "shape": { "$ref": "#/components/schemas/Shape" }
+                }
+            },
+            "TimestampedWidget": {
+                "allOf": [{ "$ref": "#/components/schemas/Widget" }, { "type": "object", "properties": { "createdAt": { "type": "string", "format": "date-time" } } }]
+            },
+            "Shape": {
+                "oneOf": [{ "$ref": "#/components/schemas/Circle" }, { "$ref": "#/components/schemas/Square" }],
+                "discriminator": { "propertyName": "kind" }
+            },
+            "Circle": { "type": "object", "properties": { "kind": { "const": "circle" }, "r": { "type": "number" } } },
+            "Square": { "type": "object", "properties": { "kind": { "const": "square" }, "side": { "type": "number" } } },
+            "Bag": { "type": "object", "properties": { "id": { "type": "string" } }, "additionalProperties": true },
+            "Sealed": { "type": "object", "properties": { "id": { "type": "string" } }, "additionalProperties": false },
+            "3DModel": { "type": "object", "properties": { "mesh": { "type": "string" } } },
+            "ApiError": { "type": "object", "properties": { "message": { "type": "string" } } }
+        }
+    }
+}

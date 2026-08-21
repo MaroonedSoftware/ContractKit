@@ -6,8 +6,12 @@ import type { WarningCollector } from './warnings.js';
  * 3.1-like shape. Swagger 2.0 and OpenAPI 3.0 documents are transformed
  * so that downstream code only needs to handle one schema dialect.
  *
- * Uses @scalar/openapi-parser's `upgrade()` for the heavy lifting when
- * available, with manual fallbacks for edge cases.
+ * The transformation is hand-written. An earlier note here claimed `@scalar/openapi-parser`'s
+ * `upgrade()` did the heavy lifting; it never did, and that dependency has been dropped.
+ *
+ * After version normalization, `dereferenceComponents` inlines `$ref`s to reusable non-schema
+ * components, so the rest of the pipeline sees only inline parameter, response, request-body and
+ * header objects. Schema `$ref`s are deliberately left intact — they become `.ck` model refs.
  */
 export function normalize(doc: Record<string, unknown>, warnings: WarningCollector): NormalizedDocument {
     const version = detectVersion(doc);
@@ -68,7 +72,8 @@ function dereferenceComponents(doc: NormalizedDocument, warnings: WarningCollect
                     warnings.warn(path, `unresolved $ref '${ref}' — the component is not defined`);
                     return obj;
                 }
-                const { $ref: _dropped, ...siblings } = obj;
+                const siblings = { ...obj };
+                delete siblings.$ref;
                 const resolved = resolve(target, path, depth + 1);
                 return { ...(resolved as Record<string, unknown>), ...siblings };
             }
@@ -159,7 +164,7 @@ function normalizePathItem2(
     globalProduces: string[],
     warnings: WarningCollector,
 ): Record<string, unknown> {
-    const methods = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'];
+    const methods = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'];
     const normalized: Record<string, unknown> = {};
 
     // Path-level parameters
@@ -348,7 +353,7 @@ function normalizeOas30(doc: NormalizedDocument, _warnings: WarningCollector): N
 }
 
 function normalizePathItemSchemas(pathItem: Record<string, unknown>): void {
-    const methods = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'];
+    const methods = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'];
     for (const method of methods) {
         const op = pathItem[method] as Record<string, unknown> | undefined;
         if (!op) continue;

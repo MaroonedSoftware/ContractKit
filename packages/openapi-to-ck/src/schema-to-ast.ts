@@ -449,9 +449,13 @@ export function sanitizeName(name: string, warnings: WarningCollector): string {
         .map(part => part.charAt(0).toUpperCase() + part.slice(1))
         .join('');
 
-    if (cleaned !== name) {
-        warnings.info(`#/components/schemas/${name}`, `Schema name sanitized: "${name}" → "${cleaned}"`);
+    // `identStart` excludes digits, so a schema named "3DModel" would sanitize to something the
+    // parser rejects. Prefix rather than drop the digit, which would collide names.
+    const safe = /^[0-9]/.test(cleaned) ? `_${cleaned}` : cleaned;
+
+    if (safe !== name) {
+        warnings.info(`#/components/schemas/${name}`, `Schema name sanitized: "${name}" → "${safe}"`);
     }
 
-    return cleaned || 'UnnamedSchema';
+    return safe || 'UnnamedSchema';
 }
