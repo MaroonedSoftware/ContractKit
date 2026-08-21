@@ -1,5 +1,12 @@
 # @contractkit/explorer-ui
 
+## 0.4.3
+
+### Patch Changes
+
+- Updated dependencies [aea5e21]
+    - @contractkit/core@0.27.0
+
 ## 0.4.2
 
 ### Patch Changes
