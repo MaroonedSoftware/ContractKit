@@ -181,7 +181,7 @@ export async function convertAndParse(options: ConvertOptions & { file?: string 
     const diag = new DiagnosticCollector();
     const root = parseCk(ck, file, diag);
     if (diag.hasErrors()) {
-        throw new Error(`generated ${file} does not parse:\n${diag.diagnostics.map(d => `  ${d.line}: ${d.message}`).join('\n')}\n\n${ck}`);
+        throw new Error(`generated ${file} does not parse:\n${diag.getAll().map(d => `  ${d.line}: ${d.message}`).join('\n')}\n\n${ck}`);
     }
     return { root, ck, warnings: result.warnings };
 }

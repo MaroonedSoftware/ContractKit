@@ -519,6 +519,12 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode): Record<string,
         if (methodPart) operation.operationId = methodPart;
     }
 
+    // `name:` is the operation's human-readable label, which is what `summary` is for. Without
+    // it the name is lost on the way out, and lost again on the way back through `openapi-to-ck`.
+    if (op.name) {
+        operation.summary = op.name;
+    }
+
     if (op.description) {
         operation.description = op.description;
     }
@@ -585,6 +591,13 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode): Record<string,
                 headers[h.name] = headerObject;
             }
             responseObject.headers = headers;
+        }
+        // OpenAPI cannot say whether the service produces a status or merely documents it, so
+        // the distinction `.ck` draws would be lost on every round trip — every `(documented)`
+        // error would come back as service-produced. A vendor extension is spec-legal and
+        // ignored by other tooling, so carry it rather than drop it.
+        if (resp.emit === 'documented') {
+            responseObject['x-contractkit-emit'] = 'documented';
         }
         responses[statusKey] = responseObject;
     }

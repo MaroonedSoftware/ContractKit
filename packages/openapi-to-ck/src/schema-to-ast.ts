@@ -28,12 +28,17 @@ const LOC: SourceLocation = { file: '', line: 0 };
 
 const FORMAT_TO_SCALAR: Record<string, ScalarTypeNode['name']> = {
     email: 'email',
+    'idn-email': 'email',
     uri: 'url',
+    'uri-reference': 'url',
+    iri: 'url',
+    'iri-reference': 'url',
     url: 'url',
     uuid: 'uuid',
     date: 'date',
     'date-time': 'datetime',
     time: 'time',
+    duration: 'duration',
     binary: 'binary',
     int64: 'bigint',
 };
@@ -95,6 +100,9 @@ function schemaToModel(name: string, schema: NormalizedSchema, ctx: SchemaContex
             kind: 'model',
             name,
             fields,
+            // `additionalProperties: true` says unknown keys are allowed, which is `mode(loose)`.
+            // `false` and absent both match `.ck`'s `strict` default, so neither needs a mode.
+            ...(schema.additionalProperties === true ? { mode: 'loose' as const } : {}),
             description,
             loc: LOC,
         };
@@ -116,6 +124,8 @@ function schemaToModel(name: string, schema: NormalizedSchema, ctx: SchemaContex
  * Convert an OpenAPI schema to a ContractTypeNode.
  */
 export function schemaToTypeNode(schema: NormalizedSchema, ctx: SchemaContext): ContractTypeNode {
+    warnUnrepresentableConstraints(schema, ctx);
+
     // $ref
     if (schema.$ref) {
         const refName = extractRefName(schema.$ref);
@@ -372,10 +382,26 @@ function toDiscriminatedUnion(schemas: NormalizedSchema[], discriminator: string
     return { kind: 'discriminatedUnion', discriminator, members };
 }
 
+/** JSON Schema keywords with no `.ck` counterpart, warned about rather than silently dropped. */
+const UNREPRESENTABLE_KEYWORDS = ['exclusiveMinimum', 'exclusiveMaximum', 'multipleOf', 'uniqueItems'] as const;
+
 function warnUnsupported(schema: NormalizedSchema, ctx: SchemaContext): void {
     if (schema.xml) ctx.warnings.warn(ctx.path, 'xml metadata is not supported, skipping');
     if (schema.externalDocs) ctx.warnings.info(ctx.path, 'externalDocs is not supported, skipping');
     if (schema.not) ctx.warnings.warn(ctx.path, 'not keyword is not supported, skipping');
+}
+
+/**
+ * Report constraints `.ck` has no vocabulary for.
+ *
+ * Its scalar and array arguments are `min`, `max`, `len`, `regex` and `format`. Folding
+ * `exclusiveMinimum` into `min=` would be an off-by-one lie and `multipleOf` has no analogue at
+ * all, so the constraint is reported as lost rather than approximated.
+ */
+function warnUnrepresentableConstraints(schema: NormalizedSchema, ctx: SchemaContext): void {
+    for (const keyword of UNREPRESENTABLE_KEYWORDS) {
+        if (schema[keyword] !== undefined) ctx.warnings.warn(ctx.path, `${keyword} has no .ck equivalent, dropping the constraint`);
+    }
 }
 
 /**

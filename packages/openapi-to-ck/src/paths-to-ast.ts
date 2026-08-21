@@ -24,7 +24,27 @@ import type { SchemaContext } from './schema-to-ast.js';
 import type { WarningCollector } from './warnings.js';
 
 const LOC: SourceLocation = { file: '', line: 0 };
+
+/** A plain `type/subtype`, which is all `mimeType` in the grammar accepts. */
+const MIME_RE = /^[a-z0-9][a-z0-9.+_-]*\/[a-z0-9][a-z0-9.+_-]*$/i;
+
+/**
+ * Reduce a summary to something `nameText` can hold.
+ *
+ * `nameText = (~("\n" | "}" | " #" | "\t#") any)+` — the value runs to end of line and stops at
+ * a closing brace or a whitespace-preceded `#`. An OpenAPI summary respects none of that, and an
+ * unsanitized one would mis-parse the rest of the operation.
+ */
+function toNameText(summary: string): string {
+    return summary
+        .replace(/[}#]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
 const HTTP_METHODS: HttpMethod[] = ['get', 'post', 'put', 'patch', 'delete'];
+
+/** Methods a spec may declare that `httpMethod` in the grammar has no keyword for. */
+const UNSUPPORTED_METHODS = ['head', 'options', 'trace'] as const;
 
 // ─── Public API ───────────────────────────────────────────────────────────
 
@@ -70,6 +90,13 @@ function pathItemToRoute(path: string, pathItem: NormalizedPathItem, ctx: PathsC
 
     // Collect path-level parameters
     const pathParams = (pathItem.parameters ?? []).filter(p => p.in === 'path');
+
+    for (const method of UNSUPPORTED_METHODS) {
+        // A grammar limitation, not a converter one — `.ck` has no keyword for these verbs.
+        if ((pathItem as Record<string, unknown>)[method]) {
+            ctx.warnings.warn(`#/paths/${encodePathSegment(path)}/${method}`, `\`${method}\` operations have no .ck equivalent; dropped`);
+        }
+    }
 
     for (const method of HTTP_METHODS) {
         const op = pathItem[method];
@@ -123,6 +150,14 @@ function operationToNode(method: HttpMethod, op: NormalizedOperation, path: stri
         node.sdk = op.operationId;
     }
 
+    // summary → `name:`, the human-readable label the key exists for. `description` stays the
+    // doc comment; when only a summary is given it becomes the name and is not doubled as prose.
+    if (op.summary) {
+        const name = toNameText(op.summary);
+        if (name) node.name = name;
+        else ctx.warnings.warn(`${pathPrefix}/summary`, 'summary has no content `.ck` can carry as a name; dropped');
+    }
+
     // Description
     if (op.description && ctx.includeComments) {
         node.description = op.description;
@@ -149,6 +184,8 @@ function operationToNode(method: HttpMethod, op: NormalizedOperation, path: stri
             queryParams.push(parameterToNode(param, schemaCtx));
         } else if (param.in === 'header') {
             headerParams.push(parameterToNode(param, schemaCtx));
+        } else if (param.in === 'cookie') {
+            ctx.warnings.warn(`${pathPrefix}/parameters/${param.name}`, 'cookie parameters have no `.ck` equivalent; dropped');
         }
     }
 
@@ -167,15 +204,22 @@ function operationToNode(method: HttpMethod, op: NormalizedOperation, path: stri
     // Responses
     const responses = op.responses ?? {};
     for (const [code, resp] of Object.entries(responses)) {
+        // Strictly numeric: `parseInt('4XX')` is 4, which would silently invent a status code.
+        if (!/^\d{3}$/.test(code)) {
+            // `default`, `2XX`, `4XX` — the response block is keyed by a numeric status.
+            ctx.warnings.warn(`${pathPrefix}/responses/${code}`, `response key '${code}' is not a numeric status code; dropped`);
+            continue;
+        }
         const statusCode = parseInt(code, 10);
-        if (isNaN(statusCode)) continue;
         const respNode = responseToNode(statusCode, resp, op.operationId ?? `${method}${toPascalCase(path)}`, schemaCtx, ctx);
         node.responses.push(respNode);
     }
 
-    // Security
-    if (op.security !== undefined) {
-        node.security = convertSecurity(op.security);
+    // Security. A spec-level `security` applies to every operation that does not override it;
+    // it used to be collected and never read, so a globally-secured spec imported as unsecured.
+    const security = op.security ?? ctx.globalSecurity;
+    if (security !== undefined) {
+        node.security = convertSecurity(security);
     }
 
     return node;
@@ -247,19 +291,22 @@ function requestBodyToNode(
     const content = reqBody.content;
     if (!content) return undefined;
 
-    const supported = new Set<string>(['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data']);
     const bodies: OpRequestNode['bodies'] = [];
 
     for (const [contentType, mediaType] of Object.entries(content)) {
-        if (!supported.has(contentType) || !mediaType?.schema) continue;
+        // `.ck` accepts any RFC 6838 `type/subtype`, so there is no reason to narrow a spec to
+        // the three content types this used to allow. What it cannot carry is a parameterised
+        // (`; charset=`) or wildcard mime, since `mimeType` is two `mimeChar+` runs.
+        if (!MIME_RE.test(contentType)) {
+            ctx.warnings.warn(`${schemaCtx.path}/requestBody/content`, `content type '${contentType}' is not a plain type/subtype; skipped`);
+            continue;
+        }
+        if (!mediaType?.schema) continue;
         const { typeNode, model } = extractInlineModel(mediaType.schema, `${toPascalCase(operationName)}Request`, schemaCtx);
         if (model) {
             ctx.extractedModels.push(model);
         }
-        bodies.push({
-            contentType: contentType as OpRequestNode['bodies'][number]['contentType'],
-            bodyType: typeNode,
-        });
+        bodies.push({ contentType, bodyType: typeNode });
     }
 
     if (bodies.length === 0) return undefined;
@@ -278,8 +325,11 @@ function requestBodyToNode(
  * everything below 400, so the marker would change nothing a client sees, and a spec'd redirect
  * body is plausibly service-produced.
  */
-function shouldDocument(statusCode: number, braced: boolean, ctx: PathsContext): boolean {
-    return braced && statusCode >= 400 && ctx.errorResponses === 'documented';
+function shouldDocument(statusCode: number, braced: boolean, resp: NormalizedResponse, ctx: PathsContext): boolean {
+    if (!braced) return false;
+    // A spec this project emitted says so outright; prefer it over guessing from the status.
+    if (resp['x-contractkit-emit'] === 'documented') return true;
+    return statusCode >= 400 && ctx.errorResponses === 'documented';
 }
 
 function responseToNode(
@@ -290,7 +340,7 @@ function responseToNode(
     ctx: PathsContext,
 ): OpResponseNode {
     const headers = convertResponseHeaders(resp.headers, schemaCtx);
-    const documented = (braced: boolean) => (shouldDocument(statusCode, braced, ctx) ? { emit: 'documented' as const } : {});
+    const documented = (braced: boolean) => (shouldDocument(statusCode, braced, resp, ctx) ? { emit: 'documented' as const } : {});
     const empty = (): OpResponseNode => ({
         statusCode,
         bodies: [],

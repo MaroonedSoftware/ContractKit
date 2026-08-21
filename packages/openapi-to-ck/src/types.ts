@@ -71,6 +71,10 @@ export interface NormalizedSchema {
     maximum?: number;
     minItems?: number;
     maxItems?: number;
+    exclusiveMinimum?: number | boolean;
+    exclusiveMaximum?: number | boolean;
+    multipleOf?: number;
+    uniqueItems?: boolean;
     discriminator?: { propertyName?: string; mapping?: Record<string, string> };
     xml?: unknown;
     externalDocs?: unknown;
@@ -139,6 +143,11 @@ export interface NormalizedRequestBody {
 
 export interface NormalizedResponse {
     description?: string;
+    /**
+     * Set by `@contractkit/plugin-openapi` to carry the emitted-vs-documented distinction, which
+     * OpenAPI itself cannot express. Honoured ahead of the status-code heuristic on import.
+     */
+    'x-contractkit-emit'?: 'documented';
     content?: Record<string, { schema?: NormalizedSchema }>;
     /** OpenAPI Header Objects keyed by header name (case-insensitive on the wire). */
     headers?: Record<string, NormalizedHeader>;

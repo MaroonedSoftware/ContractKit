@@ -92,7 +92,7 @@ function checkParses(filename: string, text: string, warnings: WarningCollector)
     const diag = new DiagnosticCollector();
     parseCk(text, filename, diag);
     if (!diag.hasErrors()) return;
-    for (const d of diag.diagnostics) {
+    for (const d of diag.getAll()) {
         if (d.severity !== 'error') continue;
         warnings.warn(filename, `generated .ck does not parse (line ${d.line}): ${d.message}`);
     }

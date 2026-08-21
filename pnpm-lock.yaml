@@ -232,12 +232,18 @@ importers:
         specifier: workspace:*
         version: link:../contractkit
     devDependencies:
+      '@contractkit/openapi-to-ck':
+        specifier: workspace:*
+        version: link:../openapi-to-ck
       '@repo/config-eslint':
         specifier: workspace:*
         version: link:../config-eslint
       '@repo/config-typescript':
         specifier: workspace:*
         version: link:../config-typescript
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   packages/plugin-python:
     dependencies:

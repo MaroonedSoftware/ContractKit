@@ -28,3 +28,20 @@ Also in this release:
 - Every generated file is re-parsed before it is returned, and a file that does not parse is
   reported as a warning rather than written out silently.
 - The command line gained `--no-comments`, which was documented but never implemented.
+
+Coverage, in the same release:
+
+- `name:` is imported from an operation's `summary`, which used to be dropped entirely.
+- Request bodies keep any RFC 6838 `type/subtype` content type. The importer previously allowed
+  only JSON, form-urlencoded and multipart, silently discarding everything else, even though the
+  grammar has accepted any mime since vendor MIME support landed.
+- `format: duration` maps to the `duration` scalar, and the `idn-email`, `uri-reference`, `iri`
+  and `iri-reference` formats map alongside their existing counterparts.
+- `additionalProperties: true` imports as `mode(loose)`.
+- A spec-level `security` requirement now applies to operations that do not override it; it was
+  collected and never read, so a globally unsecured spec imported as secured.
+- Constructs with no `.ck` equivalent are warned about rather than dropped in silence: `head`,
+  `options` and `trace` operations, non-numeric response keys (`default`, `4XX`), cookie
+  parameters, unparameterised mime types, and the `exclusiveMinimum`, `exclusiveMaximum`,
+  `multipleOf` and `uniqueItems` constraints. A `4XX` response key previously became status `4`,
+  because `parseInt` stops at the first non-digit.
