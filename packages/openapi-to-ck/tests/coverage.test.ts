@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { convertAndParse, onlyOperation } from './helpers.js';
+import { convertAndParse, onlyOperation, responseFor } from './helpers.js';
 import { schemaToTypeNode } from '../src/schema-to-ast.js';
 import { WarningCollector } from '../src/warnings.js';
 import type { SchemaContext } from '../src/schema-to-ast.js';
 
 function schemaCtx(warnings = new WarningCollector()): SchemaContext {
-    return { circularRefs: new Set(), warnings, path: '#/x', includeComments: true, namedSchemas: {}, extractedModels: [], inlineCounter: 0 };
+    return { circularRefs: new Set(), warnings, path: '#/x', includeComments: true, namedSchemas: {}, extractedModels: [], inlineCounter: 0, insideModel: true };
 }
 
 const spec = (pathItem: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
@@ -177,5 +177,70 @@ describe('tag splitting', () => {
         });
         expect(result.files.get('pets.ck')).toContain('contract PetFilter:');
         expect(result.files.has('shared.ck')).toBe(false);
+    });
+});
+
+describe('lazy() placement', () => {
+    const recursive = {
+        components: {
+            schemas: {
+                TreeNode: {
+                    type: 'object',
+                    properties: { id: { type: 'string' }, children: { type: 'array', items: { $ref: '#/components/schemas/TreeNode' } } },
+                },
+            },
+        },
+    };
+
+    it('wraps a self-reference inside the contract, but not the response body naming it', async () => {
+        const { root, ck } = await convertAndParse({
+            input: spec({
+                get: {
+                    operationId: 'getTree',
+                    responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/TreeNode' } } } } },
+                },
+            }, recursive),
+        });
+
+        // Inside the contract the cycle is real and `topoSortModels` cannot order it.
+        const children = root.models.find(m => m.name === 'TreeNode')!.fields.find(f => f.name === 'children')!;
+        expect(children.type).toEqual({ kind: 'array', item: { kind: 'lazy', inner: { kind: 'ref', name: 'TreeNode' } } });
+
+        // In the operation the model is already imported and evaluated.
+        expect(responseFor(onlyOperation(root), 200).bodies[0]!.bodyType).toEqual({ kind: 'ref', name: 'TreeNode' });
+        expect(ck).toContain('application/json: TreeNode');
+    });
+
+    it('leaves request bodies, params and response headers bare too', async () => {
+        const { root } = await convertAndParse({
+            input: spec({
+                post: {
+                    operationId: 'putTree',
+                    parameters: [{ name: 'filter', in: 'query', schema: { $ref: '#/components/schemas/TreeNode' } }],
+                    requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/TreeNode' } } } },
+                    responses: ok,
+                },
+            }, recursive),
+        });
+        const op = onlyOperation(root);
+        expect(op.request!.bodies[0]!.bodyType).toEqual({ kind: 'ref', name: 'TreeNode' });
+        expect((op.query as { kind: 'params'; nodes: { type: unknown }[] }).nodes[0]!.type).toEqual({ kind: 'ref', name: 'TreeNode' });
+    });
+
+    it('still wraps inside a model extracted from an inline body schema', async () => {
+        // The extracted model is a contract body like any other.
+        const { root } = await convertAndParse({
+            input: spec({
+                post: {
+                    operationId: 'putTree',
+                    requestBody: {
+                        content: { 'application/json': { schema: { type: 'object', properties: { root: { $ref: '#/components/schemas/TreeNode' } } } } },
+                    },
+                    responses: ok,
+                },
+            }, recursive),
+        });
+        const extracted = root.models.find(m => m.name === 'PutTreeRequest')!;
+        expect(extracted.fields.find(f => f.name === 'root')!.type).toEqual({ kind: 'lazy', inner: { kind: 'ref', name: 'TreeNode' } });
     });
 });

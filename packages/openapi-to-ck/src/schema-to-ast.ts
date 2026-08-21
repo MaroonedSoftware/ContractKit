@@ -6,8 +6,20 @@ import type { WarningCollector } from './warnings.js';
 // ─── Conversion Context ───────────────────────────────────────────────────
 
 export interface SchemaContext {
-    /** Schema names involved in circular references — use lazy() for these. */
+    /** Schema names involved in circular references — see {@link insideModel}. */
     circularRefs: Set<string>;
+    /**
+     * Whether the type being built sits inside a `contract` body. Default `true`.
+     *
+     * `lazy()` exists to break a definition cycle: `topoSortModels` in the TypeScript plugin
+     * emits dependencies before dependents and can only fall back to source order for a cycle,
+     * so a reference from one cycle member to another has to be deferred. A reference from an
+     * operation — a response body, request body, param, or response header — is not part of any
+     * such cycle: it names a model the generated module has already imported and fully
+     * evaluated. Wrapping it achieves nothing and makes every contract importing a
+     * self-referential schema noisier than it needs to be.
+     */
+    insideModel: boolean;
     /** Warning collector for unsupported features. */
     warnings: WarningCollector;
     /** Current JSON pointer path (for warnings). */
@@ -130,7 +142,7 @@ export function schemaToTypeNode(schema: NormalizedSchema, ctx: SchemaContext): 
     if (schema.$ref) {
         const refName = extractRefName(schema.$ref);
         if (refName) {
-            if (ctx.circularRefs.has(refName)) {
+            if (ctx.insideModel && ctx.circularRefs.has(refName)) {
                 return { kind: 'lazy', inner: { kind: 'ref', name: refName } };
             }
             return { kind: 'ref', name: refName };
@@ -419,7 +431,9 @@ export function extractInlineModel(
 
     // If it's an object with properties, extract as a named model
     if (schema.properties || (schema.type === 'object' && schema.additionalProperties === undefined)) {
-        const fields = schemaPropertiesToFields(schema, ctx);
+        // The extracted model is a `contract` body like any other, so references inside it are
+        // subject to the same ordering problem an authored one would be.
+        const fields = schemaPropertiesToFields(schema, { ...ctx, insideModel: true });
         const model: ModelNode = {
             kind: 'model',
             name: suggestedName,

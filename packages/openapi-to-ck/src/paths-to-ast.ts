@@ -413,6 +413,8 @@ function makeSchemaCtx(ctx: PathsContext, path: string): SchemaContext {
         namedSchemas: ctx.namedSchemas as Record<string, never>,
         extractedModels: ctx.extractedModels,
         inlineCounter: 0,
+        // A response body, request body, param or header names an already-imported model.
+        insideModel: false,
     };
 }
 

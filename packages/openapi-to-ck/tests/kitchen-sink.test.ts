@@ -46,6 +46,9 @@ describe('kitchen sink', () => {
         expect(thrownResponses(get).map(r => r.statusCode)).toEqual([404, 429, 503]);
 
         expect(responseFor(get, 200).bodies.map(b => b.contentType)).toEqual(['application/json', 'text/csv']);
+        // `Widget` is self-referential, but a response body names an already-imported model —
+        // there is no definition cycle here for `lazy()` to break.
+        expect(responseFor(get, 200).bodies[0]!.bodyType).toEqual({ kind: 'ref', name: 'Widget' });
         expect(responseFor(get, 200).headers!.map(h => h.name)).toEqual(['X-Rate-Limit']);
         // A `$ref`'d response resolves to the schema behind it.
         expect(responseFor(get, 404).bodies[0]!.bodyType).toEqual({ kind: 'ref', name: 'ApiError' });
@@ -92,6 +95,9 @@ describe('kitchen sink', () => {
         expect(byName('Bag').mode).toBe('loose');
         expect(byName('Sealed').mode).toBeUndefined();
         expect(byName('_3DModel')).toBeDefined();
+        // Extracted from the inline `application/vnd.api+json` request schema. Models extracted
+        // during path conversion used to be referenced by the operations and never emitted.
+        expect(byName('CreateWidgetRequest').fields.map(f => f.name)).toEqual(['data']);
 
         const widget = byName('Widget');
         expect(widget.fields.find(f => f.name === 'id')!.visibility).toBe('readonly');

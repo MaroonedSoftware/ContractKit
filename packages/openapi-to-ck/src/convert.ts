@@ -11,7 +11,7 @@ import { splitByTag, mergeIntoSingle } from './tag-splitter.js';
 import { astToCk } from './ast-to-ck.js';
 import type { NormalizedSchema } from './types.js';
 import type { ModelNode } from '@contractkit/core';
-import { parseCk, DiagnosticCollector } from '@contractkit/core';
+import { parseCk, decomposeCk, validateRefs, DiagnosticCollector } from '@contractkit/core';
 
 /**
  * Convert an OpenAPI spec (2.0, 3.0, or 3.1) to Contract Kit .ck source files.
@@ -42,6 +42,7 @@ export async function convertOpenApiToCk(options: ConvertOptions): Promise<Conve
         namedSchemas: schemas,
         extractedModels,
         inlineCounter: 0,
+        insideModel: true,
     };
 
     const models = schemasToModels(schemas, schemaCtx);
@@ -57,6 +58,16 @@ export async function convertOpenApiToCk(options: ConvertOptions): Promise<Conve
         errorResponses,
     });
 
+    // Models extracted from inline request/response body schemas arrive during step 6, after
+    // `schemasToModels` has already read the array — without this they are referenced by the
+    // generated operations and never defined.
+    const known = new Set(models.map(m => m.name));
+    for (const extracted of extractedModels) {
+        if (known.has(extracted.name)) continue;
+        known.add(extracted.name);
+        models.push(extracted);
+    }
+
     // Step 7: Split or merge
     const files = new Map<string, string>();
 
@@ -70,31 +81,47 @@ export async function convertOpenApiToCk(options: ConvertOptions): Promise<Conve
         files.set('api.ck', astToCk(root));
     }
 
-    // Step 8: Check what we are about to hand back actually parses
-    for (const [filename, text] of files) {
-        checkParses(filename, text, warnings);
-    }
+    // Step 8: Check what we are about to hand back actually compiles
+    checkGeneratedFiles(files, warnings);
 
     return { files, warnings: warnings.warnings };
 }
 
 /**
- * Re-parse a generated file and report anything that does not survive.
+ * Re-parse the generated files and report anything that does not survive.
  *
  * The converter builds core AST nodes and prints them, so a bug in either half produces `.ck`
  * that will not compile — and, because the output is written straight to disk, the first sign of
- * it is a parse error in the user's own build. Spec content is more adversarial than anything a
+ * it is an error in the user's own build. Spec content is more adversarial than anything a
  * hand-written contract contains (patterns full of punctuation, descriptions full of newlines,
- * schema names that are not identifiers), so it is worth paying a parse per file to find out
- * here instead.
+ * schema names that are not identifiers), so it is worth the round trip to find out here.
+ *
+ * Reference validation runs across all the files together, because `by-tag` deliberately splits
+ * a model into one file and its users into another. Parsing alone is not enough: a reference to
+ * a contract that was never emitted is perfectly good syntax, which is exactly how the importer
+ * shipped operations pointing at inline body models it had dropped.
  */
-function checkParses(filename: string, text: string, warnings: WarningCollector): void {
+function checkGeneratedFiles(files: Map<string, string>, warnings: WarningCollector): void {
     const diag = new DiagnosticCollector();
-    parseCk(text, filename, diag);
-    if (!diag.hasErrors()) return;
+    const roots = [];
+    for (const [filename, text] of files) {
+        const before = diag.getAll().length;
+        const root = parseCk(text, filename, diag);
+        if (diag.getAll().length === before) roots.push(root);
+    }
+
+    if (roots.length === files.size) {
+        const decomposed = roots.map(decomposeCk);
+        validateRefs(
+            decomposed.map(d => d.contract),
+            decomposed.map(d => d.op),
+            diag,
+        );
+    }
+
     for (const d of diag.getAll()) {
         if (d.severity !== 'error') continue;
-        warnings.warn(filename, `generated .ck does not parse (line ${d.line}): ${d.message}`);
+        warnings.warn(d.file, `generated .ck is not valid (line ${d.line}): ${d.message}`);
     }
 }
 

@@ -13,6 +13,7 @@ function makeCtx(overrides?: Partial<SchemaContext>): SchemaContext {
         namedSchemas: {},
         extractedModels: [],
         inlineCounter: 0,
+        insideModel: true,
         ...overrides,
     };
 }
@@ -224,10 +225,18 @@ describe('schemaToTypeNode', () => {
             expect(result).toEqual({ kind: 'ref', name: 'User' });
         });
 
-        it('wraps circular $ref in lazy', () => {
+        it('wraps a circular $ref in lazy inside a contract body', () => {
             const ctx = makeCtx({ circularRefs: new Set(['TreeNode']) });
             const result = schemaToTypeNode({ $ref: '#/components/schemas/TreeNode' }, ctx);
             expect(result).toEqual({ kind: 'lazy', inner: { kind: 'ref', name: 'TreeNode' } });
+        });
+
+        it('leaves a circular $ref bare outside a contract body', () => {
+            // `lazy()` breaks a definition cycle between contracts. An operation names a model
+            // the generated module has already imported, so there is no cycle to break.
+            const ctx = makeCtx({ circularRefs: new Set(['TreeNode']), insideModel: false });
+            const result = schemaToTypeNode({ $ref: '#/components/schemas/TreeNode' }, ctx);
+            expect(result).toEqual({ kind: 'ref', name: 'TreeNode' });
         });
     });
 

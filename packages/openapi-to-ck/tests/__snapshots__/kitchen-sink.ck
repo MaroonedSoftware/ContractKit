@@ -48,6 +48,10 @@ contract ApiError: {
     message?: string
 }
 
+contract CreateWidgetRequest: {
+    data?: string
+}
+
 operation /widgets/{widgetId}: {
     params: {
         widgetId: uuid
@@ -60,7 +64,7 @@ operation /widgets/{widgetId}: {
         }
         response: {
             200: {
-                application/json: lazy(Widget)
+                application/json: Widget
                 text/csv: string
                 headers: {
                     X-Rate-Limit?: int # requests left
@@ -86,12 +90,12 @@ operation /widgets: {
         sdk: createWidget
         security: none
         request: {
-            application/json: lazy(Widget)
+            application/json: Widget
             application/vnd.api+json: CreateWidgetRequest
         }
         response: {
             201: {
-                application/json: lazy(Widget)
+                application/json: Widget
             }
         }
     }
