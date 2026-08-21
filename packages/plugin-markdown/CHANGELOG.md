@@ -1,5 +1,12 @@
 # @contractkit/contractkit-plugin-markdown
 
+## 0.10.3
+
+### Patch Changes
+
+- Updated dependencies [aea5e21]
+    - @contractkit/core@0.27.0
+
 ## 0.10.2
 
 ### Patch Changes
