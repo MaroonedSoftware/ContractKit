@@ -1,8 +1,7 @@
 import type { Plugin } from 'prettier';
 import { builders } from 'prettier/doc';
-import { parseCk, DiagnosticCollector } from '@contractkit/core';
+import { parseCk, DiagnosticCollector, printCk } from '@contractkit/core';
 import type { CkRootNode } from '@contractkit/core';
-import { printCk } from './print-ck.js';
 
 const { hardline, join } = builders;
 
@@ -22,8 +21,8 @@ function toDoc(text: string) {
 /**
  * Prettier plugin registering the `.ck` language, its parser, and its printer.
  *
- * The parser is `parseCk` and the printer is `printCk`, so formatting behaviour lives in
- * `@contractkit/core` and `print-ck.ts` rather than here — this module only adapts them to
+ * The parser is `parseCk` and the printer is `printCk`, both from `@contractkit/core`, so all
+ * formatting behaviour lives there rather than here — this module only adapts them to
  * prettier's interface. `tests/format-plugin.test.ts` covers that adapter layer, which a
  * printer-level test cannot reach.
  */
@@ -60,4 +59,4 @@ const plugin: Plugin<CkRootNode> = {
 };
 
 export default plugin;
-export { printCk, DEFAULT_PRINT_WIDTH } from './print-ck.js';
+export { printCk, DEFAULT_PRINT_WIDTH } from '@contractkit/core';

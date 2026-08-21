@@ -231,7 +231,7 @@ function stringSchemaToType(schema: NormalizedSchema): ContractTypeNode {
         if (schema.minLength !== undefined) mods.min = schema.minLength;
         if (schema.maxLength !== undefined) mods.max = schema.maxLength;
     }
-    if (schema.pattern) mods.regex = `/${schema.pattern}/`;
+    if (schema.pattern) mods.regex = schema.pattern;
     if (schema.format && !FORMAT_TO_SCALAR[schema.format]) mods.format = schema.format;
 
     return { kind: 'scalar', name: 'string', ...mods };

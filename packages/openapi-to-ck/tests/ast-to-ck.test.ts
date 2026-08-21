@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseCk, DiagnosticCollector } from '@contractkit/core';
 import { astToCk, serializeType } from '../src/ast-to-ck.js';
+import { isUnquotable } from '@contractkit/core';
 import {
     ckRoot,
     model,
@@ -38,8 +39,10 @@ describe('serializeType', () => {
 
     it('serializes scalar types with constraints', () => {
         expect(serializeType(scalarType('string', { min: 1, max: 100 }))).toBe('string(min=1, max=100)');
-        expect(serializeType(scalarType('string', { len: 3 }))).toBe('string(length=3)');
-        expect(serializeType(scalarType('string', { regex: '/^[a-z]+$/' }))).toBe('string(regex=/^[a-z]+$/)');
+        expect(serializeType(scalarType('string', { len: 3 }))).toBe('string(len=3)');
+        expect(serializeType(scalarType('string', { regex: '^[a-z]+$' }))).toBe('string(regex=/^[a-z]+$/)');
+        // A pattern containing the `/` delimiter cannot be a regex literal, so it prints quoted.
+        expect(serializeType(scalarType('string', { regex: '^\\d{2}/\\d{2}$' }))).toBe('string(regex="^\\d{2}/\\d{2}$")');
         expect(serializeType(scalarType('int', { min: 0 }))).toBe('int(min=0)');
         expect(serializeType(scalarType('int', { min: 0, max: 100 }))).toBe('int(min=0, max=100)');
     });
@@ -122,16 +125,21 @@ describe('model serialization', () => {
             models: [model('User', [field('id', scalarType('uuid'), { description: 'The user ID' })], { description: 'A user' })],
         });
         const result = astToCk(root);
-        expect(result).toContain('contract User: { # A user');
+        // A model description is a doc-comment block above the declaration; a field description
+        // is a trailing comment. That asymmetry is the printer's, and matches how `.ck` sources
+        // are written by hand.
+        expect(result).toContain('# A user\ncontract User: {');
         expect(result).toContain('    id: uuid # The user ID');
     });
 
-    it('omits comments when includeComments is false', () => {
+    it('prints no comments when the AST carries no descriptions', () => {
+        // `includeComments: false` is honoured upstream — `schema-to-ast.ts` and `paths-to-ast.ts`
+        // never set `description` when it is off — so by the time the printer runs there is
+        // nothing to suppress. `convert.test.ts` covers the flag end to end.
         const root = ckRoot({
-            models: [model('User', [field('id', scalarType('uuid'), { description: 'The user ID' })], { description: 'A user' })],
+            models: [model('User', [field('id', scalarType('uuid'))])],
         });
-        const result = astToCk(root, { includeComments: false });
-        expect(result).not.toContain('#');
+        expect(astToCk(root)).not.toContain('#');
     });
 
     it('serializes model with default values', () => {
@@ -442,7 +450,7 @@ describe('full document', () => {
         expect(result).toContain('LedgerService: "#src/modules/ledger/ledger.service.js"');
 
         // Model
-        expect(result).toContain('contract LedgerAccount: { # A ledger account');
+        expect(result).toContain('# A ledger account\ncontract LedgerAccount: {');
         expect(result).toContain('    id: readonly uuid # The account ID');
 
         // Route
@@ -461,15 +469,18 @@ function parsesCleanly(source: string): boolean {
 }
 
 describe('round-trip: multi-line descriptions', () => {
-    it('flattens a multi-line model description into a single-line trailing comment', () => {
+    it('splits a multi-line model description across doc-comment lines', () => {
         const root = ckRoot({
             models: [model('User', [field('id', scalarType('uuid'))], { description: 'A user.\nSpans multiple\nlines.' })],
         });
         const result = astToCk(root);
-        expect(result).toContain('contract User: { # A user. Spans multiple lines.');
-        // The comment line must not contain an embedded newline that leaks source.
-        const commentLine = result.split('\n').find(l => l.includes('contract User'))!;
-        expect(commentLine).toBe('contract User: { # A user. Spans multiple lines.');
+        expect(result).toContain('# A user.\n# Spans multiple\n# lines.\ncontract User: {');
+        // Every emitted comment must stay on one line — an embedded newline would terminate the
+        // comment and leak the remainder as raw source.
+        for (const line of result.split('\n')) {
+            if (line.trimStart().startsWith('#')) expect(line).not.toContain('\n');
+        }
+        expect(parsesCleanly(result)).toBe(true);
     });
 
     it('flattens a multi-line field description', () => {
@@ -511,10 +522,16 @@ describe('round-trip: enum values needing quotes', () => {
         expect(serializeType(enumType('a "quoted" value'))).toBe(`enum('a "quoted" value')`);
     });
 
-    it('keeps double quotes when the value contains both quote styles', () => {
-        // `.ck` string literals have no escape sequences, so a value with both
-        // quote styles cannot round-trip; the serializer keeps double quotes.
-        expect(serializeType(enumType(`a "b" 'c'`))).toBe(`enum("a "b" 'c'")`);
+    it('still emits parseable source when the value contains both quote styles', () => {
+        // `.ck` string literals have no escape sequences, so a value carrying both quote styles
+        // is unrepresentable. It cannot come from `parseCk` for that same reason, so this only
+        // arises from a programmatically built AST — the printer degrades the value rather than
+        // emit source that will not parse. `isUnquotable` lets a producer warn before that.
+        expect(isUnquotable(`a "b" 'c'`)).toBe(true);
+        const root = ckRoot({
+            models: [model('Task', [field('status', enumType(`a "b" 'c'`))])],
+        });
+        expect(parsesCleanly(astToCk(root))).toBe(true);
     });
 
     it('re-parses cleanly with space-containing enum values', () => {

@@ -1,5 +1,5 @@
-import type { ModelNode } from '@contractkit/core';
-import { printField, printInlineObjectExpanded, extractTrailingInlineObject, printType, printEnumExpanded } from './print-type.js';
+import type { ModelNode } from '../ast.js';
+import { printField, printInlineObjectExpanded, extractTrailingInlineObject, printType, printEnumExpanded, inlineComment } from './print-type.js';
 import { INDENT } from './indent.js';
 
 // ─── Model declaration ───────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ export function printModelDecl(model: ModelNode, printWidth: number = 80): strin
     // Regular model with fields (possibly inherited)
     // A doc comment written above the declaration is re-emitted there by the caller; only an
     // inline one belongs on the header line.
-    const commentSuffix = model.description && model.descriptionInline ? ` # ${model.description}` : '';
+    const commentSuffix = model.description && model.descriptionInline ? ` # ${inlineComment(model.description)}` : '';
     const modifiers = [
         model.deprecated ? 'deprecated' : '',
         model.inputCase || model.outputCase
@@ -52,7 +52,7 @@ function printTypeAlias(model: ModelNode, printWidth: number): string {
     const type = model.type!;
     // A doc comment written above the declaration is re-emitted there by the caller; only an
     // inline one belongs on the header line.
-    const commentSuffix = model.description && model.descriptionInline ? ` # ${model.description}` : '';
+    const commentSuffix = model.description && model.descriptionInline ? ` # ${inlineComment(model.description)}` : '';
     const modifiers = [
         model.deprecated ? 'deprecated' : '',
         model.inputCase || model.outputCase

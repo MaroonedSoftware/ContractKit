@@ -1,4 +1,4 @@
-import type { ContractTypeNode, FieldNode, InlineObjectTypeNode } from '@contractkit/core';
+import type { ContractTypeNode, FieldNode, InlineObjectTypeNode } from '../ast.js';
 import { INDENT } from './indent.js';
 
 // ─── Type expression printer ────────────────────────────────────────────────
@@ -16,7 +16,7 @@ export function printType(type: ContractTypeNode): string {
             if (type.min !== undefined) constraints.push(`min=${type.min}`);
             if (type.max !== undefined) constraints.push(`max=${type.max}`);
             if (type.len !== undefined) constraints.push(`len=${type.len}`);
-            if (type.regex !== undefined) constraints.push(`regex=/${type.regex}/`);
+            if (type.regex !== undefined) constraints.push(`regex=${printRegex(type.regex)}`);
             return constraints.length > 0 ? `${type.name}(${constraints.join(', ')})` : type.name;
         }
         case 'array': {
@@ -32,7 +32,7 @@ export function printType(type: ContractTypeNode): string {
         case 'enum':
             return `enum(${type.values.map(formatEnumValue).join(', ')})`;
         case 'literal':
-            return typeof type.value === 'string' ? `literal("${type.value}")` : `literal(${type.value})`;
+            return typeof type.value === 'string' ? `literal(${quoteString(type.value)})` : `literal(${type.value})`;
         case 'union':
             return type.members.map(printType).join(' | ');
         case 'discriminatedUnion':
@@ -78,7 +78,7 @@ export function printField(field: FieldNode, indent: string, printWidth: number 
     const vis = field.visibility !== 'normal' ? `${field.visibility} ` : '';
     const mods = `${ovr}${dep}${vis}`;
     const def = field.default !== undefined ? ` = ${formatDefault(field.default)}` : '';
-    const comment = field.description ? ` # ${field.description}` : '';
+    const comment = field.description ? ` # ${inlineComment(field.description)}` : '';
     const innerIndent = indent + INDENT;
 
     // Expand inline object types to multi-line — same rule as type aliases.
@@ -118,10 +118,57 @@ export function printInlineObjectExpanded(obj: InlineObjectTypeNode, indent: str
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/** Format a single enum value: bare identifier stays bare; anything else gets double-quoted. */
+/**
+ * Flatten text to a single line so it is safe to embed in a trailing `# ...` comment.
+ *
+ * `comment = "#" (~"\n" any)* ("\n" | end)` — a comment runs to end of line, so an embedded
+ * newline terminates it and dumps the remainder of the text as raw `.ck` source, which does not
+ * parse. Text parsed from a `.ck` file can never contain one, but a description lifted from an
+ * OpenAPI spec routinely does, and `printCk` prints programmatically built nodes as readily as
+ * parsed ones. Comment blocks printed *above* a declaration split on newlines instead and need
+ * no flattening.
+ */
+export function inlineComment(text: string): string {
+    return text.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Wrap a string in the quote style it can actually survive.
+ *
+ * `.ck` string literals have no escape sequences (`stringLit` in the grammar is
+ * `"\"" doubleStringChar* "\""` or `"'" singleStringChar* "'"`), so the quote character is
+ * chosen to avoid the content rather than escaped inside it. A value containing *both* quote
+ * styles is unrepresentable; it cannot come from `parseCk` for the same no-escapes reason, so
+ * it only arises from a programmatically built AST. Rather than emit source that will not
+ * parse, the conflicting inner quote is replaced — producers that can warn (`openapi-to-ck`)
+ * check for this case before printing.
+ */
+export function quoteString(v: string): string {
+    if (!v.includes('"')) return `"${v}"`;
+    if (!v.includes("'")) return `'${v}'`;
+    return `"${v.replace(/"/g, "'")}"`;
+}
+
+/** True when a string contains both quote styles, so no `.ck` string literal can hold it. */
+export function isUnquotable(v: string): boolean {
+    return v.includes('"') && v.includes("'");
+}
+
+/**
+ * Render a `regex=` constraint value.
+ *
+ * The regex literal is delimited by `/` and `regexChar` excludes it, so a pattern containing a
+ * slash has to go through `ArgValue`'s `stringLit` alternative instead. Both forms parse to the
+ * same `ScalarTypeNode.regex`, which stores the pattern without delimiters.
+ */
+export function printRegex(pattern: string): string {
+    return pattern.includes('/') ? quoteString(pattern) : `/${pattern}/`;
+}
+
+/** Format a single enum value: bare identifier stays bare; anything else gets quoted. */
 export function formatEnumValue(v: string): string {
     if (/^[a-zA-Z_$][a-zA-Z0-9_$\-.]*$/.test(v)) return v;
-    return `"${v}"`;
+    return quoteString(v);
 }
 
 /** Format a default value: quote strings that aren't valid bare identifiers. */
@@ -129,7 +176,7 @@ export function formatDefault(val: string | number | boolean): string {
     if (typeof val === 'number' || typeof val === 'boolean') return String(val);
     // If it looks like a bare identifier (enum value, unquoted token), keep it bare.
     if (/^[a-zA-Z_$][a-zA-Z0-9_$\-.]*$/.test(val)) return val;
-    return `"${val}"`;
+    return quoteString(val);
 }
 
 /**

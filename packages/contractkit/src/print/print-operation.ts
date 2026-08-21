@@ -10,9 +10,9 @@ import type {
     PluginValue,
     McpConfigNode,
     OpBodyKey,
-} from '@contractkit/core';
-import { SECURITY_NONE } from '@contractkit/core';
-import { printType, formatDefault } from './print-type.js';
+} from '../ast.js';
+import { SECURITY_NONE } from '../ast.js';
+import { printType, formatDefault, inlineComment } from './print-type.js';
 import { INDENT } from './indent.js';
 
 const I1 = INDENT;
@@ -114,7 +114,7 @@ function printParamsBlock(source: ParamSource, indent: string, mode?: ObjectMode
             let t = printType(p.type);
             if (p.nullable) t += ' | null';
             const def = p.default !== undefined ? ` = ${formatDefault(p.default)}` : '';
-            const comment = p.description ? ` # ${p.description}` : '';
+            const comment = p.description ? ` # ${inlineComment(p.description)}` : '';
             lines.push(`${inner}${p.name}${opt}: ${t}${def}${comment}`);
         }
         lines.push(`${indent}}`);
@@ -195,7 +195,7 @@ function printOperation(op: OpOperationNode): string[] {
     if (op.description && !inlineDescription) {
         for (const line of op.description.split('\n')) lines.push(`${I1}# ${line}`);
     }
-    const commentSuffix = op.description && inlineDescription ? ` # ${op.description}` : '';
+    const commentSuffix = op.description && inlineDescription ? ` # ${inlineComment(op.description)}` : '';
     lines.push(`${I1}${op.method}${modPart}: {${commentSuffix}`);
 
     // Emit in source order when the parser recorded it, so formatting never reorders a user's keys.
@@ -370,7 +370,7 @@ function printQueryOrHeaders(keyword: 'query' | 'headers', source: ParamSource, 
             let t = printType(p.type);
             if (p.nullable) t += ' | null';
             const def = p.default !== undefined ? ` = ${formatDefault(p.default)}` : '';
-            const comment = p.description ? ` # ${p.description}` : '';
+            const comment = p.description ? ` # ${inlineComment(p.description)}` : '';
             lines.push(`${I3}${p.name}${opt}: ${t}${def}${comment}`);
         }
         lines.push(`${I2}}`);
@@ -392,7 +392,7 @@ function printContentTypeLine(contentType: string, bodyType: ContractTypeNode, l
             let t = printType(f.type);
             if (f.nullable) t += ' | null';
             const def = f.default !== undefined ? ` = ${formatDefault(f.default)}` : '';
-            const comment = f.description ? ` # ${f.description}` : '';
+            const comment = f.description ? ` # ${inlineComment(f.description)}` : '';
             lines.push(`${fieldIndent}${f.name}${opt}: ${t}${def}${comment}`);
         }
         lines.push(`${lineIndent}}`);
@@ -436,7 +436,7 @@ function printResponseBlock(responses: OpResponseNode[], trailingComments?: stri
                 lines.push(`${I4}headers: {`);
                 for (const h of resp.headers!) {
                     const opt = h.optional ? '?' : '';
-                    const trail = h.description ? ` # ${h.description}` : '';
+                    const trail = h.description ? ` # ${inlineComment(h.description)}` : '';
                     lines.push(`${I4}${INDENT}${h.name}${opt}: ${printType(h.type)}${trail}`);
                 }
                 lines.push(`${I4}}`);

@@ -66,7 +66,7 @@ describe('schemaToTypeNode', () => {
 
         it('converts string with pattern', () => {
             const result = schemaToTypeNode({ type: 'string', pattern: '^[a-z]+$' }, makeCtx());
-            expect(result).toEqual({ kind: 'scalar', name: 'string', regex: '/^[a-z]+$/' });
+            expect(result).toEqual({ kind: 'scalar', name: 'string', regex: '^[a-z]+$' });
         });
 
         it('converts integer → int', () => {

@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { printCk } from '../src/print-ck.js';
-import { parseCk, DiagnosticCollector } from '@contractkit/core';
+import { printCk } from '../src/print/print-ck.js';
+import { parseCk } from '../src/parser.js';
+import { DiagnosticCollector } from '../src/diagnostics.js';
 
 /**
  * Formatting a `.ck` file must not change it.

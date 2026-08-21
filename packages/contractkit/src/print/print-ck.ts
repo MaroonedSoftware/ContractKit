@@ -1,7 +1,7 @@
-import type { CkRootNode, OpResponseHeaderNode, OptionsScopeComments } from '@contractkit/core';
+import type { CkRootNode, OpResponseHeaderNode, OptionsScopeComments } from '../ast.js';
 import { printModelDecl } from './print-contract.js';
 import { printRoute, printSecurity, type CommentBlock } from './print-operation.js';
-import { printType } from './print-type.js';
+import { printType, inlineComment } from './print-type.js';
 import { INDENT } from './indent.js';
 
 /** Default line width used for wrapping inline-object and enum types when none is supplied. */
@@ -104,7 +104,7 @@ function printOptionsHeaderScope(keyword: 'request' | 'response', headers: OpRes
     const lines = [`${INDENT}${keyword}: {`, `${I2}headers: {`];
     for (const h of headers) {
         const opt = h.optional ? '?' : '';
-        const trail = h.description ? ` # ${h.description}` : '';
+        const trail = h.description ? ` # ${inlineComment(h.description)}` : '';
         lines.push(`${I3}${h.name}${opt}: ${printType(h.type)}${trail}`);
     }
     lines.push(`${I2}}`);

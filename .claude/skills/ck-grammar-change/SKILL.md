@@ -1,6 +1,6 @@
 ---
 name: ck-grammar-change
-description: Checklist and conventions for changing the ContractKit Ohm grammar (contractkit.ohm) — which downstream files must move in lockstep (semantics, AST, TextMate grammar, prettier printer, every codegen plugin, CLI, README) and how to verify the change. Use whenever adding or altering `.ck` syntax.
+description: Checklist and conventions for changing the ContractKit Ohm grammar (contractkit.ohm) — which downstream files must move in lockstep (semantics, AST, TextMate grammar, the core `.ck` printer, every codegen plugin, CLI, README) and how to verify the change. Use whenever adding or altering `.ck` syntax.
 ---
 
 # Changing the grammar
@@ -24,15 +24,24 @@ A grammar change is never a one-file change. Work through all of these explicitl
    cursor is in by regex-matching the text before the enclosing `{`. New syntax between a
    keyword and its colon (a modifier, say) makes that match fail, and completions silently
    stop working inside the block with no error anywhere.
-5. `apps/prettier-plugin/src/print-*.ts` — round-trip the new syntax, plus a round-trip test
-   in `apps/prettier-plugin/tests/round-trip.test.ts`. Anything the printer does not know
-   about is *deleted* from the user's file on the next `pnpm format`, comments included —
-   so a construct is not done until it round-trips.
+5. `packages/contractkit/src/print/` — **the one `.ck` printer**, used by the prettier plugin
+   and by `openapi-to-ck` alike. Round-trip the new syntax, plus a round-trip test in
+   `packages/contractkit/tests/round-trip.test.ts`. Anything the printer does not know about
+   is *deleted* from the user's file on the next `pnpm format`, comments included — so a
+   construct is not done until it round-trips.
+
+   The printer must stay correct for **programmatically built** nodes, not just parsed ones.
+   `openapi-to-ck` hands it ASTs that `parseCk` could never produce — a description containing
+   newlines, a regex containing `/`, a string carrying both quote styles — and printing those
+   naively emits source that does not parse. Reach for `inlineComment`, `quoteString` and
+   `printRegex` in `print-type.ts` rather than interpolating a raw value into the output.
 6. `packages/contractkit/tests/parser-ck.test.ts` — a parser test.
 7. **Every codegen plugin that consumes the affected AST shape**, not just the TypeScript
    one. Check each: `plugin-typescript` (server, SDK, Zod, plain types), `plugin-python`,
    `plugin-openapi`, `plugin-markdown`, `plugin-bruno`, and `openapi-to-ck` (the reverse
-   direction). Update codegen *and* tests for each.
+   direction). Update codegen *and* tests for each. `openapi-to-ck` does not print `.ck`
+   itself — it builds core AST nodes and hands them to `printCk` — so what it needs is a
+   *producer* for the new construct, not a serializer.
 8. `apps/cli` — if file discovery, config schema, or cache fingerprinting is affected.
 9. `README.md` — if the surface syntax changed.
 

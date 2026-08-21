@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { printCk } from '../src/print-ck.js';
-import { parseCk, DiagnosticCollector } from '@contractkit/core';
-import type { OpRouteNode, OpOperationNode, CkRootNode, SecurityFields, ParamSource, ContractTypeNode, OpParamNode } from '@contractkit/core';
+import { printCk } from '../src/print/print-ck.js';
+import { parseCk } from '../src/parser.js';
+import { DiagnosticCollector } from '../src/diagnostics.js';
+import type { OpRouteNode, OpOperationNode, CkRootNode, SecurityFields, ParamSource, ContractTypeNode, OpParamNode } from '../src/ast.js';
 
 // ─── Minimal AST builders ────────────────────────────────────────────────────
 
