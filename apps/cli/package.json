@@ -2,6 +2,7 @@
     "name": "@contractkit/cli",
     "version": "0.10.6",
     "description": "Compiler for .ck files",
+    "license": "MIT",
     "author": {
         "name": "Marooned Software",
         "url": "https://github.com/MaroonedSoftware/contractkit"

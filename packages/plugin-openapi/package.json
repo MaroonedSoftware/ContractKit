@@ -2,6 +2,7 @@
     "name": "@contractkit/plugin-openapi",
     "version": "0.9.1",
     "description": "ContractKit built-in plugin: OpenAPI 3.0 YAML generation",
+    "license": "MIT",
     "author": {
         "name": "Marooned Software",
         "url": "https://github.com/MaroonedSoftware/contractkit"

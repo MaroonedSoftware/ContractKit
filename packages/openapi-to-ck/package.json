@@ -2,6 +2,7 @@
     "name": "@contractkit/openapi-to-ck",
     "version": "0.10.1",
     "description": "Convert OpenAPI specs (2.0/3.0/3.1) to Contract Kit .ck files",
+    "license": "MIT",
     "author": {
         "name": "Marooned Software",
         "url": "https://github.com/MaroonedSoftware/contractkit"

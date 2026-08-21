@@ -2,6 +2,7 @@
     "name": "@contractkit/prettier-plugin",
     "version": "0.14.1",
     "description": "Prettier plugin for ContractKit DSL",
+    "license": "MIT",
     "author": {
         "name": "Marooned Software",
         "url": "https://github.com/MaroonedSoftware/contractkit"

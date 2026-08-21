@@ -2,6 +2,7 @@
     "name": "@contractkit/explorer-ui",
     "version": "0.4.1",
     "description": "ContractKit API explorer renderer — pure HTML output, themable via CSS custom properties",
+    "license": "MIT",
     "author": {
         "name": "Marooned Software",
         "url": "https://github.com/MaroonedSoftware/contractkit"

@@ -2,6 +2,7 @@
     "name": "@contractkit/plugin-bruno",
     "version": "1.5.11",
     "description": "ContractKit built-in plugin: Bruno REST collection generation",
+    "license": "MIT",
     "author": {
         "name": "Marooned Software",
         "url": "https://github.com/MaroonedSoftware/contractkit"
