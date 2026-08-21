@@ -1,3 +1,6 @@
+import { parseCk, DiagnosticCollector } from '@contractkit/core';
+import { convertOpenApiToCk } from '../src/convert.js';
+import type { ConvertOptions, Warning } from '../src/types.js';
 import type {
     CkRootNode,
     ModelNode,
@@ -156,4 +159,41 @@ export function opRoute(path: string, operations: OpOperationNode[], overrides?:
     const normalized = { ...overrides } as Partial<OpRouteNode>;
     if (overrides?.params !== undefined) normalized.params = normalizeParamSource(overrides.params);
     return { path, operations, loc: loc(), ...normalized };
+}
+
+// ─── Conversion round-trip ────────────────────────────────────────────────
+
+/**
+ * Convert a spec and parse the result back, asserting it is clean `.ck`.
+ *
+ * Substring assertions over the emitted text cannot tell "the output parses but means the wrong
+ * thing" from "the output is correct" — which is exactly the class of bug that let every error
+ * response import as service-produced. Asserting on the parsed AST states the meaning instead of
+ * the formatting, and re-parsing catches source the printer cannot actually express.
+ */
+export async function convertAndParse(options: ConvertOptions & { file?: string }): Promise<{ root: CkRootNode; ck: string; warnings: Warning[] }> {
+    const file = options.file ?? 'api.ck';
+    const result = await convertOpenApiToCk({ split: 'single', ...options });
+    const ck = result.files.get(file);
+    if (ck === undefined) {
+        throw new Error(`no ${file} in output; got: ${[...result.files.keys()].join(', ')}`);
+    }
+    const diag = new DiagnosticCollector();
+    const root = parseCk(ck, file, diag);
+    if (diag.hasErrors()) {
+        throw new Error(`generated ${file} does not parse:\n${diag.diagnostics.map(d => `  ${d.line}: ${d.message}`).join('\n')}\n\n${ck}`);
+    }
+    return { root, ck, warnings: result.warnings };
+}
+
+/** The single operation of a single-route conversion. */
+export function onlyOperation(root: CkRootNode): OpOperationNode {
+    return root.routes[0]!.operations[0]!;
+}
+
+/** Look up one response by status code. */
+export function responseFor(op: OpOperationNode, statusCode: number): OpResponseNode {
+    const resp = op.responses.find(r => r.statusCode === statusCode);
+    if (!resp) throw new Error(`no ${statusCode} response; got ${op.responses.map(r => r.statusCode).join(', ')}`);
+    return resp;
 }

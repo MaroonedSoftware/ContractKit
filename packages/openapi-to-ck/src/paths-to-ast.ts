@@ -37,6 +37,8 @@ export interface PathsContext {
     extractedModels: ModelNode[];
     /** Global security from the spec (for detecting explicit overrides). */
     globalSecurity?: Record<string, string[]>[];
+    /** How bodied 4xx/5xx responses are imported. See `ConvertOptions.errorResponses`. */
+    errorResponses: 'documented' | 'emitted';
 }
 
 /**
@@ -136,6 +138,13 @@ function operationToNode(method: HttpMethod, op: NormalizedOperation, path: stri
     const headerParams: OpParamNode[] = [];
 
     for (const param of op.parameters ?? []) {
+        // `dereferenceComponents` inlines `#/components/parameters/*` before this runs, so a
+        // parameter with no name is one nothing could resolve. Emitting it would print
+        // `undefined: string`, which parses — silent corruption is worse than a dropped param.
+        if (!param?.name) {
+            ctx.warnings.warn(`${pathPrefix}/parameters`, 'skipped a parameter with no name (an unresolved $ref?)');
+            continue;
+        }
         if (param.in === 'query') {
             queryParams.push(parameterToNode(param, schemaCtx));
         } else if (param.in === 'header') {
@@ -259,6 +268,20 @@ function requestBodyToNode(
 
 // ─── Responses ────────────────────────────────────────────────────────────
 
+/**
+ * Whether an imported status should be marked `(documented)` rather than service-produced.
+ *
+ * Only applies to a status that carries a block, because that is the only case where the
+ * modifier does anything: `isEmitted` in core treats a block as "the service produces this", and
+ * `isRedundantDocumented` warns when `(documented)` is put on a bare bodyless non-2xx, where the
+ * status is already not emitted. 3xx is left alone — `observableResponses` already covers
+ * everything below 400, so the marker would change nothing a client sees, and a spec'd redirect
+ * body is plausibly service-produced.
+ */
+function shouldDocument(statusCode: number, braced: boolean, ctx: PathsContext): boolean {
+    return braced && statusCode >= 400 && ctx.errorResponses === 'documented';
+}
+
 function responseToNode(
     statusCode: number,
     resp: NormalizedResponse,
@@ -267,7 +290,12 @@ function responseToNode(
     ctx: PathsContext,
 ): OpResponseNode {
     const headers = convertResponseHeaders(resp.headers, schemaCtx);
-    const empty = (): OpResponseNode => ({ statusCode, bodies: [], ...(headers ? { headers, hasBlock: true } : {}) });
+    const documented = (braced: boolean) => (shouldDocument(statusCode, braced, ctx) ? { emit: 'documented' as const } : {});
+    const empty = (): OpResponseNode => ({
+        statusCode,
+        bodies: [],
+        ...(headers ? { headers, hasBlock: true, ...documented(true) } : {}),
+    });
 
     if (!resp.content) return empty();
 
@@ -291,6 +319,7 @@ function responseToNode(
         bodies,
         hasBlock: true,
         ...(headers ? { headers } : {}),
+        ...documented(true),
     };
 }
 

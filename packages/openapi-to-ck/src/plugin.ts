@@ -8,12 +8,16 @@ interface ImportArgs {
     specPath: string;
     output: string;
     split: 'single' | 'by-tag';
+    includeComments: boolean;
+    errorResponses: 'documented' | 'emitted';
 }
 
 function parseImportArgs(argv: string[]): ImportArgs {
     let specPath = '';
     let output = '.';
     let split: 'single' | 'by-tag' = 'by-tag';
+    let includeComments = true;
+    let errorResponses: 'documented' | 'emitted' = 'documented';
 
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i]!;
@@ -22,12 +26,17 @@ function parseImportArgs(argv: string[]): ImportArgs {
         } else if (arg === '--split') {
             const val = argv[++i];
             if (val === 'single' || val === 'by-tag') split = val;
+        } else if (arg === '--no-comments') {
+            includeComments = false;
+        } else if (arg === '--error-responses') {
+            const val = argv[++i];
+            if (val === 'documented' || val === 'emitted') errorResponses = val;
         } else if (!arg.startsWith('-')) {
             specPath = arg;
         }
     }
 
-    return { specPath, output, split };
+    return { specPath, output, split, includeComments, errorResponses };
 }
 
 const USAGE = `Usage: contractkit import-openapi <spec-path> [options]
@@ -40,6 +49,11 @@ Arguments:
 Options:
   -o, --output <dir>   Output directory for .ck files (default: current directory)
       --split <mode>   How to split output: "by-tag" (one file per tag) or "single" (default: by-tag)
+      --no-comments    Skip OpenAPI descriptions instead of emitting them as # comments
+      --error-responses <mode>
+                       How to import a 4xx/5xx that declares a body: "documented" (default)
+                       marks it \`404(documented):\`, so the SDK throws it and the generated
+                       router does not write it; "emitted" imports it as service-produced
   -h, --help           Show this help message`;
 
 const plugin: ContractKitPlugin = {
@@ -61,7 +75,8 @@ const plugin: ContractKitPlugin = {
             const result = await convertOpenApiToCk({
                 input: resolve(parsed.specPath),
                 split: parsed.split,
-                includeComments: true,
+                includeComments: parsed.includeComments,
+                errorResponses: parsed.errorResponses,
                 onWarning: (w: Warning) => {
                     const prefix = w.severity === 'warn' ? '⚠' : 'ℹ';
                     console.warn(`  ${prefix}  ${w.path}: ${w.message}`);

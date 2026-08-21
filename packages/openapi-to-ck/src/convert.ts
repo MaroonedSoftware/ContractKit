@@ -11,12 +11,13 @@ import { splitByTag, mergeIntoSingle } from './tag-splitter.js';
 import { astToCk } from './ast-to-ck.js';
 import type { NormalizedSchema } from './types.js';
 import type { ModelNode } from '@contractkit/core';
+import { parseCk, DiagnosticCollector } from '@contractkit/core';
 
 /**
  * Convert an OpenAPI spec (2.0, 3.0, or 3.1) to Contract Kit .ck source files.
  */
 export async function convertOpenApiToCk(options: ConvertOptions): Promise<ConvertResult> {
-    const { split = 'by-tag', includeComments = true } = options;
+    const { split = 'by-tag', includeComments = true, errorResponses = 'documented' } = options;
     const warnings = new WarningCollector(options.onWarning);
 
     // Step 1: Parse the input into a document object
@@ -53,6 +54,7 @@ export async function convertOpenApiToCk(options: ConvertOptions): Promise<Conve
         namedSchemas: schemas,
         extractedModels,
         globalSecurity: doc.security,
+        errorResponses,
     });
 
     // Step 7: Split or merge
@@ -61,14 +63,39 @@ export async function convertOpenApiToCk(options: ConvertOptions): Promise<Conve
     if (split === 'by-tag') {
         const ckRoots = splitByTag(models, routes, routeTags);
         for (const [filename, root] of ckRoots) {
-            files.set(filename, astToCk(root, { includeComments }));
+            files.set(filename, astToCk(root));
         }
     } else {
         const root = mergeIntoSingle(models, routes);
-        files.set('api.ck', astToCk(root, { includeComments }));
+        files.set('api.ck', astToCk(root));
+    }
+
+    // Step 8: Check what we are about to hand back actually parses
+    for (const [filename, text] of files) {
+        checkParses(filename, text, warnings);
     }
 
     return { files, warnings: warnings.warnings };
+}
+
+/**
+ * Re-parse a generated file and report anything that does not survive.
+ *
+ * The converter builds core AST nodes and prints them, so a bug in either half produces `.ck`
+ * that will not compile — and, because the output is written straight to disk, the first sign of
+ * it is a parse error in the user's own build. Spec content is more adversarial than anything a
+ * hand-written contract contains (patterns full of punctuation, descriptions full of newlines,
+ * schema names that are not identifiers), so it is worth paying a parse per file to find out
+ * here instead.
+ */
+function checkParses(filename: string, text: string, warnings: WarningCollector): void {
+    const diag = new DiagnosticCollector();
+    parseCk(text, filename, diag);
+    if (!diag.hasErrors()) return;
+    for (const d of diag.diagnostics) {
+        if (d.severity !== 'error') continue;
+        warnings.warn(filename, `generated .ck does not parse (line ${d.line}): ${d.message}`);
+    }
 }
 
 // ─── Input Parsing ────────────────────────────────────────────────────────

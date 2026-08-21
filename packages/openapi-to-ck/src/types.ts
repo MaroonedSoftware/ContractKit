@@ -7,6 +7,20 @@ export interface ConvertOptions {
     split?: 'single' | 'by-tag';
     /** Emit OpenAPI descriptions as # comments. Default: true. */
     includeComments?: boolean;
+    /**
+     * How a 4xx/5xx response that declares a body is imported. Default: `'documented'`.
+     *
+     * OpenAPI cannot say whether the handler *returns* a status or merely documents it, but
+     * `.ck` distinguishes the two and every generator downstream depends on the answer. Writing
+     * `404: { … }` means the service produces it: the generated router writes it and the SDKs
+     * hand it back as a value. `404(documented): { … }` means the body is the error contract —
+     * the SDK throws it as an `SdkError` and the service is not responsible for returning it,
+     * which is what an error response almost always is.
+     *
+     * `'emitted'` reproduces the pre-existing behaviour, where every declared status was imported
+     * as service-produced.
+     */
+    errorResponses?: 'documented' | 'emitted';
     /** Called for each warning during conversion. */
     onWarning?: (warning: Warning) => void;
 }
@@ -71,6 +85,11 @@ export interface NormalizedDocument {
     components?: {
         schemas?: Record<string, NormalizedSchema>;
         securitySchemes?: Record<string, unknown>;
+        /** Reusable component objects, inlined by `dereferenceComponents` before conversion. */
+        parameters?: Record<string, NormalizedParameter>;
+        requestBodies?: Record<string, NormalizedRequestBody>;
+        responses?: Record<string, NormalizedResponse>;
+        headers?: Record<string, NormalizedHeader>;
     };
     security?: Record<string, string[]>[];
     servers?: { url: string; description?: string }[];

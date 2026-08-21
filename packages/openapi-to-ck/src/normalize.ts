@@ -12,14 +12,85 @@ import type { WarningCollector } from './warnings.js';
 export function normalize(doc: Record<string, unknown>, warnings: WarningCollector): NormalizedDocument {
     const version = detectVersion(doc);
 
-    if (version === '2.0') {
-        return normalizeSwagger2(doc, warnings);
+    const normalized =
+        version === '2.0'
+            ? normalizeSwagger2(doc, warnings)
+            : version === '3.0'
+              ? normalizeOas30(doc as unknown as NormalizedDocument, warnings)
+              : // 3.1+ — already in target shape
+                (doc as unknown as NormalizedDocument);
+
+    dereferenceComponents(normalized, warnings);
+    return normalized;
+}
+
+// ─── Component $ref inlining ──────────────────────────────────────────────
+
+/** The component sections whose `$ref`s are inlined. `schemas` is deliberately absent. */
+const DEREF_SECTIONS = ['parameters', 'requestBodies', 'responses', 'headers'] as const;
+
+/** Guards against a `$ref` chain that loops back on itself. */
+const MAX_REF_DEPTH = 10;
+
+/**
+ * Inline `$ref`s to reusable non-schema components.
+ *
+ * Only `#/components/schemas/*` refs survive conversion — they become `.ck` model references.
+ * Everything else (`parameters`, `requestBodies`, `responses`, `headers`) has no `.ck`
+ * counterpart, and nothing downstream resolves it: a `$ref`'d parameter used to reach
+ * `parameterToNode` with no `name` and print as `undefined: string`, which *parses*, so the
+ * corruption was silent. Resolving here means the rest of the pipeline only ever sees inline
+ * objects.
+ *
+ * Sibling keys are kept and win over the target's, matching how OpenAPI 3.1 treats a `$ref`
+ * alongside other properties.
+ */
+function dereferenceComponents(doc: NormalizedDocument, warnings: WarningCollector): void {
+    const components = doc.components as Record<string, Record<string, unknown>> | undefined;
+
+    const resolve = (node: unknown, path: string, depth = 0): unknown => {
+        if (!node || typeof node !== 'object') return node;
+        if (Array.isArray(node)) return node.map(item => resolve(item, path, depth));
+
+        const obj = node as Record<string, unknown>;
+        const ref = obj.$ref;
+        if (typeof ref === 'string') {
+            const match = /^#\/components\/([^/]+)\/(.+)$/.exec(ref);
+            const section = match?.[1];
+            // Schema refs are the ones that survive into `.ck`; leave them for `extractRefName`.
+            if (section && section !== 'schemas' && (DEREF_SECTIONS as readonly string[]).includes(section)) {
+                if (depth >= MAX_REF_DEPTH) {
+                    warnings.warn(path, `$ref chain too deep to resolve: ${ref}`);
+                    return obj;
+                }
+                const target = components?.[section]?.[decodeRefToken(match[2]!)];
+                if (target === undefined) {
+                    warnings.warn(path, `unresolved $ref '${ref}' — the component is not defined`);
+                    return obj;
+                }
+                const { $ref: _dropped, ...siblings } = obj;
+                const resolved = resolve(target, path, depth + 1);
+                return { ...(resolved as Record<string, unknown>), ...siblings };
+            }
+            return obj;
+        }
+
+        const out: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(obj)) {
+            // A schema subtree can hold `$ref`s of its own, all of them schema refs.
+            out[key] = key === 'schema' || key === 'schemas' ? value : resolve(value, `${path}/${key}`, depth);
+        }
+        return out;
+    };
+
+    for (const [path, pathItem] of Object.entries(doc.paths ?? {})) {
+        doc.paths![path] = resolve(pathItem, `#/paths/${path}`) as typeof pathItem;
     }
-    if (version === '3.0') {
-        return normalizeOas30(doc as unknown as NormalizedDocument, warnings);
-    }
-    // 3.1+ — already in target shape
-    return doc as unknown as NormalizedDocument;
+}
+
+/** Undo the `~1`/`~0` escaping a JSON pointer uses for `/` and `~`. */
+function decodeRefToken(token: string): string {
+    return decodeURIComponent(token).replace(/~1/g, '/').replace(/~0/g, '~');
 }
 
 function detectVersion(doc: Record<string, unknown>): '2.0' | '3.0' | '3.1' {
