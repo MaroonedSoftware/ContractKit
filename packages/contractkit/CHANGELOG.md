@@ -1,5 +1,11 @@
 # @contractkit/core
 
+## 0.26.1
+
+### Patch Changes
+
+- ca1c139: Declare the MIT license explicitly: every package now ships a `LICENSE` file in its published tarball and sets `"license": "MIT"` in its manifest, so license scanners and registries report the terms correctly.
+
 ## 0.26.0
 
 ### Minor Changes

@@ -1,5 +1,14 @@
 # @contractkit/cli
 
+## 0.10.7
+
+### Patch Changes
+
+- ca1c139: Declare the MIT license explicitly: every package now ships a `LICENSE` file in its published tarball and sets `"license": "MIT"` in its manifest, so license scanners and registries report the terms correctly.
+- Updated dependencies [ca1c139]
+    - @contractkit/core@0.26.1
+    - @contractkit/openapi-to-ck@0.10.2
+
 ## 0.10.6
 
 ### Patch Changes

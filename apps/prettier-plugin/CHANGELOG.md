@@ -1,5 +1,13 @@
 # @contractkit/prettier-plugin-contractkit
 
+## 0.14.2
+
+### Patch Changes
+
+- ca1c139: Declare the MIT license explicitly: every package now ships a `LICENSE` file in its published tarball and sets `"license": "MIT"` in its manifest, so license scanners and registries report the terms correctly.
+- Updated dependencies [ca1c139]
+    - @contractkit/core@0.26.1
+
 ## 0.14.1
 
 ### Patch Changes
