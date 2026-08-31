@@ -233,6 +233,37 @@ describe('generateMcpRouter', () => {
         expect(out).toContain("dispatcher.sessionMode === 'stateful'");
     });
 
+    it('parses the body before verifying the signature', () => {
+        const out = generateMcpRouter({ path: '/mcp' });
+        // `requireSignature` HMACs `ctx.rawBody`, which only `bodyParserMiddleware` populates,
+        // so the parser has to run first. Asserting the whole route line pins the order too.
+        expect(out).toContain("import { ServerKitRouter, bodyParserMiddleware, requireSignature } from '@maroonedsoftware/koa';");
+        expect(out).toContain(
+            "router.post('/mcp', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async (ctx) => {",
+        );
+    });
+
+    it('answers notifications with 202 rather than falling through to a 404', () => {
+        const out = generateMcpRouter();
+        // `dispatch` resolves undefined for a notification; an unset ctx.body 404s in errorMiddleware.
+        expect(out).toContain('if (response) ctx.body = response;');
+        expect(out).toContain('else ctx.status = 202;');
+    });
+
+    it('stringifies rawBody before JSON.parse', () => {
+        const out = generateMcpRouter();
+        // ctx.rawBody is BinaryLike; JSON.parse takes string.
+        expect(out).toContain('JSON.parse(String(ctx.rawBody))');
+        expect(out).not.toContain('JSON.parse(ctx.rawBody)');
+    });
+
+    it('hands the stateful transport the parsed body', () => {
+        const out = generateMcpRouter();
+        // The parser drains the stream and writes ctx.parsedBody; ctx.request.body is never set.
+        expect(out).toContain('body: ctx.parsedBody');
+        expect(out).not.toContain('ctx.request.body');
+    });
+
     it('defaults the mount path to /mcp', () => {
         expect(generateMcpRouter()).toContain("router.post('/mcp'");
     });
