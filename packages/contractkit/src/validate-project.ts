@@ -6,6 +6,7 @@ import { parseCk } from './parser.js';
 import { validateInheritance } from './validate-inheritance.js';
 import { validateOp } from './validate-operation.js';
 import { validateRefs } from './validate-refs.js';
+import { validateDecimal } from './validate-decimal.js';
 import type { CkRootNode, ContractRootNode, OpRootNode } from './ast.js';
 
 /** A `.ck` source paired with the absolute path the parser should report in diagnostics. */
@@ -97,6 +98,7 @@ export const validateProject = (options: ValidateProjectOptions): ValidateProjec
     // Cross-file: refs and inheritance only make sense once every file has contributed its models.
     validateRefs(contracts, ops, diag);
     validateInheritance(contracts, diag);
+    validateDecimal(contracts, ops, diag);
     for (const op of ops) {
         validateOp(op, diag);
     }
