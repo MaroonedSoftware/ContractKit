@@ -1,5 +1,13 @@
 # @contractkit/cli
 
+## 0.10.9
+
+### Patch Changes
+
+- Updated dependencies [e102a2c]
+    - @contractkit/core@0.28.0
+    - @contractkit/openapi-to-ck@0.12.0
+
 ## 0.10.8
 
 ### Patch Changes
