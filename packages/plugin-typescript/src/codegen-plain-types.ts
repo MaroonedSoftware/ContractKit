@@ -12,7 +12,8 @@ import {
 } from './codegen-contract.js';
 import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJsDocLines, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import type { TsRenderTarget } from './ts-render.js';
-import { DECIMAL_IMPORT } from './decimal-runtime.js';
+import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
+import { renderReviveFunctions, reviveFnName, DECIMAL_COERCE_DECL } from './codegen-revive.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -48,12 +49,17 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
     // Not `import type`: `renderTsScalar` maps `decimal` to `Decimal` in this mode too, so the class
     // is a real runtime dependency of any consumer holding one — same position as in
     // `generateContract`, which emits it ahead of the external model refs.
-    if (rootNeedsScalar(root, 'decimal')) lines.push(DECIMAL_IMPORT);
+    const needsDecimal = rootNeedsScalar(root, 'decimal') || (context?.emitRevivers && context.modelsWithDecimal ? root.models.some(m => context.modelsWithDecimal!.has(m.name)) : false);
+    if (needsDecimal) lines.push(DECIMAL_IMPORT);
 
-    // Type-only imports for external references
+    // Type-only imports for external references. A cross-file model carrying a decimal also
+    // contributes its reviver, which is a value and so needs a second, non-type import.
     for (const ref of allExternalRefs) {
         const importPath = resolveImportPath(ref, context);
         lines.push(`import type { ${ref} } from '${importPath}';`);
+        if (context?.emitRevivers && context.modelsWithDecimal?.has(ref)) {
+            lines.push(`import { ${reviveFnName(ref)} } from '${importPath}';`);
+        }
     }
     if (allExternalRefs.length > 0) lines.push('');
 
@@ -68,10 +74,38 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
 
     const modelMap = new Map(root.models.map(m => [m.name, m]));
 
+    const reviveOpts =
+        context?.emitRevivers && context.modelsWithDecimal
+            ? { modelsWithDecimal: context.modelsWithDecimal, modelsWithOutput: allModelsWithOutput, modelMap }
+            : undefined;
+
+    const bodyLines: string[] = [];
     for (const model of topoSortModels(root.models)) {
-        lines.push(...generateModel(model, target, context?.currentOutPath, allModelsWithInput, allModelsWithOutput, modelMap));
+        bodyLines.push(...generateModel(model, target, context?.currentOutPath, allModelsWithInput, allModelsWithOutput, modelMap));
+        if (reviveOpts) {
+            const revivers = renderReviveFunctions(model, reviveOpts);
+            if (revivers.length > 0) {
+                bodyLines.push('');
+                bodyLines.push(...revivers);
+            }
+        }
+        bodyLines.push('');
+    }
+
+    // Global decimal.js config belongs in any file holding a `Decimal`: there is no Zod schema in
+    // this mode, but `String(value)` and `JSON.stringify` still have to stay out of exponential form.
+    if (needsDecimal) {
+        lines.push('');
+        lines.push(DECIMAL_CONFIG_LINE);
+    }
+
+    // Same rule as in `generateContract`: the helper is emitted only if the revivers actually
+    // reference it, so the two cannot drift and trip `noUnusedLocals`.
+    if (bodyLines.some(l => l.includes('__dec('))) {
+        lines.push(...DECIMAL_COERCE_DECL);
         lines.push('');
     }
+    lines.push(...bodyLines);
 
     return lines.join('\n');
 }

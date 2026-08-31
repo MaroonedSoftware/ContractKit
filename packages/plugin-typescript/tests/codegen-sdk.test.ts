@@ -1857,6 +1857,69 @@ describe('generateAreaClient — <Area>Client emission', () => {
     });
 });
 
+describe('decimal rehydration', () => {
+    const withDecimal = (extra: Partial<Parameters<typeof generateSdk>[1]> = {}) => ({
+        modelsWithDecimal: new Set(['Invoice']),
+        modelOutPaths: new Map([['Invoice', '/out/types/models.ts']]),
+        outPath: '/out/clients/inv.client.ts',
+        sdkOptionsPath: '/out/sdk-options.ts',
+        ...extra,
+    });
+
+    it('wraps a model-ref response body in its reviver', () => {
+        const root = opRoot([opRoute('/invoices/{id}', [opOperation('get', { responses: [opResponse(200, 'Invoice')] })])], 'inv.op');
+        const out = generateSdk(root, withDecimal());
+        expect(out).toContain('return reviveInvoice(await parseJson<Invoice>(result));');
+        // The reviver is a value, so it needs a second import beside the `import type`.
+        expect(out).toContain(`import { reviveInvoice } from '../types/models.js';`);
+    });
+
+    it('maps over an array body rather than emitting a wrapper', () => {
+        const root = opRoot([opRoute('/invoices', [opOperation('get', { responses: [opResponse(200, 'array(Invoice)')] })])], 'inv.op');
+        const out = generateSdk(root, withDecimal());
+        // Safe because the reviver returns the object it mutated.
+        expect(out).toContain('return (await parseJson<Invoice[]>(result)).map(reviveInvoice);');
+    });
+
+    it('emits a local wrapper for a body with no reviveX of its own', () => {
+        const bodyType = inlineObjectType([field('grand', scalarType('decimal', { scale: 2 }))]);
+        const root = opRoot([opRoute('/totals', [opOperation('get', { sdk: 'getTotals', responses: [opResponse(200, bodyType)] })])], 'tot.op');
+        const out = generateSdk(root, withDecimal({ modelsWithDecimal: new Set(['Invoice']) }));
+        expect(out).toMatch(/function __reviveGetTotals200\(/);
+        // The wrapper calls `__dec`, which is file-local to the types module, so the client file
+        // needs its own copy plus the decimal.js import and global config.
+        expect(out).toContain(`import { Decimal } from 'decimal.js';`);
+        expect(out).toContain('Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });');
+        expect(out).toContain('const __dec = (v: unknown, path: string): Decimal =>');
+    });
+
+    it('picks the Output reviver when the model has an Output variant', () => {
+        const root = opRoot([opRoute('/invoices/{id}', [opOperation('get', { responses: [opResponse(200, 'Invoice')] })])], 'inv.op');
+        const out = generateSdk(root, withDecimal({ modelsWithOutput: new Set(['Invoice']) }));
+        expect(out).toContain('reviveInvoiceOutput(');
+    });
+
+    it('leaves a decimal-free SDK byte-identical', () => {
+        const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User')] })])], 'users.op');
+        const base = generateSdk(root, { modelOutPaths: new Map([['User', '/out/types/models.ts']]), outPath: '/out/clients/u.client.ts' });
+        const withEmptySet = generateSdk(root, {
+            modelOutPaths: new Map([['User', '/out/types/models.ts']]),
+            outPath: '/out/clients/u.client.ts',
+            modelsWithDecimal: new Set(),
+        });
+        expect(withEmptySet).toBe(base);
+        expect(base).not.toContain('revive');
+        expect(base).not.toContain('decimal.js');
+    });
+
+    it('does not revive a body whose model carries no decimal', () => {
+        const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User')] })])], 'users.op');
+        const out = generateSdk(root, withDecimal({ modelOutPaths: new Map([['User', '/out/types/models.ts']]) }));
+        expect(out).toContain('return await parseJson<User>(result);');
+        expect(out).not.toContain('revive');
+    });
+});
+
 describe('generateSdkPackageJson', () => {
     it('emits a valid package.json with the given name and standard fields', () => {
         const pkg = JSON.parse(generateSdkPackageJson({ name: 'my-sdk', deps: { zod: false, luxon: false, decimal: false } }));

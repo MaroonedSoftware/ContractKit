@@ -362,7 +362,9 @@ describe('generateContract', () => {
         it('emits the decimal.js import and _ZodDecimal helper when a decimal field is present', () => {
             const root = contractRoot([model('M', [field('amount', scalarType('decimal'))])]);
             const output = generateContract(root);
-            expect(output).toContain(`import Decimal from 'decimal.js';`);
+            // Named, not default: under NodeNext the default export resolves to decimal.js's
+            // namespace declaration and the generated SDK fails to compile.
+            expect(output).toContain(`import { Decimal } from 'decimal.js';`);
             expect(output).toContain(`Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });`);
             expect(output).toContain(`const _ZodDecimal = z.preprocess(`);
             // No output `.transform()` — `isRevalidatable` treats every scalar as idempotent under
@@ -378,9 +380,76 @@ describe('generateContract', () => {
             expect(output).not.toContain('Decimal.set');
         });
 
+        it('emits revivers only when asked, and only for decimal-carrying models', () => {
+            const root = contractRoot([
+                model('Money', [field('amount', scalarType('decimal'))]),
+                model('Plain', [field('name', scalarType('string'))]),
+            ]);
+            const ctx = { modelOutPaths: new Map(), currentOutPath: '/out/t.ts' };
+
+            // Server-side schemas get decimals already parsed by `_ZodDecimal`, so no revivers.
+            const withoutRevivers = generateContract(root, ctx);
+            expect(withoutRevivers).not.toContain('reviveMoney');
+            expect(withoutRevivers).not.toContain('__dec');
+
+            const withRevivers = generateContract(root, { ...ctx, modelsWithDecimal: new Set(['Money']), emitRevivers: true });
+            expect(withRevivers).toContain('export function reviveMoney(raw: Money): Money {');
+            expect(withRevivers).toContain(`__o0["amount"] = __dec(__o0["amount"], 'Money.amount');`);
+            expect(withRevivers).not.toContain('revivePlain');
+        });
+
+        it('guards an optional or nullable decimal instead of coercing null', () => {
+            const root = contractRoot([
+                model('M', [
+                    field('a', scalarType('decimal'), { optional: true }),
+                    field('b', unionType(scalarType('decimal'), scalarType('null'))),
+                ]),
+            ]);
+            const out = generateContract(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/out/t.ts',
+                modelsWithDecimal: new Set(['M']),
+                emitRevivers: true,
+            });
+            expect(out).toContain(`if (__o0["a"] != null) {`);
+            expect(out).toContain(`if (__o0["b"] != null) {`);
+        });
+
+        it('keys the Output reviver by the output casing while children stay camel', () => {
+            const root = contractRoot([
+                model('Money', [field('amount', scalarType('decimal'))]),
+                model('Snake', [field('grossPay', scalarType('decimal')), field('childRef', refType('Money'))], { outputCase: 'snake' }),
+            ]);
+            const out = generateContract(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/out/t.ts',
+                modelsWithDecimal: new Set(['Money', 'Snake']),
+                emitRevivers: true,
+            });
+            expect(out).toContain('export function reviveSnakeOutput(raw: SnakeOutput): SnakeOutput {');
+            expect(out).toContain(`__o0["gross_pay"] = __dec(__o0["gross_pay"], 'Snake.gross_pay');`);
+            // `computeModelsWithOutput` propagates referrer→referenced, so Money is NOT transformed
+            // and keeps its camelCase keys — it must use the base reviver, not an Output one.
+            expect(out).toContain(`reviveMoney(__o0["child_ref"] as never);`);
+            expect(out).not.toContain('reviveMoneyOutput');
+        });
+
+        it('recurses through a self-referential model without looping', () => {
+            const root = contractRoot([
+                model('Category', [field('subtotal', scalarType('decimal')), field('children', arrayType(refType('Category')))]),
+            ]);
+            const out = generateContract(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/out/t.ts',
+                modelsWithDecimal: new Set(['Category']),
+                emitRevivers: true,
+            });
+            expect(out).toContain('reviveCategory(__a1[__i2] as never);');
+        });
+
         it('detects a decimal nested in an array', () => {
             const root = contractRoot([model('M', [field('amounts', arrayType(scalarType('decimal')))])]);
-            expect(generateContract(root)).toContain(`import Decimal from 'decimal.js';`);
+            expect(generateContract(root)).toContain(`import { Decimal } from 'decimal.js';`);
         });
 
         it('detects DateTime in nested array types', () => {

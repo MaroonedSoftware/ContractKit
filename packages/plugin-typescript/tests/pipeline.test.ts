@@ -49,7 +49,7 @@ contract Payslip: {
         expect(gross.max).toBe('999999.99');
         expect(gross.scale).toBe(2);
 
-        expect(output).toContain("import Decimal from 'decimal.js';");
+        expect(output).toContain("import { Decimal } from 'decimal.js';");
         expect(output).toContain('Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });');
         expect(output).toContain(
             `gross: _ZodDecimal.refine((v) => v.decimalPlaces() <= 2 && v.gte('0.01') && v.lte('999999.99'), { message: 'Must be at most 2 decimal places, at least 0.01, at most 999999.99' })`,

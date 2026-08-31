@@ -21,6 +21,7 @@ import {
     collectTransitiveModelRefs,
     collectTypeRefs,
     computeModelsWithCaseTransform,
+    computeModelsWithDecimal,
 } from '@contractkit/core';
 import {
     generateSdk,
@@ -464,6 +465,9 @@ function collectSdkOutput(
 
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
     const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
+    // Computed across every contract root, not per file: one decimal below a model taints it, and
+    // the reference that reaches it may live in another .ck file entirely.
+    const modelsWithDecimal = computeModelsWithDecimal(inputs.contractRoots.flatMap(r => r.models));
     const modelMap = buildModelMap(inputs.contractRoots);
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const ckCommonRoot = commonDir(allFiles, rootDir);
@@ -502,6 +506,9 @@ function collectSdkOutput(
             outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
+            // Not covered by `root`: adding a decimal to a model in a *different* .ck file changes
+            // this file's revivers with no change to `root` or the config.
+            modelsWithDecimal: sliceModelSet(refs, ownNames, modelsWithDecimal),
             sdkOptionsPath,
             sub: subConfigKey,
         });
@@ -510,12 +517,16 @@ function collectSdkOutput(
             fingerprint,
             render: () => {
                 let content: string;
+                // `emitRevivers` is set for SDK type files only: a server handler receives decimals
+                // already parsed by `_ZodDecimal`, so it has nothing to rehydrate.
                 if (config.zod) {
                     content = generateContract(ast, {
                         modelOutPaths: sdkModelOutPaths,
                         currentOutPath: typeOutPath,
                         modelsWithInput,
                         modelsWithOutput,
+                        modelsWithDecimal,
+                        emitRevivers: true,
                     });
                 } else {
                     let rel = relative(dirname(typeOutPath), sdkOptionsPath).replace(/\.ts$/, '.js');
@@ -525,6 +536,8 @@ function collectSdkOutput(
                         currentOutPath: typeOutPath,
                         modelsWithInput,
                         modelsWithOutput,
+                        modelsWithDecimal,
+                        emitRevivers: true,
                         jsonValueImportPath: rel,
                     });
                 }
@@ -573,6 +586,7 @@ function collectSdkOutput(
                     outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
                     modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
                     modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
+                    modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
                     sdkOptionsPath,
                     className,
                     includeInternal: config.includeInternal ?? false,
@@ -591,6 +605,8 @@ function collectSdkOutput(
                                 sdkOptionsPath,
                                 modelsWithInput,
                                 modelsWithOutput,
+                                modelsWithDecimal,
+                                modelMap,
                                 includeInternal: config.includeInternal,
                                 clientClassName: className,
                             }),
@@ -613,6 +629,7 @@ function collectSdkOutput(
                 outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
                 modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
                 modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
+                modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
                 sdkOptionsPath,
                 includeInternal: config.includeInternal ?? false,
                 sub: subConfigKey,
@@ -630,6 +647,8 @@ function collectSdkOutput(
                             sdkOptionsPath,
                             modelsWithInput,
                             modelsWithOutput,
+                            modelsWithDecimal,
+                            modelMap,
                             includeInternal: config.includeInternal,
                         }),
                     },
@@ -711,6 +730,7 @@ function collectSdkOutput(
                 outPathSlice: sliceOutPathMap(allInlineRefs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
                 modelsWithInput: sliceModelSet(allInlineRefs, new Set(), modelsWithInput),
                 modelsWithOutput: sliceModelSet(allInlineRefs, new Set(), modelsWithOutput),
+                modelsWithDecimal: sliceModelSet(allInlineRefs, new Set(), modelsWithDecimal),
                 sdkOptionsPath,
                 includeInternal: config.includeInternal ?? false,
                 sub: subConfigKey,
@@ -725,6 +745,8 @@ function collectSdkOutput(
                     sdkOptionsPath,
                     modelsWithInput,
                     modelsWithOutput,
+                    modelsWithDecimal,
+                    modelMap,
                     includeInternal: config.includeInternal,
                 },
             }));

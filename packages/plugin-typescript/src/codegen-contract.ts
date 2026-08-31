@@ -24,6 +24,7 @@ import {
 import { escapeJsDocLines } from './ts-render.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
+import { renderReviveFunctions, reviveFnName, DECIMAL_COERCE_DECL } from './codegen-revive.js';
 
 /**
  * Maps a ContractKit object mode to its Zod constructor name.
@@ -61,6 +62,13 @@ export interface ContractCodegenContext {
      * `generateContract`, whose Zod schemas are server-shaped by construction. Default `'client'`.
      */
     target?: TsRenderTarget;
+    /** Model names that carry a `decimal`, directly or transitively. */
+    modelsWithDecimal?: Set<string>;
+    /**
+     * Emit `reviveX()` hydration functions alongside the schemas. Set only for SDK type files: a
+     * server handler receives decimals already parsed by `_ZodDecimal`, so it has nothing to revive.
+     */
+    emitRevivers?: boolean;
 }
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -171,7 +179,11 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     if (needsDecimal) lines.push(DECIMAL_IMPORT);
     for (const ref of allExternalRefs) {
         const importPath = resolveImportPath(ref, context);
-        lines.push(`import { ${ref} } from '${importPath}';`);
+        // A cross-file model that carries a decimal contributes its reviver too — the local
+        // reviver calls it rather than re-deriving the other file's shape.
+        const names =
+            context?.emitRevivers && context.modelsWithDecimal?.has(ref) ? `${ref}, ${reviveFnName(ref)}` : ref;
+        lines.push(`import { ${names} } from '${importPath}';`);
     }
     lines.push('');
     if (needsBinary) {
@@ -201,10 +213,31 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     const modelsWithWriteonly = new Set(root.models.filter(m => m.fields.some(f => f.visibility === 'writeonly')).map(m => m.name));
     const modelMap = new Map(root.models.map(m => [m.name, m]));
 
+    const reviveOpts =
+        context?.emitRevivers && context.modelsWithDecimal
+            ? { modelsWithDecimal: context.modelsWithDecimal, modelsWithOutput: allModelsWithOutput, modelMap }
+            : undefined;
+
+    const bodyLines: string[] = [];
     for (const model of topoSortModels(root.models)) {
-        lines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelsWithWriteonly, modelMap, allModelsWithOutput));
+        bodyLines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelsWithWriteonly, modelMap, allModelsWithOutput));
+        if (reviveOpts) {
+            const revivers = renderReviveFunctions(model, reviveOpts);
+            if (revivers.length > 0) {
+                bodyLines.push('');
+                bodyLines.push(...revivers);
+            }
+        }
+        bodyLines.push('');
+    }
+
+    // Decided from the emitted revivers rather than from a predicate over the AST, so the
+    // declaration and its uses cannot drift apart and leave an unused local behind.
+    if (bodyLines.some(l => l.includes('__dec('))) {
+        lines.push(...DECIMAL_COERCE_DECL);
         lines.push('');
     }
+    lines.push(...bodyLines);
 
     return lines.join('\n');
 }
