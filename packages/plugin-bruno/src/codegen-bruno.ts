@@ -734,6 +734,8 @@ function paramExampleValue(type: ContractTypeNode | undefined, defaultValue?: st
         case 'int':
         case 'bigint':
             return '"0"';
+        case 'decimal':
+            return '"0.00"';
         case 'boolean':
             return '"true"';
         case 'date':
@@ -798,6 +800,10 @@ function typeToExampleValue(type: ContractTypeNode, modelMap: Map<string, ModelN
                 case 'int':
                 case 'bigint':
                     return 0;
+                case 'decimal':
+                    // A string, not 0 — `_ZodDecimal` rejects raw JSON numbers, so a numeric
+                    // skeleton value would generate a request the API is guaranteed to refuse.
+                    return '0.00';
                 case 'boolean':
                     return true;
                 case 'date':

@@ -33,6 +33,30 @@ describe('Contract pipeline (source -> parse -> codegen)', () => {
         expect(output).toContain(`active: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).default(true)`);
     });
 
+    it('compiles a decimal contract end to end, keeping bounds as exact strings', () => {
+        // Exercises the real parse path rather than a hand-built AST: `buildScalarWithModifiers`
+        // has to keep `0.01` as a string instead of routing it through `Number()`.
+        const { output, root, diag } = compileContractSource(`
+contract Payslip: {
+    gross: decimal(min=0.01, max=999999.99, scale=2)
+    rate: decimal
+}
+`);
+        expect(diag.hasErrors()).toBe(false);
+
+        const gross = root.models[0]!.fields[0]!.type as { min: unknown; max: unknown; scale: unknown };
+        expect(gross.min).toBe('0.01');
+        expect(gross.max).toBe('999999.99');
+        expect(gross.scale).toBe(2);
+
+        expect(output).toContain("import { Decimal } from 'decimal.js';");
+        expect(output).toContain('Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });');
+        expect(output).toContain(
+            `gross: _ZodDecimal.refine((v) => v.decimalPlaces() <= 2 && v.gte('0.01') && v.lte('999999.99'), { message: 'Must be at most 2 decimal places, at least 0.01, at most 999999.99' })`,
+        );
+        expect(output).toContain('rate: _ZodDecimal');
+    });
+
     it('compiles a contract with visibility to three-schema pattern', () => {
         const { output, diag } = compileContractSource(VISIBILITY_CONTRACT);
         expect(diag.hasErrors()).toBe(false);

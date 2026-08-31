@@ -42,6 +42,18 @@ const SIGNATURES: Record<string, ConstraintSignature> = {
             { label: 'max', doc: 'Maximum value (inclusive).' },
         ],
     },
+    decimal: {
+        label: 'decimal(min, max, scale)',
+        summary: 'Exact decimal, sent as a quoted string and parsed into a decimal.js `Decimal`.',
+        parameters: [
+            { label: 'min', doc: 'Minimum value (inclusive), compared as an exact decimal. Example: `decimal(min=0.01)`' },
+            { label: 'max', doc: 'Maximum value (inclusive), compared as an exact decimal.' },
+            {
+                label: 'scale',
+                doc: 'Maximum number of decimal places accepted. A validation constraint, not padding — the wire value stays normalized, so `"1250.00"` reads back as `"1250"`. Example: `decimal(scale=2)`',
+            },
+        ],
+    },
     array: {
         label: 'array(item, min, max)',
         summary: 'Array type. The first argument is the item type; `min`/`max` constrain length.',

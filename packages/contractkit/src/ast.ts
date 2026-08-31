@@ -10,6 +10,7 @@ export const SCALAR_NAMES: ReadonlySet<string> = new Set<ScalarTypeNode['name']>
     'number',
     'int',
     'bigint',
+    'decimal',
     'boolean',
     'date',
     'time',
@@ -49,6 +50,7 @@ export interface ScalarTypeNode {
         | 'number'
         | 'int'
         | 'bigint'
+        | 'decimal'
         | 'boolean'
         | 'date'
         | 'time'
@@ -66,6 +68,12 @@ export interface ScalarTypeNode {
     min?: number | bigint | string;
     max?: number | bigint | string;
     len?: number;
+    /**
+     * `decimal` only: the maximum number of decimal places a value may carry. A validation
+     * constraint, not a formatting directive — the wire form stays decimal.js-normalized, so
+     * `scale=2` accepts `"1250"` and `"1250.5"` as readily as `"1250.50"`.
+     */
+    scale?: number;
     regex?: string;
     format?: string;
 }

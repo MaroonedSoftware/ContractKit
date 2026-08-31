@@ -31,7 +31,7 @@ describe('renderTsScalar', () => {
     });
 
     it('throws on an unmapped scalar name', () => {
-        expect(() => renderTsScalar('decimal' as any)).toThrow(/unmapped scalar 'decimal'/);
+        expect(() => renderTsScalar('quaternion' as any)).toThrow(/unmapped scalar 'quaternion'/);
     });
 });
 
@@ -662,6 +662,12 @@ describe('generateMarkdown', () => {
             const dto = contractRoot([model('Task', [field('timeout', scalarType('duration'))])]);
             const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
             expect(output).toContain('| `timeout` | `string` | Yes |');
+        });
+
+        it('documents a decimal field as Decimal, not unknown', () => {
+            const dto = contractRoot([model('Payslip', [field('gross', scalarType('decimal'))])]);
+            const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
+            expect(output).toContain('| `gross` | `Decimal` | Yes |');
         });
 
         it('marks optional fields as not required', () => {

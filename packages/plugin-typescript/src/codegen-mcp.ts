@@ -3,6 +3,7 @@ import { resolveModifiers, emittedResponses } from '@contractkit/core';
 import { renderType, renderInputType, pascalToDotCase } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted } from './ts-render.js';
+import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'node:path';
 
 // ─── Options ────────────────────────────────────────────────────────────────
@@ -289,6 +290,9 @@ function scalarHelperLines(body: string): string[] {
             `const _ZodDatetime = z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }));`,
         );
     }
+    if (body.includes('_ZodDecimal')) {
+        lines.push(...DECIMAL_PRELUDE_LINES);
+    }
     if (body.includes('_ZodInterval')) {
         lines.push(
             `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' })).transform(val => val.toISO()!);`,
@@ -430,6 +434,7 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     if (/\bInterval\b/.test(bodyWithHelpers)) luxon.push('Interval');
     if (/\bDuration\b/.test(bodyWithHelpers)) luxon.push('Duration');
     if (luxon.length > 0) imports.push(`import { ${luxon.join(', ')} } from 'luxon';`);
+    if (/\bDecimal\b/.test(bodyWithHelpers)) imports.push(DECIMAL_IMPORT);
 
     imports.push(`import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';`);
     imports.push(`import type { McpToolHandler, McpToolHandlerMap, McpToolContext } from '@maroonedsoftware/mcp';`);

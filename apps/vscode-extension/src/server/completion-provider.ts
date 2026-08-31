@@ -1,30 +1,22 @@
 import { CompletionItem, CompletionItemKind, TextDocumentPositionParams } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import { SCALAR_NAMES } from '@contractkit/core';
 import type { WorkspaceIndex } from './workspace-index.js';
 
-const BUILTIN_SCALAR_TYPES = [
-    'string',
-    'number',
-    'int',
-    'bigint',
-    'boolean',
-    'date',
-    'time',
-    'datetime',
-    'duration',
-    'email',
-    'url',
-    'uuid',
-    'unknown',
-    'null',
-    'object',
-    'binary',
-    'json',
-];
+// Derived from the language's own scalar set rather than copied: the hand-maintained list this
+// replaces had silently fallen a scalar behind (`interval` was missing, so it never completed).
+const BUILTIN_SCALAR_TYPES = [...SCALAR_NAMES];
 
 const COMPOUND_TYPES = ['array', 'tuple', 'record', 'enum', 'literal', 'lazy'];
 
-const CONSTRAINT_KEYS = ['min', 'max', 'length', 'len', 'regex'];
+/**
+ * Matches a type name immediately before an unmatched `(`, to decide whether to offer constraint
+ * argument completions. Built from the type lists rather than spelled out — the literal it replaces
+ * had drifted to omit `time`, `interval` and every non-constrainable scalar.
+ */
+const TYPE_NAME_BEFORE_PAREN = new RegExp(`\\b(${[...BUILTIN_SCALAR_TYPES, ...COMPOUND_TYPES].join('|')})$`);
+
+const CONSTRAINT_KEYS = ['min', 'max', 'length', 'len', 'scale', 'regex'];
 
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 
@@ -421,9 +413,7 @@ function isInsideTypeConstraints(lines: string[], currentLine: number, textBefor
             } else {
                 // Found unmatched opening paren; check if preceded by a type name
                 const before = fullText.slice(0, i).trim();
-                return /\b(string|number|int|bigint|boolean|date|datetime|duration|email|url|uuid|array|tuple|record|enum|literal|lazy)$/.test(
-                    before,
-                );
+                return TYPE_NAME_BEFORE_PAREN.test(before);
             }
         }
     }

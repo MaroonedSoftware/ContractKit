@@ -243,6 +243,13 @@ describe('generateOpenCollection', () => {
         expect(yml!.content).toContain('value: "2024-01-01"');
     });
 
+    it('uses a quoted decimal example for decimal path params', () => {
+        const root = opRoot([opRoute('/pay/{amount}', [opOperation('get')], paramNodes([opParam('amount', scalarType('decimal'))]))], 'pay.op');
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'pay/get-pay-amount.yml');
+        expect(yml!.content).toContain('value: "0.00"');
+    });
+
     it('uses ISO 8601 duration example value for duration path params', () => {
         const root = opRoot(
             [opRoute('/jobs/{timeout}', [opOperation('get')], paramNodes([opParam('timeout', scalarType('duration'))]))],
@@ -515,6 +522,18 @@ describe('generateOpenCollection', () => {
         const files = generateOpenCollection([root], { collectionName: 'API' });
         const yml = files.find(f => f.relativePath === 'jobs/post-jobs.yml');
         expect(yml!.content).toContain('"timeout": "PT1H"');
+    });
+
+    it('uses a quoted decimal string in the body skeleton, never a JSON number', () => {
+        // The switch behind this has a bare `default:` returning null, so a missing case would
+        // silently emit `"gross": null`. A numeric `0` would be just as wrong — `_ZodDecimal`
+        // rejects raw JSON numbers, so the skeleton would generate a request the API refuses.
+        const bodyType = inlineObjectType([field('gross', scalarType('decimal', { scale: 2 }))]);
+        const root = opRoot([opRoute('/payslips', [opOperation('post', { request: opRequest(bodyType) })])], 'payslips.op');
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'payslips/post-payslips.yml');
+        expect(yml!.content).toContain('"gross": "0.00"');
+        expect(yml!.content).not.toContain('"gross": null');
     });
 
     it('excludes readonly fields from inline object body skeleton', () => {

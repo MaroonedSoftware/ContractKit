@@ -100,6 +100,11 @@ Generates plain TypeScript interface/type files from `contract` declarations. No
 The `server` and `sdk` sub-generators set `target` themselves (`server` and `client` respectively), so
 their plain-type output already matches the runtime that consumes it.
 
+`decimal` is the one scalar that renders the same for both targets — decimal.js `Decimal` — because
+it has no output transform, so the wire view and the server view agree. That also means plain-type
+output carries a real `import Decimal from 'decimal.js'`, and the scaffolded `package.json` adds
+`decimal.js` as a dependency whenever a covered model uses the scalar.
+
 ## Path templates
 
 Output paths support the following variables:

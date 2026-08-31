@@ -27,7 +27,7 @@ describe('renderType', () => {
         });
 
         it('throws on an unmapped scalar name', () => {
-            expect(() => renderType({ kind: 'scalar', name: 'decimal' } as any)).toThrow(/unmapped scalar 'decimal'/);
+            expect(() => renderType({ kind: 'scalar', name: 'quaternion' } as any)).toThrow(/unmapped scalar 'quaternion'/);
         });
 
         it('renders z.string() with min/max', () => {
@@ -99,6 +99,36 @@ describe('renderType', () => {
         it('renders z.bigint() with constraints using n suffix', () => {
             const result = renderType(scalarType('bigint', { min: 0n, max: 100n }));
             expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint().min(0n).max(100n))`);
+        });
+
+        it('renders bare _ZodDecimal for an unconstrained decimal', () => {
+            expect(renderType(scalarType('decimal'))).toBe('_ZodDecimal');
+        });
+
+        it('renders a scale refinement on decimal', () => {
+            expect(renderType(scalarType('decimal', { scale: 2 }))).toBe(
+                `_ZodDecimal.refine((v) => v.decimalPlaces() <= 2, { message: 'Must be at most 2 decimal places' })`,
+            );
+        });
+
+        it('compares decimal bounds as exact strings, never as floats', () => {
+            // `0.01` through `Number()` is the precision loss this scalar exists to prevent, so the
+            // bound is emitted as a quoted string for decimal.js to parse.
+            const result = renderType(scalarType('decimal', { min: '0.01', max: '999999.99' }));
+            expect(result).toBe(
+                `_ZodDecimal.refine((v) => v.gte('0.01') && v.lte('999999.99'), { message: 'Must be at least 0.01, at most 999999.99' })`,
+            );
+        });
+
+        it('renders scale and bounds together', () => {
+            const result = renderType(scalarType('decimal', { min: '0', scale: 2 }));
+            expect(result).toBe(
+                `_ZodDecimal.refine((v) => v.decimalPlaces() <= 2 && v.gte('0'), { message: 'Must be at most 2 decimal places, at least 0' })`,
+            );
+        });
+
+        it('singularises the scale message at 1', () => {
+            expect(renderType(scalarType('decimal', { scale: 1 }))).toContain(`message: 'Must be at most 1 decimal place'`);
         });
 
         it('renders z.boolean() with string coercion preprocess', () => {
@@ -327,6 +357,99 @@ describe('generateContract', () => {
             expect(output).toContain(
                 `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' })).transform(val => val.toISO()!);`,
             );
+        });
+
+        it('emits the decimal.js import and _ZodDecimal helper when a decimal field is present', () => {
+            const root = contractRoot([model('M', [field('amount', scalarType('decimal'))])]);
+            const output = generateContract(root);
+            // Named, not default: under NodeNext the default export resolves to decimal.js's
+            // namespace declaration and the generated SDK fails to compile.
+            expect(output).toContain(`import { Decimal } from 'decimal.js';`);
+            expect(output).toContain(`Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });`);
+            expect(output).toContain(`const _ZodDecimal = z.preprocess(`);
+            // No output `.transform()` — `isRevalidatable` treats every scalar as idempotent under
+            // re-parse, which `server.validateResponses` depends on.
+            expect(output).not.toContain('_ZodDecimal = z.preprocess(...).transform');
+        });
+
+        it('omits the decimal runtime entirely when no decimal field is present', () => {
+            const root = contractRoot([model('M', [field('n', scalarType('number'))])]);
+            const output = generateContract(root);
+            expect(output).not.toContain('decimal.js');
+            expect(output).not.toContain('_ZodDecimal');
+            expect(output).not.toContain('Decimal.set');
+        });
+
+        it('emits revivers only when asked, and only for decimal-carrying models', () => {
+            const root = contractRoot([
+                model('Money', [field('amount', scalarType('decimal'))]),
+                model('Plain', [field('name', scalarType('string'))]),
+            ]);
+            const ctx = { modelOutPaths: new Map(), currentOutPath: '/out/t.ts' };
+
+            // Server-side schemas get decimals already parsed by `_ZodDecimal`, so no revivers.
+            const withoutRevivers = generateContract(root, ctx);
+            expect(withoutRevivers).not.toContain('reviveMoney');
+            expect(withoutRevivers).not.toContain('__dec');
+
+            const withRevivers = generateContract(root, { ...ctx, modelsWithDecimal: new Set(['Money']), emitRevivers: true });
+            expect(withRevivers).toContain('export function reviveMoney(raw: Money): Money {');
+            expect(withRevivers).toContain(`__o0["amount"] = __dec(__o0["amount"], 'Money.amount');`);
+            expect(withRevivers).not.toContain('revivePlain');
+        });
+
+        it('guards an optional or nullable decimal instead of coercing null', () => {
+            const root = contractRoot([
+                model('M', [
+                    field('a', scalarType('decimal'), { optional: true }),
+                    field('b', unionType(scalarType('decimal'), scalarType('null'))),
+                ]),
+            ]);
+            const out = generateContract(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/out/t.ts',
+                modelsWithDecimal: new Set(['M']),
+                emitRevivers: true,
+            });
+            expect(out).toContain(`if (__o0["a"] != null) {`);
+            expect(out).toContain(`if (__o0["b"] != null) {`);
+        });
+
+        it('keys the Output reviver by the output casing while children stay camel', () => {
+            const root = contractRoot([
+                model('Money', [field('amount', scalarType('decimal'))]),
+                model('Snake', [field('grossPay', scalarType('decimal')), field('childRef', refType('Money'))], { outputCase: 'snake' }),
+            ]);
+            const out = generateContract(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/out/t.ts',
+                modelsWithDecimal: new Set(['Money', 'Snake']),
+                emitRevivers: true,
+            });
+            expect(out).toContain('export function reviveSnakeOutput(raw: SnakeOutput): SnakeOutput {');
+            expect(out).toContain(`__o0["gross_pay"] = __dec(__o0["gross_pay"], 'Snake.gross_pay');`);
+            // `computeModelsWithOutput` propagates referrer→referenced, so Money is NOT transformed
+            // and keeps its camelCase keys — it must use the base reviver, not an Output one.
+            expect(out).toContain(`reviveMoney(__o0["child_ref"] as never);`);
+            expect(out).not.toContain('reviveMoneyOutput');
+        });
+
+        it('recurses through a self-referential model without looping', () => {
+            const root = contractRoot([
+                model('Category', [field('subtotal', scalarType('decimal')), field('children', arrayType(refType('Category')))]),
+            ]);
+            const out = generateContract(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/out/t.ts',
+                modelsWithDecimal: new Set(['Category']),
+                emitRevivers: true,
+            });
+            expect(out).toContain('reviveCategory(__a1[__i2] as never);');
+        });
+
+        it('detects a decimal nested in an array', () => {
+            const root = contractRoot([model('M', [field('amounts', arrayType(scalarType('decimal')))])]);
+            expect(generateContract(root)).toContain(`import { Decimal } from 'decimal.js';`);
         });
 
         it('detects DateTime in nested array types', () => {

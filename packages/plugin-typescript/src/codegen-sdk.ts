@@ -7,12 +7,15 @@ import type {
     OpResponseBodyNode,
     OpResponseHeaderNode,
     ContractTypeNode,
+    ModelNode,
     ParamSource,
 } from '@contractkit/core';
 import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses } from '@contractkit/core';
 import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
+import { reviveFnName, renderInlineReviver, typeReachesDecimal, DECIMAL_COERCE_DECL } from './codegen-revive.js';
+import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Body strategy ────────────────────────────────────────────────────────
@@ -81,6 +84,10 @@ export interface SdkCodegenOptions {
     modelsWithInput?: Set<string>;
     /** Set of model names that have Output variants (models with format(output=...)) */
     modelsWithOutput?: Set<string>;
+    /** Model names carrying a `decimal`, whose response bodies need rehydrating client-side. */
+    modelsWithDecimal?: Set<string>;
+    /** Every model in scope, for resolving discriminated-union members inside an inline reviver. */
+    modelMap?: Map<string, ModelNode>;
     /**
      * Whether to emit SDK methods for operations marked `internal`. Defaults to `false` —
      * internal ops are omitted from the SDK so consumers don't pick them up. Set to `true`
@@ -122,10 +129,29 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput, includeInternal);
     const clientClassName = options.clientClassName ?? deriveClientClassName(root.file);
 
-    // Type-only imports
-    if (types.length > 0) {
-        lines.push(...generateTypeImports(types, root.file, options));
+    // The method bodies are generated first so the imports can be read off them, the same way
+    // codegen-operation decides its imports from the code it just emitted. A reviver import that
+    // came from a predicate instead could drift and leave an unused local behind.
+    const inlineRevivers = new Map<string, string[]>();
+    const classBody: string[] = [];
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            const mods = resolveModifiers(route, op);
+            if (!includeInternal && mods.includes('internal')) continue;
+            classBody.push('');
+            if (mods.includes('deprecated')) classBody.push('    /** @deprecated */');
+            classBody.push(...generateMethod(route, op, root.file, options, inlineRevivers));
+        }
     }
+
+    const inlineReviverDecls = [...inlineRevivers.values()].flat();
+    const decimalPrelude = decimalPreludeFor(inlineReviverDecls);
+
+    // Type-only imports, plus the model revivers the methods actually call.
+    if (types.length > 0) {
+        lines.push(...generateTypeImports(types, root.file, options, usedRevivers(classBody)));
+    }
+    lines.push(...decimalPrelude.imports);
 
     // SdkOptions import (from shared file) or inline fallback
     if (options.sdkOptionsPath && options.outPath) {
@@ -229,6 +255,17 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('');
     }
 
+    if (decimalPrelude.decls.length > 0) {
+        lines.push('');
+        lines.push(...decimalPrelude.decls);
+    }
+
+    // Wrappers for bodies with no `reviveX` of their own — an inline object, a record, a tuple.
+    for (const decl of inlineRevivers.values()) {
+        lines.push('');
+        lines.push(...decl);
+    }
+
     // Client class
     lines.push('/**');
     const relFile = options.outPath ? relative(dirname(options.outPath), root.file) : root.file;
@@ -236,16 +273,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     lines.push(' */');
     lines.push(`export class ${clientClassName} {`);
     lines.push('    constructor(private fetch: SdkFetch) {}');
-
-    for (const route of root.routes) {
-        for (const op of route.operations) {
-            const mods = resolveModifiers(route, op);
-            if (!includeInternal && mods.includes('internal')) continue;
-            lines.push('');
-            if (mods.includes('deprecated')) lines.push('    /** @deprecated */');
-            lines.push(...generateMethod(route, op, root.file, options));
-        }
-    }
+    lines.push(...classBody);
 
     lines.push('}');
     lines.push('');
@@ -255,38 +283,84 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
 
 /**
  * Render the method-block lines for an operation file as if they were declared inside a
- * client class. Returns one consolidated array of strings (each pre-indented for class body
- * level, with leading blank lines between methods) plus the set of method names emitted —
- * the caller uses the names to detect cross-file collisions when multiple files contribute
- * to the same area-level client.
+ * client class.
  *
  * Skips operations marked `internal` unless `options.includeInternal` is set.
+ *
+ * @returns `lines`, one consolidated array pre-indented for class-body level with leading blank
+ * lines between methods; `methodNames`, used by the caller to detect cross-file collisions when
+ * several files contribute to the same area-level client; `preludeLines`, module-level
+ * declarations the methods reference (decimal revivers and their `__dec` helper) which the caller
+ * must splice in above the class; and `needsDecimalImport`, true when those declarations require
+ * `import { Decimal } from 'decimal.js'` in the emitting file.
  */
 export function generateClientMethods(
     root: OpRootNode,
     options: SdkCodegenOptions,
-): { lines: string[]; methodNames: string[] } {
+): { lines: string[]; methodNames: string[]; preludeLines: string[]; needsDecimalImport: boolean } {
     const lines: string[] = [];
     const methodNames: string[] = [];
     const includeInternal = options.includeInternal ?? false;
+    const inlineRevivers = new Map<string, string[]>();
     for (const route of root.routes) {
         for (const op of route.operations) {
             const mods = resolveModifiers(route, op);
             if (!includeInternal && mods.includes('internal')) continue;
             lines.push('');
             if (mods.includes('deprecated')) lines.push('    /** @deprecated */');
-            lines.push(...generateMethod(route, op, root.file, options));
+            lines.push(...generateMethod(route, op, root.file, options, inlineRevivers));
             methodNames.push(deriveMethodName(op, route));
         }
     }
-    return { lines, methodNames };
+    // Module-level declarations the methods reference, spliced above the class by the caller —
+    // the same shape `generateErrorBodyAliases` already uses.
+    const declLines = [...inlineRevivers.values()].flat();
+    const { decls } = decimalPreludeFor(declLines);
+    const preludeLines = [...(decls.length > 0 ? ['', ...decls] : []), ...[...inlineRevivers.values()].flatMap(decl => ['', ...decl])];
+    return { lines, methodNames, preludeLines, needsDecimalImport: decls.length > 0 };
+}
+
+/**
+ * Declarations a client file needs for the inline revivers it carries.
+ *
+ * An inline wrapper calls `__dec`, which is file-local to the *types* module and not exported, so
+ * a client file that has one needs its own copy — along with the decimal.js import and the global
+ * config, since nothing else in the file necessarily pulls them in.
+ */
+function decimalPreludeFor(declLines: string[]): { imports: string[]; decls: string[] } {
+    if (!declLines.some(l => l.includes('__dec('))) return { imports: [], decls: [] };
+    return { imports: [DECIMAL_IMPORT], decls: [DECIMAL_CONFIG_LINE, '', ...DECIMAL_COERCE_DECL] };
+}
+
+/** Model reviver names referenced by generated method bodies. `__revive…` wrappers are local. */
+function usedRevivers(lines: string[]): string[] {
+    const found = new Set<string>();
+    for (const m of lines.join('\n').matchAll(/\brevive[A-Z]\w*/g)) found.add(m[0]);
+    return [...found].sort();
 }
 
 // ─── Method generation ────────────────────────────────────────────────────
 
-function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, options: SdkCodegenOptions): string[] {
+function generateMethod(
+    route: OpRouteNode,
+    op: OpOperationNode,
+    file: string,
+    options: SdkCodegenOptions,
+    inlineRevivers?: Map<string, string[]>,
+): string[] {
+    const revive: ReviveContext | undefined =
+        options.modelsWithDecimal && options.modelsWithDecimal.size > 0 && inlineRevivers
+            ? {
+                  modelsWithDecimal: options.modelsWithDecimal,
+                  modelsWithOutput: options.modelsWithOutput,
+                  modelMap: options.modelMap,
+                  inlineRevivers,
+                  nameHint: '',
+              }
+            : undefined;
     const lines: string[] = [];
     const methodName = deriveMethodName(op, route);
+    const mRevive = hint(revive, `${methodName.charAt(0).toUpperCase()}${methodName.slice(1)}`);
     const httpMethod = op.method.toUpperCase();
     const { modelsWithInput, modelsWithOutput } = options;
 
@@ -456,23 +530,23 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, file: string, o
         lines.push(`        switch (result.status) {`);
         for (const resp of rest) {
             lines.push(`            case ${resp.statusCode}:`);
-            lines.push(...sdkReturnLines(resp, modelsWithOutput, '                ', true));
+            lines.push(...sdkReturnLines(resp, modelsWithOutput, '                ', true, mRevive));
         }
         lines.push(`            default:`);
-        lines.push(...sdkReturnLines(fallback!, modelsWithOutput, '                ', true));
+        lines.push(...sdkReturnLines(fallback!, modelsWithOutput, '                ', true, mRevive));
         lines.push(`        }`);
     } else if (primaryBodies.length > 1) {
-        lines.push(...sdkReturnLines(primaryResponse!, modelsWithOutput, '        ', false));
+        lines.push(...sdkReturnLines(primaryResponse!, modelsWithOutput, '        ', false, mRevive));
     } else if (hasRespHeaders) {
         const headerEntries = sdkHeaderEntries(respHeaders);
         if (isVoid) {
             lines.push(`        return { headers: { ${headerEntries} } };`);
         } else {
-            lines.push(`        const data = ${sdkReadExpr(primaryBodies[0]!, modelsWithOutput)};`);
+            lines.push(`        const data = ${sdkReadExpr(primaryBodies[0]!, modelsWithOutput, hint(mRevive, primaryResponse!.statusCode))};`);
             lines.push(`        return { data, headers: { ${headerEntries} } };`);
         }
     } else if (!isVoid) {
-        lines.push(`        return ${sdkReadExpr(primaryBodies[0]!, modelsWithOutput)};`);
+        lines.push(`        return ${sdkReadExpr(primaryBodies[0]!, modelsWithOutput, hint(mRevive, primaryResponse!.statusCode))};`);
     }
 
     lines.push('    }');
@@ -490,12 +564,75 @@ function sdkDataType(body: OpResponseBodyNode, modelsWithOutput?: Set<string>): 
     return renderOutputTsType(body.bodyType, modelsWithOutput);
 }
 
-/** How a client reads one response body off the `Response`. */
-function sdkReadExpr(body: OpResponseBodyNode, modelsWithOutput?: Set<string>): string {
+/**
+ * How a client reads one response body off the `Response`.
+ *
+ * A decimal-bearing body is wrapped in its reviver: `parseJson` is a bare cast, so without this the
+ * type would say `Decimal` while the runtime held a string. Bodies with no decimal are emitted
+ * byte-identically to before.
+ */
+function sdkReadExpr(body: OpResponseBodyNode, modelsWithOutput?: Set<string>, revive?: ReviveContext): string {
     const category = classifyContentType(body.contentType);
     if (category === 'text') return 'await result.text()';
     if (category === 'binary') return 'await result.blob()';
-    return `await parseJson<${renderOutputTsType(body.bodyType, modelsWithOutput)}>(result)`;
+    const tsType = renderOutputTsType(body.bodyType, modelsWithOutput);
+    const read = `await parseJson<${tsType}>(result)`;
+    const reviver = reviveExprFor(body.bodyType, revive);
+    if (!reviver) return read;
+    // `.map` over an array of refs rather than a wrapper function: the reviver returns the same
+    // object it mutated, so the mapped array holds the same elements.
+    return reviver.kind === 'array' ? `(${read}).map(${reviver.name})` : `${reviver.name}(${read})`;
+}
+
+/**
+ * Extend the inline-reviver name with one more path segment.
+ *
+ * Built up compositionally — method, then status, then mime index — because each of those lives in
+ * a different function, and the resulting name has to be distinct per body: two operations with
+ * different inline decimal bodies must not share one wrapper.
+ */
+function hint(revive: ReviveContext | undefined, segment: string | number): ReviveContext | undefined {
+    if (!revive) return undefined;
+    return { ...revive, nameHint: `${revive.nameHint}${segment}` };
+}
+
+/** What `sdkReadExpr` needs to decide whether a body has to be revived, and with which function. */
+interface ReviveContext {
+    modelsWithDecimal: Set<string>;
+    modelsWithOutput?: Set<string>;
+    /** Inline reviver declarations accumulated for the current file, keyed by function name. */
+    inlineRevivers: Map<string, string[]>;
+    modelMap?: Map<string, ModelNode>;
+    /** Distinguishes the inline wrapper emitted for each body. */
+    nameHint: string;
+}
+
+/** The reviver to apply to a response body, or `null` when the body holds no decimal. */
+function reviveExprFor(bodyType: ContractTypeNode, ctx: ReviveContext | undefined): { name: string; kind: 'value' | 'array' } | null {
+    if (!ctx || ctx.modelsWithDecimal.size === 0) return null;
+    const opts = { modelsWithDecimal: ctx.modelsWithDecimal, modelsWithOutput: ctx.modelsWithOutput, modelMap: ctx.modelMap };
+    if (!typeReachesDecimal(bodyType, opts)) return null;
+
+    const refName = (t: ContractTypeNode): string | null => (t.kind === 'ref' ? t.name : t.kind === 'lazy' ? refName(t.inner) : null);
+    const pick = (name: string) => reviveFnName(name, ctx.modelsWithOutput?.has(name) ? 'output' : 'base');
+
+    const direct = refName(bodyType);
+    if (direct && ctx.modelsWithDecimal.has(direct)) return { name: pick(direct), kind: 'value' };
+
+    if (bodyType.kind === 'array') {
+        const item = refName(bodyType.item);
+        if (item && ctx.modelsWithDecimal.has(item)) return { name: pick(item), kind: 'array' };
+    }
+
+    // Anything else — an inline object, a record, a tuple — has no `reviveX` to call, so the file
+    // gets a wrapper of its own.
+    const fnName = `__revive${ctx.nameHint}`;
+    if (!ctx.inlineRevivers.has(fnName)) {
+        const decl = renderInlineReviver(fnName, renderOutputTsType(bodyType, ctx.modelsWithOutput), bodyType, opts);
+        if (!decl) return null;
+        ctx.inlineRevivers.set(fnName, decl);
+    }
+    return { name: fnName, kind: 'value' };
 }
 
 function renderSdkHeadersShape(headers: OpResponseHeaderNode[], modelsWithOutput?: Set<string>): string {
@@ -535,7 +672,13 @@ function sdkResponseMembers(resp: OpResponseNode, modelsWithOutput: Set<string> 
 }
 
 /** The `return` statement(s) that build one response's member of the return union. */
-function sdkReturnLines(resp: OpResponseNode, modelsWithOutput: Set<string> | undefined, indent: string, includeStatus: boolean): string[] {
+function sdkReturnLines(
+    resp: OpResponseNode,
+    modelsWithOutput: Set<string> | undefined,
+    indent: string,
+    includeStatus: boolean,
+    revive?: ReviveContext,
+): string[] {
     const bodies = resp.bodies;
     const headers = resp.headers ?? [];
     const leading = includeStatus ? [`status: ${resp.statusCode}`] : [];
@@ -545,7 +688,12 @@ function sdkReturnLines(resp: OpResponseNode, modelsWithOutput: Set<string> | un
         return [`${indent}return { ${[...leading, ...trailing].join(', ')} };`];
     }
     if (bodies.length === 1) {
-        const fields = [...leading, `contentType: '${bodies[0]!.contentType}'`, `data: ${sdkReadExpr(bodies[0]!, modelsWithOutput)}`, ...trailing];
+        const fields = [
+            ...leading,
+            `contentType: '${bodies[0]!.contentType}'`,
+            `data: ${sdkReadExpr(bodies[0]!, modelsWithOutput, hint(revive, resp.statusCode))}`,
+            ...trailing,
+        ];
         return [`${indent}return { ${fields.join(', ')} };`];
     }
 
@@ -553,19 +701,34 @@ function sdkReturnLines(resp: OpResponseNode, modelsWithOutput: Set<string> | un
     if (dataTypes.every(t => t === dataTypes[0])) {
         // Every mime reads the same way, so only the label has to come off the wire.
         const cast = bodies.map(b => `'${b.contentType}'`).join(' | ');
-        const fields = [...leading, `contentType: readContentType(result) as ${cast}`, `data: ${sdkReadExpr(bodies[0]!, modelsWithOutput)}`, ...trailing];
+        const fields = [
+            ...leading,
+            `contentType: readContentType(result) as ${cast}`,
+            `data: ${sdkReadExpr(bodies[0]!, modelsWithOutput, hint(revive, resp.statusCode))}`,
+            ...trailing,
+        ];
         return [`${indent}return { ${fields.join(', ')} };`];
     }
 
     // The mimes read differently, so the client has to dispatch on what actually came back.
     const lines = [`${indent}switch (readContentType(result)) {`];
-    for (const body of bodies.slice(1)) {
-        const fields = [...leading, `contentType: '${body.contentType}'`, `data: ${sdkReadExpr(body, modelsWithOutput)}`, ...trailing];
+    for (const [i, body] of bodies.slice(1).entries()) {
+        const fields = [
+            ...leading,
+            `contentType: '${body.contentType}'`,
+            `data: ${sdkReadExpr(body, modelsWithOutput, hint(revive, `${resp.statusCode}_${i + 1}`))}`,
+            ...trailing,
+        ];
         lines.push(`${indent}    case '${body.contentType}':`);
         lines.push(`${indent}        return { ${fields.join(', ')} };`);
     }
     const first = bodies[0]!;
-    const fallbackFields = [...leading, `contentType: '${first.contentType}'`, `data: ${sdkReadExpr(first, modelsWithOutput)}`, ...trailing];
+    const fallbackFields = [
+        ...leading,
+        `contentType: '${first.contentType}'`,
+        `data: ${sdkReadExpr(first, modelsWithOutput, hint(revive, `${resp.statusCode}_0`))}`,
+        ...trailing,
+    ];
     lines.push(`${indent}    default:`);
     lines.push(`${indent}        return { ${fallbackFields.join(', ')} };`);
     lines.push(`${indent}}`);
@@ -1026,7 +1189,7 @@ function collectTypeNodeRefs(type: ContractTypeNode, out: Set<string>): void {
 
 // ─── Type import resolution ───────────────────────────────────────────────
 
-function generateTypeImports(types: string[], opFile: string, options: SdkCodegenOptions): string[] {
+function generateTypeImports(types: string[], opFile: string, options: SdkCodegenOptions, revivers: string[] = []): string[] {
     const lines: string[] = [];
     const { modelOutPaths, outPath } = options;
 
@@ -1051,6 +1214,9 @@ function generateTypeImports(types: string[], opFile: string, options: SdkCodege
             rel = rel.replace(/\.ts$/, '.js');
             if (!rel.startsWith('.')) rel = './' + rel;
             lines.push(`import type { ${names.sort().join(', ')} } from '${rel}';`);
+            // Revivers are values, so they need a second, non-type import from the same module.
+            const fromHere = revivers.filter(r => modelOutPaths.get(reviverModelName(r, names)) === typeOutPath);
+            if (fromHere.length > 0) lines.push(`import { ${fromHere.sort().join(', ')} } from '${rel}';`);
         }
 
         for (const type of unresolved) {
@@ -1063,6 +1229,18 @@ function generateTypeImports(types: string[], opFile: string, options: SdkCodege
     }
 
     return lines;
+}
+
+/**
+ * The model a reviver belongs to. `reviveInvoiceOutput` can come from either `Invoice` (with an
+ * `Output` variant) or a model literally called `InvoiceOutput`, so the names actually imported
+ * from the module decide it.
+ */
+function reviverModelName(reviver: string, namesInModule: string[]): string {
+    const stem = reviver.replace(/^revive/, '');
+    if (namesInModule.includes(stem)) return stem;
+    const base = stem.replace(/Output$/, '');
+    return namesInModule.includes(base) ? base : stem;
 }
 
 function deriveTypeImportPath(file: string, template?: string): string {
@@ -1180,6 +1358,7 @@ export function generateSdkOptions(): string {
 const SCAFFOLD_DEP_VERSIONS = {
     zod: '^4.3.6',
     luxon: '^3.5.0',
+    decimalJs: '^10.4.3',
     typesLuxon: '^3.4.2',
     typescript: '^6.0.3',
 } as const;
@@ -1188,8 +1367,10 @@ const SCAFFOLD_DEP_VERSIONS = {
 export interface SdkScaffoldDeps {
     /** Zod schema files are emitted (`config.zod`) — the SDK imports `zod`. */
     zod: boolean;
-    /** Any covered model uses a `date`/`time`/`datetime`/`interval` scalar — the SDK imports `luxon`. */
+    /** Any covered model uses a `date`/`time`/`datetime`/`duration`/`interval` scalar — the SDK imports `luxon`. */
     luxon: boolean;
+    /** Any covered model uses a `decimal` scalar — the SDK imports `decimal.js`. */
+    decimal: boolean;
 }
 
 /**
@@ -1201,6 +1382,8 @@ export function generateSdkPackageJson(input: { name: string; deps: SdkScaffoldD
     const dependencies: Record<string, string> = {};
     if (input.deps.zod) dependencies.zod = SCAFFOLD_DEP_VERSIONS.zod;
     if (input.deps.luxon) dependencies.luxon = SCAFFOLD_DEP_VERSIONS.luxon;
+    // No `@types/` half — decimal.js ships its own declarations.
+    if (input.deps.decimal) dependencies['decimal.js'] = SCAFFOLD_DEP_VERSIONS.decimalJs;
 
     const devDependencies: Record<string, string> = { typescript: SCAFFOLD_DEP_VERSIONS.typescript };
     if (input.deps.luxon) devDependencies['@types/luxon'] = SCAFFOLD_DEP_VERSIONS.typesLuxon;
@@ -1330,6 +1513,10 @@ export function generateAreaClient(input: AreaClientInput): string {
 
     // ── Merge inputs across all inline files ────────────────────────────────
     const collectedMethodLines: string[] = [];
+    const collectedRevivePrelude: string[] = [];
+    let areaNeedsDecimalImport = false;
+    /** Reviver value imports, grouped the same way `typesByImportPath` groups the type imports. */
+    const reviversByImportPath = new Map<string, Set<string>>();
     // Aliases are keyed off method names, which already collide-check below, so a Set is enough.
     const collectedErrorAliases = new Set<string>();
     const seenMethods = new Set<string>();
@@ -1343,7 +1530,9 @@ export function generateAreaClient(input: AreaClientInput): string {
 
     for (const inline of inlineFiles) {
         const includeInternal = inline.codegenOptions.includeInternal ?? false;
-        const { lines: methodLines, methodNames } = generateClientMethods(inline.root, inline.codegenOptions);
+        const { lines: methodLines, methodNames, preludeLines, needsDecimalImport } = generateClientMethods(inline.root, inline.codegenOptions);
+        collectedRevivePrelude.push(...preludeLines);
+        if (needsDecimalImport) areaNeedsDecimalImport = true;
         for (const name of methodNames) {
             if (seenMethods.has(name)) {
                 throw new Error(
@@ -1359,6 +1548,19 @@ export function generateAreaClient(input: AreaClientInput): string {
         if (sdkNeedsBigIntReviver(inline.root, includeInternal)) needsBigIntReviver = true;
         if (sdkNeedsQueryString(inline.root, includeInternal)) needsQueryString = true;
         if (sdkNeedsReadContentType(inline.root, includeInternal)) needsReadContentType = true;
+
+        // Revivers this file's methods call, resolved against the same modelOutPaths. Derived from
+        // the emitted lines, exactly as `generateSdk` does, so the two paths cannot disagree.
+        for (const reviver of usedRevivers(methodLines)) {
+            const stem = reviver.replace(/^revive/, '');
+            const modelOut = inline.codegenOptions.modelOutPaths?.get(stem) ?? inline.codegenOptions.modelOutPaths?.get(stem.replace(/Output$/, ''));
+            if (!modelOut) continue;
+            let rel = relative(dirname(outPath), modelOut).replace(/\.ts$/, '.js');
+            if (!rel.startsWith('.')) rel = './' + rel;
+            const set = reviversByImportPath.get(rel) ?? new Set<string>();
+            set.add(reviver);
+            reviversByImportPath.set(rel, set);
+        }
 
         // Resolve each file's type refs against THIS file's modelOutPaths, but
         // produce import paths relative to the area client's outPath (not the
@@ -1406,10 +1608,14 @@ export function generateAreaClient(input: AreaClientInput): string {
     for (const path of [...typesByImportPath.keys()].sort()) {
         const names = [...typesByImportPath.get(path)!].sort();
         lines.push(`import type { ${names.join(', ')} } from '${path}';`);
+        const revivers = reviversByImportPath.get(path);
+        if (revivers && revivers.size > 0) lines.push(`import { ${[...revivers].sort().join(', ')} } from '${path}';`);
     }
     for (const t of [...unresolvedTypes].sort()) {
         lines.push(`import type { ${t} } from './${pascalToDotCase(t)}.js';`);
     }
+
+    if (areaNeedsDecimalImport) lines.push(DECIMAL_IMPORT);
 
     // Leaf client imports (subareas only — top-level clients live next to sdk.ts).
     const importedClients = new Set<string>();
@@ -1423,6 +1629,11 @@ export function generateAreaClient(input: AreaClientInput): string {
 
     if (collectedErrorAliases.size > 0) {
         lines.push(...collectedErrorAliases);
+        lines.push('');
+    }
+
+    if (collectedRevivePrelude.length > 0) {
+        lines.push(...collectedRevivePrelude);
         lines.push('');
     }
 
