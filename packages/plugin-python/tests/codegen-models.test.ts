@@ -31,7 +31,7 @@ describe('renderPyType', () => {
     });
 
     it('throws on an unmapped scalar name', () => {
-        expect(() => renderPyType({ kind: 'scalar', name: 'decimal' } as any)).toThrow(/unmapped scalar 'decimal'/);
+        expect(() => renderPyType({ kind: 'scalar', name: 'quaternion' } as any)).toThrow(/unmapped scalar 'quaternion'/);
     });
 
     it('renders enum', () => {

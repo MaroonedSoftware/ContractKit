@@ -31,7 +31,7 @@ describe('renderTsScalar', () => {
     });
 
     it('throws on an unmapped scalar name', () => {
-        expect(() => renderTsScalar('decimal' as any)).toThrow(/unmapped scalar 'decimal'/);
+        expect(() => renderTsScalar('quaternion' as any)).toThrow(/unmapped scalar 'quaternion'/);
     });
 });
 

@@ -35,7 +35,7 @@ describe('scalarToSchema', () => {
     });
 
     it('throws on an unmapped scalar name', () => {
-        expect(() => scalarToSchema({ kind: 'scalar', name: 'decimal' } as any)).toThrow(/unmapped scalar 'decimal'/);
+        expect(() => scalarToSchema({ kind: 'scalar', name: 'quaternion' } as any)).toThrow(/unmapped scalar 'quaternion'/);
     });
 });
 

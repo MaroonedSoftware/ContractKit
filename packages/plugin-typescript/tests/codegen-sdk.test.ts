@@ -1294,7 +1294,7 @@ describe('renderTsType', () => {
         });
 
         it('throws on an unmapped scalar name', () => {
-            expect(() => renderTsType({ kind: 'scalar', name: 'decimal' } as any)).toThrow(/unmapped scalar 'decimal'/);
+            expect(() => renderTsType({ kind: 'scalar', name: 'quaternion' } as any)).toThrow(/unmapped scalar 'quaternion'/);
         });
     });
 

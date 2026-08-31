@@ -27,7 +27,7 @@ describe('renderType', () => {
         });
 
         it('throws on an unmapped scalar name', () => {
-            expect(() => renderType({ kind: 'scalar', name: 'decimal' } as any)).toThrow(/unmapped scalar 'decimal'/);
+            expect(() => renderType({ kind: 'scalar', name: 'quaternion' } as any)).toThrow(/unmapped scalar 'quaternion'/);
         });
 
         it('renders z.string() with min/max', () => {
