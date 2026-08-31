@@ -283,12 +283,16 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
 
 /**
  * Render the method-block lines for an operation file as if they were declared inside a
- * client class. Returns one consolidated array of strings (each pre-indented for class body
- * level, with leading blank lines between methods) plus the set of method names emitted —
- * the caller uses the names to detect cross-file collisions when multiple files contribute
- * to the same area-level client.
+ * client class.
  *
  * Skips operations marked `internal` unless `options.includeInternal` is set.
+ *
+ * @returns `lines`, one consolidated array pre-indented for class-body level with leading blank
+ * lines between methods; `methodNames`, used by the caller to detect cross-file collisions when
+ * several files contribute to the same area-level client; `preludeLines`, module-level
+ * declarations the methods reference (decimal revivers and their `__dec` helper) which the caller
+ * must splice in above the class; and `needsDecimalImport`, true when those declarations require
+ * `import { Decimal } from 'decimal.js'` in the emitting file.
  */
 export function generateClientMethods(
     root: OpRootNode,
