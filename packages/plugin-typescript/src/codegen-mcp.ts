@@ -490,23 +490,24 @@ export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
 /** Generate the optional `mcp.router.ts` — the standard ServerKit route wiring for the dispatcher. */
 export function generateMcpRouter(options: { path?: string } = {}): string {
     const path = options.path ?? '/mcp';
-    return `import { ServerKitRouter, requireSignature } from '@maroonedsoftware/koa';
+    return `import { ServerKitRouter, bodyParserMiddleware, requireSignature } from '@maroonedsoftware/koa';
 import { McpDispatcher, createMcpRequestContext, MCP_AUTH_POLICY } from '@maroonedsoftware/mcp';
 
 /** Mount the MCP endpoint onto a ServerKit router. Call \`registerMcpTools(container)\` at startup. */
 export function mountMcp(router: ReturnType<typeof ServerKitRouter>): void {
-    router.post('${path}', requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async (ctx) => {
+    router.post('${path}', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async (ctx) => {
         const dispatcher = ctx.container.get(McpDispatcher);
         const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger });
         if (dispatcher.sessionMode === 'stateful') {
             ctx.respond = false;
             await dispatcher.dispatchStateful(
-                { req: ctx.req, res: ctx.res, body: ctx.request.body, sessionId: ctx.get('mcp-session-id') },
+                { req: ctx.req, res: ctx.res, body: ctx.parsedBody, sessionId: ctx.get('mcp-session-id') },
                 context,
             );
         } else {
-            const response = await dispatcher.dispatch(JSON.parse(ctx.rawBody), context);
+            const response = await dispatcher.dispatch(JSON.parse(String(ctx.rawBody)), context);
             if (response) ctx.body = response;
+            else ctx.status = 202; // a notification — nothing to return
         }
     });
 }
