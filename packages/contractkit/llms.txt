@@ -1,0 +1,107 @@
+# @contractkit/core
+
+> The ContractKit compiler library: the Ohm grammar for the `.ck` language, the parser, the typed
+> AST every plugin consumes, the normalization and validation passes, and the `ContractKitPlugin`
+> interface. Install this directly only to write a plugin or to parse `.ck` files programmatically —
+> to *compile* contracts, install `@contractkit/cli` and a codegen plugin instead.
+
+The pipeline is: `contractkit.ohm` → `semantics.ts` → typed AST (`ast.ts`) → normalization passes →
+`decomposeCk` → each plugin's `generateTargets`. This package owns everything up to and including
+`decomposeCk`. The packages under `@contractkit/plugin-*` are consumers of the AST it produces.
+
+## Install
+
+```bash
+pnpm add @contractkit/core
+```
+
+## Parse a file
+
+`DiagnosticCollector` is a mutable collector — construct one and thread the same instance through
+every call, then check it before trusting the result.
+
+```typescript
+import {
+    parseCk,
+    DiagnosticCollector,
+    applyOptionsDefaults,
+    applyVariableSubstitution,
+    decomposeCk,
+} from '@contractkit/core';
+
+const diag = new DiagnosticCollector();
+const ast = parseCk(source, 'contracts/pets.ck', diag);
+
+applyOptionsDefaults(ast);
+applyVariableSubstitution(ast, diag);
+
+const { contract, op } = decomposeCk(ast);
+```
+
+For a whole project, `validateProject({ files, fallbackKeys?, getKeysForFile?, diag? })` runs parse,
+both normalization passes, `decomposeCk`, and the cross-file validators in one call, returning
+`{ diag, contracts, ops, asts }`. The CLI and the language server both use it, so it is the way to
+get semantics identical to a real build.
+
+## Validation passes
+
+Each takes the shared `DiagnosticCollector` as its last argument and reports into it rather than
+throwing:
+
+- `validateRefs(contractRoots, opRoots, diag, allContractRoots?)` — cross-file type references.
+- `validateInheritance(contractRoots, diag)` — multi-base conflicts, the `override` requirement, cycles.
+- `validateOp(opRoot, diag)` — path-param coverage, service references, signature schemes.
+
+## Response sets
+
+Three helpers answer "who is responsible for this status", and the router and both SDKs share them so
+they cannot disagree. Reach for these rather than re-deriving the rule from `op.responses`:
+
+- `emittedResponses(op)` — what the service returns and a generated router writes.
+- `observableResponses(op)` — what a client receives as a value.
+- `thrownResponses(op)` — the remainder; their bodies are the error contract a client catches.
+
+## Writing a plugin
+
+Implement `ContractKitPlugin`. The hooks, in the order they run: `transform` and `validate` (per file,
+pre-decompose), `validateExtension` (per matching per-operation `plugins.<name>` entry), then
+`generateTargets` — the main codegen hook, called once after every file is parsed and cross-file
+state is resolved. A `command` hook registers a `contractkit <name>` subcommand.
+
+```typescript
+import type { ContractKitPlugin } from '@contractkit/core';
+
+const plugin: ContractKitPlugin = {
+    name: 'my-plugin',
+    cacheKey: 'my-plugin-v1',
+    async generateTargets({ contractRoots, opRoots }, ctx) {
+        ctx.emitFile(`${ctx.rootDir}/out.txt`, render(contractRoots, opRoots));
+    },
+};
+export default plugin;
+```
+
+`ctx.emitFile(path, content, { ifAbsent: true })` writes a *starter* file: created only when absent,
+never overwritten, never orphan-cleaned. Use it for scaffolding the user takes ownership of
+(`package.json`, `tsconfig.json`), never for generated code — generated code must overwrite so it
+stays in sync with the contracts.
+
+## Gotchas
+
+- **The normalization passes are not part of `parseCk`.** They run in the CLI, between `parseCk` and
+  `decomposeCk`. Calling `parseCk` alone gives you the raw, unmerged AST — file-level header globals
+  are not yet merged into operations and `{{variable}}` references are not yet expanded. That is
+  deliberate: the Prettier plugin needs the unmerged form to round-trip a file.
+- **Some AST nodes are union-typed to preserve the authored form** (e.g. `mcp?: boolean | McpConfigNode`).
+  Do not normalize them away; the formatter depends on knowing which form was written.
+- **Use `op.pluginExtensions`, never `op.plugins`.** `op.plugins` is the raw parse tree kept for the
+  formatter; `pluginExtensions` is the resolved one you want at codegen time.
+- Validation reports into the `DiagnosticCollector` rather than throwing — check it, or errors pass silently.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/contractkit/README.md
+- Language reference: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
+- Grammar (authoritative when prose and behaviour disagree): https://github.com/MaroonedSoftware/contractkit/blob/main/packages/contractkit/src/contractkit.ohm
+- AST types: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/contractkit/src/ast.ts
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt

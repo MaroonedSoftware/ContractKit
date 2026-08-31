@@ -16,6 +16,7 @@ grammar and the editor's completion provider consume the same syntax.
 
 ## Docs
 
+- [Full usage guide](llms-full.txt): Everything below, in one self-contained document — install, config, the language, every plugin, the CLI, adopting an existing spec, and the mistakes that actually bite. Start here when you want one file rather than a reading list.
 - [README](README.md): What ContractKit is, install, config skeleton, and a cheat sheet showing every language construct in one block.
 - [Language reference](docs/language.md): Every `.ck` construct in depth — contracts, inheritance, scalar and compound types, constraints, discriminated unions, field syntax, operations, path params, query, headers, request and response blocks, security, service binding, MCP exposure, webhook signatures, per-operation plugin extensions.
 - [Configuration](docs/config.md): `contractkit.config.json` fields, every built-in plugin and its options, and the `ContractKitPlugin` interface for writing your own.
@@ -33,6 +34,24 @@ grammar and the editor's completion provider consume the same syntax.
 - [@contractkit/cli](apps/cli/README.md): The `contractkit` binary — file discovery, config resolution, caching, plugin orchestration.
 - [@contractkit/prettier-plugin](apps/prettier-plugin/README.md): Formats `.ck` files. Documents exactly which authored forms it preserves rather than normalizes.
 - [@contractkit/explorer-ui](packages/explorer-ui/README.md): HTML renderer behind the VS Code API explorer.
+
+## Per-package instructions
+
+Each published package ships an `llms.txt` beside its README, self-contained so it still works when
+the package is read out of `node_modules`: the exact package name, its config block with real key
+names, its full option table, its programmatic API, and the mistakes specific to it.
+
+- [@contractkit/core](packages/contractkit/llms.txt)
+- [@contractkit/cli](apps/cli/llms.txt)
+- [@contractkit/plugin-typescript](packages/plugin-typescript/llms.txt)
+- [@contractkit/plugin-python](packages/plugin-python/llms.txt)
+- [@contractkit/plugin-openapi](packages/plugin-openapi/llms.txt)
+- [@contractkit/plugin-markdown](packages/plugin-markdown/llms.txt)
+- [@contractkit/plugin-bruno](packages/plugin-bruno/llms.txt)
+- [@contractkit/openapi-to-ck](packages/openapi-to-ck/llms.txt)
+- [@contractkit/explorer-ui](packages/explorer-ui/llms.txt)
+- [@contractkit/prettier-plugin](apps/prettier-plugin/llms.txt)
+- [ContractKit VS Code extension](apps/vscode-extension/llms.txt)
 
 ## Optional
 

@@ -1,0 +1,99 @@
+# @contractkit/cli
+
+> The `contractkit` binary. Discovers `.ck` files, resolves config, runs the parse and validation
+> pipeline, and hands the AST to each configured plugin. It generates nothing on its own — every
+> emitted artefact comes from a plugin.
+
+Start here for any "how do I compile my contracts" question. The CLI owns file discovery, the
+incremental cache, optional Prettier formatting of generated TypeScript, and plugin orchestration.
+
+## Install
+
+```bash
+pnpm add -D @contractkit/cli @contractkit/plugin-typescript
+```
+
+The CLI alone produces no output. Pair it with at least one codegen plugin:
+`@contractkit/plugin-typescript`, `-python`, `-openapi`, `-markdown`, `-bruno`.
+
+## Run
+
+```bash
+contractkit                          # compile once
+contractkit -w                       # --watch: recompile on change
+contractkit --force                  # skip the incremental cache, recompile everything
+contractkit -c path/to/config.json   # --config: use a specific config file
+contractkit --help                   # includes registered subcommands
+```
+
+Without `-c`, the CLI walks upward from the working directory looking for
+`contractkit.config.json`.
+
+## Configure
+
+```json
+{
+    "rootDir": ".",
+    "cache": true,
+    "prettier": true,
+    "patterns": ["contracts/**/*.ck"],
+    "plugins": {
+        "@contractkit/plugin-typescript": {
+            "types": { "baseDir": "src/generated/", "output": "{filename}.types.ts" }
+        }
+    }
+}
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rootDir` | `string` | `"."` | Base for resolving relative paths. Supports `~` |
+| `patterns` | `string[]` | `[]` | Globs for the `.ck` files to compile, relative to `rootDir` |
+| `cache` | `boolean \| string` | `false` | On-disk build and HTTP cache. A string overrides the directory (default `.contractkit/cache`) |
+| `prettier` | `boolean` | `false` | Format generated TypeScript with your local Prettier |
+| `plugins` | `object` | `{}` | Map of plugin package name → that plugin's options |
+
+**`plugins` is an object, not an array.** Each key is the exact npm package name, each value is that
+plugin's options — there is no `{ "package": …, "options": … }` wrapper. (`PluginEntry[]` exists in
+the source, but it is the internal normalized form, never the JSON shape.)
+
+**`patterns` is effectively required.** With no patterns the CLI prints help and exits `1`.
+
+Each key must be the exact `name` from the plugin's `package.json`; a key that does not resolve to
+an installed package fails the build with a module-not-found error naming the specifier. Local
+plugins are supported too — a key starting with `.`, `/`, or an absolute path is resolved relative
+to the directory holding the config file.
+
+## Subcommands
+
+Plugins register subcommands via the `command` hook. `import-openapi` ships built in, because
+`@contractkit/openapi-to-ck` is a dependency of the CLI — no install or config needed. The spec path
+is positional:
+
+```bash
+contractkit import-openapi openapi.yaml --output contracts/
+```
+
+`contractkit --help` lists every registered subcommand.
+
+## Programmatic use
+
+`loadConfig(configPath?, startDir?)` returns `{ config, configDir }`, walking upward when no path is
+given. `mergeConfig(...)` folds in CLI flags and normalizes `plugins` into an ordered
+`PluginEntry[]`. The types `DslConfig`, `PluginEntry`, and `ResolvedConfig` describe the shapes.
+
+## Gotchas
+
+- The array form of `plugins` does not work. It is the single most common mistake.
+- `--force` bypasses the cache for a run; it does not disable it in config.
+- `prettier` formats *generated TypeScript*. Formatting `.ck` files themselves is
+  `@contractkit/prettier-plugin`, a separate package.
+- The normalization passes (`applyOptionsDefaults`, `applyVariableSubstitution`) run here in the CLI,
+  between `parseCk` and `decomposeCk` — not inside the parser.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/apps/cli/README.md
+- Configuration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/config.md
+- Tooling (incremental builds, cross-file validation): https://github.com/MaroonedSoftware/contractkit/blob/main/docs/tooling.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt

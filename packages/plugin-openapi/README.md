@@ -1,11 +1,11 @@
-# @contractkit/contractkit-plugin-openapi
+# @contractkit/plugin-openapi
 
 ContractKit plugin that generates an OpenAPI 3.1 YAML specification from `.ck` contract and operation files.
 
 ## Installation
 
 ```bash
-pnpm add @contractkit/contractkit-plugin-openapi
+pnpm add @contractkit/plugin-openapi
 ```
 
 ## Configuration
@@ -13,7 +13,7 @@ pnpm add @contractkit/contractkit-plugin-openapi
 ```json
 {
   "plugins": {
-    "@contractkit/contractkit-plugin-openapi": {
+    "@contractkit/plugin-openapi": {
       "output": "openapi.yaml",
       "info": {
         "title": "Acme API",
@@ -68,7 +68,7 @@ Operations marked `internal` are omitted from the generated spec by default. Set
 ## Programmatic use
 
 ```typescript
-import { createOpenApiPlugin } from '@contractkit/contractkit-plugin-openapi';
+import { createOpenApiPlugin } from '@contractkit/plugin-openapi';
 
 const plugin = createOpenApiPlugin({
   output: 'dist/openapi.yaml',

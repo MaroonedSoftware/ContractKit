@@ -2,7 +2,7 @@
 
 Pure HTML renderer for a ContractKit API explorer. Takes a normalized `PreviewData` snapshot and produces themable HTML strings — no DOM, no framework. The output runs anywhere an HTML string can be inserted: a VS Code webview, a static site, an Electron window, an iframe in a docs site.
 
-`@contractkit/vscode-extension` is the first consumer and ships an inline preview panel built on top of this package. A future `@contractkit/plugin-explorer` will generate a self-contained static API explorer from the same renderer.
+The `contractkit-vscode-extension` extension is the first consumer and ships an inline preview panel built on top of this package. A future `@contractkit/plugin-explorer` will generate a self-contained static API explorer from the same renderer.
 
 ## Installation
 

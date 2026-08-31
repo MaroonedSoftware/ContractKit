@@ -1,0 +1,77 @@
+# @contractkit/plugin-python
+
+> ContractKit's Python SDK generator. Emits Pydantic v2 models and an httpx-based async client
+> package from `.ck` contract and operation files.
+
+Loaded by `@contractkit/cli` through `contractkit.config.json`. It consumes the AST produced by
+`@contractkit/core`. The output is a Python package; this plugin itself is a Node package that runs
+at build time.
+
+## Install
+
+```bash
+pnpm add -D @contractkit/cli @contractkit/plugin-python
+```
+
+## Configure
+
+`plugins` is an **object** keyed by package name, not an array.
+
+```json
+{
+    "rootDir": ".",
+    "patterns": ["contracts/**/*.ck"],
+    "plugins": {
+        "@contractkit/plugin-python": {
+            "baseDir": "clients/python/",
+            "packageName": "acme"
+        }
+    }
+}
+```
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `baseDir` | `string` | `"python-sdk"` | Output directory, relative to `rootDir` |
+| `packageName` | `string` | `"Sdk"` | Used to derive the aggregator client class name |
+| `includeInternal` | `boolean` | `false` | Emit client methods for operations marked `internal` |
+
+`includeInternal` defaults to `false` so consumers of a published SDK do not pick up internal
+operations. Set it to `true` only for an internal-use client.
+
+## What it generates
+
+Under `baseDir`: a Pydantic v2 models module per contract file, an httpx client module per
+operation file, a shared base client, and an aggregator class named from `packageName` that exposes
+each per-file client as a property. Files whose operations are all `internal` (with
+`includeInternal: false`) are skipped rather than emitted empty.
+
+Generation is incremental — a per-file manifest is kept under the CLI cache directory, so unchanged
+`.ck` files are not regenerated. `contractkit --force` bypasses it.
+
+## Programmatic use
+
+```typescript
+import { createPythonSdkPlugin } from '@contractkit/plugin-python';
+
+const plugin = createPythonSdkPlugin({ baseDir: 'clients/python/' }, process.cwd());
+```
+
+Prefer the default export when loading through `contractkit.config.json`; the factory is for
+building the plugin in code.
+
+## Gotchas
+
+- The package name is `@contractkit/plugin-python`. Older docs referred to it as
+  `@contractkit/contractkit-plugin-python-sdk`; that name does not exist.
+- The generated client is **async** (httpx). Call it from an async context.
+- Which statuses come back as a value and which raise is decided by the contract: a bare `404:` is a
+  status the service produces, a `404(documented):` is the error contract the client raises. Both
+  SDKs and the router share that rule.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-python/README.md
+- Configuration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/config.md
+- Language reference: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt

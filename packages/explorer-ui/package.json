@@ -29,7 +29,8 @@
         "./style.css": "./dist/assets/style.css"
     },
     "files": [
-        "dist"
+        "dist",
+        "llms.txt"
     ],
     "scripts": {
         "build": "tsup src/index.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration && mkdir -p dist/assets && cp src/assets/style.css dist/assets/style.css",

@@ -1,0 +1,72 @@
+# @contractkit/prettier-plugin
+
+> A Prettier plugin that formats ContractKit `.ck` files. Idempotent: formatting an already
+> formatted file is a no-op, and formatting a well-formed file leaves it byte-identical.
+
+Formats the contract *source*. Not to be confused with the CLI's `prettier: true` config option,
+which formats the TypeScript that codegen *produces* — different inputs, different packages.
+
+## Install
+
+```bash
+pnpm add -D prettier @contractkit/prettier-plugin
+```
+
+## Configure
+
+```json
+{
+    "plugins": ["@contractkit/prettier-plugin"]
+}
+```
+
+Prettier registers `.ck` as the `ContractDSL` language and applies the plugin automatically. Editors
+with a Prettier integration (VS Code, JetBrains, Neovim) pick it up from your project's
+`package.json`.
+
+```bash
+pnpm prettier --write "**/*.ck"
+```
+
+## What it normalizes
+
+- 4-space indentation (Prettier's default `tabWidth`)
+- Canonical modifier order on fields: `override → deprecated → readonly|writeonly`
+- Multi-base inheritance as `contract C: A & B & { … }`, inline block always last
+- Discriminated unions as `discriminated(by=field, A | B | C)`
+- A leading `|` preserved on multi-line type-alias unions
+- Options-level header globals emitted in their original un-merged form
+
+## What it deliberately preserves
+
+Where the language allows more than one form, the printer reproduces what the author wrote rather
+than imposing a canonical layout. It preserves comment placement (standalone divider vs. doc comment
+vs. inline), operation body key order, blank lines between operations, single-line response blocks,
+comments inside `response`, `options`, and `security` blocks, and whether an options value was
+written bare or quoted.
+
+Two distinctions it will never collapse, because they mean different things to codegen:
+
+- `304: {}` (the service returns that status with no body) vs. `304:` — neither is normalized into
+  the other.
+- A single-line `200: { application/json: Pet }` is not expanded, and an expanded block is not
+  collapsed.
+
+## Gotchas
+
+- **Preservation is a hard requirement, not a stylistic choice.** `tests/round-trip.test.ts` formats
+  every `.ck` file under `contracts/` and asserts the output is unchanged, plus that formatting is a
+  fixed point. A change that makes the printer normalize rather than preserve fails it.
+- This is why the plugin calls `parseCk` directly and needs the **raw, unmerged** AST. The CLI's
+  normalization passes (`applyOptionsDefaults`, `applyVariableSubstitution`) must stay in the CLI;
+  moving either into the parser silently breaks round-tripping.
+- Some AST nodes are union-typed (e.g. `mcp?: boolean | McpConfigNode`) purely to record which form
+  was authored. Do not normalize them away.
+- Most `.ck` constructs format to a fixed multi-line shape regardless of `printWidth`.
+
+## More
+
+- README (the full preservation list): https://github.com/MaroonedSoftware/contractkit/blob/main/apps/prettier-plugin/README.md
+- Prettier integration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/tooling.md
+- Language reference: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt

@@ -89,10 +89,10 @@ For writing your own plugin, see [@contractkit/core](../../packages/contractkit#
 
 ## Subcommands
 
-Plugins can register additional CLI subcommands via the `command` hook. For example, `@contractkit/openapi-to-ck` registers `contractkit openapi-to-ck` for converting an OpenAPI YAML file back into `.ck` files.
+Plugins can register additional CLI subcommands via the `command` hook. `@contractkit/openapi-to-ck` registers `import-openapi`, which converts an OpenAPI YAML or JSON spec back into `.ck` files. It ships as a dependency of the CLI, so the subcommand is available without any extra install or config. The spec path is positional:
 
 ```bash
-contractkit openapi-to-ck --input openapi.yaml --output contracts/
+contractkit import-openapi openapi.yaml --output contracts/
 ```
 
 Run `contractkit --help` to list registered subcommands.

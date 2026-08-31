@@ -65,7 +65,7 @@ The `@contractkit/prettier-plugin` package formats `.ck` files themselves. Add i
 
 ## VS Code Extension
 
-The `@contractkit/vscode-extension` extension provides:
+The `contractkit-vscode-extension` extension provides:
 
 - Syntax highlighting for `.ck` files
 - Autocompletion for types, keywords, modifiers, and model references

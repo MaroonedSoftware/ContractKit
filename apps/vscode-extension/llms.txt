@@ -1,0 +1,57 @@
+# ContractKit VS Code extension
+
+> Language support for `.ck` files in VS Code and Cursor: syntax highlighting, completion, hover,
+> go-to-definition, rename, code actions, live diagnostics from a Language Server, and an API
+> explorer with a try-it panel.
+
+Workspace-internal and built from source — it is not published to the npm registry or the VS Code
+Marketplace. Requires VS Code or Cursor 1.105.1+.
+
+## Install
+
+```bash
+pnpm run vscode:install
+```
+
+Run this from the repo root. It rebuilds and reloads the extension — required after editing
+`syntaxes/ck.tmLanguage.json`, since the TextMate grammar is not hot-reloaded.
+
+## What it provides
+
+- **Editing** — completion for built-in types, modifiers, keywords, HTTP methods, content types,
+  security blocks, and cross-file model references; hover; signature help inside constraint calls
+  like `string(min=…)`; inlay hints showing inherited field names on a model with bases.
+- **Navigation** — go-to-definition from a model reference to its `contract`, and from a `service:`
+  reference to its `options { services { … } }` entry. With the cursor on the *method* segment of
+  `PaymentsService.foo`, it jumps into the TypeScript service source, resolving the module path via
+  the generated server's `package.json` `imports` map or the nearest `tsconfig.json` `paths`.
+  Document and workspace symbols, find-all-references, CodeLens reference counts, folding.
+- **Refactoring** — F2 rename of a model or service across the workspace, validating the new name
+  and rejecting collisions. Quick-fixes for `missing-override`, `spurious-override`, and
+  `unknown-model` (with fuzzy-matched suggestions).
+- **Diagnostics** — parser errors and warnings as you type, with stable codes the quick-fixes
+  dispatch on.
+- **Explorer** — a sidebar tree of every endpoint and model, groupable and filterable, plus a
+  detail panel with schemas, security badges, and a try-it form that sends real requests from the
+  extension host.
+- **Formatting** — Format Document runs the ContractKit printer over the file.
+
+## Gotchas
+
+- Not on the Marketplace; `pnpm run vscode:install` from source is the only install path.
+- After editing `syntaxes/ck.tmLanguage.json`, re-run `pnpm run vscode:install` — reloading the
+  window is not enough.
+- The extension shares its semantics with the CLI through `validateProject` in
+  `@contractkit/core`, so diagnostics match a real build. If the editor and `contractkit` disagree,
+  that is a bug, not a configuration difference.
+- Go-to-definition into TypeScript services depends on the TS plugin's `server.baseDir` in
+  `contractkit.config.json`; without that config the method jump has nothing to resolve against.
+- Try-it sends real network requests from the extension host. Point it at a local or staging server
+  unless you mean otherwise.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/apps/vscode-extension/README.md
+- Editor setup: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/tooling.md
+- Renderer behind the explorer: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/explorer-ui/README.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt
