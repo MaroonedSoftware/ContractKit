@@ -10,7 +10,8 @@ const SECURITY_SCHEME_DOCS: Record<string, string> = {
     none: 'No authentication required\n\nMarks the endpoint as public, explicitly overriding any global `security` default.',
 };
 
-const BUILTIN_TYPE_DOCS: Record<string, string> = {
+/** Hover text per builtin scalar. Exported so `scalar-coverage.test.ts` can assert completeness. */
+export const BUILTIN_TYPE_DOCS: Record<string, string> = {
     string: 'Text string — Zod `z.string()`',
     number: 'Floating-point number — Zod `z.coerce.number()`',
     int: 'Integer number — Zod `z.coerce.number().int()`',
@@ -20,6 +21,9 @@ const BUILTIN_TYPE_DOCS: Record<string, string> = {
     time: 'Time — Luxon `DateTime` custom validator',
     datetime: 'ISO 8601 datetime — Luxon `DateTime` custom validator',
     duration: 'ISO 8601 duration — Luxon `Duration` custom validator (e.g. `PT1H30M`, `P1D`)',
+    interval: 'ISO 8601 interval — Luxon `Interval` custom validator, normalized back to a string',
+    decimal:
+        'Exact decimal — decimal.js `Decimal`, sent as a quoted string (e.g. `"1250.00"`).\n\nUnlike `number` it never passes through a float. `scale=` caps the decimal places accepted; the wire value stays normalized, so `"1250.00"` reads back as `"1250"`.',
     email: 'Email address — Zod `z.email()`',
     url: 'URL string — Zod `z.url()`',
     uuid: 'UUID string — Zod `z.uuid()`',

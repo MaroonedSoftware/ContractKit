@@ -96,3 +96,14 @@ least two members are required. Failures emit **warnings, not errors**.
   `.transform()`s back to ISO on output
 - `bigint` → `z.coerce.bigint()`; the SDK generates bigint-aware JSON helpers in
   `sdk-options.ts`
+- `decimal` → decimal.js `Decimal`, for money and anything else that must be exact.
+  Travels as a **quoted JSON string**; `_ZodDecimal` **rejects a raw JSON number** rather
+  than coercing it, since by then the value has already been through a double. It carries
+  no output `.transform()` — unlike `_ZodInterval` — because `isRevalidatable` treats every
+  scalar as idempotent under re-parse and `server.validateResponses` depends on that.
+  `scale=` is a validation constraint (at most N decimal places), **not** formatting: the
+  wire form is decimal.js-normalized, so `"1250.00"` reads back as `"1250"`. The router
+  cannot make it otherwise — Koa serializes `ctx.body` with a `JSON.stringify` we have no
+  replacer for, which is also why the prelude sets `Decimal.set({ toExpNeg, toExpPos })` to
+  keep values out of exponential notation. `min`/`max` are kept as source strings, never
+  coerced through `Number()`.

@@ -1,6 +1,7 @@
 import { SemanticTokens, SemanticTokensLegend, SemanticTokensParams } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { WorkspaceIndex } from './workspace-index.js';
+import { SCALAR_NAMES } from '@contractkit/core';
 
 export const TOKEN_TYPES = ['type', 'class', 'interface', 'keyword', 'modifier', 'property', 'string', 'number', 'regexp', 'comment'] as const;
 export const TOKEN_MODIFIERS = ['defaultLibrary', 'deprecated', 'readonly'] as const;
@@ -45,26 +46,7 @@ const KEYWORDS = new Set([
 
 const MODIFIERS = new Set(['readonly', 'writeonly', 'deprecated', 'override', 'internal', 'public']);
 
-const SCALAR_TYPES = new Set([
-    'string',
-    'number',
-    'int',
-    'bigint',
-    'boolean',
-    'date',
-    'time',
-    'datetime',
-    'duration',
-    'interval',
-    'email',
-    'url',
-    'uuid',
-    'unknown',
-    'null',
-    'object',
-    'binary',
-    'json',
-]);
+const SCALAR_TYPES: ReadonlySet<string> = SCALAR_NAMES;
 
 const MAX_FILE_SIZE = 200_000;
 

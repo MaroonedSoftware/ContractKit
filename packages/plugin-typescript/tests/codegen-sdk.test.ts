@@ -1859,7 +1859,7 @@ describe('generateAreaClient — <Area>Client emission', () => {
 
 describe('generateSdkPackageJson', () => {
     it('emits a valid package.json with the given name and standard fields', () => {
-        const pkg = JSON.parse(generateSdkPackageJson({ name: 'my-sdk', deps: { zod: false, luxon: false } }));
+        const pkg = JSON.parse(generateSdkPackageJson({ name: 'my-sdk', deps: { zod: false, luxon: false, decimal: false } }));
         expect(pkg.name).toBe('my-sdk');
         expect(pkg.type).toBe('module');
         expect(pkg.exports['.'].types).toBe('./dist/index.d.ts');
@@ -1868,25 +1868,33 @@ describe('generateSdkPackageJson', () => {
     });
 
     it('omits the dependencies block entirely when neither zod nor luxon is used', () => {
-        const pkg = JSON.parse(generateSdkPackageJson({ name: 'sdk', deps: { zod: false, luxon: false } }));
+        const pkg = JSON.parse(generateSdkPackageJson({ name: 'sdk', deps: { zod: false, luxon: false, decimal: false } }));
         expect(pkg.dependencies).toBeUndefined();
         expect(pkg.devDependencies['@types/luxon']).toBeUndefined();
     });
 
     it('adds zod as a runtime dependency when zod output is enabled', () => {
-        const pkg = JSON.parse(generateSdkPackageJson({ name: 'sdk', deps: { zod: true, luxon: false } }));
+        const pkg = JSON.parse(generateSdkPackageJson({ name: 'sdk', deps: { zod: true, luxon: false, decimal: false } }));
         expect(pkg.dependencies.zod).toBeDefined();
         expect(pkg.dependencies.luxon).toBeUndefined();
     });
 
     it('adds luxon (runtime) and @types/luxon (dev) when a date/time scalar is used', () => {
-        const pkg = JSON.parse(generateSdkPackageJson({ name: 'sdk', deps: { zod: false, luxon: true } }));
+        const pkg = JSON.parse(generateSdkPackageJson({ name: 'sdk', deps: { zod: false, luxon: true, decimal: false } }));
         expect(pkg.dependencies.luxon).toBeDefined();
         expect(pkg.devDependencies['@types/luxon']).toBeDefined();
     });
 
+    it('adds decimal.js, with no @types half, when a decimal scalar is used', () => {
+        const pkg = JSON.parse(generateSdkPackageJson({ name: 'sdk', deps: { zod: false, luxon: false, decimal: true } }));
+        expect(pkg.dependencies['decimal.js']).toBeDefined();
+        // decimal.js ships its own declarations, unlike luxon.
+        expect(pkg.devDependencies['@types/decimal.js']).toBeUndefined();
+        expect(pkg.dependencies.luxon).toBeUndefined();
+    });
+
     it('ends with a trailing newline', () => {
-        expect(generateSdkPackageJson({ name: 'sdk', deps: { zod: false, luxon: false } }).endsWith('}\n')).toBe(true);
+        expect(generateSdkPackageJson({ name: 'sdk', deps: { zod: false, luxon: false, decimal: false } }).endsWith('}\n')).toBe(true);
     });
 });
 

@@ -102,7 +102,8 @@ export interface SdkConfig {
      * write-once: the files are created only when absent and are never overwritten or
      * cleaned up on later builds, so any edits you make to them are preserved.
      * Dependency ranges are derived from the contracts (always `zod` when `zod: true`;
-     * `luxon` when any covered model uses a date/time/datetime/interval scalar).
+     * `luxon` when any covered model uses a date/time/datetime/duration/interval scalar;
+     * `decimal.js` when any uses a decimal).
      */
     scaffold?: boolean;
 }
@@ -787,9 +788,13 @@ function collectSdkOutput(
         const coveredRoots = sdkContractEntries.map(e => e.ast);
         const deps: SdkScaffoldDeps = {
             zod: !!config.zod,
-            luxon: coveredRoots.some(
-                r => rootNeedsScalar(r, 'datetime') || rootNeedsScalar(r, 'date') || rootNeedsScalar(r, 'time') || rootNeedsScalar(r, 'interval'),
+            // `duration` belongs here too: `generateContract` imports `Duration` from luxon for it,
+            // so a contract whose only temporal scalar is a duration used to scaffold a package.json
+            // with no luxon dependency and fail to compile.
+            luxon: coveredRoots.some(r =>
+                (['datetime', 'date', 'time', 'duration', 'interval'] as const).some(name => rootNeedsScalar(r, name)),
             ),
+            decimal: coveredRoots.some(r => rootNeedsScalar(r, 'decimal')),
         };
         globalFiles.push({
             relativePath: join(sdkBase, 'package.json'),

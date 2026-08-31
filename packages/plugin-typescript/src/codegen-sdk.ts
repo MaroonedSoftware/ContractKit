@@ -1180,6 +1180,7 @@ export function generateSdkOptions(): string {
 const SCAFFOLD_DEP_VERSIONS = {
     zod: '^4.3.6',
     luxon: '^3.5.0',
+    decimalJs: '^10.4.3',
     typesLuxon: '^3.4.2',
     typescript: '^6.0.3',
 } as const;
@@ -1188,8 +1189,10 @@ const SCAFFOLD_DEP_VERSIONS = {
 export interface SdkScaffoldDeps {
     /** Zod schema files are emitted (`config.zod`) — the SDK imports `zod`. */
     zod: boolean;
-    /** Any covered model uses a `date`/`time`/`datetime`/`interval` scalar — the SDK imports `luxon`. */
+    /** Any covered model uses a `date`/`time`/`datetime`/`duration`/`interval` scalar — the SDK imports `luxon`. */
     luxon: boolean;
+    /** Any covered model uses a `decimal` scalar — the SDK imports `decimal.js`. */
+    decimal: boolean;
 }
 
 /**
@@ -1201,6 +1204,8 @@ export function generateSdkPackageJson(input: { name: string; deps: SdkScaffoldD
     const dependencies: Record<string, string> = {};
     if (input.deps.zod) dependencies.zod = SCAFFOLD_DEP_VERSIONS.zod;
     if (input.deps.luxon) dependencies.luxon = SCAFFOLD_DEP_VERSIONS.luxon;
+    // No `@types/` half — decimal.js ships its own declarations.
+    if (input.deps.decimal) dependencies['decimal.js'] = SCAFFOLD_DEP_VERSIONS.decimalJs;
 
     const devDependencies: Record<string, string> = { typescript: SCAFFOLD_DEP_VERSIONS.typescript };
     if (input.deps.luxon) devDependencies['@types/luxon'] = SCAFFOLD_DEP_VERSIONS.typesLuxon;

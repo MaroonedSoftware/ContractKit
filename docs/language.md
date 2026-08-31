@@ -234,10 +234,12 @@ contract deprecated format(input=camel) mode(strip) OldWebhookPayload: {
 | `number`   | `z.coerce.number()`       |                                                                                 |
 | `int`      | `z.coerce.number().int()` |                                                                                 |
 | `bigint`   | `z.coerce.bigint()`       |                                                                                 |
+| `decimal`  | decimal.js `Decimal`      | Exact decimal sent as a quoted string; see below                                |
 | `boolean`  | `z.coerce.boolean()`      |                                                                                 |
 | `date`     | `z.string().date()`       | ISO 8601 date string                                                            |
 | `time`     | `z.string().time()`       | ISO 8601 time string                                                            |
 | `datetime` | Luxon `DateTime`          | Full ISO 8601 datetime                                                          |
+| `duration` | Luxon `Duration`          | ISO 8601 duration (e.g. `PT1H30M`, `P1D`)                                       |
 | `interval` | Luxon `Interval`          | ISO 8601 interval (e.g. `2024-01-01/2024-12-31`); serialized back to ISO string |
 | `email`    | `z.string().email()`      |                                                                                 |
 | `url`      | `z.string().url()`        |                                                                                 |
@@ -247,6 +249,39 @@ contract deprecated format(input=camel) mode(strip) OldWebhookPayload: {
 | `object`   | `z.object({})`            | Untyped/passthrough object                                                      |
 | `binary`   | `z.custom<Buffer>(...)`   | Node.js Buffer validation                                                       |
 | `json`     | Recursive `_ZodJson`      | Any JSON-serializable value                                                     |
+
+### `decimal`
+
+`number` compiles to `z.coerce.number()` — an IEEE-754 double. Use `decimal` wherever a value has
+to be exact: money, tax rates, anything a rounding error would corrupt.
+
+```
+contract Payslip: {
+    gross: decimal(min=0, scale=2)
+    rate: decimal
+}
+```
+
+A decimal travels as a **quoted JSON string** (`{"gross": "1250.00"}`) and is parsed into a
+decimal.js `Decimal` — the same class Prisma hands you for a `Decimal` column, so a value moves
+between the two with no conversion. A raw JSON number is **rejected**, not coerced: by the time one
+arrives it has already been through a double, which is exactly the loss the type prevents.
+
+| Argument | Meaning                                                                  |
+| -------- | ------------------------------------------------------------------------ |
+| `min`    | Minimum value, inclusive. Compared as an exact decimal, never as a float. |
+| `max`    | Maximum value, inclusive.                                                |
+| `scale`  | Maximum number of decimal places accepted.                               |
+
+`scale` is a **validation** constraint — "at most N decimal places" — not a formatting directive.
+The wire value stays decimal.js-normalized, so `"1250.00"` reads back as `"1250"`; the two are the
+same number. Format at the display edge if you need trailing zeros. This is the same meaning
+`scale` carries in OpenAPI `pattern`, pydantic `condecimal(decimal_places=)`, and Prisma
+`@db.Decimal(_, n)`.
+
+Generated code sets `Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 })` so values never serialize in
+exponential notation — without it `0.00000001` would go out as `"1e-8"`. Note this is global
+decimal.js configuration and affects every `Decimal` in the consuming process.
 
 ---
 
