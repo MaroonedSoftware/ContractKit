@@ -1,0 +1,64 @@
+# @contractkit/explorer-ui
+
+> The HTML renderer behind ContractKit's API explorer. Pure functions that turn resolved contract
+> and operation data into HTML strings — no DOM, no framework, no bundler. Themable entirely
+> through CSS custom properties.
+
+Used by the ContractKit VS Code extension to render its explorer webview. Install it directly only
+if you are building your own explorer surface; it is not part of a normal `contractkit` build and is
+not a codegen plugin.
+
+## Install
+
+```bash
+pnpm add @contractkit/explorer-ui
+```
+
+## Use
+
+```typescript
+import { renderApp, type PreviewData } from '@contractkit/explorer-ui';
+
+const html: string = renderApp(data);   // data: PreviewData
+```
+
+`renderApp` is the whole-page entry point: sidebar, overview, every operation, every model. Compose
+a narrower surface from the individual renderers instead:
+
+| Export | Renders |
+| --- | --- |
+| `renderApp(data)` | The full explorer page |
+| `renderItemPage(...)`, `listSelections`, `operationId`, `modelId` | A single-item page and its selection helpers |
+| `renderOperation(op)`, `operationAnchor` | One operation |
+| `renderModel(m)`, `renderFieldRows`, `modelAnchor` | One model and its field table |
+| `renderType`, `renderSchemaTree` | A type expression; an expanded schema tree |
+| `renderTryIt` | The try-it request panel |
+| `renderCodeSamples` | Per-language request samples |
+| `constraintSummary` | A field's constraints as readable text |
+| `renderMarkdown` | Contract descriptions and `#` comments |
+| `escapeHtml`, `html`, `raw`, `slug` | The tagged-template helpers the renderers are built from |
+
+Types: `PreviewData`, `PreviewConfigMeta`, `PreviewServer`, `PreviewWarning`, `ResolvedOperation`,
+`ResolvedModel`, `ItemSelection`.
+
+## Theming
+
+Output carries `ce-` prefixed class names and reads colours and spacing from CSS custom properties,
+so it inherits a host theme (VS Code light/dark, say) without a rebuild. Style it from outside; do
+not fork the renderers to change appearance.
+
+## Gotchas
+
+- Every function returns an HTML **string**. Nothing is mounted, no stylesheet is injected, and no
+  interactivity is attached — supply the surrounding document, the CSS, and any behaviour yourself.
+- Input is *resolved* data (`ResolvedOperation`, `ResolvedModel`), not a raw `@contractkit/core`
+  AST. Resolve first.
+- `html` and `raw` exist because the renderers escape by default. Interpolating pre-rendered HTML
+  through anything other than `raw` will double-escape it; passing untrusted text through `raw`
+  defeats the escaping.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/explorer-ui/README.md
+- VS Code extension that consumes it: https://github.com/MaroonedSoftware/contractkit/blob/main/apps/vscode-extension/README.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt

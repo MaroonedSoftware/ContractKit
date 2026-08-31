@@ -35,22 +35,23 @@ changes.
 pnpm add -D @contractkit/cli @contractkit/plugin-typescript
 ```
 
-Create `contractkit.config.json` next to your contracts:
+Create `contractkit.config.json` next to your contracts. `patterns` tells the CLI which files to
+compile, and `plugins` maps each plugin's package name to its options:
 
 ```json
 {
     "rootDir": ".",
-    "plugins": [
-        {
-            "package": "@contractkit/plugin-typescript",
-            "options": {
-                "contracts": { "outDir": "src/generated" },
-                "operations": { "outDir": "src/generated" }
-            }
+    "patterns": ["contracts/**/*.ck"],
+    "plugins": {
+        "@contractkit/plugin-typescript": {
+            "types": { "baseDir": "src/generated/", "output": "{filename}.types.ts" }
         }
-    ]
+    }
 }
 ```
+
+That emits plain TypeScript types. Swap `types` for `zod`, `server`, `sdk`, or `mcp` — or combine
+them — as you need more; see [Configuration](docs/config.md) for every sub-config.
 
 Then compile:
 
@@ -74,8 +75,11 @@ artefact comes from a plugin.
 | [Tooling](docs/tooling.md) | SDK generation, docs generation, incremental compilation, cross-file validation, Prettier, the VS Code extension |
 
 Per-package READMEs live under [`packages/`](packages) and [`apps/`](apps). Working contracts to
-copy from are in [`contracts/`](contracts). [`llms.txt`](llms.txt) is a machine-readable index of
-all of it.
+copy from are in [`contracts/`](contracts).
+
+For AI assistants: [`llms.txt`](llms.txt) is a machine-readable index of all of it, and
+[`llms-full.txt`](llms-full.txt) is the same ground covered in one self-contained document. Every
+published package also ships its own `llms.txt` beside its README.
 
 ## Cheat sheet
 
@@ -156,7 +160,7 @@ operation(internal) /pets/{id}: {        # internal | deprecated | public
             409(documented): { application/json: Problem }   # declared, but not returned
         }
         plugins: {
-            bruno: { folder: "Pets" }    # plugin values are JSON-typed
+            bruno: { template: "file://pets.yml" }   # plugin values are JSON-typed
         }
     }
 }
@@ -178,7 +182,7 @@ All packages publish under the `@contractkit` npm scope.
 | [`@contractkit/openapi-to-ck`](packages/openapi-to-ck) | OpenAPI YAML → `.ck`, for adopting an existing API |
 | [`@contractkit/explorer-ui`](packages/explorer-ui) | HTML renderer behind the VS Code API explorer |
 | [`@contractkit/prettier-plugin`](apps/prettier-plugin) | Prettier plugin for `.ck` files |
-| `@contractkit/vscode-extension` | VS Code / Cursor language support — LSP plus syntax highlighting ([source](apps/vscode-extension)) |
+| `contractkit-vscode-extension` | VS Code / Cursor language support — LSP plus syntax highlighting. Built from source, not published ([source](apps/vscode-extension)) |
 
 ## Contributing
 

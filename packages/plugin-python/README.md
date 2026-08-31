@@ -1,11 +1,11 @@
-# @contractkit/contractkit-plugin-python-sdk
+# @contractkit/plugin-python
 
 ContractKit plugin that generates a Python SDK from `.ck` contract and operation files. Produces [Pydantic v2](https://docs.pydantic.dev/latest/) models and [httpx](https://www.python-httpx.org/)-based client classes.
 
 ## Installation
 
 ```bash
-pnpm add @contractkit/contractkit-plugin-python-sdk
+pnpm add @contractkit/plugin-python
 ```
 
 ## Configuration
@@ -13,7 +13,7 @@ pnpm add @contractkit/contractkit-plugin-python-sdk
 ```json
 {
   "plugins": {
-    "@contractkit/contractkit-plugin-python-sdk": {
+    "@contractkit/plugin-python": {
       "baseDir": "python-sdk",
       "packageName": "acme"
     }
@@ -81,7 +81,7 @@ httpx
 ## Programmatic use
 
 ```typescript
-import { createPythonSdkPlugin } from '@contractkit/contractkit-plugin-python-sdk';
+import { createPythonSdkPlugin } from '@contractkit/plugin-python';
 
 const plugin = createPythonSdkPlugin({
   baseDir: 'sdks/python',

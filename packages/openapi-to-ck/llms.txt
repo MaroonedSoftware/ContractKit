@@ -1,0 +1,73 @@
+# @contractkit/openapi-to-ck
+
+> The reverse direction: converts an existing OpenAPI 2.0, 3.0, or 3.1 spec into `.ck` contract
+> files. Use it once, to adopt ContractKit for an API that already has a spec — after that the `.ck`
+> files are the source of truth and the spec is generated from them.
+
+Ships as a dependency of `@contractkit/cli`, so the `import-openapi` subcommand is available with no
+extra install and no config wiring. The library is also importable for programmatic conversion.
+
+## CLI
+
+The spec path is a **positional** argument, not a flag:
+
+```bash
+contractkit import-openapi openapi.yaml --output contracts/
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-o, --output <dir>` | current directory | Where `.ck` files are written |
+| `--split <mode>` | `by-tag` | `by-tag` (one file per OpenAPI tag) or `single` |
+| `--no-comments` | — | Skip OpenAPI descriptions instead of emitting them as `#` comments |
+| `--error-responses <mode>` | `documented` | How a 4xx/5xx that declares a body is imported |
+
+## `--error-responses`, and why it matters
+
+OpenAPI cannot say whether a handler *returns* a status or merely documents it. `.ck` distinguishes
+the two, and every generator downstream depends on the answer:
+
+- `documented` (default) — imports as `404(documented): { … }`. The body is the error contract: the
+  SDK throws it, and the generated router is not responsible for writing it. This is what an error
+  response almost always is.
+- `emitted` — imports as `404: { … }`, meaning the service produces it and the router writes it.
+
+Pick `emitted` only if you know the handlers really do return those statuses as ordinary results.
+
+## Programmatic use
+
+```typescript
+import { convertOpenApiToCk } from '@contractkit/openapi-to-ck';
+
+const { files, warnings } = await convertOpenApiToCk({
+    input: 'openapi.yaml',          // file path, JSON/YAML string, or a parsed document object
+    split: 'by-tag',
+    includeComments: true,
+    errorResponses: 'documented',
+    onWarning: w => console.warn(`${w.severity} ${w.path}: ${w.message}`),
+});
+
+for (const [name, source] of files) writeFileSync(`contracts/${name}`, source);
+```
+
+`files` is a `Map<filename, ckSource>` — nothing is written to disk for you. Lower-level pieces are
+exported too: `astToCk`, `serializeType`, `normalize`, `detectCircularRefs`, `extractRefName`,
+`schemasToModels`, `schemaToTypeNode`, `sanitizeName`, `pathsToRoutes`, `splitByTag`,
+`mergeIntoSingle`.
+
+## Gotchas
+
+- The subcommand is `import-openapi`. There is no `openapi-to-ck` subcommand and no `--input` flag.
+- **Read the warnings.** Conversion is lossy where OpenAPI is more permissive than `.ck` — circular
+  `$ref`s, unnameable inline schemas, constructs with no `.ck` equivalent. Warnings carry a JSON
+  pointer into the spec so you can go look.
+- Treat the output as a **starting point** to review and commit, not a build step. Do not re-run it
+  on every build; once imported, the `.ck` files are the source of truth.
+- For the forward direction (`.ck` → OpenAPI), use `@contractkit/plugin-openapi`.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/openapi-to-ck/README.md
+- Language reference: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
+- Response semantics (`documented` vs emitted): https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt

@@ -15,11 +15,13 @@ You typically don't depend on `@contractkit/core` directly — it's a transitive
 ```typescript
 import {
     parseCk,
-    Diagnostics,
+    DiagnosticCollector,
     applyOptionsDefaults,
+    applyVariableSubstitution,
+    decomposeCk,
     validateRefs,
     validateInheritance,
-    validateOperation,
+    validateOp,
     validateProject,
     type ContractKitPlugin,
     type PluginContext,
@@ -36,12 +38,13 @@ import {
 | Export | Purpose |
 | --- | --- |
 | `parseCk(source, file, diag)` | Parse a `.ck` source string into a typed AST. Errors and warnings are collected on the supplied `Diagnostics` instance. |
-| `Diagnostics` | Mutable error/warning collector passed through every parsing and validation pass. |
+| `DiagnosticCollector` | Mutable error/warning collector passed through every parsing and validation pass. Construct one and thread the same instance through every call. |
 | `applyOptionsDefaults(root)` | Normalization pass that merges file-level `options { request/response: { headers } }` into each operation. Run after `parseCk`, before downstream consumers. |
 | `applyVariableSubstitution(root, diag, fallbackKeys?)` | Normalization pass that expands `{{name}}` references in every string field of the AST using `root.meta` first, then the optional `fallbackKeys` map. Run after `applyOptionsDefaults`. |
-| `validateRefs(roots)` | Cross-file type-reference validation. Warns when a model is referenced but not declared anywhere. |
-| `validateInheritance(roots)` | Multi-base inheritance validation — cross-base conflicts, `override` requirement, cycle detection. |
-| `validateOperation(route, root)` | Validates an operation against config constraints (path-param coverage, service references, signature schemes). |
+| `decomposeCk(ast)` | Splits a unified `CkRootNode` into the `{ contract, op }` root pair every plugin's `generateTargets` receives. Run after the normalization passes. |
+| `validateRefs(contractRoots, opRoots, diag, allContractRoots?)` | Cross-file type-reference validation. Warns when a model is referenced but not declared anywhere. |
+| `validateInheritance(contractRoots, diag)` | Multi-base inheritance validation — cross-base conflicts, `override` requirement, cycle detection. |
+| `validateOp(opRoot, diag)` | Validates an operation against config constraints (path-param coverage, service references, signature schemes). |
 | `validateProject({ files, fallbackKeys?, getKeysForFile?, diag? })` | Runs parse + `applyOptionsDefaults` + `applyVariableSubstitution` + `decomposeCk` + cross-file `validateRefs`/`validateInheritance`/`validateOp` in one call. Returns `{ diag, contracts, ops, asts }`. `getKeysForFile(filePath)` supplies per-file fallback keys for workspaces with multiple `contractkit.config.json` files; it falls through to `fallbackKeys` when it returns `undefined`. Designed as the shared semantics source for the CLI and the language server. |
 | `emittedResponses(op)` | The declared responses the service returns and a generated router writes: those with a body block, plus bodyless 2xx, minus any marked `(documented)`. Status-sorted. |
 | `observableResponses(op)` | The declared responses a client receives as a value rather than an exception — every emitted one, plus every non-emitted status below 400 (a `304` produced by middleware, say). Status-sorted. |

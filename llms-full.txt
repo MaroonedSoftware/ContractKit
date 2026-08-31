@@ -1,0 +1,373 @@
+# ContractKit — full usage guide
+
+> A DSL for API contracts. One `.ck` file is the source of truth; Zod schemas, a Koa router,
+> TypeScript and Python SDK clients, an OpenAPI 3.1 spec, Markdown docs, and a Bruno collection are
+> all generated from it and regenerated when it changes.
+
+This is the single self-contained document: install, config, the language, every plugin, the CLI,
+and the mistakes that actually bite. [`llms.txt`](llms.txt) is the shorter index that links out to
+the individual documents instead.
+
+## Install
+
+```bash
+pnpm add -D @contractkit/cli @contractkit/plugin-typescript
+```
+
+The CLI generates nothing on its own — it discovers files, validates, and orchestrates plugins.
+Every artefact comes from a plugin, so install at least one.
+
+Create `contractkit.config.json`:
+
+```json
+{
+    "rootDir": ".",
+    "patterns": ["contracts/**/*.ck"],
+    "plugins": {
+        "@contractkit/plugin-typescript": {
+            "types": { "baseDir": "src/generated/", "output": "{filename}.types.ts" }
+        }
+    }
+}
+```
+
+Then:
+
+```bash
+contractkit                          # compile once
+contractkit -w                       # --watch: recompile on change
+contractkit --force                  # skip the incremental cache
+contractkit -c path/to/config.json   # --config: use a specific config file
+```
+
+Without `-c`, the CLI walks upward from the working directory looking for the config file.
+
+## Config reference
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rootDir` | `string` | `"."` | Base for resolving relative paths. Supports `~` |
+| `patterns` | `string[]` | `[]` | Globs for the `.ck` files to compile, relative to `rootDir` |
+| `cache` | `boolean \| string` | `false` | On-disk build and HTTP cache; a string overrides the directory (default `.contractkit/cache`) |
+| `prettier` | `boolean` | `false` | Format generated TypeScript with your local Prettier |
+| `plugins` | `object` | `{}` | Map of plugin package name → that plugin's options |
+
+Two things to get right:
+
+- **`plugins` is an object keyed by package name, not an array.** There is no
+  `{ "package": …, "options": … }` wrapper. The `PluginEntry[]` shape in the source is the internal
+  normalized form, never the JSON.
+- **`patterns` is effectively required.** With none, the CLI prints help and exits `1`.
+
+A key must be the exact `name` from that plugin's `package.json`; anything that does not resolve
+fails the build with a module-not-found error. A key beginning with `.`, `/`, or an absolute path
+loads a local plugin, resolved relative to the config file's directory.
+
+## The `.ck` language
+
+Every construct in one block:
+
+```
+# ─── File metadata (optional, one per file) ──────────────────────────────
+options {
+    keys: {
+        area: billing                    # interpolated elsewhere as {{area}}
+    }
+    services: {
+        PetService: "#modules/pet/pet.service.js"
+    }
+    request:  { headers: { x-request-id: string } }   # merged into every operation
+    response: { headers: { x-trace-id: string } }
+    security: { policy: authenticated }
+}
+
+# ─── Contracts ───────────────────────────────────────────────────────────
+contract Pet: {                          # a model
+    id: readonly uuid                    # readonly — dropped from Input variants
+    secret: writeonly string             # writeonly — dropped from Output variants
+    name: string(min=1, max=80)          # constraints
+    tags?: array(string, min=1)          # optional
+    owner: Person | null                 # nullable via union
+    status: enum(available, sold) = available   # default
+    legacy: deprecated string
+    meta: record(string, json)
+    pair: tuple(int, string)
+    self: lazy(Pet)                      # self-reference
+}
+
+contract Admin: Person & Auditable & {   # multi-base inheritance
+    role: string
+}
+contract Id: uuid                        # type alias
+contract Shape: discriminated(by=kind, Circle, Square)
+
+contract mode(loose) Loose: { a: string }             # unknown keys pass through
+contract format(input=snake) Snake: { userId: int }   # wire casing
+
+# ─── Operations ──────────────────────────────────────────────────────────
+operation(internal) /pets/{id}: {        # internal | deprecated | public
+    params: {
+        id: uuid
+    }
+    security: { policy: petsWrite }      # or `security: none`
+
+    get: { # doc comment
+        name: Get a pet                  # human label for docs
+        sdk: getPet                      # SDK method name
+        service: PetService.getById      # handler binding
+        mcp: { hint: readOnly }          # expose as an MCP tool
+        signature: webhookKey            # HMAC-verified body
+
+        query:   { page?: int = 1 }
+        headers: { x-api-key: string }
+        request: { application/json: PetInput }
+
+        response: {
+            200: {                       # has a block, or is 2xx => the service returns it
+                image/png: binary        # several mimes: the service picks one
+                image/jpeg: binary
+                headers: { etag?: string }
+            }
+            202: { application/json: JobRef }
+            304: {}                      # empty block: returned, carries nothing
+            404:                         # bare non-2xx: documented, reaches clients as an error
+            409(documented): { application/json: Problem }   # declared, but not returned
+        }
+        plugins: {
+            bruno: { template: "file://pets.yml" }   # plugin values are JSON-typed
+        }
+    }
+}
+```
+
+### Responses: who is responsible for a status
+
+This is the distinction the whole toolchain turns on, and the one most often got wrong.
+
+- **A status with a body block, or any bodyless 2xx** — the service produces it. The generated
+  router writes it; both SDKs hand it back as a value.
+- **A bare non-2xx (`404:`) or one marked `(documented)`** — the service is not responsible for it.
+  Its declared body is the *error contract*: the SDK throws it, the router does not write it.
+- **`304: {}` and `304:` mean different things.** The first says the service returns that status
+  with no body; the second documents a status something else produces. Neither is interchangeable
+  and the formatter will not collapse one into the other.
+
+`@contractkit/core` exports `emittedResponses(op)`, `observableResponses(op)`, and
+`thrownResponses(op)`. The router and both SDKs share them, so they cannot disagree — use them
+rather than re-deriving the rule.
+
+### Variables
+
+`{{name}}` in any string resolves from the file's `options { keys }` first, then from a
+workspace-wide fallback assembled from every plugin entry's reserved `keys` option. Substitution
+happens in the CLI, after parsing.
+
+## Plugins
+
+Each is configured under its own key in `plugins`. `includeInternal` recurs across them and the
+default is **not** uniform — the collection meant for the owning team includes internal operations,
+the artefacts meant for consumers do not.
+
+| Package | Emits | `includeInternal` default |
+| --- | --- | --- |
+| `@contractkit/plugin-typescript` | Koa routers, TS SDK, Zod schemas, plain types, MCP tools | `true` (server), `false` (sdk, mcp) |
+| `@contractkit/plugin-python` | Pydantic v2 models + async httpx client | `false` |
+| `@contractkit/plugin-openapi` | One OpenAPI **3.1** YAML document | `false` |
+| `@contractkit/plugin-markdown` | One Markdown API reference | `false` |
+| `@contractkit/plugin-bruno` | A Bruno REST collection | `true` |
+
+### TypeScript
+
+Five independent sub-configs — `server`, `sdk`, `zod`, `types`, `mcp` — each enabled by being
+present. Include only what you need.
+
+```json
+{
+  "plugins": {
+    "@contractkit/plugin-typescript": {
+      "server": {
+        "baseDir": "apps/api/",
+        "zod": true,
+        "output": {
+          "routes": "src/routes/{filename}.router.ts",
+          "types": "src/modules/{area}/types/{filename}.ts"
+        },
+        "servicePathTemplate": "#modules/{module}/{module}.service.js"
+      },
+      "sdk": {
+        "baseDir": "packages/sdk/",
+        "name": "acme",
+        "zod": true,
+        "output": {
+          "sdk": "src/{name}.sdk.ts",
+          "types": "src/{area}/types/{filename}.ts",
+          "clients": "src/{area}/{filename}.client.ts"
+        }
+      }
+    }
+  }
+}
+```
+
+Path templates accept `{filename}`, `{dir}`, `{area}`, and `{name}` in `sdk.output.sdk`.
+
+- `zod: true` inside `server`/`sdk` makes `output.types` emit Zod schemas instead of plain
+  interfaces. The top-level `zod` sub-config is a *different* thing: a standalone schema output.
+- `server.validateResponses` re-parses each service result through its response schema before
+  writing `ctx.body`. It requires `zod: true` — plain interfaces have no runtime value to parse
+  through.
+- `sdk.scaffold` writes a starter `package.json` and `tsconfig.json` once, so the generated SDK is a
+  publishable package. Never overwritten, so your edits survive.
+- `mcp.output.types` must point at Zod schema files, not plain types.
+
+### OpenAPI
+
+```json
+{
+  "plugins": {
+    "@contractkit/plugin-openapi": {
+      "baseDir": "docs/api/",
+      "output": "openapi.yaml",
+      "info": { "title": "Acme API", "version": "1.0.0" },
+      "servers": [{ "url": "https://api.acme.com" }],
+      "security": [{ "bearerAuth": [] }],
+      "securitySchemes": {
+        "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+      }
+    }
+  }
+}
+```
+
+`security` states which scheme applies; `securitySchemes` defines what it is. You almost always need
+both — a requirement naming an undefined scheme produces a spec validators reject.
+
+### Python, Markdown, Bruno
+
+```json
+{
+  "plugins": {
+    "@contractkit/plugin-python": { "baseDir": "clients/python/", "packageName": "acme" },
+    "@contractkit/plugin-markdown": { "baseDir": "docs/", "output": "api-reference.md" },
+    "@contractkit/plugin-bruno": { "baseDir": "bruno/", "collectionName": "Acme API" }
+  }
+}
+```
+
+For Bruno, supplying `environments` **replaces** the generated default `local.yml` rather than
+extending it — include `baseUrl` and any auth variables yourself. Its per-operation
+`plugins.bruno` extension accepts exactly one field, `template`.
+
+## Adopting an existing API
+
+`@contractkit/openapi-to-ck` ships as a dependency of the CLI, so the subcommand needs no install
+and no config. The spec path is positional:
+
+```bash
+contractkit import-openapi openapi.yaml --output contracts/
+```
+
+`--split by-tag|single`, `--no-comments`, and `--error-responses documented|emitted`. The default
+`documented` imports a 4xx/5xx with a body as `404(documented):` — the error contract — which is
+what an error response almost always is. Choose `emitted` only if the handlers genuinely return
+those statuses as ordinary results.
+
+Read the warnings: conversion is lossy where OpenAPI is more permissive than `.ck`. Treat the output
+as a starting point to review and commit, not a build step — afterwards the `.ck` files are the
+source of truth and the spec is generated from them by `@contractkit/plugin-openapi`.
+
+## Editor and formatting
+
+- **`.ck` source formatting** — `@contractkit/prettier-plugin`. Add it to your Prettier `plugins`
+  array; Prettier registers `.ck` as `ContractDSL`. It is idempotent and deliberately preserves
+  every authored form the language permits more than one of.
+- **Generated TypeScript formatting** — the CLI's `"prettier": true`. Different input, different
+  mechanism; setting one does not do the other.
+- **VS Code / Cursor** — the workspace extension gives completion, hover, go-to-definition, rename,
+  quick-fixes, live diagnostics, and an API explorer. Built from source with
+  `pnpm run vscode:install`; it is not on the Marketplace. It shares `validateProject` with the CLI,
+  so its diagnostics match a real build.
+
+## Common mistakes
+
+1. **`plugins` written as an array.** It is an object keyed by package name.
+2. **Omitting `patterns`.** The CLI prints help and exits `1`.
+3. **Guessing plugin package names.** They are `@contractkit/plugin-typescript`, `-python`,
+   `-openapi`, `-markdown`, `-bruno` — no doubled `contractkit-` segment, and the Python one is not
+   `-python-sdk`.
+4. **`validateResponses` without `zod: true`.** It needs a runtime schema.
+5. **Confusing `404:` with `404(documented):`, or `304: {}` with `304:`.** They drive different
+   router and SDK behaviour.
+6. **Assuming `includeInternal` defaults the same everywhere.** Bruno and the TS server include
+   internal operations; the SDKs, OpenAPI, and Markdown do not.
+7. **Editing generated files.** Change the `.ck` file and recompile. The exception is
+   `ifAbsent` scaffolding (`sdk.scaffold`), which is written once and yours to own.
+8. **`contractkit openapi-to-ck --input …`.** The subcommand is `import-openapi` and the path is
+   positional.
+
+## Writing a plugin
+
+Implement `ContractKitPlugin` from `@contractkit/core`. Hooks run in this order: `transform` and
+`validate` (per file, pre-decompose), `validateExtension` (per matching per-operation entry), then
+`generateTargets`, called once after every file is parsed and cross-file state resolved. A `command`
+hook registers a `contractkit <name>` subcommand.
+
+```typescript
+import type { ContractKitPlugin } from '@contractkit/core';
+
+const plugin: ContractKitPlugin = {
+    name: 'my-plugin',
+    cacheKey: 'my-plugin-v1',
+    async generateTargets({ contractRoots, opRoots }, ctx) {
+        ctx.emitFile(`${ctx.rootDir}/out.txt`, render(contractRoots, opRoots));
+    },
+};
+export default plugin;
+```
+
+`ctx.emitFile(path, content, { ifAbsent: true })` writes a starter file: created only when absent,
+never overwritten, never orphan-cleaned. Use it for scaffolding the user takes ownership of, never
+for generated code.
+
+Read `op.pluginExtensions`, never `op.plugins` — the latter is the raw parse tree kept for the
+formatter, the former is the resolved one. Strings beginning `file://` are read relative to the
+`.ck` file and `http(s)://` are fetched, both before your plugin sees them.
+
+## Architecture
+
+```
+contractkit.ohm → semantics.ts → AST (ast.ts) → normalization passes → decomposeCk → generateTargets
+└──────────────── @contractkit/core ────────────────┘   └── CLI ──┘        └ core ┘   └── plugins ──┘
+```
+
+The normalization passes (`applyOptionsDefaults`, `applyVariableSubstitution`) run **in the CLI**,
+between `parseCk` and `decomposeCk` — not inside the parser. The Prettier plugin calls `parseCk`
+directly and needs the unmerged AST to round-trip a file, so this placement is load-bearing.
+
+`validateProject({ files, … })` runs the whole pipeline in one call and is what both the CLI and the
+language server use.
+
+## Package map
+
+| Package | Purpose |
+| --- | --- |
+| `@contractkit/cli` | The `contractkit` binary — discovery, config, caching, plugin orchestration |
+| `@contractkit/core` | Grammar, parser, AST, semantics, validation, plugin interface |
+| `@contractkit/plugin-typescript` | Koa routers, TS SDK, Zod schemas, plain types, MCP tools |
+| `@contractkit/plugin-python` | Python SDK (Pydantic v2 + httpx) |
+| `@contractkit/plugin-openapi` | OpenAPI 3.1 YAML |
+| `@contractkit/plugin-markdown` | Markdown API reference |
+| `@contractkit/plugin-bruno` | Bruno REST collection |
+| `@contractkit/openapi-to-ck` | OpenAPI → `.ck`, for adopting an existing API |
+| `@contractkit/explorer-ui` | HTML renderer behind the VS Code API explorer |
+| `@contractkit/prettier-plugin` | Formats `.ck` files |
+| ContractKit VS Code extension | Editor language support (built from source, not published) |
+
+Each published package carries its own `llms.txt` with its full option table and gotchas.
+
+## More
+
+- Language reference: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
+- Configuration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/config.md
+- Tooling: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/tooling.md
+- Index: https://github.com/MaroonedSoftware/contractkit/blob/main/llms.txt

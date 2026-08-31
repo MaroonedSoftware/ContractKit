@@ -1,0 +1,92 @@
+# @contractkit/plugin-bruno
+
+> ContractKit's Bruno generator. Emits a ready-to-send Bruno REST collection — one request file per
+> operation, plus environment files — from `.ck` contract and operation files.
+
+Loaded by `@contractkit/cli` through `contractkit.config.json`. It consumes the AST produced by
+`@contractkit/core`. Aimed at the team that owns the API, which is why it includes `internal`
+operations by default where the other generators exclude them.
+
+## Install
+
+```bash
+pnpm add -D @contractkit/cli @contractkit/plugin-bruno
+```
+
+## Configure
+
+`plugins` is an **object** keyed by package name, not an array.
+
+```json
+{
+    "rootDir": ".",
+    "patterns": ["contracts/**/*.ck"],
+    "plugins": {
+        "@contractkit/plugin-bruno": {
+            "baseDir": "bruno/",
+            "collectionName": "Acme API",
+            "auth": {
+                "defaultScheme": "bearerAuth",
+                "schemes": { "bearerAuth": { "type": "http", "scheme": "bearer" } }
+            },
+            "environments": {
+                "local": { "baseUrl": "http://localhost:3000", "token": "{{TOKEN}}" },
+                "staging": { "baseUrl": "https://staging.acme.com", "token": "{{TOKEN}}" }
+            }
+        }
+    }
+}
+```
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `baseDir` | `string` | `rootDir` | Directory the collection is written under |
+| `output` | `string` | `"bruno-collection"` | Collection subdirectory under `baseDir` |
+| `collectionName` | `string` | — | Name shown in Bruno |
+| `randomExamples` | `boolean` | `true` | Use Bruno faker templates (`{{$randomUUID}}`, `{{$randomEmail}}`) so each send produces fresh data; `false` gives deterministic placeholders |
+| `includeInternal` | `boolean` | `true` | Generate requests for operations marked `internal` |
+| `environments` | `object` | — | Map of environment name → variables; each entry emits `environments/<name>.yml` |
+| `auth` | `object` | — | `{ defaultScheme, schemes? }`. A scheme is `{ type: "http", scheme: "bearer" \| "basic" }` or `{ type: "apiKey", name, in: "header" \| "query" }` |
+
+## Environments
+
+When `environments` is omitted, a default `local.yml` is emitted with
+`baseUrl=http://localhost:3000` plus any auth variable placeholders. When you provide the key, that
+default is **replaced entirely** — include `baseUrl` and any auth variables (e.g. `token`) yourself
+or the generated requests will have nothing to resolve against.
+
+## Per-operation extension
+
+An operation can carry a `plugins.bruno` entry to deep-merge a YAML fragment into its generated
+request file. The only allowed field is `template`, a string — typically a `file://` URL the CLI
+resolves before the plugin sees it. Any other field fails compilation.
+
+## Programmatic use
+
+```typescript
+import { createBrunoPlugin } from '@contractkit/plugin-bruno';
+
+const plugin = createBrunoPlugin(
+    { baseDir: 'bruno/', collectionName: 'Acme API' },
+    process.cwd(),
+    { defaultScheme: 'bearerAuth', schemes: { bearerAuth: { type: 'http', scheme: 'bearer' } } },
+);
+```
+
+`auth` is a separate third argument to the factory, while in `contractkit.config.json` it sits
+alongside the other options.
+
+## Gotchas
+
+- `includeInternal` defaults to **`true`** here — the opposite of the SDK, OpenAPI, and Markdown
+  plugins. Set it to `false` if you are handing the collection to someone outside the team.
+- Providing `environments` replaces the generated default rather than extending it.
+- Generation is incremental via a manifest under the CLI cache directory; `contractkit --force`
+  regenerates everything.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-bruno/README.md
+- Configuration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/config.md
+- Per-operation plugin extensions: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt

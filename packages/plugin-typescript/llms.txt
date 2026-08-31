@@ -1,0 +1,111 @@
+# @contractkit/plugin-typescript
+
+> ContractKit's TypeScript code generator. From the same `.ck` files it emits Koa routers, a
+> TypeScript SDK client, Zod schemas, plain TypeScript types, and MCP tool handlers. Five
+> independent sub-generators, each enabled by the presence of its config key.
+
+Loaded by `@contractkit/cli` through `contractkit.config.json`. It consumes the AST produced by
+`@contractkit/core`; you do not call it directly in a normal build.
+
+## Install
+
+```bash
+pnpm add -D @contractkit/cli @contractkit/plugin-typescript
+```
+
+## Configure
+
+`plugins` is an **object** keyed by package name, not an array. Each sub-config is independent —
+include only the ones you want; omitting a key disables that sub-generator entirely.
+
+```json
+{
+    "rootDir": ".",
+    "patterns": ["contracts/**/*.ck"],
+    "plugins": {
+        "@contractkit/plugin-typescript": {
+            "server": {
+                "baseDir": "apps/api/",
+                "zod": true,
+                "output": {
+                    "routes": "src/routes/{filename}.router.ts",
+                    "types": "src/modules/{area}/types/{filename}.ts"
+                },
+                "servicePathTemplate": "#modules/{module}/{module}.service.js"
+            },
+            "sdk": {
+                "baseDir": "packages/sdk/",
+                "name": "acme",
+                "zod": true,
+                "output": {
+                    "sdk": "src/{name}.sdk.ts",
+                    "types": "src/{area}/types/{filename}.ts",
+                    "clients": "src/{area}/{filename}.client.ts"
+                }
+            },
+            "zod": { "baseDir": "packages/schemas/", "output": "{filename}.schema.ts" },
+            "types": { "baseDir": "packages/types/", "output": "{filename}.types.ts" }
+        }
+    }
+}
+```
+
+Path templates accept `{filename}`, `{dir}`, `{area}`, and — in `sdk.output.sdk` — `{name}`.
+
+## Sub-configs
+
+| Key | Emits |
+| --- | --- |
+| `server` | Koa routers from `operation` declarations, plus the type or Zod files they import |
+| `sdk` | The SDK class, per-area operation clients, and their types |
+| `zod` | Standalone Zod schemas, independent of `server` and `sdk` |
+| `types` | Standalone plain TypeScript types, independent of `server` and `sdk` |
+| `mcp` | Per-file MCP tool handlers, an aggregator, and an optional `POST /mcp` route |
+
+Options worth knowing:
+
+- `server.zod` / `sdk.zod` — when true, `output.types` emits Zod schema files instead of plain
+  interfaces. Off by default.
+- `server.validateResponses` — each handler re-parses the service result through its declared
+  response schema before writing `ctx.body`. **Requires `zod: true`**; without it `output.types`
+  emits plain interfaces, which are types with no runtime value to parse through. A body that
+  transitively references a model with `format(input=…)`/`format(output=…)`, and a status whose
+  several mimes carry different body types, are left unvalidated.
+- `sdk.scaffold` — write-once starter `package.json` and `tsconfig.json` at the SDK `baseDir`, so
+  the generated output is a publishable package on its own. Never overwritten once created, so your
+  edits survive. Dependency ranges are derived from the contracts.
+- `includeInternal` on `server`/`sdk` — whether operations marked `internal` get handlers or client
+  methods. Defaults to `true` for `server`, `false` for `sdk`.
+- `types.target` — `'client'` (default) or `'server'`; decides whether `binary` renders as `Blob`
+  or `Buffer`. The `server` and `sdk` sub-generators set it themselves.
+- `mcp.output.types` must point at **Zod schema** files, not plain types — tools need a runtime
+  schema for argument validation and `z.toJSONSchema`. It falls back to `server.output.types` (when
+  `server.zod`) or the `zod` sub-config's output.
+
+## Programmatic use
+
+```typescript
+import { createTypescriptPlugin } from '@contractkit/plugin-typescript';
+
+const plugin = createTypescriptPlugin({ types: { output: '{filename}.types.ts' } }, process.cwd());
+```
+
+Prefer the default export when loading through `contractkit.config.json`; the factory is for
+building the plugin in code (tests, custom build scripts).
+
+## Gotchas
+
+- The four output sub-configs are independent. `zod: true` **inside** `server` is not the same thing
+  as the top-level `zod` sub-config: the first changes what `server.output.types` emits, the second
+  adds a separate standalone schema output.
+- `validateResponses` silently does nothing useful without `zod: true`.
+- Which statuses a router writes and which the SDK throws is decided by the contract, not by this
+  plugin — a `404(documented)` is the client's error contract, a bare `404:` is a status the service
+  produces. See the response-set helpers in `@contractkit/core`.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-typescript/README.md
+- Configuration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/config.md
+- SDK generation and subclient grouping: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/tooling.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt
