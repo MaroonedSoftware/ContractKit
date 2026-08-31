@@ -1095,6 +1095,20 @@ describe('generateOperation', () => {
             expect(generateOp(respRoot('User'), V)).toContain('ctx.body = await parseAndValidate(result, User, 500);');
         });
 
+        it('re-validates a decimal body, which `isRevalidatable` assumes is idempotent', () => {
+            // `isRevalidatable` returns true for every scalar on the grounds that scalars are
+            // idempotent under re-parse. `_ZodDecimal` satisfies that only because it has no output
+            // `.transform()` — preprocess passes an already-`Decimal` value straight through. If it
+            // were modelled on `_ZodInterval`, which does transform, this would 500 at runtime.
+            const root = respRoot(inlineObjectType([field('amount', scalarType('decimal', { scale: 2 }))]));
+            const output = generateOp(root, V);
+            expect(output).toContain('await parseAndValidate(result,');
+            expect(output).toContain('_ZodDecimal');
+            expect(output).not.toMatch(/_ZodDecimal[^\n]*\.transform\(/);
+            // The helper references `Decimal`, so the import has to come with it.
+            expect(output).toContain(`import { Decimal } from 'decimal.js';`);
+        });
+
         // A service returning a shape its own contract rejects is a server fault, not a client one.
         // 500 also diverts the field-level detail to `internalDetails`, keeping it off the wire.
         it('throws 500, not the parseAndValidate default of 400', () => {
