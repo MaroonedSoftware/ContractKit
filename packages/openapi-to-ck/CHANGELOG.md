@@ -1,5 +1,114 @@
 # @contractkit/openapi-to-ck
 
+## 0.11.0
+
+### Minor Changes
+
+- 7b3b270: Import 4xx/5xx responses that declare a body as `(documented)`
+
+    **This changes the output of re-running the importer.** OpenAPI cannot say whether a handler
+    _returns_ a status or merely documents it, but `.ck` distinguishes the two and every generator
+    depends on the answer. Every declared status used to be imported as service-produced: a spec
+    declaring `404: {application/json: Error}` became `404: { … }`, which made the generated Koa
+    handler responsible for returning the 404 and made the TypeScript and Python SDKs hand it back
+    as a value rather than throwing.
+
+    A bodied 4xx or 5xx now imports as `404(documented): { … }` — the body is the error contract, the
+    SDK throws it as an `SdkError`, and the service is not responsible for producing it. 2xx and 3xx
+    are unchanged, as is a bare bodyless error status (marking those would be redundant, and core
+    warns about it).
+
+    Pass `errorResponses: 'emitted'`, or `--error-responses emitted` on the command line, to restore
+    the previous behaviour.
+
+    Also in this release:
+    - `$ref`s to `#/components/parameters`, `requestBodies`, `responses` and `headers` are now
+      resolved. A `$ref`'d parameter previously reached the printer with no name and emitted
+      `undefined: string` — which parses, so nothing reported it. Anything still unresolvable is
+      warned about and skipped instead of emitted.
+    - Every generated file is re-parsed before it is returned, and a file that does not parse is
+      reported as a warning rather than written out silently.
+    - The command line gained `--no-comments`, which was documented but never implemented.
+
+    Coverage, in the same release:
+    - `name:` is imported from an operation's `summary`, which used to be dropped entirely.
+    - Request bodies keep any RFC 6838 `type/subtype` content type. The importer previously allowed
+      only JSON, form-urlencoded and multipart, silently discarding everything else, even though the
+      grammar has accepted any mime since vendor MIME support landed.
+    - `format: duration` maps to the `duration` scalar, and the `idn-email`, `uri-reference`, `iri`
+      and `iri-reference` formats map alongside their existing counterparts.
+    - `additionalProperties: true` imports as `mode(loose)`.
+    - A spec-level `security` requirement now applies to operations that do not override it; it was
+      collected and never read, so a globally unsecured spec imported as secured.
+    - Constructs with no `.ck` equivalent are warned about rather than dropped in silence: `head`,
+      `options` and `trace` operations, non-numeric response keys (`default`, `4XX`), cookie
+      parameters, unparameterised mime types, and the `exclusiveMinimum`, `exclusiveMaximum`,
+      `multipleOf` and `uniqueItems` constraints. A `4XX` response key previously became status `4`,
+      because `parseInt` stops at the first non-digit.
+
+### Patch Changes
+
+- fd62377: Fix tag splitting, schema-name sanitization, and stale docs
+    - A model reached only from a `params`, `query` or `headers` block was filed under `shared.ck`
+      instead of its own tag's file. `collectParamSourceRefs` was written against the shape
+      `ParamSource` had before it became a tagged union, so only the `ref` case still worked — and
+      only by coincidence, since it happens to look like a model reference.
+    - A schema whose name starts with a digit (`3DModel`) produced an identifier the parser rejects.
+      It is now prefixed with `_`.
+    - `@scalar/openapi-parser` has been removed from the dependencies. It was never imported; the
+      normalization is hand-written, despite a comment claiming otherwise.
+    - The README documented an `openapi-to-ck --input …` command that does not exist. The command is
+      `import-openapi <spec-path>`, and the docs now cover `--no-comments`, `--error-responses`, and
+      what the converter warns about rather than dropping silently.
+
+- 841af6e: Only wrap a circular reference in `lazy()` where it breaks a real cycle
+
+    `lazy()` exists so that a reference between two contracts that depend on each other can be
+    deferred: `topoSortModels` emits dependencies before dependents and can only fall back to source
+    order for a cycle. A reference from an operation — a response body, request body, parameter, or
+    response header — names a model the generated module has already imported and fully evaluated,
+    so there is no cycle to break.
+
+    Every reference to a self-referential schema used to be wrapped, so importing a spec with a tree-
+    shaped model produced `application/json: lazy(Widget)` on every body mentioning it. References
+    inside a contract, including one extracted from an inline body schema, still wrap as before.
+
+    Also fixed: a model extracted from an inline request or response body schema was referenced by
+    the generated operation and never emitted, because the extracted-model list was read before path
+    conversion filled it. Any spec with an inline (non-`$ref`) body schema produced a contract
+    pointing at something that did not exist. The post-conversion self-check now runs reference
+    validation as well as parsing, which is what caught it — a reference to an undefined contract is
+    perfectly good syntax, so parsing alone could not.
+
+- aea5e21: Move the `.ck` printer into core, so the language has exactly one
+
+    `.ck` had two printers: the prettier plugin's `printCk` and a hand-rolled one inside
+    `openapi-to-ck`. Only the prettier copy was covered by the round-trip tests that the grammar
+    checklist points at, so the other silently fell behind the grammar — it ignored `hasBlock` and
+    the `(documented)` response modifier, could not emit `mcp:`, `plugins:`, `name:`, `override`,
+    `format(output=)` or options-level header globals, and emitted source that does not parse for a
+    regex containing `/` or an enum value carrying both quote styles.
+
+    `printCk` now lives in `@contractkit/core` next to `parseCk` and is exported from it. The
+    prettier plugin re-exports it unchanged, and `openapi-to-ck`'s `astToCk` is a thin adapter over
+    it, so all of the above now print correctly.
+
+    Three printing fixes come with the move, all of which affect `pnpm format` on existing files:
+    - A regex containing `/` prints as `regex="…"` instead of an unterminated regex literal.
+    - A string containing `"` prints single-quoted; one carrying both quote styles is degraded
+      rather than emitted unparseable (use the new `isUnquotable` to warn before printing).
+    - A description containing newlines is flattened when it prints as a trailing `# …` comment,
+      instead of leaking the remainder as raw source.
+
+    Files containing any of these currently cannot round-trip at all, so this is a fix rather than a
+    break. `openapi-to-ck` output changes shape in two ways: model descriptions now print as a
+    doc-comment block above the `contract` rather than as a trailing comment, and scalar constraints
+    use the canonical `len=` / positional `format` spellings.
+
+- Updated dependencies [aea5e21]
+- Updated dependencies [5dc2693]
+    - @contractkit/core@0.27.0
+
 ## 0.10.2
 
 ### Patch Changes

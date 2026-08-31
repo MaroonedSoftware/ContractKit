@@ -1,5 +1,82 @@
 # @contractkit/core
 
+## 0.27.0
+
+### Minor Changes
+
+- aea5e21: Move the `.ck` printer into core, so the language has exactly one
+
+    `.ck` had two printers: the prettier plugin's `printCk` and a hand-rolled one inside
+    `openapi-to-ck`. Only the prettier copy was covered by the round-trip tests that the grammar
+    checklist points at, so the other silently fell behind the grammar — it ignored `hasBlock` and
+    the `(documented)` response modifier, could not emit `mcp:`, `plugins:`, `name:`, `override`,
+    `format(output=)` or options-level header globals, and emitted source that does not parse for a
+    regex containing `/` or an enum value carrying both quote styles.
+
+    `printCk` now lives in `@contractkit/core` next to `parseCk` and is exported from it. The
+    prettier plugin re-exports it unchanged, and `openapi-to-ck`'s `astToCk` is a thin adapter over
+    it, so all of the above now print correctly.
+
+    Three printing fixes come with the move, all of which affect `pnpm format` on existing files:
+    - A regex containing `/` prints as `regex="…"` instead of an unterminated regex literal.
+    - A string containing `"` prints single-quoted; one carrying both quote styles is degraded
+      rather than emitted unparseable (use the new `isUnquotable` to warn before printing).
+    - A description containing newlines is flattened when it prints as a trailing `# …` comment,
+      instead of leaking the remainder as raw source.
+
+    Files containing any of these currently cannot round-trip at all, so this is a fix rather than a
+    break. `openapi-to-ck` output changes shape in two ways: model descriptions now print as a
+    doc-comment block above the `contract` rather than as a trailing comment, and scalar constraints
+    use the canonical `len=` / positional `format` spellings.
+
+- 5dc2693: Add `server.validateResponses` — the generated Koa router can now validate what it sends, not just
+  what it receives
+
+    Handlers have always run request params, query, headers and body through `parseAndValidate`. The
+    service's return value got nothing: it was type-annotated and assigned straight to `ctx.body`, so a
+    service returning a shape its own contract forbids shipped it to the client unchanged. With
+    `server.validateResponses: true` the result is re-parsed against the declared response schema and
+    the _parsed_ value is written:
+
+    ```ts
+    const result: User = await service.getById(id);
+
+    ctx.status = 200;
+    ctx.type = 'application/json';
+    ctx.body = await parseAndValidate(result, User, 500);
+    ```
+
+    Because the parsed value is what reaches the wire, `mode(strip)` now actually strips extra keys off
+    responses.
+    - **Opt-in, and off by default**, because turning it on surfaces real drift. TypeScript only
+      excess-property-checks object _literals_, so a service returning a database row with undeclared
+      columns satisfies `const result: User` today and quietly ships them; under the default `strict`
+      mode that becomes a 500. That is the flag working, but it is not a change to make on a Friday.
+    - **`zod: true` is a hard prerequisite.** Without it `output.types` emits plain interfaces — types
+      with no runtime schema value to validate against. Setting `validateResponses` alone now fails the
+      build with an explicit message instead of emitting code that cannot compile. This is the plugin's
+      first config assertion; it runs for both the default export and `createTypescriptPlugin`.
+    - **Requires `@maroonedsoftware/zod` 0.6.1 or later** for the `statusCode` argument. Failures are
+      raised as `500`, not the `400` a request-side failure gets — a service breaking its own contract
+      is a server fault. At 5xx that package puts the field-level map on `internalDetails` rather than
+      `details`, so `errorMiddleware` keeps it out of the response body and on the log path.
+
+    Two kinds of response body are deliberately left unvalidated, and generate exactly as before:
+    - **Anything transitively referencing a model with `format(input=…)` or `format(output=…)`.** Those
+      schemas transform keys between wire and developer-facing casing, and the service already returns
+      the post-transform shape, so re-parsing it through the same schema would fail on every key. Note
+      this needs a wider set than `modelsWithOutput`, which seeds only from `outputCase` because only
+      that case needs an `Output` type alias — a `format(input=snake)`-only model is just as
+      untouchable. `@contractkit/core` gains `computeModelsWithCaseTransform` for it.
+    - **A status whose several content types carry different body shapes**, where `contentType` and
+      `body` are correlated across union members. Matching shapes (`image/png` and `image/jpeg` both
+      `binary`) share one schema and validate normally.
+
+    One wart worth knowing: `ctx.status` and any `ctx.set(…)` response headers are written before the
+    body, so a validation failure raises its 500 with the success path's headers already set.
+
+    Projects that do not set the flag generate byte-identical routers.
+
 ## 0.26.1
 
 ### Patch Changes
