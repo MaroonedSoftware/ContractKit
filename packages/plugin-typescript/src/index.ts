@@ -20,6 +20,7 @@ import {
     hashFingerprint,
     collectTransitiveModelRefs,
     collectTypeRefs,
+    computeModelsWithCaseTransform,
 } from '@contractkit/core';
 import {
     generateSdk,
@@ -73,6 +74,15 @@ export interface ServerConfig {
     servicePathTemplate?: string;
     /** Whether to emit handlers for `internal` operations. Default true. */
     includeInternal?: boolean;
+    /**
+     * When true, each handler re-parses the service result through its declared response schema
+     * before writing `ctx.body`, and writes the parsed value. Requires `zod: true` — without it
+     * `output.types` emits plain interfaces, which are types with no runtime schema value.
+     *
+     * A body that transitively references a model with `format(input=...)`/`format(output=...)`, and
+     * a status whose several mimes carry different body types, are left unvalidated. Default false.
+     */
+    validateResponses?: boolean;
 }
 
 /** TypeScript SDK client output: the client class, per-area operation clients, and their types. */
@@ -182,6 +192,15 @@ export function createTypescriptPlugin(config: TypescriptPluginConfig, rootDir: 
     };
 }
 
+/** Reject config combinations that would generate code that cannot compile or cannot run. */
+function assertValidConfig(config: TypescriptPluginConfig): void {
+    if (config.server?.validateResponses && !config.server.zod) {
+        throw new Error(
+            'plugin-typescript: server.validateResponses requires server.zod: true — without it output.types emits plain TypeScript interfaces, which are types with no runtime schema value for the router to validate against.',
+        );
+    }
+}
+
 /**
  * Shared orchestration. Each sub-generator (server / sdk / zod / types) contributes a
  * set of cacheable units (per-file fingerprints) plus a set of always-regenerated global
@@ -196,6 +215,7 @@ async function runTypescriptCodegen(
     config: TypescriptPluginConfig,
     rootDir: string,
 ): Promise<void> {
+    assertValidConfig(config);
     const manifestPath = resolve(ctx.cacheDir, CACHE_MANIFEST_FILENAME);
     const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(manifestPath) : emptyIncrementalManifest(TYPESCRIPT_CODEGEN_VERSION);
 
@@ -322,6 +342,10 @@ function collectServerOutput(
     const serverBase = resolve(rootDir, config.baseDir ?? '.');
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
     const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
+    // Not `modelsWithOutput`: that set seeds only from `format(output=...)`, because only that case
+    // needs an `Output` type alias. A `format(input=...)`-only model is just as untouchable for
+    // response validation — its schema's input casing is not what the service hands back.
+    const modelsWithTransform = computeModelsWithCaseTransform(inputs.contractRoots.flatMap(r => r.models));
     const modelMap = buildModelMap(inputs.contractRoots);
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
@@ -391,6 +415,10 @@ function collectServerOutput(
             modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
             servicePathTemplate: config.servicePathTemplate ?? null,
             includeInternal: config.includeInternal ?? true,
+            // Not covered by `sub`: adding `format(input=snake)` to a *different* .ck file changes
+            // this router's output with no change to `root` or the config.
+            modelsWithTransform: sliceModelSet(refs, new Set(), modelsWithTransform),
+            validateResponses: config.validateResponses ?? false,
             sub: subConfigKey,
         });
         units.push({
@@ -405,7 +433,9 @@ function collectServerOutput(
                         modelOutPaths: serverModelOutPaths,
                         modelsWithInput,
                         modelsWithOutput,
+                        modelsWithTransform,
                         includeInternal: config.includeInternal,
+                        validateResponses: config.validateResponses,
                     }),
                 },
             ],

@@ -72,6 +72,13 @@ Models with visibility modifiers generate up to three schemas:
 camelCase internally. `format(output=)` remaps from camelCase to the output casing. Both
 can be combined.
 
+Either one makes the schema a pipe whose `z.input` casing differs from its `z.output`, which
+means **it cannot re-parse its own output**. That is why the TypeScript router's
+`server.validateResponses` skips any response body that transitively references such a model:
+the service already returns the post-transform shape. Note that `modelsWithOutput` is the wrong
+set to test for this — it seeds only from `outputCase`, since only that case needs an `Output`
+type alias. Use `computeModelsWithCaseTransform`, which covers both directions.
+
 ## Discriminated unions
 
 `discriminated(by=<field>, A | B | C)` compiles to `z.discriminatedUnion("field", [...])`

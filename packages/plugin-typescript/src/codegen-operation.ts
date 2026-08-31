@@ -132,6 +132,18 @@ export interface OpCodegenOptions {
      * from the generated router entirely.
      */
     includeInternal?: boolean;
+    /**
+     * Re-parse the service result through its declared response schema before writing `ctx.body`,
+     * and write the parsed value. Requires the type file to hold Zod schemas (`server.zod`) —
+     * plain interfaces are types, with no runtime schema value to validate against. Default false.
+     */
+    validateResponses?: boolean;
+    /**
+     * Set of model names whose schema applies a `format(...)` key transform, directly or through a
+     * referenced model. Response bodies touching one are left unvalidated: the service returns the
+     * post-transform shape, which the schema itself cannot re-parse.
+     */
+    modelsWithTransform?: Set<string>;
 }
 
 /**
@@ -212,13 +224,20 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
         body.push(`import { ${koaImports.join(', ')} } from '@maroonedsoftware/koa';`);
     }
 
-    for (const svc of services) {
+    // Services and model names come from the AST, which over-approximates two ways: a model with an
+    // Input/Output variant contributes its base name even when only the variant is ever annotated,
+    // and `collectServices`/`collectTypes` walk every operation including the `internal` ones
+    // `includeInternal: false` drops. Filtering through `uses` — the same gate every symbol above
+    // goes through — keeps the import list to what the handlers actually reference, so generated
+    // code does not trip `noUnusedLocals` in the consuming project.
+    for (const svc of services.filter(uses)) {
         const modulePath = root.services?.[svc] ?? root.meta[svc] ?? deriveModulePath(svc, options.servicePathTemplate);
         body.push(`import { ${svc} } from '${modulePath}';`);
     }
 
-    if (types.length > 0) {
-        body.push(...generateTypeImports(types, root.file, options));
+    const usedTypes = types.filter(uses);
+    if (usedTypes.length > 0) {
+        body.push(...generateTypeImports(usedTypes, root.file, options));
     }
 
     // luxon is needed for date/time/datetime (DateTime), duration (Duration) and interval (Interval);
@@ -383,9 +402,12 @@ function generateSingleStatusResult(
     const hasRespHeaders = respHeaders.length > 0;
     const headersAnnotation = hasRespHeaders ? renderHeadersAnnotation(respHeaders, options.modelsWithOutput) : '';
 
+    let bodySchema: string | undefined;
+
     if (bodies.length === 1) {
         const { annotation, prelude } = formatTypeAnnotation(bodies[0]!.bodyType, options.modelsWithOutput);
         if (prelude) lines.push(`    ${prelude}`);
+        bodySchema = responseBodySchema(bodies[0]!.bodyType, options, prelude ? 'resultType' : undefined);
         lines.push(`    const service = ctx.container.get(${className});`);
         if (hasRespHeaders) {
             lines.push(`    const result: { body: ${annotation}; headers: ${headersAnnotation} } = ${call};`);
@@ -393,7 +415,9 @@ function generateSingleStatusResult(
             lines.push(`    const result: ${annotation} = ${call};`);
         }
     } else if (bodies.length > 1) {
-        const { members, preludes } = renderResponseMembers(resp!, options, { includeStatus: false, varPrefix: 'result' });
+        const rendered = renderResponseMembers(resp!, options, { includeStatus: false, varPrefix: 'result' });
+        const { members, preludes } = rendered;
+        bodySchema = rendered.bodySchema;
         for (const prelude of preludes) lines.push(`    ${prelude}`);
         lines.push(`    const service = ctx.container.get(${className});`);
         lines.push(`    const result: ${members.join(' | ')} = ${call};`);
@@ -414,10 +438,10 @@ function generateSingleStatusResult(
 
     if (bodies.length === 1) {
         lines.push(`    ctx.type = '${bodies[0]!.contentType}';`);
-        lines.push(`    ctx.body = ${hasRespHeaders ? 'result.body' : 'result'};`);
+        lines.push(`    ctx.body = ${responseBodyExpr(hasRespHeaders ? 'result.body' : 'result', bodySchema)};`);
     } else if (bodies.length > 1) {
         lines.push(`    ctx.type = result.contentType;`);
-        lines.push(`    ctx.body = result.body;`);
+        lines.push(`    ctx.body = ${responseBodyExpr('result.body', bodySchema)};`);
     }
 
     return lines;
@@ -433,10 +457,13 @@ function generateMultiStatusResult(emitted: OpResponseNode[], className: string,
     const members: string[] = [];
     const preludes: string[] = [];
 
+    const bodySchemas = new Map<number, string | undefined>();
+
     for (const resp of emitted) {
         const rendered = renderResponseMembers(resp, options, { includeStatus: true, varPrefix: `result${resp.statusCode}` });
         members.push(...rendered.members);
         preludes.push(...rendered.preludes);
+        bodySchemas.set(resp.statusCode, rendered.bodySchema);
     }
 
     for (const prelude of preludes) lines.push(`    ${prelude}`);
@@ -452,7 +479,7 @@ function generateMultiStatusResult(emitted: OpResponseNode[], className: string,
         lines.push(...headerSetLines(resp.headers ?? [], '            '));
         if (resp.bodies.length > 0) {
             lines.push(`            ctx.type = result.contentType;`);
-            lines.push(`            ctx.body = result.body;`);
+            lines.push(`            ctx.body = ${responseBodyExpr('result.body', bodySchemas.get(resp.statusCode))};`);
         }
         lines.push(`            break;`);
     }
@@ -473,7 +500,7 @@ function renderResponseMembers(
     resp: OpResponseNode,
     options: OpCodegenOptions,
     opts: { includeStatus: boolean; varPrefix: string },
-): { members: string[]; preludes: string[] } {
+): { members: string[]; preludes: string[]; bodySchema?: string } {
     const bodies = resp.bodies;
     const headers = resp.headers ?? [];
     const leading = opts.includeStatus ? [`status: ${resp.statusCode}`] : [];
@@ -488,10 +515,18 @@ function renderResponseMembers(
     if (uniform) {
         const { annotation, prelude } = formatTypeAnnotation(bodies[0]!.bodyType, options.modelsWithOutput, `${opts.varPrefix}Type`);
         if (prelude) preludes.push(prelude);
+        const bodySchema = responseBodySchema(bodies[0]!.bodyType, options, prelude ? `${opts.varPrefix}Type` : undefined);
         const contentType = bodies.map(b => `'${b.contentType}'`).join(' | ');
-        return { members: [`{ ${[...leading, `contentType: ${contentType}`, `body: ${annotation}`, ...trailing].join('; ')} }`], preludes };
+        return {
+            members: [`{ ${[...leading, `contentType: ${contentType}`, `body: ${annotation}`, ...trailing].join('; ')} }`],
+            preludes,
+            bodySchema,
+        };
     }
 
+    // One member per mime: `contentType` and `body` stay correlated, so validating would need a
+    // second switch on `result.contentType` nested inside the status switch. Left unvalidated —
+    // note the absent `bodySchema` in the return below.
     const members = bodies.map((b, i) => {
         const { annotation, prelude } = formatTypeAnnotation(b.bodyType, options.modelsWithOutput, `${opts.varPrefix}Type${i}`);
         if (prelude) preludes.push(prelude);
@@ -658,6 +693,71 @@ function formatTypeAnnotation(bodyType: ContractTypeNode, modelsWithOutput?: Set
         annotation: `z.infer<typeof ${varName}>`,
         prelude: `const ${varName} = ${schema};`,
     };
+}
+
+/**
+ * Whether a response body can be soundly re-parsed through the schema `renderType` emits for it.
+ *
+ * False for anything transitively touching a model with a `format(...)` key transform — the service
+ * returns the post-transform value while the schema expects the pre-transform one — and for an
+ * intersection outside `renderIntersection`'s `.extend()` fast path, where `.and()` of two strict
+ * objects rejects every value because each side sees the other's keys as unrecognized.
+ */
+function isRevalidatable(type: ContractTypeNode, modelsWithOutput?: Set<string>, modelsWithTransform?: Set<string>): boolean {
+    const rec = (t: ContractTypeNode): boolean => isRevalidatable(t, modelsWithOutput, modelsWithTransform);
+    switch (type.kind) {
+        case 'ref':
+            return !modelsWithOutput?.has(type.name) && !modelsWithTransform?.has(type.name);
+        case 'array':
+            return rec(type.item);
+        case 'tuple':
+            return type.items.every(rec);
+        case 'record':
+            return rec(type.key) && rec(type.value);
+        case 'intersection': {
+            // Mirrors renderIntersection: a lone member renders as itself, `ref & (ref|object)*`
+            // renders as an `.extend()` chain, and anything else falls back to `.and()`.
+            const [first, ...rest] = type.members;
+            if (!first) return true;
+            if (rest.length === 0) return rec(first);
+            const usesExtendChain = first.kind === 'ref' && rest.every(m => m.kind === 'ref' || m.kind === 'inlineObject');
+            return usesExtendChain && type.members.every(rec);
+        }
+        case 'union':
+        case 'discriminatedUnion':
+            return type.members.every(rec);
+        case 'inlineObject':
+            return type.fields.every(f => rec(f.type));
+        case 'lazy':
+            return rec(type.inner);
+        default:
+            // scalar, enum, literal — identity or idempotent under re-parse
+            return true;
+    }
+}
+
+/**
+ * The runtime schema a handler validates a response body against, or `undefined` when the body
+ * cannot be soundly re-parsed and validation must be skipped.
+ *
+ * @param preludeVar The schema const {@link formatTypeAnnotation} already emitted for this body
+ *   (complex types only — `undefined` when it returned no prelude). Reusing it keeps a large object
+ *   literal from appearing twice in the same handler.
+ */
+function responseBodySchema(bodyType: ContractTypeNode, options: OpCodegenOptions, preludeVar: string | undefined): string | undefined {
+    if (!options.validateResponses) return undefined;
+    if (!isRevalidatable(bodyType, options.modelsWithOutput, options.modelsWithTransform)) return undefined;
+    return preludeVar ?? renderType(bodyType);
+}
+
+/**
+ * The `ctx.body = ...` right-hand side for a response body: the raw result expression, or a
+ * `parseAndValidate` of it. The `500` is deliberate — a service returning a shape its own contract
+ * rejects is a server fault, not a client one, and `@maroonedsoftware/zod` routes the field-level
+ * detail to `internalDetails` (log-only) rather than the response body at 5xx.
+ */
+function responseBodyExpr(value: string, schema: string | undefined): string {
+    return schema ? `await parseAndValidate(${value}, ${schema}, 500)` : value;
 }
 
 function generateParamValidation(

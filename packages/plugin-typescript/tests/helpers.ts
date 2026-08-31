@@ -11,6 +11,7 @@ import type {
     LiteralTypeNode,
     UnionTypeNode,
     DiscriminatedUnionTypeNode,
+    IntersectionTypeNode,
     ModelRefTypeNode,
     InlineObjectTypeNode,
     LazyTypeNode,
@@ -62,6 +63,10 @@ export function unionType(...members: ContractTypeNode[]): UnionTypeNode {
 
 export function discriminatedUnionType(discriminator: string, ...members: ContractTypeNode[]): DiscriminatedUnionTypeNode {
     return { kind: 'discriminatedUnion', discriminator, members };
+}
+
+export function intersectionType(...members: ContractTypeNode[]): IntersectionTypeNode {
+    return { kind: 'intersection', members };
 }
 
 export function refType(name: string): ModelRefTypeNode {

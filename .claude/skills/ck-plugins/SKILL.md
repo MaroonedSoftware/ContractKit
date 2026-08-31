@@ -83,6 +83,16 @@ null, object, array). Each entry's key maps to a plugin by `name`.
 TypeScript interfaces. Path templates support `{filename}`, `{dir}`, `{area}`, `{subarea}`,
 and `{name}`.
 
+`server.validateResponses: true` (requires `zod: true`, enforced by `assertValidConfig` in
+`index.ts`) makes each handler re-parse the service result through its response schema and write
+the *parsed* value: `ctx.body = await parseAndValidate(result, User, 500)`. The `500` is what routes
+the field-level detail to `internalDetails`, keeping it off the response body. Two kinds of body are
+deliberately left unvalidated, both decided by `isRevalidatable` in `codegen-operation.ts`: anything
+transitively referencing a `format(...)` model — its schema transforms keys, and the service already
+returns the post-transform shape — and a status whose several mimes carry *different* body types.
+Note the first check needs `computeModelsWithCaseTransform`, **not** `modelsWithOutput`: the latter
+seeds only from `outputCase`, so a `format(input=snake)`-only model would slip through it.
+
 SDK method names resolve in priority order: `sdk:` field → `name:` field (camelCased) →
 inferred from HTTP method + path. The Python SDK uses the same priority but `snake_case`.
 

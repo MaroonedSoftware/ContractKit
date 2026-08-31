@@ -85,6 +85,49 @@ Generates Koa router files from `operation` declarations. Optionally also emits 
 | `output.types`        | `string`  | Path template for type/schema files                                                                 |
 | `servicePathTemplate` | `string`  | Import path template for service implementations. Supports `{module}`.                              |
 | `includeInternal`     | `boolean` | Whether to emit handlers for `internal` operations. Default: `true`.                                |
+| `validateResponses`   | `boolean` | Re-parse the service result against its response schema before writing `ctx.body`. Requires `zod: true`. Default: `false`. |
+
+##### `validateResponses`
+
+Generated handlers always validate what comes *in* — params, query, headers and request body all go
+through `parseAndValidate`. `validateResponses` extends that to what goes *out*: the value the
+service returns is re-parsed against the response schema declared in the contract, and the parsed
+value is what reaches `ctx.body`.
+
+```ts
+const result: User = await service.getById(id);
+
+ctx.status = 200;
+ctx.type = 'application/json';
+ctx.body = await parseAndValidate(result, User, 500);
+```
+
+It is opt-in, and off by default, for one reason worth understanding before you turn it on.
+TypeScript only rejects excess properties on object *literals*, so a service that returns a database
+row carrying columns the contract never declared satisfies `const result: User` today and quietly
+ships them. Under the default `strict` object mode that becomes a 500 on every request, so expect
+the first run with the flag on to surface real contract drift. Switching a model to `mode(strip)`
+makes the extra keys disappear from the wire instead — the parsed value is what is written, so
+stripping now has a visible effect on responses.
+
+Requirements and limits:
+
+- **`zod: true` is required.** Without it `output.types` emits plain interfaces, which are types with
+  no runtime schema value to validate against. Setting `validateResponses` without it fails the
+  build with an explicit error rather than emitting code that cannot compile.
+- **`@maroonedsoftware/zod` 0.6.1 or later**, for the `statusCode` argument and its handling of it.
+- **Failures are 500s, and the detail is log-only.** A service returning a shape its own contract
+  rejects is a server fault, not a client one. At 5xx `parseAndValidate` puts the field-level map on
+  the error's `internalDetails` rather than `details`, so `errorMiddleware` keeps it out of the
+  response body — which does mean you need the app's error logging wired up to see *which* field
+  was wrong.
+- **Bodies that reference a `format(input=…)` or `format(output=…)` model are skipped.** Those
+  schemas transform keys between the wire casing and the developer-facing casing, and the service
+  already returns the post-transform shape, so re-parsing it through the same schema would fail on
+  every key. The skip follows model references transitively.
+- **A status declaring several content types with *different* body shapes is skipped.** When the
+  shapes match (`image/png` and `image/jpeg` both `binary`) one schema covers them and validation
+  applies as normal.
 
 #### `sdk`
 

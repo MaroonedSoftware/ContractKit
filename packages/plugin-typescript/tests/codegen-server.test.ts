@@ -216,6 +216,54 @@ describe('createTypescriptPlugin (server)', () => {
         });
     });
 
+    describe('validateResponses', () => {
+        const userRoot = () =>
+            opRoot(
+                [opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])],
+                '/project/contracts/users.ck',
+            );
+
+        it('throws when validateResponses is set without zod', async () => {
+            const plugin = createTypescriptPlugin({ server: { validateResponses: true } }, '/project');
+            await expect(plugin.generateTargets!(inputs(), makeCtx('/project'))).rejects.toThrow(/validateResponses requires server\.zod/);
+        });
+
+        it('accepts validateResponses alongside zod', async () => {
+            const plugin = createTypescriptPlugin({ server: { zod: true, validateResponses: true } }, '/project');
+            await expect(plugin.generateTargets!(inputs(), makeCtx('/project'))).resolves.toBeUndefined();
+        });
+
+        it('threads validateResponses into the generated router', async () => {
+            const plugin = createTypescriptPlugin({ server: { zod: true, validateResponses: true } }, '/project');
+            const ctx = makeCtx('/project');
+            await plugin.generateTargets!(inputs([userRoot()]), ctx);
+            const router = [...ctx.emitted.entries()].find(([p]) => p.endsWith('.router.ts'))![1];
+            expect(router).toContain('ctx.body = await parseAndValidate(result, User, 500);');
+        });
+
+        it('leaves routers unvalidated without the flag', async () => {
+            const plugin = createTypescriptPlugin({ server: { zod: true } }, '/project');
+            const ctx = makeCtx('/project');
+            await plugin.generateTargets!(inputs([userRoot()]), ctx);
+            const router = [...ctx.emitted.entries()].find(([p]) => p.endsWith('.router.ts'))![1];
+            expect(router).toContain('ctx.body = result;');
+        });
+
+        // The set is derived from the contract roots, not handed in via `inputs`, so a
+        // `format(input=...)` model reaches the router codegen and suppresses its validation.
+        it('derives modelsWithTransform from the contract roots', async () => {
+            const plugin = createTypescriptPlugin({ server: { zod: true, validateResponses: true } }, '/project');
+            const ctx = makeCtx('/project');
+            const contracts = [
+                contractRoot([model('User', [field('id', scalarType('uuid'))], { inputCase: 'snake' })], '/project/contracts/users.ck'),
+            ];
+            await plugin.generateTargets!({ ...inputs([userRoot()]), contractRoots: contracts } as never, ctx);
+            const router = [...ctx.emitted.entries()].find(([p]) => p.endsWith('.router.ts'))![1];
+            expect(router).toContain('ctx.body = result;');
+            expect(router).not.toContain('parseAndValidate(result');
+        });
+    });
+
     describe('default plugin export', () => {
         it('plugin has name "typescript"', async () => {
             const { default: plugin } = await import('../src/index.js');

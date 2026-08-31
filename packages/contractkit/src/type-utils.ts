@@ -292,6 +292,15 @@ export function collectTransitiveModelRefs(seedTypes: ContractTypeNode[], modelM
     return found;
 }
 
+/**
+ * Collect every model name a type node references, at any depth, into `out`.
+ *
+ * Walks through the composite kinds (arrays, tuples, records, unions, intersections, inline objects
+ * and `lazy` wrappers) to the `ref` leaves. Names are added as written — no `Input`/`Output` variant
+ * substitution — so callers deciding on variants filter the result themselves.
+ *
+ * @param out Accumulator, mutated in place. Reused across calls to union several types' refs.
+ */
 export function collectTypeRefs(type: ContractTypeNode, out: Set<string>): void {
     switch (type.kind) {
         case 'ref':
@@ -408,6 +417,63 @@ export function computeModelsWithOutput(models: ModelNode[], externalModelsWithO
     return result;
 }
 
+/**
+ * Compute which models compile to a schema that applies a key transform — `format(input=...)` or
+ * `format(output=...)` set to a non-camel case — including transitive dependencies.
+ *
+ * Such a schema is a pipe whose `z.input` casing differs from its `z.output` casing, so re-parsing
+ * a value the schema itself produced is not idempotent: against a strict object it fails on both
+ * the unrecognized post-transform keys and the missing pre-transform ones. Consumers validating
+ * outbound data need to know to leave these alone.
+ *
+ * {@link computeModelsWithOutput} is deliberately narrower — it seeds only from `outputCase`,
+ * because only that case needs a separate `Output` type alias — so it cannot stand in for this.
+ */
+export function computeModelsWithCaseTransform(models: ModelNode[], externalModelsWithCaseTransform: Set<string> = new Set()): Set<string> {
+    const result = new Set<string>();
+
+    // Initial pass: either direction of format() is a transform
+    for (const model of models) {
+        const inputTransform = model.inputCase && model.inputCase !== 'camel';
+        const outputTransform = model.outputCase && model.outputCase !== 'camel';
+        if (inputTransform || outputTransform) {
+            result.add(model.name);
+        }
+    }
+
+    // Transitive closure
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const model of models) {
+            if (result.has(model.name)) continue;
+            const refs = new Set<string>();
+            for (const field of model.fields) {
+                collectTypeRefs(field.type, refs);
+            }
+            if (model.bases) for (const b of model.bases) refs.add(b);
+            if (model.type) collectTypeRefs(model.type, refs);
+            for (const ref of refs) {
+                if (result.has(ref) || externalModelsWithCaseTransform.has(ref)) {
+                    result.add(model.name);
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
+ * The model names a contract root references but does not declare — its cross-file imports.
+ *
+ * Covers refs reached through bases, a type alias, and field types; names declared in the same root
+ * are removed even when another model references them.
+ *
+ * @returns The external names, sorted, so generated import lists do not depend on declaration order.
+ */
 export function collectExternalRefs(root: ContractRootNode): string[] {
     const localNames = new Set(root.models.map(m => m.name));
     const refs = new Set<string>();

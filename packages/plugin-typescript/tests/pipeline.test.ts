@@ -13,11 +13,11 @@ function compileContractSource(source: string) {
     return { root: contract, output, diag };
 }
 
-function compileOpSource(source: string, file = 'users.ck') {
+function compileOpSource(source: string, file = 'users.ck', options?: Parameters<typeof generateOp>[1]) {
     const diag = new DiagnosticCollector();
     const ck = parseCk(source, file, diag);
     const { op } = decomposeCk(ck);
-    const output = generateOp(op);
+    const output = generateOp(op, options);
     return { root: op, output, diag };
 }
 
@@ -101,6 +101,15 @@ describe('OP pipeline (source -> parse -> codegen)', () => {
         expect(output).toContain("UsersRouter.post('/users'");
         expect(output).toContain("bodyParserMiddleware(['json'])");
         expect(output).toContain('ctx.status = 201');
+    });
+
+    it('validates response bodies end to end when validateResponses is on', () => {
+        const { output, diag } = compileOpSource(SIMPLE_USERS_OP, 'users.ck', { validateResponses: true });
+        expect(diag.hasErrors()).toBe(false);
+        // GET returns array(User), POST returns User — both re-parsed against their own schema.
+        expect(output).toContain('ctx.body = await parseAndValidate(result, z.array(User), 500);');
+        expect(output).toContain('ctx.body = await parseAndValidate(result, User, 500);');
+        expect(output).toContain("import { parseAndValidate } from '@maroonedsoftware/zod';");
     });
 
     it('compiles an operation with params, request, and response', () => {

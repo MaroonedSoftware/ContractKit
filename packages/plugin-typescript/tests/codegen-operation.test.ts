@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { generateOp } from '../src/codegen-operation.js';
 import { SECURITY_NONE } from '@contractkit/core';
+import type { ContractTypeNode } from '@contractkit/core';
 import {
     scalarType,
     arrayType,
     refType,
     inlineObjectType,
+    intersectionType,
     field,
     opParam,
     opRequest,
@@ -59,6 +61,69 @@ describe('generateOperation', () => {
             const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])]);
             const output = generateOp(root);
             expect(output).toContain('User');
+        });
+
+        // Imports are collected from the AST, which over-approximates: a model with an Input/Output
+        // variant contributes its base name even when only the variant is annotated, and the
+        // collectors walk every operation including ones `includeInternal: false` drops. Each name
+        // is filtered back through the same `uses` gate the other symbols go through, because an
+        // import nothing references trips `noUnusedLocals` in the consuming project.
+        describe('every imported name is referenced by the generated body', () => {
+            /** Names in `import { … } from '…'` lines, minus everything the body actually mentions. */
+            const unusedImports = (output: string): string[] => {
+                const lines = output.split('\n');
+                const imported = lines
+                    .filter(l => l.startsWith('import '))
+                    .flatMap(l => l.match(/import\s+(?:type\s+)?\{([^}]*)\}/)?.[1]?.split(',') ?? [])
+                    .map(n => n.replace(/^\s*type\s+/, '').trim())
+                    .filter(Boolean);
+                const body = lines.filter(l => !l.startsWith('import ')).join('\n');
+                return imported.filter(name => !new RegExp(`\\b${name}\\b`).test(body));
+            };
+
+            it('drops the base model when only its Output variant is annotated', () => {
+                const root = opRoot([opRoute('/t', [opOperation('post', { responses: [opResponse(200, 'AuthToken', 'application/json')] })])]);
+                const output = generateOp(root, { modelsWithOutput: new Set(['AuthToken']) });
+                expect(output).toContain('AuthTokenOutput');
+                expect(output).not.toContain('import { AuthToken,');
+                expect(unusedImports(output)).toEqual([]);
+            });
+
+            it('drops the base model when only its Input variant is validated', () => {
+                const root = opRoot([opRoute('/u', [opOperation('post', { request: opRequest('CreateUser') })])]);
+                const output = generateOp(root, { modelsWithInput: new Set(['CreateUser']) });
+                expect(output).toContain('CreateUserInput');
+                expect(output).not.toContain('import { CreateUser,');
+                expect(unusedImports(output)).toEqual([]);
+            });
+
+            // `collectTypes`/`collectServices` walk every operation, so a router whose only op is
+            // dropped used to import a service and a model it had no handler to use them in.
+            it('imports nothing for a router whose only operation is an excluded internal one', () => {
+                const root = opRoot([
+                    opRoute('/i', [opOperation('get', { modifiers: ['internal'], responses: [opResponse(200, 'Secret', 'application/json')] })]),
+                ]);
+                const output = generateOp(root, { includeInternal: false });
+                expect(output).not.toContain('Secret');
+                expect(output).not.toContain('Service');
+                expect(unusedImports(output)).toEqual([]);
+            });
+
+            it('keeps the base model when the body does reference it', () => {
+                const root = opRoot([
+                    opRoute('/users', [opOperation('post', { request: opRequest('User'), responses: [opResponse(201, 'User', 'application/json')] })]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain('User');
+                expect(unusedImports(output)).toEqual([]);
+            });
+
+            it('keeps the base model when validateResponses uses it as the runtime schema', () => {
+                const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])]);
+                const output = generateOp(root, { validateResponses: true });
+                expect(output).toContain('parseAndValidate(result, User, 500)');
+                expect(unusedImports(output)).toEqual([]);
+            });
         });
 
         it('generates parseAndValidate import when route has params', () => {
@@ -949,8 +1014,9 @@ describe('generateOperation', () => {
             });
 
             it('emits no _ZodBinary helper for a binary response body', () => {
-                // A response body is an annotation, not a schema — the handler never validates it,
-                // so declaring the helper would leave it unused and trip `noUnusedLocals`.
+                // Without `validateResponses` a response body is an annotation, not a schema — the
+                // handler never validates it, so declaring the helper would leave it unused and trip
+                // `noUnusedLocals`. With the flag on it is referenced, and the helper comes back.
                 const root = opRoot([
                     opRoute('/art', [
                         opOperation('get', {
@@ -1013,6 +1079,190 @@ describe('generateOperation', () => {
     });
 
     // ─── Service inference ────────────────────────────────────────
+
+    // ─── Response body validation ──────────────────────────────────────
+
+    describe('response body validation (validateResponses)', () => {
+        const V = { validateResponses: true };
+        const respRoot = (bodyType: string | ContractTypeNode, contentType = 'application/json') =>
+            opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, bodyType, contentType)] })])]);
+
+        it('is off by default', () => {
+            expect(generateOp(respRoot('User'))).toContain('ctx.body = result;');
+        });
+
+        it('validates a ref response body against its schema', () => {
+            expect(generateOp(respRoot('User'), V)).toContain('ctx.body = await parseAndValidate(result, User, 500);');
+        });
+
+        // A service returning a shape its own contract rejects is a server fault, not a client one.
+        // 500 also diverts the field-level detail to `internalDetails`, keeping it off the wire.
+        it('throws 500, not the parseAndValidate default of 400', () => {
+            const output = generateOp(respRoot('User'), V);
+            expect(output).toContain('parseAndValidate(result, User, 500)');
+            expect(output).not.toContain('parseAndValidate(result, User)');
+        });
+
+        it('wraps an array response body in z.array', () => {
+            const root = respRoot(arrayType(refType('User')));
+            expect(generateOp(root, V)).toContain('ctx.body = await parseAndValidate(result, z.array(User), 500);');
+        });
+
+        it('validates a scalar response body against the rendered scalar schema', () => {
+            const root = respRoot(scalarType('string'), 'text/plain');
+            expect(generateOp(root, V)).toContain('ctx.body = await parseAndValidate(result, z.string(), 500);');
+        });
+
+        it('reuses the extracted schema const for a complex inline body', () => {
+            const root = respRoot(inlineObjectType([field('total', scalarType('int'))]));
+            const output = generateOp(root, V);
+            expect(output).toContain('const resultType = z.strictObject({');
+            expect(output).toContain('ctx.body = await parseAndValidate(result, resultType, 500);');
+        });
+
+        it('validates result.body when the status declares headers', () => {
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        responses: [
+                            {
+                                ...opResponse(200, 'User', 'application/json'),
+                                headers: [{ name: 'etag', optional: false, type: scalarType('string') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root, V);
+            expect(output).toContain("ctx.set('etag', String(result.headers[\"etag\"]));");
+            expect(output).toContain('ctx.body = await parseAndValidate(result.body, User, 500);');
+        });
+
+        it('validates a single schema when several mimes share a body shape', () => {
+            const root = opRoot([
+                opRoute('/art', [
+                    opOperation('get', {
+                        responses: [
+                            opResponseMulti(200, [
+                                { contentType: 'image/png', bodyType: scalarType('binary') },
+                                { contentType: 'image/jpeg', bodyType: scalarType('binary') },
+                            ]),
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root, V);
+            expect(output).toContain('ctx.body = await parseAndValidate(result.body, _ZodBinary, 500);');
+            // The helper and the zod import are gated on the generated text, so both follow.
+            expect(output).toContain('const _ZodBinary = z.custom<Buffer>');
+            expect(output).toContain("import { z } from 'zod';");
+        });
+
+        it('validates each status body in a multi-status switch', () => {
+            const root = opRoot([
+                opRoute('/art', [
+                    opOperation('get', {
+                        responses: [opResponse(200, 'Art', 'application/json'), opResponse(202, 'JobRef', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root, V);
+            expect(output).toMatch(/case 200:[\s\S]*?ctx\.body = await parseAndValidate\(result\.body, Art, 500\);/);
+            expect(output).toMatch(/case 202:[\s\S]*?ctx\.body = await parseAndValidate\(result\.body, JobRef, 500\);/);
+        });
+
+        it('imports parseAndValidate for an operation with no request to validate', () => {
+            expect(generateOp(respRoot('User'), V)).toContain("import { parseAndValidate } from '@maroonedsoftware/zod';");
+        });
+
+        it('imports Interval once an interval body is validated', () => {
+            const output = generateOp(respRoot(scalarType('interval')), V);
+            expect(output).toContain("import { Interval } from 'luxon';");
+            expect(output).toContain('parseAndValidate(result, _ZodInterval, 500)');
+        });
+
+        it('writes no body for a bodyless status', () => {
+            const root = opRoot([opRoute('/users', [opOperation('delete', { responses: [opResponse(204)] })])]);
+            expect(generateOp(root, V)).not.toContain('ctx.body');
+        });
+
+        // ── Bodies the schema cannot soundly re-parse ──
+
+        it('leaves a body unvalidated when the model has an Output variant', () => {
+            const output = generateOp(respRoot('AuthToken'), { ...V, modelsWithOutput: new Set(['AuthToken']) });
+            expect(output).toContain('ctx.body = result;');
+            expect(output).not.toContain('parseAndValidate(result');
+        });
+
+        it('leaves an array unvalidated when the item model has an Output variant', () => {
+            const root = respRoot(arrayType(refType('AuthToken')));
+            const output = generateOp(root, { ...V, modelsWithOutput: new Set(['AuthToken']) });
+            expect(output).toContain('ctx.body = result;');
+            expect(output).not.toContain('parseAndValidate(result');
+        });
+
+        // `format(input=snake)` alone never reaches `modelsWithOutput` — that set seeds only from
+        // `outputCase` — but its schema is just as much a transform pipe, so re-parsing what the
+        // service returns would fail on every key. Regression guard for exactly that gap.
+        it('leaves a body unvalidated when the model has a format() key transform', () => {
+            const output = generateOp(respRoot('User'), { ...V, modelsWithTransform: new Set(['User']) });
+            expect(output).toContain('ctx.body = result;');
+            expect(output).not.toContain('parseAndValidate(result');
+        });
+
+        it('skips an inline object whose field references a transform model', () => {
+            const root = respRoot(inlineObjectType([field('token', refType('AuthToken'))]));
+            const output = generateOp(root, { ...V, modelsWithOutput: new Set(['AuthToken']) });
+            expect(output).not.toContain('parseAndValidate(result');
+        });
+
+        it('skips a multi-status case whose model has an Output variant, validating the others', () => {
+            const root = opRoot([
+                opRoute('/art', [
+                    opOperation('get', {
+                        responses: [opResponse(200, 'Art', 'application/json'), opResponse(202, 'AuthToken', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root, { ...V, modelsWithOutput: new Set(['AuthToken']) });
+            expect(output).toMatch(/case 200:[\s\S]*?ctx\.body = await parseAndValidate\(result\.body, Art, 500\);/);
+            expect(output).toMatch(/case 202:[\s\S]*?ctx\.body = result\.body;/);
+        });
+
+        it('skips validation when the mimes carry different body types', () => {
+            const root = opRoot([
+                opRoute('/pets', [
+                    opOperation('get', {
+                        responses: [
+                            opResponseMulti(200, [
+                                { contentType: 'application/json', bodyType: 'Pet' },
+                                { contentType: 'text/csv', bodyType: scalarType('string') },
+                            ]),
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root, V);
+            expect(output).toContain('ctx.body = result.body;');
+            expect(output).not.toContain('parseAndValidate(result.body');
+        });
+
+        // renderIntersection falls back to `.and()` outside its `.extend()` fast path, and `.and()`
+        // of two strict objects rejects every value — each side sees the other's keys as unknown.
+        it('skips an intersection that renders through .and()', () => {
+            const root = respRoot(
+                intersectionType(inlineObjectType([field('a', scalarType('string'))]), inlineObjectType([field('b', scalarType('string'))])),
+            );
+            expect(generateOp(root, V)).not.toContain('parseAndValidate(result');
+        });
+
+        it('validates an intersection that renders through .extend()', () => {
+            const root = respRoot(intersectionType(refType('Base'), inlineObjectType([field('extra', scalarType('string'))])));
+            const output = generateOp(root, V);
+            expect(output).toContain('const resultType = Base.extend({');
+            expect(output).toContain('ctx.body = await parseAndValidate(result, resultType, 500);');
+        });
+    });
 
     describe('service inference', () => {
         it('uses explicit service when declared', () => {
