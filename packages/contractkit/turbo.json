@@ -1,0 +1,12 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "inputs": ["$TURBO_DEFAULT$", ".env*", "$TURBO_ROOT$/docs/language.md"]
+    },
+    "build:ci": {
+      "inputs": ["$TURBO_DEFAULT$", ".env*", "$TURBO_ROOT$/docs/language.md"]
+    }
+  }
+}

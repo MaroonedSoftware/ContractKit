@@ -101,7 +101,7 @@ stays in sync with the contracts.
 ## More
 
 - README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/contractkit/README.md
-- Language reference: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
-- Grammar (authoritative when prose and behaviour disagree): https://github.com/MaroonedSoftware/contractkit/blob/main/packages/contractkit/src/contractkit.ohm
+- Language reference: `dist/language.md` in this package (also https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md)
+- Grammar (authoritative when prose and behaviour disagree): `dist/contractkit.ohm` in this package (also https://github.com/MaroonedSoftware/contractkit/blob/main/packages/contractkit/src/contractkit.ohm)
 - AST types: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/contractkit/src/ast.ts
 - Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt

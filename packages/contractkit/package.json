@@ -23,6 +23,10 @@
         "url": "https://github.com/MaroonedSoftware/contractkit.git"
     },
     "type": "module",
+    "files": [
+        "dist",
+        "llms.txt"
+    ],
     "main": "./dist/index.js",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",
@@ -34,7 +38,7 @@
         }
     },
     "scripts": {
-        "build": "tsup src/index.ts src/type-utils.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration && cp src/contractkit.ohm dist/",
+        "build": "tsup src/index.ts src/type-utils.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration && cp src/contractkit.ohm dist/ && cp ../../docs/language.md dist/",
         "build:ci": "eslint --max-warnings=0 && pnpm run build",
         "lint": "eslint --fix",
         "format": "prettier --write .",
