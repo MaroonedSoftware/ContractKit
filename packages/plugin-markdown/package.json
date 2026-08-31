@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-markdown",
-    "version": "0.11.0",
+    "version": "0.11.1",
     "description": "ContractKit built-in plugin: Markdown API reference generation",
     "license": "MIT",
     "author": {
