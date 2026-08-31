@@ -412,6 +412,19 @@ export function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode)
             s.type = 'integer';
             s.format = 'int64';
             break;
+        case 'decimal':
+            // A quoted string, not `type: number` — the whole point is to keep the value away from
+            // the IEEE-754 double a JSON number becomes in most generators.
+            s.type = 'string';
+            s.format = 'decimal';
+            s.pattern = type.scale !== undefined ? `^-?\\d+(\\.\\d{1,${type.scale}})?$` : '^-?\\d+(\\.\\d+)?$';
+            // `minimum`/`maximum` are numeric in JSON Schema and ignored on a string type, so the
+            // exact bounds ride in vendor extensions instead — which also lets the importer recover
+            // them verbatim rather than reverse-engineering the pattern.
+            if (type.scale !== undefined) s['x-contractkit-scale'] = type.scale;
+            if (type.min !== undefined) s['x-contractkit-min'] = String(type.min);
+            if (type.max !== undefined) s['x-contractkit-max'] = String(type.max);
+            break;
         case 'boolean':
             s.type = 'boolean';
             break;

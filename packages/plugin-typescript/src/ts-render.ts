@@ -96,6 +96,12 @@ function renderTsScalar(name: ScalarTypeNode['name'], target: TsRenderTarget): s
             return 'number';
         case 'bigint':
             return 'bigint';
+        case 'decimal':
+            // The one scalar whose wire view and server view agree — see the note on this
+            // function and on `serverTsScalar`. A `decimal` travels as a quoted string, and both
+            // the router (via `_ZodDecimal`) and the SDK (via the generated `reviveX` functions)
+            // hand the developer a real `Decimal`, so there is no `target` split to make.
+            return 'Decimal';
         case 'boolean':
             return 'boolean';
         case 'date':

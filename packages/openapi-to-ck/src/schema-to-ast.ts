@@ -53,6 +53,7 @@ const FORMAT_TO_SCALAR: Record<string, ScalarTypeNode['name']> = {
     duration: 'duration',
     binary: 'binary',
     int64: 'bigint',
+    decimal: 'decimal',
 };
 
 // ─── Public API ───────────────────────────────────────────────────────────
@@ -238,6 +239,17 @@ export function schemaToTypeNode(schema: NormalizedSchema, ctx: SchemaContext): 
 // ─── Type-Specific Converters ─────────────────────────────────────────────
 
 function stringSchemaToType(schema: NormalizedSchema): ContractTypeNode {
+    // `decimal` carries its constraints in extensions rather than in `minimum`/`maximum`, and its
+    // `pattern` is derived from `scale` — reimporting that pattern as a `regex=` modifier would
+    // both duplicate the constraint and stop the value round-tripping to the same `.ck` source.
+    if (schema.format === 'decimal') {
+        const mods: Partial<ScalarTypeNode> = {};
+        if (schema['x-contractkit-min'] !== undefined) mods.min = schema['x-contractkit-min'];
+        if (schema['x-contractkit-max'] !== undefined) mods.max = schema['x-contractkit-max'];
+        if (schema['x-contractkit-scale'] !== undefined) mods.scale = schema['x-contractkit-scale'];
+        return { kind: 'scalar', name: 'decimal', ...mods };
+    }
+
     // Check format first
     if (schema.format) {
         const scalarName = FORMAT_TO_SCALAR[schema.format];
@@ -268,6 +280,14 @@ function integerSchemaToType(schema: NormalizedSchema): ContractTypeNode {
 }
 
 function numberSchemaToType(schema: NormalizedSchema): ContractTypeNode {
+    // A hand-written spec may say `type: number, format: decimal`. Honour the intent — an exact
+    // decimal — even though we never emit that shape ourselves.
+    if (schema.format === 'decimal') {
+        const mods: Partial<ScalarTypeNode> = {};
+        if (schema.minimum !== undefined) mods.min = String(schema.minimum);
+        if (schema.maximum !== undefined) mods.max = String(schema.maximum);
+        return { kind: 'scalar', name: 'decimal', ...mods };
+    }
     const mods: Partial<ScalarTypeNode> = {};
     if (schema.minimum !== undefined) mods.min = schema.minimum;
     if (schema.maximum !== undefined) mods.max = schema.maximum;

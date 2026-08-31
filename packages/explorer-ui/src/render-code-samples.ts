@@ -183,6 +183,11 @@ function scalarSample(s: ScalarTypeNode, fieldName: string | undefined): unknown
         case 'int':
         case 'bigint':
             return fakerNumber(fieldName, s);
+        case 'decimal':
+            // A quoted string, matching the wire form. Falling through to the `default:` here would
+            // render a money field as a lorem word; returning a JSON number would render a sample
+            // the API's own schema rejects.
+            return fakerDecimal(s);
         case 'uuid':
             return faker.string.uuid();
         case 'datetime':
@@ -257,6 +262,13 @@ function fakerNumber(fieldName: string | undefined, s: ScalarTypeNode): number {
         return faker.number.int({ min: lo, max: hi });
     }
     return Number(faker.number.float({ min: lo, max: hi, fractionDigits: 2 }));
+}
+
+/** A decimal sample as a string, honouring `scale` and any declared bounds. */
+function fakerDecimal(s: ScalarTypeNode): string {
+    const lo = toFiniteNumber(s.min, 0);
+    const hi = toFiniteNumber(s.max, Math.max(lo + 1, 9999));
+    return faker.finance.amount({ min: lo, max: hi, dec: s.scale ?? 2 });
 }
 
 function toFiniteNumber(value: number | bigint | string | undefined, fallback: number): number {

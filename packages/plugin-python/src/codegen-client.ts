@@ -109,6 +109,7 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     const needsDatetime = referencedModels.has('__datetime__');
     const needsDate = referencedModels.has('__date__');
     const needsTime = referencedModels.has('__time__');
+    const needsDecimal = referencedModels.has('__decimal__');
     const needsUUID = referencedModels.has('__uuid__');
     const needsAny = referencedModels.has('__any__');
 
@@ -119,6 +120,7 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         if (needsTime) dtParts.push('time');
         lines.push(`from datetime import ${dtParts.join(', ')}`);
     }
+    if (needsDecimal) lines.push('from decimal import Decimal');
     if (needsUUID) lines.push('from uuid import UUID');
 
     // Collect public ops once — used both for TypedDict emission and method generation.
@@ -618,7 +620,7 @@ function getListItemType(type: ContractTypeNode, modelsWithInput?: Set<string>):
 
 /**
  * Collect all model names and scalar sentinels referenced in public operations.
- * Sentinels: __datetime__, __date__, __time__, __uuid__, __any__
+ * Sentinels: __datetime__, __date__, __time__, __decimal__, __uuid__, __any__
  */
 function collectReferencedModels(root: OpRootNode, modelsWithInput?: Set<string>, includeInternal = false): Set<string> {
     const refs = new Set<string>();
@@ -671,6 +673,9 @@ function collectTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWithInp
                     break;
                 case 'datetime':
                     out.add('__datetime__');
+                    break;
+                case 'decimal':
+                    out.add('__decimal__');
                     break;
                 case 'uuid':
                     out.add('__uuid__');

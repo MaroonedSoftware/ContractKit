@@ -34,6 +34,32 @@ describe('scalarToSchema', () => {
         expect(scalarToSchema({ kind: 'scalar', name: 'interval' })).toEqual({ type: 'string', format: 'interval' });
     });
 
+    it('maps decimal to a string, never a number', () => {
+        // `type: number` would let a generator route the value through an IEEE-754 double, which
+        // is the loss the scalar exists to prevent.
+        expect(scalarToSchema({ kind: 'scalar', name: 'decimal' })).toEqual({
+            type: 'string',
+            format: 'decimal',
+            pattern: '^-?\\d+(\\.\\d+)?$',
+        });
+    });
+
+    it('narrows the decimal pattern by scale', () => {
+        expect(scalarToSchema({ kind: 'scalar', name: 'decimal', scale: 2 })).toMatchObject({
+            pattern: '^-?\\d+(\\.\\d{1,2})?$',
+            'x-contractkit-scale': 2,
+        });
+    });
+
+    it('carries exact decimal bounds in extensions, not in numeric minimum/maximum', () => {
+        // JSON Schema's `minimum`/`maximum` are numeric and ignored on a string type, so the exact
+        // values ride in extensions the importer can read back verbatim.
+        const schema = scalarToSchema({ kind: 'scalar', name: 'decimal', min: '0.01', max: '999999.99' });
+        expect(schema).toMatchObject({ 'x-contractkit-min': '0.01', 'x-contractkit-max': '999999.99' });
+        expect(schema).not.toHaveProperty('minimum');
+        expect(schema).not.toHaveProperty('maximum');
+    });
+
     it('throws on an unmapped scalar name', () => {
         expect(() => scalarToSchema({ kind: 'scalar', name: 'quaternion' } as any)).toThrow(/unmapped scalar 'quaternion'/);
     });

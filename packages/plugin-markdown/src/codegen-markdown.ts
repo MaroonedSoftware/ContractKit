@@ -75,6 +75,9 @@ export function renderTsScalar(name: ScalarTypeNode['name']): string {
             return 'number';
         case 'bigint':
             return 'bigint';
+        case 'decimal':
+            // Quoted string on the wire, rehydrated into a decimal.js `Decimal` by the SDK.
+            return 'Decimal';
         case 'boolean':
             return 'boolean';
         case 'date':

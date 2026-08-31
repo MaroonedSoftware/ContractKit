@@ -101,6 +101,36 @@ describe('renderType', () => {
             expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint().min(0n).max(100n))`);
         });
 
+        it('renders bare _ZodDecimal for an unconstrained decimal', () => {
+            expect(renderType(scalarType('decimal'))).toBe('_ZodDecimal');
+        });
+
+        it('renders a scale refinement on decimal', () => {
+            expect(renderType(scalarType('decimal', { scale: 2 }))).toBe(
+                `_ZodDecimal.refine((v) => v.decimalPlaces() <= 2, { message: 'Must be at most 2 decimal places' })`,
+            );
+        });
+
+        it('compares decimal bounds as exact strings, never as floats', () => {
+            // `0.01` through `Number()` is the precision loss this scalar exists to prevent, so the
+            // bound is emitted as a quoted string for decimal.js to parse.
+            const result = renderType(scalarType('decimal', { min: '0.01', max: '999999.99' }));
+            expect(result).toBe(
+                `_ZodDecimal.refine((v) => v.gte('0.01') && v.lte('999999.99'), { message: 'Must be at least 0.01, at most 999999.99' })`,
+            );
+        });
+
+        it('renders scale and bounds together', () => {
+            const result = renderType(scalarType('decimal', { min: '0', scale: 2 }));
+            expect(result).toBe(
+                `_ZodDecimal.refine((v) => v.decimalPlaces() <= 2 && v.gte('0'), { message: 'Must be at most 2 decimal places, at least 0' })`,
+            );
+        });
+
+        it('singularises the scale message at 1', () => {
+            expect(renderType(scalarType('decimal', { scale: 1 }))).toContain(`message: 'Must be at most 1 decimal place'`);
+        });
+
         it('renders z.boolean() with string coercion preprocess', () => {
             expect(renderType(scalarType('boolean'))).toBe(`z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean())`);
         });
@@ -327,6 +357,30 @@ describe('generateContract', () => {
             expect(output).toContain(
                 `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' })).transform(val => val.toISO()!);`,
             );
+        });
+
+        it('emits the decimal.js import and _ZodDecimal helper when a decimal field is present', () => {
+            const root = contractRoot([model('M', [field('amount', scalarType('decimal'))])]);
+            const output = generateContract(root);
+            expect(output).toContain(`import Decimal from 'decimal.js';`);
+            expect(output).toContain(`Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });`);
+            expect(output).toContain(`const _ZodDecimal = z.preprocess(`);
+            // No output `.transform()` — `isRevalidatable` treats every scalar as idempotent under
+            // re-parse, which `server.validateResponses` depends on.
+            expect(output).not.toContain('_ZodDecimal = z.preprocess(...).transform');
+        });
+
+        it('omits the decimal runtime entirely when no decimal field is present', () => {
+            const root = contractRoot([model('M', [field('n', scalarType('number'))])]);
+            const output = generateContract(root);
+            expect(output).not.toContain('decimal.js');
+            expect(output).not.toContain('_ZodDecimal');
+            expect(output).not.toContain('Decimal.set');
+        });
+
+        it('detects a decimal nested in an array', () => {
+            const root = contractRoot([model('M', [field('amounts', arrayType(scalarType('decimal')))])]);
+            expect(generateContract(root)).toContain(`import Decimal from 'decimal.js';`);
         });
 
         it('detects DateTime in nested array types', () => {

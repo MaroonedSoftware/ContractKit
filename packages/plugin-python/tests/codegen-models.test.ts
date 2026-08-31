@@ -28,6 +28,7 @@ describe('renderPyType', () => {
         expect(renderPyType(scalarType('json'))).toBe('Any');
         expect(renderPyType(scalarType('object'))).toBe('Any');
         expect(renderPyType(scalarType('interval'))).toBe('str');
+        expect(renderPyType(scalarType('decimal'))).toBe('Decimal');
     });
 
     it('throws on an unmapped scalar name', () => {
@@ -249,6 +250,13 @@ describe('generatePydanticModels', () => {
         const output = generatePydanticModels(root);
         expect(output).toContain('from datetime import timedelta');
         expect(output).toContain('timeout: timedelta');
+    });
+
+    it('generates the Decimal import for decimal fields', () => {
+        const root = contractRoot([model('Payslip', [field('gross', scalarType('decimal'))])]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('from decimal import Decimal');
+        expect(output).toContain('gross: Decimal');
     });
 
     it('includes deprecation comment', () => {

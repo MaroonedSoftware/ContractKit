@@ -23,6 +23,7 @@ import {
 } from '@contractkit/core';
 import { escapeJsDocLines } from './ts-render.js';
 import type { TsRenderTarget } from './ts-render.js';
+import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 
 /**
  * Maps a ContractKit object mode to its Zod constructor name.
@@ -142,6 +143,7 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     const needsBinary = rootNeedsScalar(root, 'binary');
     const needsDatetime = rootNeedsScalar(root, 'datetime');
     const needsJson = rootNeedsScalar(root, 'json');
+    const needsDecimal = rootNeedsScalar(root, 'decimal');
     const externalRefs = collectExternalRefs(root);
     const lines: string[] = [];
 
@@ -166,6 +168,7 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     if (needsDuration) luxonImports.push('Duration');
     if (needsInterval) luxonImports.push('Interval');
     if (luxonImports.length > 0) lines.push(`import { ${luxonImports.join(', ')} } from 'luxon';`);
+    if (needsDecimal) lines.push(DECIMAL_IMPORT);
     for (const ref of allExternalRefs) {
         const importPath = resolveImportPath(ref, context);
         lines.push(`import { ${ref} } from '${importPath}';`);
@@ -184,13 +187,16 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
             `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' })).transform(val => val.toISO()!);`,
         );
     }
+    if (needsDecimal) {
+        lines.push(...DECIMAL_PRELUDE_LINES);
+    }
     if (needsJson) {
         lines.push(`type _JsonValue = string | number | boolean | null | _JsonValue[] | { [key: string]: _JsonValue };`);
         lines.push(
             `const _ZodJson: z.ZodType<_JsonValue> = z.lazy(() => z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(_ZodJson), z.record(z.string(), _ZodJson)]));`,
         );
     }
-    if (needsBinary || needsDatetime || needsInterval || needsJson) lines.push('');
+    if (needsBinary || needsDatetime || needsInterval || needsDecimal || needsJson) lines.push('');
 
     const modelsWithWriteonly = new Set(root.models.filter(m => m.fields.some(f => f.visibility === 'writeonly')).map(m => m.name));
     const modelMap = new Map(root.models.map(m => [m.name, m]));
@@ -630,6 +636,22 @@ function renderScalar(s: ScalarTypeNode): string {
             if (s.min !== undefined) inner += `.min(${s.min}n)`;
             if (s.max !== undefined) inner += `.max(${s.max}n)`;
             return `z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, ${inner})`;
+        }
+        case 'decimal': {
+            // Deliberately no output `.transform()`: `isRevalidatable` in codegen-operation treats
+            // every scalar as idempotent under re-parse, which `server.validateResponses` relies on.
+            // Preprocess passes an already-`Decimal` value straight through, so parse(parse(x)) is
+            // stable. Modelling this on `_ZodInterval` — which does transform — would break that.
+            const checks: string[] = [];
+            if (s.scale !== undefined) checks.push(`v.decimalPlaces() <= ${s.scale}`);
+            if (s.min !== undefined) checks.push(`v.gte('${escapeString(String(s.min))}')`);
+            if (s.max !== undefined) checks.push(`v.lte('${escapeString(String(s.max))}')`);
+            if (checks.length === 0) return '_ZodDecimal';
+            const messageParts: string[] = [];
+            if (s.scale !== undefined) messageParts.push(`at most ${s.scale} decimal place${s.scale === 1 ? '' : 's'}`);
+            if (s.min !== undefined) messageParts.push(`at least ${s.min}`);
+            if (s.max !== undefined) messageParts.push(`at most ${s.max}`);
+            return `_ZodDecimal.refine((v) => ${checks.join(' && ')}, { message: 'Must be ${escapeString(messageParts.join(', '))}' })`;
         }
         case 'boolean':
             return `z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean())`;

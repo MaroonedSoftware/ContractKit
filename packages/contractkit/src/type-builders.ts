@@ -129,6 +129,18 @@ function buildDiscriminatedUnionType(args: TypeArg[]): ContractTypeNode {
     return { kind: 'discriminatedUnion', discriminator, members };
 }
 
+/**
+ * Coerce a `min=`/`max=` type argument to the representation its scalar compares against.
+ *
+ * `bigint` and `decimal` both carry values a JS number cannot hold exactly — `bigint` has its own
+ * primitive, `decimal` keeps the source text for decimal.js to parse. Everything else is a float.
+ */
+function coerceBound(name: ScalarTypeNode['name'], value: unknown): number | bigint | string {
+    if (name === 'bigint') return BigInt(value as string | number);
+    if (name === 'duration' || name === 'decimal') return String(value);
+    return Number(value);
+}
+
 function buildScalarWithModifiers(name: ScalarTypeNode['name'], args: TypeArg[]): ScalarTypeNode {
     const scalar: ScalarTypeNode = { kind: 'scalar', name };
     for (const a of args) {
@@ -147,9 +159,12 @@ function buildScalarWithModifiers(name: ScalarTypeNode['name'], args: TypeArg[])
             continue;
         }
         if (!('key' in a)) continue;
-        if (a.key === 'min') scalar.min = name === 'bigint' ? BigInt(a.value) : name === 'duration' ? String(a.value) : Number(a.value);
-        if (a.key === 'max') scalar.max = name === 'bigint' ? BigInt(a.value) : name === 'duration' ? String(a.value) : Number(a.value);
+        // `decimal` bounds stay strings for the same reason the scalar exists: routing `0.01`
+        // through `Number()` would round-trip it via a float before the bound is ever compared.
+        if (a.key === 'min') scalar.min = coerceBound(name, a.value);
+        if (a.key === 'max') scalar.max = coerceBound(name, a.value);
         if (a.key === 'len' || a.key === 'length') scalar.len = Number(a.value);
+        if (a.key === 'scale') scalar.scale = Number(a.value);
         if (a.key === 'regex') scalar.regex = String(a.value);
         if (a.key === 'format') scalar.format = String(a.value);
     }

@@ -18,6 +18,7 @@ import {
     modeToWrapper,
 } from './codegen-contract.js';
 import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted } from './ts-render.js';
+import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Content-type helpers ──────────────────────────────────────────────────
@@ -50,7 +51,15 @@ export function bodyTypesStructurallyEqual(a: ContractTypeNode, b: ContractTypeN
     switch (a.kind) {
         case 'scalar': {
             const bb = b as typeof a;
-            return a.name === bb.name && a.min === bb.min && a.max === bb.max && a.len === bb.len && a.regex === bb.regex && a.format === bb.format;
+            return (
+                a.name === bb.name &&
+                a.min === bb.min &&
+                a.max === bb.max &&
+                a.len === bb.len &&
+                a.scale === bb.scale &&
+                a.regex === bb.regex &&
+                a.format === bb.format
+            );
         }
         case 'array': {
             const bb = b as typeof a;
@@ -197,6 +206,9 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
             `const _ZodDatetime = z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }));`,
         );
     }
+    if (references('_ZodDecimal')) {
+        helpers.push(...DECIMAL_PRELUDE_LINES);
+    }
     if (references('_ZodInterval')) {
         helpers.push(
             `const _ZodInterval = z.preprocess((val) => typeof val === 'string' ? Interval.fromISO(val) : val, z.custom<Interval>((val) => val instanceof Interval && val.isValid, { message: 'Must be an ISO 8601 interval' })).transform(val => val.toISO()!);`,
@@ -245,6 +257,12 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     const luxonImports = ['DateTime', 'Duration', 'Interval'].filter(uses);
     if (luxonImports.length > 0) {
         body.push(`import { ${luxonImports.join(', ')} } from 'luxon';`);
+    }
+
+    // Same `uses` gate: `Decimal` appears in the `_ZodDecimal` helper and in service-result
+    // annotations via `serverTsScalar`, and the helper text is folded into `generated` above.
+    if (uses('Decimal')) {
+        body.push(DECIMAL_IMPORT);
     }
 
     if (uses('parseAndValidate')) {
@@ -645,6 +663,10 @@ function serverTsScalar(name: ScalarTypeNode['name']): string {
             return 'number';
         case 'bigint':
             return 'bigint';
+        case 'decimal':
+            // Unlike the date scalars, this matches `renderTsScalar`'s wire view — `_ZodDecimal`
+            // has no output transform, so `z.infer` is a `Decimal` on both sides.
+            return 'Decimal';
         case 'boolean':
             return 'boolean';
         case 'date':

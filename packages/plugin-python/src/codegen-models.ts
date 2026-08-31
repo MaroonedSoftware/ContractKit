@@ -128,6 +128,9 @@ function scanTypeImports(type: ContractTypeNode, imports: ImportTracker): void {
                 case 'duration':
                     imports.add('datetime', 'timedelta');
                     break;
+                case 'decimal':
+                    imports.add('decimal', 'Decimal');
+                    break;
                 case 'uuid':
                     imports.add('uuid', 'UUID');
                     break;
@@ -230,6 +233,8 @@ function renderScalar(name: ScalarTypeNode['name']): string {
             return 'int';
         case 'bigint':
             return 'int';
+        case 'decimal':
+            return 'Decimal';
         case 'boolean':
             return 'bool';
         case 'date':

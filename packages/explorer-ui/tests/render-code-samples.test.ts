@@ -100,6 +100,22 @@ describe('renderCodeSamples', () => {
         expect(html).toMatch(/&quot;id&quot;: &quot;[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}&quot;/);
     });
 
+    it('produces a quoted decimal string for a decimal scalar', () => {
+        // The switch behind this falls through to `fakerString` by default, which would render a
+        // money field as a lorem word in every sample payload and Try-It pre-fill.
+        const html = renderCodeSamples(
+            resolvedOp('/payslips', op('get', {
+                responses: [{
+                    statusCode: 200,
+                    hasBlock: true,
+                    bodies: [{ contentType: 'application/json', bodyType: inlineObj([field('gross', scalar('decimal', { scale: 2 }))]) }],
+                }],
+            })),
+            'https://api.example.com',
+        );
+        expect(html).toMatch(/&quot;gross&quot;: &quot;\d+\.\d{2}&quot;/);
+    });
+
     it('produces an ISO datetime for a datetime scalar', () => {
         const html = renderCodeSamples(
             resolvedOp('/events', op('get', {

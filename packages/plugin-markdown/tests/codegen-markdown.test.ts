@@ -664,6 +664,12 @@ describe('generateMarkdown', () => {
             expect(output).toContain('| `timeout` | `string` | Yes |');
         });
 
+        it('documents a decimal field as Decimal, not unknown', () => {
+            const dto = contractRoot([model('Payslip', [field('gross', scalarType('decimal'))])]);
+            const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
+            expect(output).toContain('| `gross` | `Decimal` | Yes |');
+        });
+
         it('marks optional fields as not required', () => {
             const dto = contractRoot([model('User', [field('bio', scalarType('string'), { optional: true })])]);
             const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });

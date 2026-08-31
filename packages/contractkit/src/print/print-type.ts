@@ -16,6 +16,7 @@ export function printType(type: ContractTypeNode): string {
             if (type.min !== undefined) constraints.push(`min=${type.min}`);
             if (type.max !== undefined) constraints.push(`max=${type.max}`);
             if (type.len !== undefined) constraints.push(`len=${type.len}`);
+            if (type.scale !== undefined) constraints.push(`scale=${type.scale}`);
             if (type.regex !== undefined) constraints.push(`regex=${printRegex(type.regex)}`);
             return constraints.length > 0 ? `${type.name}(${constraints.join(', ')})` : type.name;
         }

@@ -23,6 +23,7 @@ contract Pet: {
     name: string(min=1, max=64)
     code?: string(regex=/^[a-z]+$/)
     status: enum(available, "on hold")
+    price: decimal(min=0.01, max=999999.99, scale=2)
 }
 
 contract ApiError: {
@@ -98,10 +99,20 @@ describe('ck → openapi → ck', () => {
 
         // Models, including a regex and a quoted enum value.
         const pet = after.models.find(m => m.name === 'Pet')!;
-        expect(pet.fields.map(f => f.name)).toEqual(['id', 'name', 'code', 'status']);
+        expect(pet.fields.map(f => f.name)).toEqual(['id', 'name', 'code', 'status', 'price']);
         expect(pet.fields.find(f => f.name === 'code')!.type).toEqual({ kind: 'scalar', name: 'string', regex: '^[a-z]+$' });
         expect(pet.fields.find(f => f.name === 'status')!.type).toEqual({ kind: 'enum', values: ['available', 'on hold'] });
         expect(pet.fields.find(f => f.name === 'name')!.type).toEqual({ kind: 'scalar', name: 'string', min: 1, max: 64 });
+
+        // A decimal survives as a decimal — bounds recovered from the vendor extensions as exact
+        // strings, and the scale-derived `pattern` NOT reimported as a redundant `regex=`.
+        expect(pet.fields.find(f => f.name === 'price')!.type).toEqual({
+            kind: 'scalar',
+            name: 'decimal',
+            min: '0.01',
+            max: '999999.99',
+            scale: 2,
+        });
     });
 
     it('carries the documented marker through the vendor extension, not the status heuristic', async () => {

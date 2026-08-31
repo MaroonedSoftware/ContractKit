@@ -12,6 +12,7 @@ import {
 } from './codegen-contract.js';
 import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJsDocLines, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import type { TsRenderTarget } from './ts-render.js';
+import { DECIMAL_IMPORT } from './decimal-runtime.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -43,6 +44,11 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
     const externalInputRefs = allModelsWithInput.size > 0 ? collectExternalInputRefs(root, allModelsWithInput) : [];
     const externalOutputRefs = allModelsWithOutput.size > 0 ? collectExternalOutputRefs(root, allModelsWithOutput) : [];
     const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs, ...externalOutputRefs])].sort();
+
+    // Not `import type`: `renderTsScalar` maps `decimal` to `Decimal` in this mode too, so the class
+    // is a real runtime dependency of any consumer holding one — same position as in
+    // `generateContract`, which emits it ahead of the external model refs.
+    if (rootNeedsScalar(root, 'decimal')) lines.push(DECIMAL_IMPORT);
 
     // Type-only imports for external references
     for (const ref of allExternalRefs) {

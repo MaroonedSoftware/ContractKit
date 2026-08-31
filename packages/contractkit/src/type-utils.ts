@@ -466,6 +466,77 @@ export function computeModelsWithCaseTransform(models: ModelNode[], externalMode
     return result;
 }
 
+/** Whether a type node contains a `decimal` scalar anywhere below it, not following `ref` leaves. */
+function typeHasDecimal(type: ContractTypeNode): boolean {
+    switch (type.kind) {
+        case 'scalar':
+            return type.name === 'decimal';
+        case 'array':
+        case 'lazy':
+            return typeHasDecimal(type.kind === 'array' ? type.item : type.inner);
+        case 'tuple':
+            return type.items.some(typeHasDecimal);
+        case 'record':
+            return typeHasDecimal(type.key) || typeHasDecimal(type.value);
+        case 'union':
+        case 'discriminatedUnion':
+        case 'intersection':
+            return type.members.some(typeHasDecimal);
+        case 'inlineObject':
+            return type.fields.some(f => typeHasDecimal(f.type));
+        default:
+            // ref (resolved by the closure below), enum, literal
+            return false;
+    }
+}
+
+/**
+ * Compute which models carry a `decimal` scalar, directly or through a referenced model.
+ *
+ * A `decimal` arrives over the wire as a quoted string and has to be rehydrated into a decimal.js
+ * `Decimal` before a consumer touches it, so generators need to know which models require that
+ * treatment — and, because one decimal field anywhere below a model taints the whole model, the
+ * answer is transitive.
+ *
+ * Deliberately separate from {@link computeModelsWithOutput} and
+ * {@link computeModelsWithCaseTransform}: those track key-casing concerns, this one tracks a value
+ * representation, and a model can easily be in one set and not the others.
+ */
+export function computeModelsWithDecimal(models: ModelNode[], externalModelsWithDecimal: Set<string> = new Set()): Set<string> {
+    const result = new Set<string>();
+
+    // Initial pass: a decimal in the model's own fields or type alias
+    for (const model of models) {
+        if (model.fields.some(f => typeHasDecimal(f.type)) || (model.type && typeHasDecimal(model.type))) {
+            result.add(model.name);
+        }
+    }
+
+    // Transitive closure
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const model of models) {
+            if (result.has(model.name)) continue;
+            const refs = new Set<string>();
+            for (const field of model.fields) {
+                collectTypeRefs(field.type, refs);
+            }
+            if (model.bases) for (const b of model.bases) refs.add(b);
+            if (model.type) collectTypeRefs(model.type, refs);
+            for (const ref of refs) {
+                if (result.has(ref) || externalModelsWithDecimal.has(ref)) {
+                    result.add(model.name);
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 /**
  * The model names a contract root references but does not declare — its cross-file imports.
  *

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseCk } from '../src/parser.js';
 import { DiagnosticCollector } from '../src/diagnostics.js';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '../src/ast.js';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, SCALAR_NAMES } from '../src/ast.js';
 import type {
     ScalarTypeNode,
     ArrayTypeNode,
@@ -143,27 +143,10 @@ contract M: {
 
     describe('scalar types', () => {
         it('parses all scalar type names', () => {
-            const scalars = [
-                'string',
-                'number',
-                'int',
-                'bigint',
-                'boolean',
-                'date',
-                'time',
-                'datetime',
-                'duration',
-                'interval',
-                'email',
-                'url',
-                'uuid',
-                'unknown',
-                'null',
-                'object',
-                'binary',
-                'json',
-            ];
-            for (const name of scalars) {
+            // Driven off SCALAR_NAMES rather than a copy of it: a hand-maintained list here would
+            // silently stop covering any scalar added later.
+            expect(SCALAR_NAMES.size).toBeGreaterThan(0);
+            for (const name of SCALAR_NAMES) {
                 const { root } = parse(`contract M: { f: ${name} }`);
                 expect(root.models[0]!.fields[0]!.type).toMatchObject({ kind: 'scalar', name });
             }
