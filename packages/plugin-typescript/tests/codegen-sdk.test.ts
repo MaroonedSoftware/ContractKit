@@ -1201,6 +1201,25 @@ describe('generateSdk — route-level deprecated cascade', () => {
         expect(deprecatedCount).toBe(2);
     });
 
+    it('keeps @deprecated in the same block as the description', () => {
+        const root = opRoot([
+            opRoute('/users', [
+                opOperation('get', {
+                    description: 'list the users',
+                    responses: [opResponse(200, 'User', 'application/json')],
+                    modifiers: ['deprecated'],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root);
+        // TypeScript honours only the JSDoc adjacent to the declaration, so a standalone
+        // `/** @deprecated */` above a description block is dropped by editors entirely.
+        expect(out).not.toContain('/** @deprecated */');
+        const block = out.slice(out.indexOf('    /**'), out.indexOf('async getUsers'));
+        expect(block).toContain('@description list the users');
+        expect(block).toContain('@deprecated');
+    });
+
     it('operation-level modifiers override route-level deprecated', () => {
         const root = opRoot([
             opRoute('/users', [opOperation('get', { modifiers: [], responses: [opResponse(200, 'User', 'application/json')] })], undefined, [

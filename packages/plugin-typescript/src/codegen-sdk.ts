@@ -139,7 +139,6 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
             const mods = resolveModifiers(route, op);
             if (!includeInternal && mods.includes('internal')) continue;
             classBody.push('');
-            if (mods.includes('deprecated')) classBody.push('    /** @deprecated */');
             classBody.push(...generateMethod(route, op, root.file, options, inlineRevivers));
         }
     }
@@ -306,7 +305,6 @@ export function generateClientMethods(
             const mods = resolveModifiers(route, op);
             if (!includeInternal && mods.includes('internal')) continue;
             lines.push('');
-            if (mods.includes('deprecated')) lines.push('    /** @deprecated */');
             lines.push(...generateMethod(route, op, root.file, options, inlineRevivers));
             methodNames.push(deriveMethodName(op, route));
         }
@@ -407,11 +405,16 @@ function generateMethod(
     // JSDoc
     const desc = op.description ?? route.description;
     const errorBodyName = thrown.some(r => r.bodies.length > 0) ? errorBodyTypeName(route, op) : undefined;
-    if (op.name || desc || errorBodyName) {
+    // `@deprecated` belongs in this block rather than in one of its own: TypeScript honours only
+    // the JSDoc comment adjacent to the declaration, so a separate `/** @deprecated */` above a
+    // description block is dropped by editors entirely. Tag order mirrors the router's.
+    const deprecated = resolveModifiers(route, op).includes('deprecated');
+    if (op.name || desc || errorBodyName || deprecated) {
         const tags: string[] = [];
         if (op.name) tags.push(`@name ${op.name}`);
         if (desc) tags.push(`@description ${desc}`);
         if (errorBodyName) tags.push(`@throws {SdkError<${errorBodyName}>} on ${thrown.map(r => r.statusCode).join(', ')}`);
+        if (deprecated) tags.push('@deprecated');
         const contentLines = tags.flatMap(t => escapeJsDocLines(t));
         if (contentLines.length === 1) {
             lines.push(`    /** ${contentLines[0]} */`);

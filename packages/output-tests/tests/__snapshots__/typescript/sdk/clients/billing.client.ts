@@ -57,8 +57,10 @@ export class BillingClient {
         return revivePayment(await parseJson<Payment>(result));
     }
 
-    /** @deprecated */
-    /** @description look up a refund by its originating payment */
+    /**
+     * @description look up a refund by its originating payment
+     * @deprecated
+     */
     async getRefund(params: PaymentRef): Promise<Payment> {
         const result = await this.fetch(`/refunds/${encodeURIComponent(paymentId)}`, { method: 'GET' });
         return revivePayment(await parseJson<Payment>(result));
