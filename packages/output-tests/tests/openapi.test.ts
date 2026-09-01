@@ -11,8 +11,6 @@ import { buildOnce } from './harness.js';
  * `parseDocument` rather than `parse`: a plain JS object coerces every key to a string, which
  * destroys the very distinction being checked. The document API keeps each key as a `Scalar`
  * carrying the value the parser actually produced.
- *
- * Snapshotted rather than asserted empty, for the reason given in `typecheck.test.ts`.
  */
 
 const { files } = await buildOnce();
@@ -41,7 +39,7 @@ function responseMaps(root: Node | null): { where: string; map: unknown }[] {
 }
 
 describe('generated OpenAPI', () => {
-    it('records non-string response keys as a baseline', async () => {
+    it('emits every response key as a string, as OpenAPI 3.x requires', () => {
         const yaml = files.openapi.get('openapi.yaml');
         expect(yaml, 'the OpenAPI plugin emitted no openapi.yaml').toBeDefined();
 
@@ -54,6 +52,6 @@ describe('generated OpenAPI', () => {
             }
         }
 
-        await expect(findings.length === 0 ? '(no findings)\n' : findings.sort().join('\n') + '\n').toMatchFileSnapshot('./__snapshots__/_openapi.txt');
+        expect(findings.sort()).toEqual([]);
     });
 });

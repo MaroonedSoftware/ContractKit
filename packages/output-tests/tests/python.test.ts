@@ -11,8 +11,6 @@ import { buildOnce } from './harness.js';
  * the method signature is snake_cased while the f-string still interpolates the raw contract name,
  * so the module imports fine and the call raises `NameError`. `check_python.py` walks the
  * f-strings for exactly that.
- *
- * Snapshotted rather than asserted empty, for the reason given in `typecheck.test.ts`.
  */
 
 const testsDir = dirname(fileURLToPath(import.meta.url));
@@ -38,7 +36,7 @@ function runChecker(): Report {
 }
 
 describe.skipIf(!hasPython3)('generated Python', () => {
-    it('records syntax, unbound-name and un-interpolated-URL findings as a baseline', async () => {
+    it('parses, and every interpolated name is one the method binds', () => {
         const { syntax, unbound, literal } = runChecker();
 
         const lines = [
@@ -47,6 +45,6 @@ describe.skipIf(!hasPython3)('generated Python', () => {
             ...literal.map(l => `literal ${l.file}: ${l.function}() requests '${l.url}' with the placeholder unsubstituted`),
         ].sort();
 
-        await expect(lines.length === 0 ? '(no findings)\n' : lines.join('\n') + '\n').toMatchFileSnapshot('./__snapshots__/_python.txt');
+        expect(lines).toEqual([]);
     });
 });
