@@ -48,7 +48,7 @@ class BillingClient(BaseClient):
         """
         update a payment with form data
         """
-        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="POST", body=body.model_dump(mode="json"), content_type="application/x-www-form-urlencoded")
+        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="POST", body=body.model_dump(mode="json"), content_type="application/x-www-form-urlencoded", body_kind="form")
         return None
 
     async def delete_payment(self, payment_id: UUID) -> None:
@@ -58,11 +58,11 @@ class BillingClient(BaseClient):
         result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="DELETE")
         return None
 
-    async def upload_receipt(self, payment_id: UUID, body: bytes) -> Payment:
+    async def upload_receipt(self, payment_id: UUID, body: dict) -> Payment:
         """
         upload a receipt image
         """
-        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}/receipt", method="POST", body=body, content_type="multipart/form-data")
+        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}/receipt", method="POST", body=body, content_type="multipart/form-data", body_kind="multipart")
         return Payment.model_validate(result)
 
     # @deprecated

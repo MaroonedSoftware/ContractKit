@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generatePythonClient, deriveClientClassName, deriveClientModuleName, hasPublicOperations } from '../src/codegen-client.js';
+import { generatePythonClient, deriveClientClassName, deriveClientModuleName, hasPublicOperations, BASE_CLIENT_PY } from '../src/codegen-client.js';
 import {
     scalarType, arrayType, refType, enumType,
     opParam, paramNodes, paramRef, paramType, opRequest, opResponse, opOperation, opRoute, opRoot,
@@ -164,6 +164,48 @@ describe('generatePythonClient', () => {
         const output = generatePythonClient(root);
         expect(output).toContain('body: PaymentInput');
         expect(output).toContain('body=body.model_dump(mode="json")');
+    });
+
+    it('sends a urlencoded body as form data, not JSON', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('post', {
+                    request: opRequest('PaymentForm', 'application/x-www-form-urlencoded'),
+                    responses: [opResponse(200, 'Payment')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // Without body_kind this fell through to the "json" default, so httpx sent a JSON
+        // document under a form Content-Type.
+        expect(output).toContain('body_kind="form"');
+        expect(output).toContain('content_type="application/x-www-form-urlencoded"');
+    });
+
+    it('sends a multipart body through files= and lets httpx own the Content-Type', () => {
+        const root = opRoot([
+            opRoute('/receipts', [
+                opOperation('post', {
+                    request: opRequest('ReceiptForm', 'multipart/form-data'),
+                    responses: [opResponse(200, 'Payment')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('body_kind="multipart"');
+        // A mapping of parts, not bytes: httpx generates the boundary from it, and a caller
+        // could never have supplied a boundary of their own.
+        expect(output).toContain('body: dict');
+    });
+
+    it('leaves a JSON body on the json= path with no body_kind', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('post', { request: opRequest('PaymentInput'), responses: [opResponse(201, 'Payment')] }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).not.toContain('body_kind=');
     });
 
     it('generates path param interpolation in f-string', () => {
@@ -560,5 +602,22 @@ describe('generatePythonClient', () => {
             expect(output).toContain('        first line');
             expect(output).toContain('        second line');
         });
+    });
+});
+
+// ─── BASE_CLIENT_PY ───────────────────────────────────────────────────────
+
+describe('BASE_CLIENT_PY', () => {
+    it('routes each body_kind to the httpx kwarg that serializes it', () => {
+        expect(BASE_CLIENT_PY).toContain('request_kwargs["json"] = body');
+        expect(BASE_CLIENT_PY).toContain('request_kwargs["data"] = body');
+        expect(BASE_CLIENT_PY).toContain('request_kwargs["files"] = body');
+        expect(BASE_CLIENT_PY).toContain('request_kwargs["content"] = body');
+    });
+
+    it('leaves Content-Type to httpx for multipart, so it can generate the boundary', () => {
+        // A multipart Content-Type set here would carry no boundary parameter, and no server
+        // can parse that. Every other body kind still gets its declared content type.
+        expect(BASE_CLIENT_PY).toContain('if body is not None and body_kind != "multipart":');
     });
 });
