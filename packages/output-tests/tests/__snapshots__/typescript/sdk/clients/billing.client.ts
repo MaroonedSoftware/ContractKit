@@ -62,7 +62,7 @@ export class BillingClient {
      * @deprecated
      */
     async getRefund(params: PaymentRef): Promise<Payment> {
-        const result = await this.fetch(`/refunds/${encodeURIComponent(paymentId)}`, { method: 'GET' });
+        const result = await this.fetch(`/refunds/${encodeURIComponent(String(params.paymentId))}`, { method: 'GET' });
         return revivePayment(await parseJson<Payment>(result));
     }
 

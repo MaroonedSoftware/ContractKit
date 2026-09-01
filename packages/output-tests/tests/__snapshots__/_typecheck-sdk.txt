@@ -18,11 +18,9 @@ TS2322 sdk/clients/billing.client.ts: Type 'string | undefined' is not assignabl
 TS2365 sdk/clients/hyphenated.client.ts: Operator '<' cannot be applied to types 'PromiseConstructor' and 'ZodObject<{ id: ZodUUID; total: ZodPipe<ZodTransform<unknown, unknown>, ZodCustom<Decimal, Decimal>>; }, $strict>'.
 TS2365 sdk/clients/hyphenated.client.ts: Operator '>' cannot be applied to types 'boolean' and '{ const: any; return: { id: string; total: Decimal; }; }'.
 TS2532 sdk/clients/hyphenated.client.ts: Object is possibly 'undefined'.
-TS2552 sdk/clients/billing.client.ts: Cannot find name 'paymentId'. Did you mean 'Payment'?
 TS2591 sdk/types/billing.types.ts: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
 TS2591 sdk/types/billing.types.ts: Cannot find name 'Buffer'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
 TS2693 sdk/clients/hyphenated.client.ts: 'string' only refers to a type, but is being used as a value here.
-TS6133 sdk/clients/billing.client.ts: 'params' is declared but its value is never read.
 TS6133 sdk/clients/hyphenated.client.ts: 'invoice' is declared but its value is never read.
 TS6138 sdk/clients/hyphenated.client.ts: Property 'fetch' is declared but its value is never read.
 TS7006 sdk/clients/hyphenated.client.ts: Parameter 'invoice' implicitly has an 'any' type.

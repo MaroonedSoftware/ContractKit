@@ -796,10 +796,31 @@ export function generateErrorBodyAliases(root: OpRootNode, options: SdkCodegenOp
 
 // ─── URL building ─────────────────────────────────────────────────────────
 
-function buildUrlExpression(path: string, _?: ParamSource): string {
-    // Replace {paramName} with ${encodeURIComponent(paramName)}
-    return path.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (_match, name) => {
-        return `\${encodeURIComponent(${name})}`;
+/**
+ * Render a route path as the template-literal body that produces the request URL.
+ *
+ * `params` says where each value lives. `buildMethodParams` spreads a `params { … }` block across
+ * the signature, so those interpolate by bare name; but for `params: SomeModel` it emits a single
+ * argument called `params`, and interpolating the bare name then refers to nothing that exists.
+ *
+ * The placeholder pattern matches what the `.ck` grammar allows rather than just
+ * `[a-zA-Z_]\w*`, so a hyphenated `{payment-id}` is interpolated instead of being left in the URL
+ * verbatim. Such a name is not a valid property accessor either, hence the bracket form.
+ */
+function buildUrlExpression(path: string, params?: ParamSource): string {
+    return path.replace(/\{([a-zA-Z_$][a-zA-Z0-9_$.-]*)\}/g, (match, name: string) => {
+        const isIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
+        if (!params || params.kind === 'params') {
+            // The expression has to name a signature parameter, and `buildMethodParams` uses the
+            // contract's spelling verbatim. When that is not an identifier the method signature is
+            // already unsalvageable, so leave the placeholder rather than emit an expression that
+            // parses as arithmetic.
+            return isIdentifier ? `\${encodeURIComponent(${name})}` : match;
+        }
+        const access = isIdentifier ? `params.${name}` : `params[${JSON.stringify(name)}]`;
+        // `String(...)` because a model's field may be typed something `encodeURIComponent` does
+        // not accept; the spread-param branch's scalars need no such widening.
+        return `\${encodeURIComponent(String(${access}))}`;
     });
 }
 

@@ -23,6 +23,7 @@ import {
     opRoute,
     opOperation,
     opParam,
+    paramRef,
     opRequest,
     opMultiRequest,
     opResponse,
@@ -133,6 +134,34 @@ describe('generateSdk', () => {
             expect(out).toContain('encodeURIComponent(id)');
             expect(out).toContain("method: 'GET'");
             expect(out).toContain('return await parseJson<User>(result)');
+        });
+
+        it('reads path params off the params argument when the route declares a model', () => {
+            const root = opRoot([
+                opRoute(
+                    '/pets/{petId}',
+                    [opOperation('get', { sdk: 'getPet', responses: [opResponse(200, 'Pet', 'application/json')] })],
+                    paramRef('PetRef'),
+                ),
+            ]);
+            const out = generateSdk(root);
+            // The signature has one argument named `params`, so a bare `petId` refers to nothing.
+            expect(out).toContain('async getPet(params: PetRef)');
+            expect(out).toContain('${encodeURIComponent(String(params.petId))}');
+            expect(out).not.toContain('encodeURIComponent(petId)');
+        });
+
+        it('brackets a hyphenated path param, which is not a property accessor', () => {
+            const root = opRoot([
+                opRoute(
+                    '/pets/{pet-id}',
+                    [opOperation('get', { sdk: 'getPet', responses: [opResponse(200, 'Pet', 'application/json')] })],
+                    paramRef('PetRef'),
+                ),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('${encodeURIComponent(String(params["pet-id"]))}');
+            expect(out).not.toContain('{pet-id}');
         });
     });
 
