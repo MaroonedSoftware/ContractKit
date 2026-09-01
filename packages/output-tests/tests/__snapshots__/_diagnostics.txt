@@ -1,1 +1,1 @@
-(no diagnostics)
+warning contracts/billing.ck:117 [no-emitted-response] Operation declares only non-emitted responses (400) — the generated router will return 204. Add a block to the success status, e.g. '200: { … }' or a bare '204:'.

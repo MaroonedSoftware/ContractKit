@@ -10,6 +10,9 @@ import {
     computeModelsWithOutput,
     decomposeCk,
     parseCk,
+    validateInheritance,
+    validateOp,
+    validateRefs,
     type ContractKitPlugin,
     type ContractRootNode,
     type Diagnostic,
@@ -123,12 +126,19 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
 }
 
 /**
- * Run every plugin over the fixtures and return what each one emitted, plus the diagnostics the
- * parse and normalization passes produced. Cached per module so the snapshot tests share one run.
+ * Run every plugin over the fixtures and return what each one emitted, plus every diagnostic the
+ * build produced. Cached per module so the snapshot tests share one run.
  */
 export async function buildFixtures(): Promise<BuildResult> {
     const diag = new DiagnosticCollector();
     const { contractRoots, opRoots } = parseFixtures(diag);
+
+    // The cross-file validation the CLI runs before handing anything to a plugin, in the same
+    // order. Without it the diagnostics snapshot would record only parse and normalization
+    // warnings, and every build-time check would be invisible here.
+    validateRefs(contractRoots, opRoots, diag);
+    validateInheritance(contractRoots, diag);
+    for (const root of opRoots) validateOp(root, diag);
 
     const models = contractRoots.flatMap(r => r.models);
     const inputs = {

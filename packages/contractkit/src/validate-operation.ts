@@ -1,5 +1,6 @@
 import type { ContractTypeNode, FieldNode, OpRootNode } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
+import { emittedResponses } from './response-sets.js';
 
 /** Extract `{paramName}` segments from a route path. */
 function extractPathParams(path: string): string[] {
@@ -7,11 +8,10 @@ function extractPathParams(path: string): string[] {
 }
 
 /**
- * Warn when a route path contains `{param}` placeholders that are not
- * explicitly declared in a `params` block; warn on empty/invalid request body
- * declarations and on `application/x-www-form-urlencoded` bodies that contain
- * nested object/array shapes (which don't round-trip cleanly through
- * URL-encoded form encoding).
+ * Warn when a route path contains `{param}` placeholders that are not explicitly declared in a
+ * `params` block; when an operation declares responses but emits none of them; on empty or
+ * invalid request body declarations; and on `application/x-www-form-urlencoded` bodies containing
+ * nested object/array shapes, which don't round-trip cleanly through form encoding.
  */
 export function validateOp(root: OpRootNode, diag: DiagnosticCollector): void {
     for (const route of root.routes) {
@@ -35,6 +35,18 @@ export function validateOp(root: OpRootNode, diag: DiagnosticCollector): void {
         }
 
         for (const op of route.operations) {
+            // Above the request guard on purpose: an operation with no request body is the common
+            // case for this warning, and skipping it would miss most of what it exists to catch.
+            if (op.responses.length > 0 && emittedResponses(op).length === 0) {
+                diag.warn(
+                    root.file,
+                    op.loc.line,
+                    `Operation declares only non-emitted responses (${op.responses.map(r => r.statusCode).join(', ')}) — ` +
+                        `the generated router will return 204. Add a block to the success status, e.g. '200: { … }' or a bare '204:'.`,
+                    'no-emitted-response',
+                );
+            }
+
             if (!op.request) continue;
             if (op.request.bodies.length === 0) {
                 diag.warn(root.file, op.loc.line, `Operation has an empty request block — declare at least one content type`);
