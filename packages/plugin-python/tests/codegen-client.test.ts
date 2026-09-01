@@ -507,6 +507,67 @@ describe('generatePythonClient', () => {
             expect(output).toContain('return Transfer.model_validate(result), headers');
         });
 
+        it('annotates and coerces each header to its declared type', () => {
+            const root = opRoot([
+                opRoute('/things', [
+                    opOperation('get', {
+                        sdk: 'getThing',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Thing' } }],
+                                headers: [
+                                    { name: 'x-count', optional: false, type: scalarType('int') },
+                                    { name: 'x-ratio', optional: true, type: scalarType('number') },
+                                    { name: 'x-cached', optional: false, type: scalarType('boolean') },
+                                    { name: 'x-trace', optional: false, type: scalarType('uuid') },
+                                    { name: 'x-expires', optional: true, type: scalarType('datetime') },
+                                ],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            // The annotation was hardcoded `str`, which discarded the contract's type.
+            expect(output).toContain('    x_count: int  # x-count (required)');
+            expect(output).toContain('    x_ratio: float  # x-ratio (optional)');
+            expect(output).toContain('    x_cached: bool  # x-cached (required)');
+            expect(output).toContain('    x_trace: UUID  # x-trace (required)');
+            expect(output).toContain('    x_expires: datetime  # x-expires (optional)');
+            // ...and the value was assigned raw, so the annotation was also a lie at runtime.
+            expect(output).toContain('headers["x_count"] = int(_response_headers["x-count"])');
+            expect(output).toContain('headers["x_ratio"] = float(_response_headers["x-ratio"])');
+            expect(output).toContain('headers["x_cached"] = _response_headers["x-cached"] == "true"');
+            expect(output).toContain('headers["x_trace"] = UUID(_response_headers["x-trace"])');
+            expect(output).toContain('headers["x_expires"] = datetime.fromisoformat(_response_headers["x-expires"])');
+            // A header-only `datetime` still pulls in the stdlib import it needs.
+            expect(output).toContain('from datetime import datetime');
+            expect(output).toContain('from uuid import UUID');
+        });
+
+        it('rejects a header type that cannot be read from a header', () => {
+            const root = opRoot([
+                opRoute('/things', [
+                    opOperation('get', {
+                        sdk: 'getThing',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Thing' } }],
+                                headers: [{ name: 'x-window', optional: false, type: scalarType('duration') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            // `duration` maps to timedelta, and the standard library has no ISO 8601 duration
+            // parser to convert a header string with — so it is refused rather than half-supported.
+            expect(() => generatePythonClient(root)).toThrow(/x-window.*GET \/things.*'duration' scalar/s);
+        });
+
         it('returns just headers TypedDict for void ops with declared response headers', () => {
             const root = opRoot([
                 opRoute('/resources/{id}', [

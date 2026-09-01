@@ -10,8 +10,8 @@ from ._models_billing import AdminCredentialInput, Credential, CredentialInput, 
 
 class CreatePaymentHeaders(TypedDict, total=False):
     x_request_id: str  # x-request-id (required)
-    x_ratelimit_remaining: str  # x-ratelimit-remaining (required)
-    x_cache_hit: str  # x-cache-hit (optional)
+    x_ratelimit_remaining: int  # x-ratelimit-remaining (required)
+    x_cache_hit: bool  # x-cache-hit (optional)
 
 
 class BillingClient(BaseClient):
@@ -25,9 +25,9 @@ class BillingClient(BaseClient):
         if "x-request-id" in _response_headers:
             headers["x_request_id"] = _response_headers["x-request-id"]
         if "x-ratelimit-remaining" in _response_headers:
-            headers["x_ratelimit_remaining"] = _response_headers["x-ratelimit-remaining"]
+            headers["x_ratelimit_remaining"] = int(_response_headers["x-ratelimit-remaining"])
         if "x-cache-hit" in _response_headers:
-            headers["x_cache_hit"] = _response_headers["x-cache-hit"]
+            headers["x_cache_hit"] = _response_headers["x-cache-hit"] == "true"
         return Payment.model_validate(result), headers
 
     async def list_payments(self, query: dict | None = None, custom_headers: dict | None = None) -> list[Payment]:

@@ -187,10 +187,11 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
             lines.push('');
             lines.push('');
             lines.push(`class ${name}(TypedDict, total=False):`);
+            const where = `${op.method.toUpperCase()} ${route.path}`;
             for (const h of resp.headers!) {
                 const pyName = toPythonFieldName(h.name);
                 const tag = h.optional ? 'optional' : 'required';
-                lines.push(`    ${pyName}: str  # ${h.name} (${tag})`);
+                lines.push(`    ${pyName}: ${pyHeaderReader(h, where).type}  # ${h.name} (${tag})`);
             }
         }
     }
@@ -258,6 +259,8 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     const { modelsWithInput } = opts;
     const methodName = deriveMethodName(op, route);
     const httpMethod = op.method.toUpperCase();
+    /** Identifies the operation in a codegen rejection, which the CLI scopes to this plugin. */
+    const where = `${httpMethod} ${route.path}`;
 
     const params = buildMethodParams(route, op, modelsWithInput);
     const selfParam = 'self';
@@ -373,13 +376,13 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
 
     if (shape.kind !== 'simple') {
         lines.push(`        _status, _content_type, result, _response_headers = await self._fetch_full(${urlExpr}, ${kwargsStr})`);
-        lines.push(...buildMultiReturnLines(shape, methodBase, modelsWithInput));
+        lines.push(...buildMultiReturnLines(shape, methodBase, where, modelsWithInput));
         return lines;
     }
 
     if (hasRespHeaders) {
         lines.push(`        result, _response_headers = await self._fetch_with_headers(${urlExpr}, ${kwargsStr})`);
-        lines.push(...buildHeadersDictLines(respHeaders, headersTypeName));
+        lines.push(...buildHeadersDictLines(respHeaders, headersTypeName, where));
     } else {
         lines.push(`        result = await self._fetch(${urlExpr}, ${kwargsStr})`);
     }
@@ -431,6 +434,7 @@ function pyDataExpr(body: OpResponseBodyNode, modelsWithInput?: Set<string>): st
 function buildMultiReturnLines(
     shape: Extract<PyResponseShape, { kind: 'multiMime' | 'multiStatus' }>,
     methodBase: string,
+    where: string,
     modelsWithInput?: Set<string>,
 ): string[] {
     const lines: string[] = [];
@@ -455,7 +459,7 @@ function buildMultiReturnLines(
         if ((resp.headers?.length ?? 0) > 0) {
             headersVar = includeStatus ? `headers_${resp.statusCode}` : 'headers';
             const typeName = headersClassName(methodBase, includeStatus ? resp.statusCode : undefined);
-            out.push(...buildHeadersDictLines(resp.headers!, typeName, indent, headersVar));
+            out.push(...buildHeadersDictLines(resp.headers!, typeName, where, indent, headersVar));
         }
 
         const bodies = resp.bodies;
@@ -486,13 +490,74 @@ function buildMultiReturnLines(
 }
 
 /** Build the lines that construct a TypedDict literal of declared response headers. */
-function buildHeadersDictLines(headers: OpResponseHeaderNode[], typeName: string, indent = '        ', varName = 'headers'): string[] {
+/**
+ * The Python type of one response header, and the expression that reads it out of the response.
+ *
+ * Header values arrive as strings, so the TypedDict annotated everything `str` and assigned raw —
+ * which was at least self-consistent, but discarded the declared type and left `mypy` users with
+ * a `str` where the contract said `int`. The annotation now comes from the contract and the value
+ * is coerced to match.
+ *
+ * The accepted set mirrors the TypeScript SDK's, with one asymmetry: temporals need real
+ * conversion here, because `renderPyType` maps them to `date`/`time`/`datetime` objects while the
+ * TypeScript side maps them to `string` and can pass the raw value straight through. `duration` is
+ * the exception in the other direction — it maps to `timedelta`, and the standard library has no
+ * ISO 8601 duration parser to convert with, so it is rejected rather than half-supported.
+ */
+function pyHeaderReader(h: OpResponseHeaderNode, where: string): { type: string; read: (raw: string) => string } {
+    const scalar = h.type.kind === 'scalar' ? h.type.name : undefined;
+    switch (scalar) {
+        case 'string':
+        case 'email':
+        case 'url':
+        case 'interval':
+            return { type: 'str', read: raw => raw };
+        case 'unknown':
+            return { type: 'Any', read: raw => raw };
+        case 'number':
+            return { type: 'float', read: raw => `float(${raw})` };
+        case 'int':
+        case 'bigint':
+            return { type: 'int', read: raw => `int(${raw})` };
+        case 'boolean':
+            return { type: 'bool', read: raw => `${raw} == "true"` };
+        case 'uuid':
+            return { type: 'UUID', read: raw => `UUID(${raw})` };
+        case 'date':
+            return { type: 'date', read: raw => `date.fromisoformat(${raw})` };
+        case 'time':
+            return { type: 'time', read: raw => `time.fromisoformat(${raw})` };
+        case 'datetime':
+            return { type: 'datetime', read: raw => `datetime.fromisoformat(${raw})` };
+        default:
+            throw new Error(
+                `Response header '${h.name}' on ${where} is declared as ${describeHeaderType(h.type)}, which cannot be read from an HTTP header. ` +
+                    `Header values arrive as strings — declare it as string, email, url, uuid, date, time, datetime, interval, int, number, boolean or bigint.`,
+            );
+    }
+}
+
+/** A short, contract-facing description of a header type, for the rejection message above. */
+function describeHeaderType(type: ContractTypeNode): string {
+    if (type.kind === 'scalar') return `the '${type.name}' scalar`;
+    if (type.kind === 'ref') return `the model '${type.name}'`;
+    return `${type.kind === 'array' || type.kind === 'inlineObject' ? 'an' : 'a'} ${type.kind}`;
+}
+
+function buildHeadersDictLines(
+    headers: OpResponseHeaderNode[],
+    typeName: string,
+    where: string,
+    indent = '        ',
+    varName = 'headers',
+): string[] {
     const lines: string[] = [];
     lines.push(`${indent}${varName}: ${typeName} = {}`);
     for (const h of headers) {
         const pyName = toPythonFieldName(h.name);
-        lines.push(`${indent}if ${JSON.stringify(h.name.toLowerCase())} in _response_headers:`);
-        lines.push(`${indent}    ${varName}[${JSON.stringify(pyName)}] = _response_headers[${JSON.stringify(h.name.toLowerCase())}]`);
+        const key = JSON.stringify(h.name.toLowerCase());
+        lines.push(`${indent}if ${key} in _response_headers:`);
+        lines.push(`${indent}    ${varName}[${JSON.stringify(pyName)}] = ${pyHeaderReader(h, where).read(`_response_headers[${key}]`)}`);
     }
     return lines;
 }
@@ -671,6 +736,9 @@ function collectReferencedModels(root: OpRootNode, modelsWithInput?: Set<string>
             }
             for (const resp of op.responses) {
                 for (const body of resp.bodies) collectTypeRefs(body.bodyType, refs, modelsWithInput, false);
+                // Response headers are typed from the contract too, so a header declared
+                // `datetime` or `uuid` needs the same stdlib import a body of that type would.
+                for (const h of resp.headers ?? []) collectTypeRefs(h.type, refs, modelsWithInput, false);
             }
             if (op.query) collectParamSourceRefs(op.query, refs, modelsWithInput);
             if (op.headers) collectParamSourceRefs(op.headers, refs, modelsWithInput);
