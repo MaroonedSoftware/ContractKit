@@ -145,10 +145,21 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
 
     const inlineReviverDecls = [...inlineRevivers.values()].flat();
     const decimalPrelude = decimalPreludeFor(inlineReviverDecls);
+    // Computed here rather than at its splice point below, so the import filter can see the
+    // aliases: an error-body alias is a genuine reference to a model type.
+    const errorAliases = generateErrorBodyAliases(root, options);
 
     // Type-only imports, plus the model revivers the methods actually call.
-    if (types.length > 0) {
-        lines.push(...generateTypeImports(types, root.file, options, usedRevivers(classBody)));
+    //
+    // `collectTypes` walks the AST and so reports every model a request body names, including one
+    // carried by a `multipart/form-data` body — which `buildMethodParams` types as `FormData`, so
+    // the model is never mentioned in the emitted code and its import is unused. Rather than
+    // special-casing multipart in `collectTypes`, which validating multipart bodies would later
+    // have to undo, keep only the types the emitted text actually names. This is the same
+    // text-derived idiom the reviver imports already use just below.
+    const referenced = referencedTypes(types, [...classBody, ...errorAliases, ...inlineReviverDecls]);
+    if (referenced.length > 0) {
+        lines.push(...generateTypeImports(referenced, root.file, options, usedRevivers(classBody)));
     }
     lines.push(...decimalPrelude.imports);
 
@@ -248,7 +259,6 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
 
     lines.push('');
 
-    const errorAliases = generateErrorBodyAliases(root, options);
     if (errorAliases.length > 0) {
         lines.push(...errorAliases);
         lines.push('');
@@ -330,6 +340,21 @@ function decimalPreludeFor(declLines: string[]): { imports: string[]; decls: str
 }
 
 /** Model reviver names referenced by generated method bodies. `__revive…` wrappers are local. */
+/**
+ * Narrow a collected type list to the names the emitted code actually mentions.
+ *
+ * Boundaries are spelled out rather than using `\b`, so a model name containing `-`, `.` or `$`
+ * is matched correctly. A name appearing only inside a doc string counts as a reference and the
+ * import is kept: an unnecessary import is untidy, a missing one does not compile.
+ */
+function referencedTypes(types: string[], emitted: string[]): string[] {
+    const haystack = emitted.join('\n');
+    return types.filter(t => {
+        const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(?<![A-Za-z0-9_$])${escaped}(?![A-Za-z0-9_$])`).test(haystack);
+    });
+}
+
 function usedRevivers(lines: string[]): string[] {
     const found = new Set<string>();
     for (const m of lines.join('\n').matchAll(/\brevive[A-Z]\w*/g)) found.add(m[0]);
@@ -1567,11 +1592,11 @@ export function generateAreaClient(input: AreaClientInput): string {
         // Resolve each file's type refs against THIS file's modelOutPaths, but
         // produce import paths relative to the area client's outPath (not the
         // contributing file's outPath, which pointed at the now-defunct sdk.ts).
-        const typesForFile = collectTypes(
-            inline.root,
-            inline.codegenOptions.modelsWithInput,
-            inline.codegenOptions.modelsWithOutput,
-            includeInternal,
+        // Filtered against this file's own emitted text for the same reason `generateSdk` filters
+        // its own — a multipart body's model is collected but never named in the output.
+        const typesForFile = referencedTypes(
+            collectTypes(inline.root, inline.codegenOptions.modelsWithInput, inline.codegenOptions.modelsWithOutput, includeInternal),
+            [...methodLines, ...generateErrorBodyAliases(inline.root, inline.codegenOptions), ...preludeLines],
         );
         const { modelOutPaths } = inline.codegenOptions;
         if (modelOutPaths) {

@@ -25,7 +25,5 @@ TS2693 sdk/clients/hyphenated.client.ts: 'string' only refers to a type, but is 
 TS6133 sdk/clients/billing.client.ts: 'params' is declared but its value is never read.
 TS6133 sdk/clients/hyphenated.client.ts: 'invoice' is declared but its value is never read.
 TS6138 sdk/clients/hyphenated.client.ts: Property 'fetch' is declared but its value is never read.
-TS6196 sdk/clients/billing.client.ts: 'AdminCredential' is declared but never used.
-TS6196 sdk/clients/billing.client.ts: 'UploadReceiptForm' is declared but never used.
 TS7006 sdk/clients/hyphenated.client.ts: Parameter 'invoice' implicitly has an 'any' type.
 TS7010 sdk/clients/hyphenated.client.ts: 'getInvoice', which lacks return-type annotation, implicitly has an 'any' return type.

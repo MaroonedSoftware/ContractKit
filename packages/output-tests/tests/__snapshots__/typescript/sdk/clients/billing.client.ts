@@ -1,6 +1,6 @@
 import type { SdkFetch } from '../sdk-options.js';
 import { bigIntReplacer, parseJson, buildQueryString } from '../sdk-options.js';
-import type { AdminCredential, AdminCredentialInput, Credential, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm, UploadReceiptForm } from '../types/billing.types.js';
+import type { AdminCredentialInput, Credential, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm } from '../types/billing.types.js';
 import { revivePayment } from '../types/billing.types.js';
 
 export class BillingClient {

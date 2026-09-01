@@ -1503,6 +1503,48 @@ describe('generateSdk — multipart/form-data', () => {
         expect(out).not.toContain("'Content-Type': 'application/json'");
         expect(out).not.toContain('JSON.stringify');
     });
+
+    it('does not import a model used only as a multipart body', () => {
+        const root = opRoot([
+            opRoute('/uploads', [
+                opOperation('post', {
+                    sdk: 'upload',
+                    request: opRequest('UploadForm', 'multipart/form-data'),
+                    responses: [opResponse(201, 'Upload', 'application/json')],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root, {
+            outPath: '/sdk/clients/uploads.client.ts',
+            modelOutPaths: new Map([
+                ['UploadForm', '/sdk/types/uploads.types.ts'],
+                ['Upload', '/sdk/types/uploads.types.ts'],
+            ]),
+        });
+        // The body is typed `FormData`, so UploadForm is never named in the output; importing it
+        // leaves an unused local that fails `noUnusedLocals` in the generated package.
+        expect(out).toContain('async upload(body: FormData)');
+        expect(out).not.toContain('UploadForm');
+        // Negative control: the response model is genuinely referenced and must still be imported.
+        expect(out).toContain('Upload');
+    });
+
+    it('still imports a model that is a multipart body and also a response body', () => {
+        const root = opRoot([
+            opRoute('/uploads', [
+                opOperation('post', {
+                    sdk: 'upload',
+                    request: opRequest('UploadForm', 'multipart/form-data'),
+                    responses: [opResponse(201, 'UploadForm', 'application/json')],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root, {
+            outPath: '/sdk/clients/uploads.client.ts',
+            modelOutPaths: new Map([['UploadForm', '/sdk/types/uploads.types.ts']]),
+        });
+        expect(out).toContain("import type { UploadForm } from '../types/uploads.types.js';");
+    });
 });
 
 // ─── generateMethod fetch assembly ────────────────────────────────────────
