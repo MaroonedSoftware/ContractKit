@@ -1069,6 +1069,17 @@ exporting `registerMcpTools(container)` (which assembles the DI `McpToolHandlerM
 - constructor-injects the operation's `service` and calls it in-process, returning the result as MCP
   tool content.
 
+`registerMcpTools` **builds and returns** the map; it registers nothing. Registration belongs to
+InjectKit's `Registry` (composition phase), not to a `Container` (resolution phase), so bind the
+aggregator from a factory, which is what supplies the `Container` it needs:
+
+```typescript
+registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();
+```
+
+The tool classes are not registered for you either; register each on the same `Registry` so the
+aggregator can resolve it.
+
 Tools require the model **Zod schemas** to be generated (via the `server` sub-config with `zod: true`,
 or the `zod` sub-config); set `mcp.output.types` to point at them explicitly if neither is configured.
 `internal` operations are excluded unless `includeInternal: true`. The generated code depends on

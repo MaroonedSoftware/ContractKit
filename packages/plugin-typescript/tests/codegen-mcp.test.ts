@@ -141,6 +141,16 @@ describe('generateMcpFile', () => {
             expect(out).toContain('const CreatePaymentArgs = z.object({ body: PaymentInput });');
             expect(out).toContain('const { body } = await parseAndValidate(args, CreatePaymentArgs);');
         });
+
+        it('underscores the args param when the op takes no arguments', () => {
+            const root = opRoot([opRoute('/health', [opOperation('get', { mcp: true, responses: [opResponse(200, 'Health', 'application/json')] })])]);
+            const out = generateMcpFile(root);
+            // Nothing destructures `args` here, so an un-prefixed name trips no-unused-vars in
+            // consumers that lint generated output.
+            expect(out).toContain('async handle(_args: Record<string, unknown>, _context: McpToolContext)');
+            expect(out).not.toContain('async handle(args:');
+            expect(out).not.toContain('parseAndValidate');
+        });
     });
 
     describe('service call + result', () => {
@@ -220,7 +230,13 @@ describe('generateMcpAggregator', () => {
         expect(out).toContain('const map = new McpToolHandlerMap();');
         expect(out).toContain('registerPaymentsMcpTools(map, container);');
         expect(out).toContain('registerUsersMcpTools(map, container);');
-        expect(out).toContain('container.register(McpToolHandlerMap, { useValue: map });');
+        expect(out).toContain('return map;');
+    });
+
+    it('only builds the map — Container has no register, that belongs to Registry', () => {
+        const out = generateMcpAggregator([{ registerFn: 'registerPaymentsMcpTools', importPath: './payments.mcp.js' }]);
+        expect(out).not.toContain('container.register');
+        expect(out).toContain('registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();');
     });
 });
 
@@ -231,6 +247,12 @@ describe('generateMcpRouter', () => {
         expect(out).toContain("router.post('/mcp'");
         expect(out).toContain('ctx.container.get(McpDispatcher)');
         expect(out).toContain("dispatcher.sessionMode === 'stateful'");
+    });
+
+    it('tells consumers to bind the aggregator rather than call it at startup', () => {
+        const out = generateMcpRouter();
+        expect(out).toContain('Bind `registerMcpTools` to the `McpToolHandlerMap` token.');
+        expect(out).not.toContain('Call `registerMcpTools(container)` at startup');
     });
 
     it('parses the body before verifying the signature', () => {
