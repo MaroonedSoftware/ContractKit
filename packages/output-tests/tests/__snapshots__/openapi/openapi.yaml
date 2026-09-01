@@ -14,7 +14,7 @@ paths:
             schema:
               '$ref': '#/components/schemas/Payment'
       responses:
-        200:
+        '200':
           description: 'Successful response'
           content:
             'application/json':
@@ -32,7 +32,7 @@ paths:
             x-cache-hit:
               schema:
                 type: boolean
-        400:
+        '400':
           description: 'Bad request'
     get:
       operationId: listPayments
@@ -59,7 +59,7 @@ paths:
           schema:
             type: string
       responses:
-        200:
+        '200':
           description: 'Successful response'
           content:
             'application/json':
@@ -79,13 +79,13 @@ paths:
             type: string
             format: uuid
       responses:
-        200:
+        '200':
           description: 'Successful response'
           content:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Payment'
-        404:
+        '404':
           description: 'Not found'
     post:
       operationId: updatePaymentWithForm
@@ -104,7 +104,7 @@ paths:
             schema:
               '$ref': '#/components/schemas/UpdatePaymentForm'
       responses:
-        204:
+        '204':
           description: 'No content'
     delete:
       operationId: deletePayment
@@ -117,7 +117,7 @@ paths:
             type: string
             format: uuid
       responses:
-        400:
+        '400':
           description: 'Bad request'
   '/payments/{paymentId}/receipt':
     post:
@@ -137,7 +137,7 @@ paths:
             schema:
               '$ref': '#/components/schemas/UploadReceiptForm'
       responses:
-        200:
+        '200':
           description: 'Successful response'
           content:
             'application/json':
@@ -154,13 +154,13 @@ paths:
           schema:
             '$ref': '#/components/schemas/PaymentRef'
       responses:
-        200:
+        '200':
           description: 'Successful response'
           content:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Payment'
-        404:
+        '404':
           description: 'Not found'
       deprecated: true
   '/credentials':
@@ -174,7 +174,7 @@ paths:
             schema:
               '$ref': '#/components/schemas/AdminCredential'
       responses:
-        200:
+        '200':
           description: 'Successful response'
           content:
             'application/json':
@@ -191,7 +191,7 @@ paths:
             schema:
               '$ref': '#/components/schemas/Session'
       responses:
-        200:
+        '200':
           description: 'Successful response'
           content:
             'application/json':
@@ -209,20 +209,20 @@ paths:
             type: string
             format: uuid
       responses:
-        200:
+        '200':
           description: 'Successful response'
           content:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Invoice'
-        404:
+        '404':
           description: 'Not found'
   '/status':
     get:
       operationId: getStatus
       description: 'current service status'
       responses:
-        200:
+        '200':
           description: 'Successful response'
           content:
             'application/json':
