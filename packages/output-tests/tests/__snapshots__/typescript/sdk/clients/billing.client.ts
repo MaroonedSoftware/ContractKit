@@ -15,7 +15,7 @@ export class BillingClient {
             body: JSON.stringify(body, bigIntReplacer),
         });
         const data = revivePayment(await parseJson<Payment>(result));
-        return { data, headers: { xRequestId: result.headers.get('x-request-id') ?? undefined, xRatelimitRemaining: result.headers.get('x-ratelimit-remaining') ?? undefined, xCacheHit: result.headers.get('x-cache-hit') ?? undefined } };
+        return { data, headers: { xRequestId: result.headers.get('x-request-id')!, xRatelimitRemaining: Number(result.headers.get('x-ratelimit-remaining')), xCacheHit: result.headers.get('x-cache-hit') === null ? undefined : result.headers.get('x-cache-hit') === 'true' } };
     }
 
     /** @description list payments */

@@ -12,9 +12,6 @@ TS1434 sdk/clients/hyphenated.client.ts: Unexpected keyword or identifier.
 TS2304 sdk/clients/hyphenated.client.ts: Cannot find name 'id'.
 TS2304 sdk/clients/hyphenated.client.ts: Cannot find name 'result'.
 TS2304 sdk/clients/hyphenated.client.ts: Cannot find name 'result'.
-TS2322 sdk/clients/billing.client.ts: Type 'string | undefined' is not assignable to type 'boolean | undefined'.   Type 'string' is not assignable to type 'boolean | undefined'.
-TS2322 sdk/clients/billing.client.ts: Type 'string | undefined' is not assignable to type 'number'.   Type 'undefined' is not assignable to type 'number'.
-TS2322 sdk/clients/billing.client.ts: Type 'string | undefined' is not assignable to type 'string'.   Type 'undefined' is not assignable to type 'string'.
 TS2365 sdk/clients/hyphenated.client.ts: Operator '<' cannot be applied to types 'PromiseConstructor' and 'ZodObject<{ id: ZodUUID; total: ZodPipe<ZodTransform<unknown, unknown>, ZodCustom<Decimal, Decimal>>; }, $strict>'.
 TS2365 sdk/clients/hyphenated.client.ts: Operator '>' cannot be applied to types 'boolean' and '{ const: any; return: { id: string; total: Decimal; }; }'.
 TS2532 sdk/clients/hyphenated.client.ts: Object is possibly 'undefined'.

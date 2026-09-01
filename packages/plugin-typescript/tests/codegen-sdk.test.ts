@@ -398,7 +398,7 @@ describe('generateSdk', () => {
             const out = generateSdk(root);
             expect(out).toContain('Promise<{ data: Transfer; headers: { preferenceApplied?: string; etag: string } }>');
             expect(out).toContain("preferenceApplied: result.headers.get('preference-applied') ?? undefined");
-            expect(out).toContain("etag: result.headers.get('etag') ?? undefined");
+            expect(out).toContain("etag: result.headers.get('etag')!");
             expect(out).toContain('return { data, headers:');
         });
 
@@ -424,9 +424,64 @@ describe('generateSdk', () => {
             ]);
             const out = generateSdk(root);
             expect(out).toContain('Promise<{ headers: { xDeletedAt: string } }>');
-            expect(out).toContain("xDeletedAt: result.headers.get('x-deleted-at') ?? undefined");
+            expect(out).toContain("xDeletedAt: result.headers.get('x-deleted-at')!");
             expect(out).toContain('return { headers:');
             expect(out).not.toContain('parseJson<void>');
+        });
+
+        it('coerces each header to the type the return shape declares', () => {
+            const root = opRoot([
+                opRoute('/things', [
+                    opOperation('get', {
+                        sdk: 'getThing',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Thing' } }],
+                                headers: [
+                                    { name: 'x-count', optional: false, type: scalarType('int') },
+                                    { name: 'x-ratio', optional: true, type: scalarType('number') },
+                                    { name: 'x-cached', optional: false, type: scalarType('boolean') },
+                                    { name: 'x-fresh', optional: true, type: scalarType('boolean') },
+                                    { name: 'x-seq', optional: false, type: scalarType('bigint') },
+                                    { name: 'x-prev', optional: true, type: scalarType('bigint') },
+                                ],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            // Header values arrive as strings; the shape is typed from the contract, so without
+            // coercion every one of these is a TS2322 in one direction or the other.
+            expect(out).toContain('xCount: Number(result.headers.get(\'x-count\'))');
+            expect(out).toContain("xRatio: result.headers.get('x-ratio') === null ? undefined : Number(result.headers.get('x-ratio'))");
+            expect(out).toContain("xCached: result.headers.get('x-cached') === 'true'");
+            expect(out).toContain("xFresh: result.headers.get('x-fresh') === null ? undefined : result.headers.get('x-fresh') === 'true'");
+            expect(out).toContain("xSeq: BigInt(result.headers.get('x-seq')!)");
+            expect(out).toContain("xPrev: result.headers.get('x-prev') === null ? undefined : BigInt(result.headers.get('x-prev'))");
+        });
+
+        it('rejects a header type that cannot be read from a header', () => {
+            const root = opRoot([
+                opRoute('/things', [
+                    opOperation('get', {
+                        sdk: 'getThing',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Thing' } }],
+                                headers: [{ name: 'x-money', optional: false, type: scalarType('decimal') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            // Emitting code that does not compile would be worse than refusing; the CLI turns this
+            // into a plugin-scoped error naming the operation.
+            expect(() => generateSdk(root)).toThrow(/x-money.*GET \/things.*'decimal' scalar/s);
         });
 
         it('preserves plain return type when no response headers are declared', () => {

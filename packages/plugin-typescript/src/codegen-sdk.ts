@@ -382,6 +382,8 @@ function generateMethod(
             : undefined;
     const lines: string[] = [];
     const methodName = deriveMethodName(op, route);
+    /** Identifies the operation in a codegen rejection, which the CLI scopes to this plugin. */
+    const where = `${op.method.toUpperCase()} ${route.path}`;
     const mRevive = hint(revive, `${methodName.charAt(0).toUpperCase()}${methodName.slice(1)}`);
     const httpMethod = op.method.toUpperCase();
     const { modelsWithInput, modelsWithOutput } = options;
@@ -557,15 +559,15 @@ function generateMethod(
         lines.push(`        switch (result.status) {`);
         for (const resp of rest) {
             lines.push(`            case ${resp.statusCode}:`);
-            lines.push(...sdkReturnLines(resp, modelsWithOutput, '                ', true, mRevive));
+            lines.push(...sdkReturnLines(resp, modelsWithOutput, '                ', true, mRevive, where));
         }
         lines.push(`            default:`);
-        lines.push(...sdkReturnLines(fallback!, modelsWithOutput, '                ', true, mRevive));
+        lines.push(...sdkReturnLines(fallback!, modelsWithOutput, '                ', true, mRevive, where));
         lines.push(`        }`);
     } else if (primaryBodies.length > 1) {
-        lines.push(...sdkReturnLines(primaryResponse!, modelsWithOutput, '        ', false, mRevive));
+        lines.push(...sdkReturnLines(primaryResponse!, modelsWithOutput, '        ', false, mRevive, where));
     } else if (hasRespHeaders) {
-        const headerEntries = sdkHeaderEntries(respHeaders);
+        const headerEntries = sdkHeaderEntries(respHeaders, where);
         if (isVoid) {
             lines.push(`        return { headers: { ${headerEntries} } };`);
         } else {
@@ -669,8 +671,61 @@ function renderSdkHeadersShape(headers: OpResponseHeaderNode[], modelsWithOutput
     return `{ ${fields.join('; ')} }`;
 }
 
-function sdkHeaderEntries(headers: OpResponseHeaderNode[]): string {
-    return headers.map(h => `${quoteKey(headerNameToProperty(h.name))}: result.headers.get('${h.name}') ?? undefined`).join(', ');
+/**
+ * The value expression for one response header, matching the type `renderSdkHeadersShape` gives it.
+ *
+ * Header values always arrive as strings, but the shape is typed from the contract — so a header
+ * declared `int` was typed `number` and assigned `string | undefined`, and a required one was
+ * typed `T` and assigned `T | undefined`. Both are `TS2322`, in opposite directions.
+ *
+ * `null` is what `Headers.get` returns for an absent header. A required header is asserted rather
+ * than defaulted, because the contract says the service always sends it; an optional one maps the
+ * absence onto `undefined`, which is what its `?` in the shape means.
+ *
+ * Anything that is not one of the scalars below cannot be read from a header at all, and is
+ * rejected here rather than emitted as code that does not compile. The list is shared with the
+ * Python SDK, except that temporals need coercion there — `renderPyType` maps them to `datetime`
+ * objects, while `renderOutputTsType` maps them to `string`.
+ */
+function sdkHeaderEntry(h: OpResponseHeaderNode, where: string): string {
+    const raw = `result.headers.get('${h.name}')`;
+    const key = quoteKey(headerNameToProperty(h.name));
+    const scalar = h.type.kind === 'scalar' ? h.type.name : undefined;
+
+    switch (scalar) {
+        case 'string':
+        case 'email':
+        case 'url':
+        case 'uuid':
+        case 'date':
+        case 'time':
+        case 'datetime':
+        case 'duration':
+        case 'interval':
+        case 'unknown':
+            return `${key}: ${raw}${h.optional ? ' ?? undefined' : '!'}`;
+        case 'number':
+        case 'int':
+            return `${key}: ${h.optional ? `${raw} === null ? undefined : Number(${raw})` : `Number(${raw})`}`;
+        case 'boolean':
+            return `${key}: ${h.optional ? `${raw} === null ? undefined : ${raw} === 'true'` : `${raw} === 'true'`}`;
+        case 'bigint':
+            return `${key}: ${h.optional ? `${raw} === null ? undefined : BigInt(${raw})` : `BigInt(${raw}!)`}`;
+        default:
+            throw new Error(
+                `Response header '${h.name}' on ${where} is declared as ${describeHeaderType(h.type)}, which cannot be read from an HTTP header. ` +
+                    `Header values arrive as strings — declare it as string, email, url, uuid, a date/time type, int, number, boolean or bigint.`,
+            );
+    }
+}
+
+/** A short, contract-facing description of a header type, for the rejection message above. */
+function describeHeaderType(type: ContractTypeNode): string {
+    return type.kind === 'scalar' ? `the '${type.name}' scalar` : type.kind === 'ref' ? `the model '${type.name}'` : `${type.kind === 'array' ? 'an' : 'a'} ${type.kind}`;
+}
+
+function sdkHeaderEntries(headers: OpResponseHeaderNode[], where: string): string {
+    return headers.map(h => sdkHeaderEntry(h, where)).join(', ');
 }
 
 /**
@@ -704,12 +759,13 @@ function sdkReturnLines(
     modelsWithOutput: Set<string> | undefined,
     indent: string,
     includeStatus: boolean,
-    revive?: ReviveContext,
+    revive: ReviveContext | undefined,
+    where: string,
 ): string[] {
     const bodies = resp.bodies;
     const headers = resp.headers ?? [];
     const leading = includeStatus ? [`status: ${resp.statusCode}`] : [];
-    const trailing = headers.length > 0 ? [`headers: { ${sdkHeaderEntries(headers)} }`] : [];
+    const trailing = headers.length > 0 ? [`headers: { ${sdkHeaderEntries(headers, where)} }`] : [];
 
     if (bodies.length === 0) {
         return [`${indent}return { ${[...leading, ...trailing].join(', ')} };`];
