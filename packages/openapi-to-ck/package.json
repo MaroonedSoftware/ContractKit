@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/openapi-to-ck",
-    "version": "0.12.2",
+    "version": "0.12.3",
     "description": "Convert OpenAPI specs (2.0/3.0/3.1) to Contract Kit .ck files",
     "license": "MIT",
     "author": {

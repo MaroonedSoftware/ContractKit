@@ -3,7 +3,7 @@
     "displayName": "ContractKit",
     "description": "Language support for .ck contract definition files",
     "license": "MIT",
-    "version": "0.14.8",
+    "version": "0.14.9",
     "author": {
         "name": "Marooned Software",
         "url": "https://github.com/MaroonedSoftware/contractkit"

@@ -1,5 +1,272 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.34.0
+
+### Minor Changes
+
+- f453bf5: Honour the optionality an inline `query:` or `headers:` block declares, in the router, the SDK and the OpenAPI document.
+
+    All three read the same `OpParamNode.optional`, and all three ignored it. The router validated every inline param as required, the SDK typed every one optional, and OpenAPI marked every non-path parameter `required: false`. So for a contract saying
+
+    ```
+    query: { limit?: int = 20, cursor: string }
+    headers: { api-key?: string, x-tenant: string }
+    ```
+
+    the SDK let you omit a `cursor` the router would then reject, while typing `limit` as something you had to think about even though it has a default; and the published spec disagreed with both.
+
+    Now:
+    - **Router** — the param schema carries the same modifier chain a model field does, via the shared `applyFieldModifiers`. `limit` becomes `.default(20)`, `api-key` becomes `.optional()`. The hand-rolled query-array preprocess is gone too, delegating to `renderQueryType`, which already had that rule.
+    - **SDK** — a field is optional only when the contract says so, either with `?` or by carrying a default. The whole argument is optional only when every field is, since a caller cannot omit an object that must supply something.
+    - **OpenAPI** — `required` follows the contract for query and header parameters, matching what the `inlineObject` branch already did. The two `$ref` branches are unchanged: a whole-model param source has no per-field optionality to read.
+
+    **Python is deliberately excluded.** It hardcodes `optional: true` on query and headers, and has the same ordering constraint as a `SyntaxError` rather than a type error. Permissive is safe; changing it belongs with the work that gives inline query params a `TypedDict`.
+
+    ### What this breaks
+
+    **SDK call sites stop compiling when an argument becomes required.** The old signature was wrong in both directions at once, so this surfaces two different latent bugs: calls that omitted a value the router demanded, and required fields typed as optional so nothing made you pass them.
+
+    **Requests omitting a non-optional inline param now get a 400.** They were already being rejected by the router; what changes is that the SDK and the spec now say so. To find the affected surface, grep your contracts for inline `query:` and `headers:` blocks whose fields lack a `?` — that set is exactly the delta.
+
+    One case only becomes reachable now: parameter order is path, body, query, then customHeaders, so an all-optional `query:` in front of an all-required `headers:` would emit `async m(query?: Q, customHeaders: H)`, which is `TS1016`. A normalisation pass clears `optional` on every argument before the last required one, which is the only fix that keeps the positional order call sites depend on.
+
+- c93b5c4: Return 204 when an operation emits no response, instead of an error status.
+
+    The generated router picked its status as `emitted ?? first declared ?? 200`. For an operation whose response block is documentation only, the first declared status is an error code, so the router answered a _successful_ request with it:
+
+    ```
+    delete: {
+        response: {
+            400:
+        }
+    }
+    ```
+
+    emitted `ctx.status = 400` on the success path. A bare status means "documented, produced by something else" — middleware, a proxy, the framework — so it is precisely the status the service does not produce, and the worst possible choice of fallback.
+
+    204 is the status that aligns the three generators. `observableResponses` excludes a bare `400:` for the same reason `emittedResponses` does, so the SDK already types such a method `Promise<void>` and `thrownResponses` already puts the 400 in `@throws`. A bodyless 204 success is exactly what `Promise<void>` means; the router was the only one disagreeing.
+
+    ### What this breaks
+
+    **Operations declaring only non-2xx statuses now return 204 rather than that status.** The old behaviour was an error code returned on success, so any client treating it as an error was correct to and now gets a success it can act on. If you genuinely want that status written, give it a block — `400: { … }` — which makes it service-produced and restores it.
+
+    An operation with no `response:` block at all also moves from 200 to 204, on the same reasoning: it emits nothing, and 204 says so precisely. Both are 2xx, so nothing that checks for success changes behaviour; a client asserting `status === 200` would need updating.
+
+- 0e10409: Apply the bigint JSON reviver only to contracts that actually declare a `bigint`.
+
+    `parseJson` ran every response through `bigIntReviver`, which tests `/^-?\d+n$/` against every string anywhere in the document. A contract with no `bigint` field still had a legitimate value like `"123n"` — a product code, a hash fragment, a user's own text — silently turned into a `BigInt`, at any depth, in any field.
+
+    The shared runtime now exports two functions. Clients whose responses carry a `bigint` import `parseJsonWithBigInt` aliased to `parseJson`, so the method bodies are identical either way and the import line is where the choice is legible.
+
+    The predicate is transitive and cross-file, because a `bigint` reached through a referenced model still arrives on the wire as `123n`. It comes from a `modelsWithBigInt` taint set computed the same way `modelsWithDecimal` is, and sliced into the same per-file fingerprints — so a model gaining a `bigint` in another `.ck` file invalidates the clients that read it, rather than leaving a cached client with the wrong import.
+
+    A full schema-driven revival was considered and rejected: `bigIntReplacer` serialises bigints at any depth on the way out, so a path-aware reviver would have to cover exactly the same paths to stay symmetric. Gating the whole reviver on a contract-level predicate takes almost all of the benefit for a fraction of the machinery.
+
+    Renamed `sdkNeedsBigIntReviver` to `sdkParsesJsonResponse` along the way. It tests whether an operation reads a JSON response body at all, which is now the gate for importing `parseJson` in either form — and is a different question from whether the reviver is needed.
+
+    ### What this breaks
+
+    A response field holding the string `"123n"` now stays a string, unless the contract declares that field as `bigint`. If you were relying on the conversion, declare the field `bigint` and it comes back.
+
+- a3c2598: Reject non-string JSON values for numeric scalars, instead of silently turning them into numbers.
+
+    `number` and `int` compiled to `z.coerce.number()`, which is `Number(v)`. That accepts far more than a number: `[]` and `""` become `0`, `null` becomes `0`, `true` becomes `1`. So `{"quantity": []}` validated cleanly and the handler ran on a value the client never sent.
+
+    The coercion is now narrowed to the case that motivates it:
+
+    ```ts
+    z.preprocess(v => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number());
+    ```
+
+    A non-empty string still converts, because query strings and headers arrive as text and a JSON body carrying `"42"` is common enough that rejecting it would break working callers. Everything else is handed to `z.number()`, which judges it.
+
+    This is the shape the `boolean` scalar already had: its preprocess maps only the two literal strings and passes everything else through to `z.boolean()`. It needed no change.
+
+    Constraints move inside the preprocess — `z.preprocess(…, z.number().min(1))` rather than `.min(1)` on the outside — because `z.preprocess` returns a `ZodPipe`, which has no `.min()`. The `bigint` scalar already did it this way.
+
+    ### What this breaks
+
+    `{"petId": []}`, `{"n": null}` and `{"n": true}` now get a 400 where they previously validated as `0`, `0` and `1`. Frame this as the fix it is: those requests were being accepted and acted on with a value the caller did not send. String-shaped numbers still coerce, so query parameters and headers are unaffected.
+
+    Not addressed here: the JSON-versus-string wire split. `XInput` is a single exported `const` reused for both `query: X` and `request: { application/json: X }`, so a truly strict body schema needs a second emitted variant plus import plumbing. `renderInputScalar` remains the documented seam for that, with its docstring corrected — it claimed to coerce from string input while being a pure passthrough.
+
+- cb06aec: Derive valid identifiers from path parameter names, so a hyphenated path param generates code that works.
+
+    `operation /invoices/{invoice-id}` is a legal contract — the grammar's `identPart` admits `-` and `.` — but it is not a valid TypeScript identifier, and every TypeScript generator used the contract's spelling directly:
+
+    ```ts
+    HyphenatedRouter.get('/invoices/{invoice-id}', requirePolicy(), async ctx => {
+        const { invoice-id } = await parseAndValidate(ctx.params, ...);
+    ```
+
+    Three separate failures in those two lines. The route pattern kept the braces, so Koa registered a literal path no request could match. The destructuring did not parse. And the SDK emitted `async getInvoice(invoice-id: string)`, which did not parse either.
+
+    Names the generated code has to _bind_ are now mapped through `toIdentifier`, so `invoice-id` becomes `invoiceId`:
+    - **Router** — the Koa pattern becomes `/invoices/:invoiceId`, the params schema is keyed to match (that is what `ctx.params` carries), and the service call passes the bound name.
+    - **SDK** — the method parameter and the URL interpolation use the identifier.
+    - **MCP** — the tool's input schema and the handler's destructuring use it.
+
+    **Nothing on the wire changes.** A path placeholder's name never reaches the client: Koa matches by position, so `GET /invoices/abc123` behaves exactly as before. That is what makes the rename safe, and it is the reason query parameters, headers and OpenAPI parameters are deliberately _not_ renamed — those names are what the client actually sends, or must match a path template the same document declares.
+
+    `toIdentifier` returns its input unchanged whenever it is already an identifier, so no existing generated output moves. It lives in core next to the path-parameter pattern, because the Bruno plugin needs the same mapping for its own `:variable` syntax.
+
+- 12040d1: Revive temporal scalars in generated SDK clients, so a `datetime` field really is a Luxon `DateTime`.
+
+    In `sdk: { zod: true }` mode a `datetime` field's type comes from `z.infer` over `z.custom<DateTime>`, so the SDK has always _claimed_ to return a `DateTime`. The client reads its response with `JSON.parse` and a cast, and never runs the schema — so at runtime the field held a string, and `order.shipDate.toISO()` threw. The same held for `date`, `time` and `duration`.
+
+    The generated `reviveX` functions now rehydrate those scalars alongside `decimal`, using helpers that mirror what the schema validates against:
+    - `datetime` → `DateTime.fromISO`
+    - `duration` → `Duration.fromISO`
+    - `date` and `time` → `DateTime.fromFormat` with the format from the contract, defaulting to `yyyy-MM-dd` and `HH:mm:ss`
+
+    Each throws a `TypeError` naming the field path rather than returning something invalid, since a silently wrong `DateTime` surfaces much further from its cause than a throw at the boundary does. A file gets only the helpers its revivers call, decided by scanning the emitted text — the idiom the reviver and type imports already use, for the same reason: a separately computed predicate can drift and leave an unused local behind.
+
+    `interval` is deliberately excluded. `_ZodInterval` ends in `.transform(v => v.toISO()!)`, so its inferred output type is already `string` and there is nothing to revive it to. Covering it means making that round-trip idempotent first, which the router's `isRevalidatable` also depends on.
+
+    Two things ride along:
+
+    **Plain types now say `DateTime` too.** `renderTsScalar` mapped every temporal to `string` for both targets, so `types:` output disagreed with what the router and the SDK actually hand you. It now renders the Luxon classes, and the emitted file imports them.
+
+    **`_ZodBinary` follows the render target.** It was `z.custom<Buffer>` unconditionally, and SDK type files reach it through the same `generateContract`, so a browser client got `Buffer.isBuffer` with no `@types/node` in its scaffold — the type did not resolve and the check could not run. The SDK's schemas are now client-shaped (`Blob`), matching what `renderTsScalar` has always said for that target; the server and standalone `zod:` outputs are unchanged.
+
+    No bump to `TYPESCRIPT_CODEGEN_VERSION` is needed; it was already raised to `2` earlier in this batch. Cache invalidation for the wider taint set comes for free: every `hashFingerprint` that slices it already exists, so a model gaining a `datetime` in another `.ck` file invalidates dependent output as it should.
+
+### Patch Changes
+
+- 27af3f2: Generalise the decimal taint-set helpers over an arbitrary set of scalars.
+
+    `typeHasDecimal` and `computeModelsWithDecimal` hardcoded `decimal`, but the question they answer is not specific to it: any scalar whose runtime type differs from what `JSON.parse` produces taints a model the same way, and needs the same transitive answer through referenced models.
+
+    Core now exports `typeHasScalar(type, scalars)` and `computeModelsWithScalar(models, scalars, external)`. `computeModelsWithDecimal` stays as a thin wrapper over a one-member set, so every existing caller is untouched. The TypeScript plugin's `ReviveCodegenOptions` gains an optional `revivableScalars`, defaulting to the same one-member set.
+
+    Decimal remains the only member and no generated output changes.
+
+    One thing settled in passing: core's predicate checks a `record`'s key _and_ value while the reviver's checks only the value, and that divergence is correct rather than an oversight. Core answers "is this scalar mentioned", which decides imports, and a `record(decimal, string)` schema does reference the `Decimal` type. The reviver answers "is there a value to rehydrate", and a JSON object key is always a string, so there is nothing at a key position to convert. Both are now documented in place.
+
+- fb39996: Fix `@deprecated` being dropped from generated SDK methods that also have a description.
+
+    The SDK emitted the deprecation as its own block, immediately above the block carrying `@name`, `@description` and `@throws`:
+
+    ```ts
+    /** @deprecated */
+    /** @description look up a refund by its originating payment */
+    async getRefund(params: PaymentRef): Promise<Payment> {
+    ```
+
+    TypeScript associates only the JSDoc comment _adjacent_ to a declaration, so the deprecation was invisible to editors and to `tsc` whenever the operation also had a description or an error contract, which is the common case. It survived only on operations that had nothing else to document.
+
+    `@deprecated` is now a tag inside the one block, in the same position the Koa router already puts it:
+
+    ```ts
+    /**
+     * @description look up a refund by its originating payment
+     * @deprecated
+     */
+    ```
+
+    No bump to `TYPESCRIPT_CODEGEN_VERSION` is needed; it was already raised to `2` earlier in this batch.
+
+- 78462d7: Stop emitting the `ModelBase` Zod schema, which nothing has ever read.
+
+    A model with writeonly fields emitted three schemas: `ModelBase` with every field, `Model` (read, no writeonly) and `ModelInput` (write, no readonly). Only the last two were exported. `ModelBase` was a plain `const`, and the sole place a `XBase` name was ever _referenced_ was inside the block that declares `YBase` for a child model — so `XBase` was read only by `YBase`, and no `YBase` was read by anything reachable. The read schema extends the parent's read schema directly, and the input schema extends the parent's input schema; neither goes through a Base. The construct was a closed island, and under `noUnusedLocals` it is a compile error in the generated file.
+
+    Nothing is lost with it. Writeonly inheritance was the thing Base was meant to deliver, and it already rides on the Input chain: a child's `ModelInput` extends its parent's `ModelInput`, which carries the parent's writeonly fields. That is why removing Base changes no exported schema, no inferred type, and no runtime validation.
+
+    This supersedes the narrower change of emitting `XBase` only when some writeonly model extends `X`. That predicate turns out to be unsatisfiable in practice: gating the child's Base on having a reader of its own removes the only reference to the parent's Base, so the correct set is always empty.
+
+    Visible in diffs but not breaking: an unexported `const` disappears from generated schema files.
+
+- 383d26f: Stop importing model types into SDK clients that never mention them.
+
+    `collectTypes` walks the AST and reports every model a request body names, regardless of its content type. `buildMethodParams` types a `multipart/form-data` body as `FormData`, so that model is never mentioned in the emitted method and its import is left unused, which is a compile error under `noUnusedLocals`. The same happened to a model's read variant when only its `Input` variant was actually referenced.
+
+    The collected list is now filtered against the emitted text before imports are generated: the method bodies, the error-body aliases and the inline reviver declarations. This is the idiom the reviver imports in the same function already use, and it errs toward keeping — a name appearing only inside a doc string counts as a reference, because a surplus import is untidy while a missing one does not compile.
+
+    Multipart is deliberately not special-cased inside `collectTypes`. Validating multipart bodies against their declared contract is work still to come, and it would have to undo that special case; with a text-derived filter the model becomes referenced on its own the moment the body is checked, and the import comes back automatically.
+
+    The aggregator path, which calls `collectTypes` separately when several op files merge into one area client, gets the same filter.
+
+    Visible in diffs but not breaking: an `import type` shrinks or disappears. Nothing exported changes.
+
+- b239519: Coerce SDK response headers to the types the return shape declares.
+
+    `renderSdkHeadersShape` types the `headers` object from the contract, while `sdkHeaderEntries` assigned `result.headers.get(name) ?? undefined` regardless. That produced `TS2322` in both directions at once: a header declared `int` was typed `number` and given a `string | undefined`, and a _required_ header was typed `T` and given `T | undefined`. Neither compiled.
+
+    The value expression now follows the resolved scalar, and this table is shared with the Python SDK:
+
+    | Declared type                                                    | Expression                                                 |
+    | ---------------------------------------------------------------- | ---------------------------------------------------------- |
+    | `string`, `email`, `url`, `uuid`, the date/time types, `unknown` | the raw value, asserted or defaulted per optionality       |
+    | `int`, `number`                                                  | `Number(...)`, guarded on `null` when optional             |
+    | `boolean`                                                        | compared against `'true'`, guarded on `null` when optional |
+    | `bigint`                                                         | `BigInt(...)`, guarded on `null` when optional             |
+    | anything else                                                    | rejected at codegen                                        |
+
+    Optionality drives the null handling: `Headers.get` returns `null` for an absent header, so an optional header maps that onto `undefined`, which is what its `?` in the shape means, while a required one is asserted because the contract says the service always sends it.
+
+    A header declared as a `decimal`, a `json`, a `binary`, a model reference, an array or an object is now a build error naming the header and the operation, which the CLI reports scoped to this plugin. Header values arrive as strings and there is no meaningful reading of those types from one; emitting code that does not compile is worse than refusing.
+
+    The Python SDK reuses this table, with one asymmetry worth stating: temporals _do_ need coercion there, because `renderPyType` maps them to `datetime`/`date`/`time` objects while `renderOutputTsType` maps them to `string`.
+
+    No bump to `TYPESCRIPT_CODEGEN_VERSION` is needed; it was already raised to `2` earlier in this batch.
+
+- 2597e3e: Fix generated SDK methods failing to compile when a route declares its path params as a model.
+
+    `buildUrlExpression` accepted a `ParamSource` and discarded it, always interpolating the placeholder by bare name. That is right for a `params { … }` block, whose fields `buildMethodParams` spreads across the signature — but for `params: PaymentRef` the signature has a single argument called `params`, so the emitted URL named something that does not exist:
+
+    ```ts
+    async getRefund(params: PaymentRef): Promise<Payment> {
+        const result = await this.fetch(`/refunds/${encodeURIComponent(paymentId)}`, { method: 'GET' });
+    ```
+
+    `TS2304`, plus `TS6133` for the now-unread `params`. This is the same root cause as the Python `NameError`: the name in the path and the name in the signature come from different places and were never reconciled.
+
+    The value is now read off the argument, as `params.paymentId`. A placeholder that is not a valid property accessor uses bracket notation, and the expression is wrapped in `String(...)` because a model's field may be typed something `encodeURIComponent` does not accept.
+
+    The spread-param branch is deliberately unchanged, including for a placeholder that is not a valid identifier. There the expression has to name a signature parameter, and `buildMethodParams` uses the contract's spelling verbatim — so when that spelling is not an identifier the method is already unsalvageable, and emitting an expression that parses as arithmetic would be no improvement over leaving the placeholder alone.
+
+    No bump to `TYPESCRIPT_CODEGEN_VERSION` is needed; it was already raised to `2` earlier in this batch.
+
+- 1c36107: Fix the source links in generated TypeScript, which were malformed and did not resolve.
+
+    Every generated schema, router, SDK client and MCP tool carries a markdown link back to the `.ck` declaration it came from. Those links were written as `[User](file://./../contracts/user.ck#L5)`. The `file://` prefix opens a URL authority component, so the `.` that follows parses as the _host_ rather than as a path segment, and the link resolves to nothing in an editor or a rendered doc. The correct form for a path relative to the emitted file is simply `[User](../contracts/user.ck#L5)`, which is what is now emitted.
+
+    The seven sites that built this link each recomputed `relative(dirname(outPath), sourceFile)` by hand and concatenated the pieces inline. They now share one `sourceLink(label, outPath, sourceFile, line?)` helper in `ts-render.ts`, alongside `quoteKey`, `escapeJsDocLines` and `headerNameToProperty`. The helper returns just the link, since some callers wrap it in a JSDoc block and one emits it in a `//` comment. A path that does not already begin with `.` gains a `./` prefix so it reads unambiguously as relative.
+
+    `TYPESCRIPT_CODEGEN_VERSION` is bumped to `2`. `runIncrementalCodegen` honours a cached manifest whenever its recorded `codegenVersion` matches, so without the bump anyone with a warm `.contractkit/cache` would keep the old files after upgrading.
+
+    Visible in diffs but not breaking: the doc links change form. Nothing imports or depends on their text.
+
+- fe9ea0b: Coerce temporal response headers to Luxon objects, completing the header table.
+
+    When response headers first learned to follow their declared types, temporals mapped to `string` and passed the raw value straight through. Reviving temporal scalars later changed `renderOutputTsType` to produce `DateTime` and `Duration` — so the header _shape_ said `DateTime` while the entry still assigned a raw string, and the client file had no `luxon` import at all. A `datetime` response header therefore produced a client that did not compile.
+
+    Temporal headers now convert, using the same functions the body reviver does and taking `date` and `time` formats from the contract. This also makes the TypeScript and Python SDKs symmetric: Python has coerced these since its own header types landed.
+
+    Two details:
+
+    The `luxon` import is decided from the emitted method bodies, like every other import in these files, and is added by both client paths — `generateSdk` for a top-level client and `generateAreaClient` for an area one. Only the first had the reviver's import logic, so an area client needed it separately.
+
+    Optional headers assert non-null inside the conversion. TypeScript does not carry the narrowing from `get(x) === null` across a _second_ `get(x)` call, so without the assertion the optional form is a `TS2345` even though the ternary has already excluded null. The `bigint` case had the same latent error and is fixed with it — it was invisible because no fixture declared an optional `bigint` header.
+
+    Found by running the real CLI over the reference contracts rather than the test harness, which is what that acceptance pass exists for: the fixture had no temporal response header, so nothing in the suite covered the interaction. It does now.
+
+- e06d2e7: Warn when an output path template variable has no value.
+
+    `resolveTemplate` leaves an unknown `{key}` in place, and the result joins straight into the output path — so a config using `{area}` against a `.ck` file that declares no `options { keys { area: … } }` quietly wrote its files into a directory literally named `{area}`. `assertWithinBase` did not catch it: the path is inside the base directory, just wrong.
+
+    The build now says so, naming both the variable and the file it affected, and pointing at the two ways to fix it.
+
+    The file is still emitted. Throwing would be a worse trade here — the CLI catches a `generateTargets` throw and continues to the next plugin, so refusing over one misconfigured file would cost you that plugin's entire output. This adds visibility, not a new failure mode.
+
+    The check sits at the plugin's single `emitFile` funnel rather than being threaded down through the five path-computing helpers and their nine call sites. Every output path passes through that one point whichever helper built it, so one check covers all of them, and it catches a case a per-helper callback would miss.
+
+- Updated dependencies [27af3f2]
+- Updated dependencies [227c224]
+- Updated dependencies [135947f]
+- Updated dependencies [cb06aec]
+    - @contractkit/core@0.29.0
+
 ## 0.33.3
 
 ### Patch Changes
