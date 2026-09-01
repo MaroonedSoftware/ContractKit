@@ -105,6 +105,15 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     lines.push('from __future__ import annotations');
     lines.push('');
 
+    // Collect public ops once — used both for TypedDict emission and method generation.
+    const publicOps: Array<{ route: OpRouteNode; op: OpOperationNode }> = [];
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
+            publicOps.push({ route, op });
+        }
+    }
+
     // stdlib imports
     const needsDatetime = referencedModels.has('__datetime__');
     const needsDate = referencedModels.has('__date__');
@@ -122,15 +131,11 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     }
     if (needsDecimal) lines.push('from decimal import Decimal');
     if (needsUUID) lines.push('from uuid import UUID');
-
-    // Collect public ops once — used both for TypedDict emission and method generation.
-    const publicOps: Array<{ route: OpRouteNode; op: OpOperationNode }> = [];
-    for (const route of root.routes) {
-        for (const op of route.operations) {
-            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
-            publicOps.push({ route, op });
-        }
+    // Path params are percent-encoded, so `quote` is needed wherever a route interpolates one.
+    if (publicOps.some(({ route }) => /\{[a-zA-Z_$][a-zA-Z0-9_$.-]*\}/.test(route.path))) {
+        lines.push('from urllib.parse import quote');
     }
+
     const opShapes = new Map<OpOperationNode, PyResponseShape>(publicOps.map(({ op }) => [op, responseShape(op)]));
     const opsWithRespHeaders = publicOps.filter(({ op }) => {
         const shape = opShapes.get(op)!;
@@ -302,7 +307,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     }
 
     // Build URL
-    const urlExpr = buildUrlExpression(route.path);
+    const urlExpr = buildUrlExpression(route.path, route.params);
 
     // Query params
     const hasQuery = !!op.query;
@@ -515,11 +520,34 @@ function snakeToPascal(s: string): string {
 
 // ─── URL building ─────────────────────────────────────────────────────────
 
-function buildUrlExpression(path: string): string {
-    // Replace {paramName} with Python f-string interpolation
-    const hasBraces = /\{[a-zA-Z_][a-zA-Z0-9_]*\}/.test(path);
-    if (!hasBraces) return `"${path}"`;
-    const interpolated = path.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (_m, name) => `{${name}}`);
+/**
+ * Placeholder names as the `.ck` grammar allows them: `identStart identPart*`, where `identPart`
+ * admits `-` and `.` alongside the usual identifier characters. Matching only `[a-zA-Z_]\w*` left
+ * `{payment-id}` untouched, so the braces travelled to the server verbatim.
+ */
+const PATH_PLACEHOLDER = /\{([a-zA-Z_$][a-zA-Z0-9_$.-]*)\}/g;
+
+/**
+ * Render a route path as the Python expression that produces the request URL.
+ *
+ * The placeholder in the path carries the name as written in the contract, while the method
+ * signature carries its snake_cased form — so interpolating the raw name emits an f-string
+ * referring to something nothing binds, and the method raises `NameError` when called. `params`
+ * says where the value lives: spread across the signature, or behind a single `params` argument
+ * when the route declares its params as a model.
+ *
+ * Values are percent-encoded, which the TypeScript SDK has always done via `encodeURIComponent`
+ * and Python did not do at all. `safe=''` because a path segment must escape `/` too.
+ */
+function buildUrlExpression(path: string, params?: ParamSource): string {
+    if (!PATH_PLACEHOLDER.test(path)) return `"${path}"`;
+    PATH_PLACEHOLDER.lastIndex = 0;
+
+    const interpolated = path.replace(PATH_PLACEHOLDER, (_m, name: string) => {
+        const field = toPythonFieldName(name);
+        const expr = params && params.kind !== 'params' ? `params.${field}` : field;
+        return `{quote(str(${expr}), safe='')}`;
+    });
     return `f"${interpolated}"`;
 }
 

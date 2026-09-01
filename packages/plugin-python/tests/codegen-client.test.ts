@@ -173,7 +173,51 @@ describe('generatePythonClient', () => {
             ], paramNodes([opParam('id', scalarType('uuid'))])),
         ]);
         const output = generatePythonClient(root);
-        expect(output).toContain('f"/payments/{id}"');
+        expect(output).toContain('f"/payments/{quote(str(id), safe=\'\')}"');
+        expect(output).toContain('from urllib.parse import quote');
+    });
+
+    it('interpolates the snake_cased name the signature actually binds', () => {
+        const root = opRoot([
+            opRoute('/payments/{paymentId}', [
+                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
+            ], paramNodes([opParam('paymentId', scalarType('uuid'))])),
+        ]);
+        const output = generatePythonClient(root);
+        // The signature snake_cases the name, so interpolating `paymentId` raises NameError.
+        expect(output).toContain('async def get_payments_by_payment_id(self, payment_id: UUID)');
+        expect(output).toContain("f\"/payments/{quote(str(payment_id), safe='')}\"");
+        expect(output).not.toContain('{paymentId}');
+    });
+
+    it('interpolates a hyphenated path param, which is not a Python identifier', () => {
+        const root = opRoot([
+            opRoute('/payments/{payment-id}', [
+                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
+            ], paramNodes([opParam('payment-id', scalarType('uuid'))])),
+        ]);
+        const output = generatePythonClient(root);
+        // Previously left untouched, so the literal braces went out on the wire.
+        expect(output).toContain("f\"/payments/{quote(str(payment_id), safe='')}\"");
+        expect(output).not.toContain('{payment-id}');
+    });
+
+    it('reads path params off the params argument when the route declares a model', () => {
+        const root = opRoot([
+            opRoute('/payments/{paymentId}', [
+                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
+            ], { kind: 'ref', name: 'PaymentRef' }),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('async def get_payments_by_payment_id(self, params: PaymentRef)');
+        expect(output).toContain("f\"/payments/{quote(str(params.payment_id), safe='')}\"");
+    });
+
+    it('leaves a path with no params as a plain string', () => {
+        const root = opRoot([opRoute('/payments', [opOperation('get', { responses: [opResponse(200, 'Payment')] })])]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('"/payments"');
+        expect(output).not.toContain('from urllib.parse import quote');
     });
 
     it('imports model types from their modules', () => {

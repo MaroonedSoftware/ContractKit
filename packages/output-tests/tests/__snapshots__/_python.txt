@@ -1,6 +1,1 @@
-literal pysdk/_client_hyphenated.py: get_invoice() requests '/invoices/{invoice-id}' with the placeholder unsubstituted
-unbound pysdk/_client_billing.py: delete_payment() interpolates 'paymentId', which nothing binds
-unbound pysdk/_client_billing.py: get_payment() interpolates 'paymentId', which nothing binds
-unbound pysdk/_client_billing.py: get_refund() interpolates 'paymentId', which nothing binds
-unbound pysdk/_client_billing.py: update_payment_with_form() interpolates 'paymentId', which nothing binds
-unbound pysdk/_client_billing.py: upload_receipt() interpolates 'paymentId', which nothing binds
+(no findings)

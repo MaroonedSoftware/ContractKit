@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from uuid import UUID
+from urllib.parse import quote
 from typing import TypedDict
 from ._base_client import BaseClient, SdkError  # noqa: F401
 from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm, UploadReceiptForm
@@ -40,28 +41,28 @@ class BillingClient(BaseClient):
         """
         fetch one payment
         """
-        result = await self._fetch(f"/payments/{paymentId}", method="GET")
+        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="GET")
         return Payment.model_validate(result)
 
     async def update_payment_with_form(self, payment_id: UUID, body: UpdatePaymentForm) -> None:
         """
         update a payment with form data
         """
-        result = await self._fetch(f"/payments/{paymentId}", method="POST", body=body.model_dump(mode="json"), content_type="application/x-www-form-urlencoded")
+        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="POST", body=body.model_dump(mode="json"), content_type="application/x-www-form-urlencoded")
         return None
 
     async def delete_payment(self, payment_id: UUID) -> None:
         """
         delete a payment — declares only a documented error status
         """
-        result = await self._fetch(f"/payments/{paymentId}", method="DELETE")
+        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="DELETE")
         return None
 
     async def upload_receipt(self, payment_id: UUID, body: bytes) -> Payment:
         """
         upload a receipt image
         """
-        result = await self._fetch(f"/payments/{paymentId}/receipt", method="POST", body=body, content_type="multipart/form-data")
+        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}/receipt", method="POST", body=body, content_type="multipart/form-data")
         return Payment.model_validate(result)
 
     # @deprecated
@@ -69,7 +70,7 @@ class BillingClient(BaseClient):
         """
         look up a refund by its originating payment
         """
-        result = await self._fetch(f"/refunds/{paymentId}", method="GET")
+        result = await self._fetch(f"/refunds/{quote(str(params.payment_id), safe='')}", method="GET")
         return Payment.model_validate(result)
 
     async def create_credential(self, body: AdminCredentialInput) -> Credential:

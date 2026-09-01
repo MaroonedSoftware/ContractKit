@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from uuid import UUID
+from urllib.parse import quote
 from ._base_client import BaseClient, SdkError  # noqa: F401
 from ._models_hyphenated import Invoice, InvoiceInput
 
@@ -12,5 +13,5 @@ class HyphenatedClient(BaseClient):
         """
         fetch an invoice
         """
-        result = await self._fetch("/invoices/{invoice-id}", method="GET")
+        result = await self._fetch(f"/invoices/{quote(str(invoice_id), safe='')}", method="GET")
         return Invoice.model_validate(result)
