@@ -1,0 +1,22 @@
+{
+    "name": "@repo/output-tests",
+    "version": "0.0.0",
+    "license": "MIT",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "format": "prettier --write .",
+        "test": "vitest run",
+        "test:ci": "vitest run"
+    },
+    "devDependencies": {
+        "@contractkit/core": "workspace:*",
+        "@contractkit/plugin-bruno": "workspace:*",
+        "@contractkit/plugin-markdown": "workspace:*",
+        "@contractkit/plugin-openapi": "workspace:*",
+        "@contractkit/plugin-python": "workspace:*",
+        "@contractkit/plugin-typescript": "workspace:*",
+        "typescript": "6.0.3",
+        "yaml": "^2.8.3"
+    }
+}

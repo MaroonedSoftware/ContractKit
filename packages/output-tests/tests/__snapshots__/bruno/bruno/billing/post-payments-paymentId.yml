@@ -1,0 +1,24 @@
+info:
+  name: "/payments/{paymentId}"
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{baseUrl}}/payments/:paymentId"
+  params:
+    - name: paymentId
+      value: "00000000-0000-0000-0000-000000000000"
+      type: path
+  body:
+    type: form-urlencoded
+    data: []
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "204"
+
+docs: |-
+  update a payment with form data
