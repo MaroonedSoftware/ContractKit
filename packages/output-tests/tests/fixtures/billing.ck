@@ -66,6 +66,7 @@ operation /payments: {
                     x-request-id: string
                     x-ratelimit-remaining: int
                     x-cache-hit?: boolean
+                    x-expires-after?: datetime
                 }
             }
             400:

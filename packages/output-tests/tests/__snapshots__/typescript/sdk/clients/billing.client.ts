@@ -2,20 +2,21 @@ import type { SdkFetch } from '../sdk-options.js';
 import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString } from '../sdk-options.js';
 import type { AdminCredentialInput, Credential, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm } from '../types/billing.types.js';
 import { revivePayment } from '../types/billing.types.js';
+import { DateTime } from 'luxon';
 
 export class BillingClient {
     constructor(private fetch: SdkFetch) {
     }
 
     /** @description create a payment */
-    async createPayment(body: PaymentInput): Promise<{ data: Payment; headers: { xRequestId: string; xRatelimitRemaining: number; xCacheHit?: boolean } }> {
+    async createPayment(body: PaymentInput): Promise<{ data: Payment; headers: { xRequestId: string; xRatelimitRemaining: number; xCacheHit?: boolean; xExpiresAfter?: DateTime } }> {
         const result = await this.fetch(`/payments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body, bigIntReplacer),
         });
         const data = revivePayment(await parseJson<Payment>(result));
-        return { data, headers: { xRequestId: result.headers.get('x-request-id')!, xRatelimitRemaining: Number(result.headers.get('x-ratelimit-remaining')), xCacheHit: result.headers.get('x-cache-hit') === null ? undefined : result.headers.get('x-cache-hit') === 'true' } };
+        return { data, headers: { xRequestId: result.headers.get('x-request-id')!, xRatelimitRemaining: Number(result.headers.get('x-ratelimit-remaining')), xCacheHit: result.headers.get('x-cache-hit') === null ? undefined : result.headers.get('x-cache-hit') === 'true', xExpiresAfter: result.headers.get('x-expires-after') === null ? undefined : DateTime.fromISO(result.headers.get('x-expires-after')!) } };
     }
 
     /** @description list payments */

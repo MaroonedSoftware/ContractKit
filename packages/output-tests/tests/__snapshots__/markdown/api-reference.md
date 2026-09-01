@@ -107,6 +107,7 @@ Response headers:
 | `x-request-id` | `string` *(required)* |  |
 | `x-ratelimit-remaining` | `number` *(required)* |  |
 | `x-cache-hit` | `boolean` |  |
+| `x-expires-after` | `string` |  |
 
 `400 Bad Request`
 

@@ -11,7 +11,7 @@ import { Payment, PaymentRef } from './schemas/billing.schema.js';
 const GetRefundArgs = z.object({ params: PaymentRef });
 
 /**
- * from [billing.ck](../contracts/billing.ck#L146)
+ * from [billing.ck](../contracts/billing.ck#L147)
  */
 @Injectable()
 export class GetRefundMcpTool implements McpToolHandler {

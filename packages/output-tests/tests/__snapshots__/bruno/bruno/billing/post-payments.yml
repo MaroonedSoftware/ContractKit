@@ -37,3 +37,4 @@ docs: |-
   - `x-request-id` (required)
   - `x-ratelimit-remaining` (required)
   - `x-cache-hit` (optional)
+  - `x-expires-after` (optional)

@@ -446,6 +446,8 @@ describe('generateSdk', () => {
                                     { name: 'x-fresh', optional: true, type: scalarType('boolean') },
                                     { name: 'x-seq', optional: false, type: scalarType('bigint') },
                                     { name: 'x-prev', optional: true, type: scalarType('bigint') },
+                                    { name: 'x-expires', optional: true, type: scalarType('datetime') },
+                                    { name: 'x-day', optional: false, type: scalarType('date') },
                                 ],
                             },
                         ],
@@ -460,7 +462,13 @@ describe('generateSdk', () => {
             expect(out).toContain("xCached: result.headers.get('x-cached') === 'true'");
             expect(out).toContain("xFresh: result.headers.get('x-fresh') === null ? undefined : result.headers.get('x-fresh') === 'true'");
             expect(out).toContain("xSeq: BigInt(result.headers.get('x-seq')!)");
-            expect(out).toContain("xPrev: result.headers.get('x-prev') === null ? undefined : BigInt(result.headers.get('x-prev'))");
+            // Asserted in both branches: TS does not carry the null narrowing across a second
+            // `get()` call, and `BigInt` takes no null.
+            expect(out).toContain("xPrev: result.headers.get('x-prev') === null ? undefined : BigInt(result.headers.get('x-prev')!)");
+            // Temporals are Luxon objects since the SDK started reviving them, so a raw string no
+            // longer satisfies the shape `renderOutputTsType` produces.
+            expect(out).toContain("xExpires: result.headers.get('x-expires') === null ? undefined : DateTime.fromISO(result.headers.get('x-expires')!)");
+            expect(out).toContain("xDay: DateTime.fromFormat(result.headers.get('x-day')!, 'yyyy-MM-dd')");
         });
 
         it('rejects a header type that cannot be read from a header', () => {

@@ -166,6 +166,8 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push(...generateTypeImports(referenced, root.file, options, usedRevivers(classBody)));
     }
     lines.push(...decimalPrelude.imports);
+    const headerLuxon = headerLuxonImport(classBody, decimalPrelude.imports);
+    if (headerLuxon) lines.push(headerLuxon);
 
     // SdkOptions import (from shared file) or inline fallback
     if (options.sdkOptionsPath && options.outPath) {
@@ -361,6 +363,19 @@ function decimalPreludeFor(declLines: string[]): { imports: string[]; decls: str
     if (luxon.length > 0) imports.push(`import { ${luxon.join(', ')} } from 'luxon';`);
 
     return { imports, decls: [...preamble, ...decls] };
+}
+
+/**
+ * The `luxon` import a client needs for its response-header coercions, or undefined.
+ *
+ * Header conversions call `DateTime.fromISO` and friends directly rather than through a reviver,
+ * so they are invisible to `decimalPreludeFor`. Decided from the emitted method bodies, like every
+ * other import in these files, and skipped when the reviver prelude already brought luxon in.
+ */
+function headerLuxonImport(methodLines: string[], existingImports: string[]): string | undefined {
+    if (existingImports.some(l => l.includes("from 'luxon'"))) return undefined;
+    const needed = ['DateTime', 'Duration'].filter(c => methodLines.some(l => l.includes(`${c}.from`)));
+    return needed.length > 0 ? `import { ${needed.join(', ')} } from 'luxon';` : undefined;
 }
 
 /** Model reviver names referenced by generated method bodies. `__revive…` wrappers are local. */
@@ -723,25 +738,43 @@ function sdkHeaderEntry(h: OpResponseHeaderNode, where: string): string {
     const key = quoteKey(headerNameToProperty(h.name));
     const scalar = h.type.kind === 'scalar' ? h.type.name : undefined;
 
+    /**
+     * Wrap a conversion so an optional header maps an absent value onto `undefined`.
+     *
+     * The value is asserted non-null in both branches. TypeScript does not carry a narrowing from
+     * `get(x) === null` across a *second* `get(x)` call, and the conversions below take a `string`
+     * — so without the assertion the optional form is a TS2345 even though the ternary has
+     * already excluded null.
+     */
+    const convert = (expr: (v: string) => string) =>
+        `${key}: ${h.optional ? `${raw} === null ? undefined : ${expr(`${raw}!`)}` : expr(`${raw}!`)}`;
+
     switch (scalar) {
         case 'string':
         case 'email':
         case 'url':
         case 'uuid':
-        case 'date':
-        case 'time':
-        case 'datetime':
-        case 'duration':
         case 'interval':
         case 'unknown':
             return `${key}: ${raw}${h.optional ? ' ?? undefined' : '!'}`;
+        // Temporals are Luxon objects since the SDK started reviving them, so the shape
+        // `renderOutputTsType` produces says `DateTime` and the raw string no longer satisfies it.
+        // The format for date and time comes from the contract, as it does in the reviver.
+        case 'datetime':
+            return convert(v => `DateTime.fromISO(${v})`);
+        case 'duration':
+            return convert(v => `Duration.fromISO(${v})`);
+        case 'date':
+            return convert(v => `DateTime.fromFormat(${v}, '${(h.type.kind === 'scalar' && h.type.format) || 'yyyy-MM-dd'}')`);
+        case 'time':
+            return convert(v => `DateTime.fromFormat(${v}, '${(h.type.kind === 'scalar' && h.type.format) || 'HH:mm:ss'}')`);
         case 'number':
         case 'int':
             return `${key}: ${h.optional ? `${raw} === null ? undefined : Number(${raw})` : `Number(${raw})`}`;
         case 'boolean':
             return `${key}: ${h.optional ? `${raw} === null ? undefined : ${raw} === 'true'` : `${raw} === 'true'`}`;
         case 'bigint':
-            return `${key}: ${h.optional ? `${raw} === null ? undefined : BigInt(${raw})` : `BigInt(${raw}!)`}`;
+            return convert(v => `BigInt(${v})`);
         default:
             throw new Error(
                 `Response header '${h.name}' on ${where} is declared as ${describeHeaderType(h.type)}, which cannot be read from an HTTP header. ` +
@@ -1837,6 +1870,8 @@ export function generateAreaClient(input: AreaClientInput): string {
     }
 
     if (areaNeedsDecimalImport) lines.push(DECIMAL_IMPORT);
+    const areaHeaderLuxon = headerLuxonImport(collectedMethodLines, collectedRevivePrelude);
+    if (areaHeaderLuxon) lines.push(areaHeaderLuxon);
 
     // Leaf client imports (subareas only — top-level clients live next to sdk.ts).
     const importedClients = new Set<string>();
