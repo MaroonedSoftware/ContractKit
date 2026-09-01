@@ -1,0 +1,19 @@
+TS1005 server/routes/hyphenated.router.ts: ')' expected.
+TS1005 server/routes/hyphenated.router.ts: ',' expected.
+TS1005 server/routes/hyphenated.router.ts: ',' expected.
+TS1128 server/routes/hyphenated.router.ts: Declaration or statement expected.
+TS1128 server/routes/hyphenated.router.ts: Declaration or statement expected.
+TS2304 server/routes/hyphenated.router.ts: Cannot find name 'ctx'.
+TS2304 server/routes/hyphenated.router.ts: Cannot find name 'ctx'.
+TS2304 server/routes/hyphenated.router.ts: Cannot find name 'ctx'.
+TS2304 server/routes/hyphenated.router.ts: Cannot find name 'ctx'.
+TS2304 server/routes/hyphenated.router.ts: Cannot find name 'ctx'.
+TS2304 server/routes/hyphenated.router.ts: Cannot find name 'id'.
+TS2304 server/routes/hyphenated.router.ts: Cannot find name 'id'.
+TS2345 server/routes/hyphenated.router.ts: Argument of type '{ 'invoice-id': string; }' is not assignable to parameter of type 'RouteHandler'.   Type '{ 'invoice-id': string; }' provides no match for the signature '(ctx: any): any'.
+TS2552 server/routes/hyphenated.router.ts: Cannot find name 'invoice'. Did you mean 'Invoice'?
+TS2809 server/routes/hyphenated.router.ts: Declaration or statement expected. This '=' follows a block of statements, so if you intended to write a destructuring assignment, you might need to wrap the whole assignment in parentheses.
+TS6133 server/routes/hyphenated.router.ts: 'ctx' is declared but its value is never read.
+TS6133 server/schemas/billing.schema.ts: 'AdminCredentialBase' is declared but its value is never read.
+TS6133 server/schemas/billing.schema.ts: 'SessionBase' is declared but its value is never read.
+TS7031 server/routes/hyphenated.router.ts: Binding element 'invoice' implicitly has an 'any' type.

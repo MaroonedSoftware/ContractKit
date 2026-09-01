@@ -1,0 +1,15 @@
+DELETE /payments/{paymentId}: response key 400 parses as number, not string
+GET /invoices/{invoice-id}: response key 200 parses as number, not string
+GET /invoices/{invoice-id}: response key 404 parses as number, not string
+GET /payments/{paymentId}: response key 200 parses as number, not string
+GET /payments/{paymentId}: response key 404 parses as number, not string
+GET /payments: response key 200 parses as number, not string
+GET /refunds/{paymentId}: response key 200 parses as number, not string
+GET /refunds/{paymentId}: response key 404 parses as number, not string
+GET /status: response key 200 parses as number, not string
+POST /credentials: response key 200 parses as number, not string
+POST /payments/{paymentId}/receipt: response key 200 parses as number, not string
+POST /payments/{paymentId}: response key 204 parses as number, not string
+POST /payments: response key 200 parses as number, not string
+POST /payments: response key 400 parses as number, not string
+POST /sessions: response key 200 parses as number, not string
