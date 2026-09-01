@@ -8,6 +8,7 @@ import type {
     ContractRootNode,
     OpRootNode,
     ModelNode,
+    ScalarTypeNode,
     IncrementalManifest,
     IncrementalUnit,
     IncrementalOutputFile,
@@ -44,6 +45,9 @@ import {
 } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
 import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
+
+/** Taint set for the SDK's bigint response reviver. */
+const BIGINT_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['bigint']);
 import { generateMcpFile, generateMcpAggregator, generateMcpRouter, hasMcpOperations, deriveMcpRegisterFnName } from './codegen-mcp.js';
 import {
     TEMPLATE_VAR_RE,
@@ -489,6 +493,10 @@ function collectSdkOutput(
     // Computed across every contract root, not per file: one decimal below a model taints it, and
     // the reference that reaches it may live in another .ck file entirely.
     const modelsWithDecimal = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), DEFAULT_REVIVABLE_SCALARS);
+    // Which response bodies need the `123n` reviver. Transitive, because a bigint reached through
+    // a referenced model counts, and cross-file, because that model may live in another .ck file —
+    // which is also why it is sliced into every fingerprint below, exactly as modelsWithDecimal is.
+    const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
     const modelMap = buildModelMap(inputs.contractRoots);
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const ckCommonRoot = commonDir(allFiles, rootDir);
@@ -530,6 +538,7 @@ function collectSdkOutput(
             // Not covered by `root`: adding a decimal to a model in a *different* .ck file changes
             // this file's revivers with no change to `root` or the config.
             modelsWithDecimal: sliceModelSet(refs, ownNames, modelsWithDecimal),
+            modelsWithBigInt: sliceModelSet(refs, ownNames, modelsWithBigInt),
             sdkOptionsPath,
             sub: subConfigKey,
         });
@@ -611,6 +620,7 @@ function collectSdkOutput(
                     modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
                     modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
                     modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
+                modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
                     sdkOptionsPath,
                     className,
                     includeInternal: config.includeInternal ?? false,
@@ -630,6 +640,7 @@ function collectSdkOutput(
                                 modelsWithInput,
                                 modelsWithOutput,
                                 modelsWithDecimal,
+                                modelsWithBigInt,
                                 modelMap,
                                 includeInternal: config.includeInternal,
                                 clientClassName: className,
@@ -654,6 +665,7 @@ function collectSdkOutput(
                 modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
                 modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
                 modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
+                modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
                 sdkOptionsPath,
                 includeInternal: config.includeInternal ?? false,
                 sub: subConfigKey,
@@ -672,6 +684,7 @@ function collectSdkOutput(
                             modelsWithInput,
                             modelsWithOutput,
                             modelsWithDecimal,
+                            modelsWithBigInt,
                             modelMap,
                             includeInternal: config.includeInternal,
                         }),
@@ -755,6 +768,7 @@ function collectSdkOutput(
                 modelsWithInput: sliceModelSet(allInlineRefs, new Set(), modelsWithInput),
                 modelsWithOutput: sliceModelSet(allInlineRefs, new Set(), modelsWithOutput),
                 modelsWithDecimal: sliceModelSet(allInlineRefs, new Set(), modelsWithDecimal),
+                modelsWithBigInt: sliceModelSet(allInlineRefs, new Set(), modelsWithBigInt),
                 sdkOptionsPath,
                 includeInternal: config.includeInternal ?? false,
                 sub: subConfigKey,
@@ -770,6 +784,7 @@ function collectSdkOutput(
                     modelsWithInput,
                     modelsWithOutput,
                     modelsWithDecimal,
+                    modelsWithBigInt,
                     modelMap,
                     includeInternal: config.includeInternal,
                 },

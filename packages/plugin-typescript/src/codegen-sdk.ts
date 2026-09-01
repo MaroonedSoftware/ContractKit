@@ -88,6 +88,8 @@ export interface SdkCodegenOptions {
     modelsWithOutput?: Set<string>;
     /** Model names carrying a `decimal`, whose response bodies need rehydrating client-side. */
     modelsWithDecimal?: Set<string>;
+    /** Model names carrying a `bigint`, directly or transitively. Selects the JSON reviver. */
+    modelsWithBigInt?: Set<string>;
     /** Every model in scope, for resolving discriminated-union members inside an inline reviver. */
     modelMap?: Map<string, ModelNode>;
     /**
@@ -174,7 +176,11 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push(`import type { SdkFetch${jsonImport} } from '${rel}';`);
         const valueImports: string[] = [];
         if (sdkNeedsBigIntReplacer(root, includeInternal)) valueImports.push('bigIntReplacer');
-        if (sdkNeedsBigIntReviver(root, includeInternal)) valueImports.push('parseJson');
+        // Aliased rather than emitted at each call site: the method bodies are identical either
+        // way, and the import line is where the choice is legible.
+        if (sdkParsesJsonResponse(root, includeInternal)) {
+            valueImports.push(sdkResponsesUseBigInt(root, options, includeInternal) ? 'parseJsonWithBigInt as parseJson' : 'parseJson');
+        }
         if (sdkNeedsQueryString(root, includeInternal)) valueImports.push('buildQueryString');
         if (sdkNeedsReadContentType(root, includeInternal)) valueImports.push('readContentType');
         if (valueImports.length > 0) {
@@ -251,7 +257,11 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('}');
         lines.push('');
         lines.push('export async function parseJson<T>(res: Response): Promise<T> {');
-        lines.push('    return JSON.parse(await res.text(), bigIntReviver) as T;');
+        lines.push(
+            sdkResponsesUseBigInt(root, options, includeInternal)
+                ? '    return JSON.parse(await res.text(), bigIntReviver) as T;'
+                : '    return JSON.parse(await res.text()) as T;',
+        );
         lines.push('}');
     }
 
@@ -1265,14 +1275,63 @@ function sdkNeedsBigIntReplacer(root: OpRootNode, includeInternal = false): bool
     return false;
 }
 
-/** True if any public operation parses a JSON response body (uses bigIntReviver). */
-function sdkNeedsBigIntReviver(root: OpRootNode, includeInternal = false): boolean {
+/** True if any public operation parses a JSON response body, and so calls `parseJson`. */
+function sdkParsesJsonResponse(root: OpRootNode, includeInternal = false): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             // Only JSON-shaped responses use parseJson — text/binary read raw.
             if (op.responses.some(r => r.bodies.some(b => classifyContentType(b.contentType) === 'json'))) {
                 return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * True if a public operation's JSON *response* carries a `bigint`, so the client needs the
+ * `123n` reviver when parsing one.
+ *
+ * Response bodies only: the request side is handled by `bigIntReplacer` on the way out. This is
+ * the test the reviver always needed and never made — it was applied to every client that read
+ * any JSON at all, so a contract with no bigint anywhere still had a legitimate string like
+ * "123n" silently converted.
+ */
+function sdkResponsesUseBigInt(root: OpRootNode, options: SdkCodegenOptions, includeInternal = false): boolean {
+    const tainted = options.modelsWithBigInt;
+    const reachesBigInt = (type: ContractTypeNode): boolean => {
+        // `typeNeedsScalar` stops at a `ref` leaf, so the transitive answer has to come from the
+        // precomputed set — a bigint two models down still arrives on the wire as `123n`.
+        switch (type.kind) {
+            case 'ref':
+                return tainted?.has(type.name) ?? false;
+            case 'array':
+                return reachesBigInt(type.item);
+            case 'lazy':
+                return reachesBigInt(type.inner);
+            case 'tuple':
+                return type.items.some(reachesBigInt);
+            case 'record':
+                return reachesBigInt(type.value);
+            case 'union':
+            case 'discriminatedUnion':
+            case 'intersection':
+                return type.members.some(reachesBigInt);
+            case 'inlineObject':
+                return type.fields.some(f => reachesBigInt(f.type));
+            default:
+                return typeNeedsScalar(type, 'bigint');
+        }
+    };
+
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
+            for (const resp of op.responses) {
+                for (const body of resp.bodies) {
+                    if (classifyContentType(body.contentType) === 'json' && reachesBigInt(body.bodyType)) return true;
+                }
             }
         }
     }
@@ -1492,7 +1551,20 @@ export function generateSdkOptions(): string {
         "    return qs ? `?${qs}` : '';",
         '}',
         '',
+        '/**',
+        ' * Read a JSON response body.',
+        ' *',
+        ' * No reviver: `bigIntReviver` matches any string of the form `123n` anywhere in the',
+        ' * document, so a contract with no bigint field would still have a legitimate string like',
+        ' * "123n" silently turned into a BigInt. Clients whose contracts do use bigint import',
+        ' * `parseJsonWithBigInt` under this name instead.',
+        ' */',
         'export async function parseJson<T>(res: Response): Promise<T> {',
+        '    return JSON.parse(await res.text()) as T;',
+        '}',
+        '',
+        '/** `parseJson` for contracts that declare a bigint, applying the `123n` reviver. */',
+        'export async function parseJsonWithBigInt<T>(res: Response): Promise<T> {',
         '    return JSON.parse(await res.text(), bigIntReviver) as T;',
         '}',
         '',
@@ -1671,6 +1743,7 @@ export function generateAreaClient(input: AreaClientInput): string {
     const unresolvedTypes = new Set<string>();
     let needsJson = false;
     let needsBigIntReplacer = false;
+    let needsParseJson = false;
     let needsBigIntReviver = false;
     let needsQueryString = false;
     let needsReadContentType = false;
@@ -1692,7 +1765,8 @@ export function generateAreaClient(input: AreaClientInput): string {
         for (const alias of generateErrorBodyAliases(inline.root, inline.codegenOptions)) collectedErrorAliases.add(alias);
         if (sdkNeedsJson(inline.root, includeInternal)) needsJson = true;
         if (sdkNeedsBigIntReplacer(inline.root, includeInternal)) needsBigIntReplacer = true;
-        if (sdkNeedsBigIntReviver(inline.root, includeInternal)) needsBigIntReviver = true;
+        if (sdkParsesJsonResponse(inline.root, includeInternal)) needsParseJson = true;
+        if (sdkResponsesUseBigInt(inline.root, inline.codegenOptions, includeInternal)) needsBigIntReviver = true;
         if (sdkNeedsQueryString(inline.root, includeInternal)) needsQueryString = true;
         if (sdkNeedsReadContentType(inline.root, includeInternal)) needsReadContentType = true;
 
@@ -1745,7 +1819,7 @@ export function generateAreaClient(input: AreaClientInput): string {
     lines.push(`import type { SdkFetch${jsonImport} } from '${sdkOptionsRel}';`);
     const valueImports: string[] = [];
     if (needsBigIntReplacer) valueImports.push('bigIntReplacer');
-    if (needsBigIntReviver) valueImports.push('parseJson');
+    if (needsParseJson) valueImports.push(needsBigIntReviver ? 'parseJsonWithBigInt as parseJson' : 'parseJson');
     if (needsQueryString) valueImports.push('buildQueryString');
     if (needsReadContentType) valueImports.push('readContentType');
     if (valueImports.length > 0) {

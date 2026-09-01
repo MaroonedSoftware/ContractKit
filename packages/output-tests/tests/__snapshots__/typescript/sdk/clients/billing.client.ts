@@ -1,5 +1,5 @@
 import type { SdkFetch } from '../sdk-options.js';
-import { bigIntReplacer, parseJson, buildQueryString } from '../sdk-options.js';
+import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString } from '../sdk-options.js';
 import type { AdminCredentialInput, Credential, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm } from '../types/billing.types.js';
 import { revivePayment } from '../types/billing.types.js';
 

@@ -2161,3 +2161,43 @@ describe('generateSdkTsconfig', () => {
         expect(raw.endsWith('}\n')).toBe(true);
     });
 });
+
+// ─── bigint reviver gating ────────────────────────────────────────────────
+
+describe('generateSdk — bigint reviver gating', () => {
+    const withBody = (bodyType: string) =>
+        opRoot([opRoute('/things', [opOperation('get', { sdk: 'getThing', responses: [opResponse(200, bodyType, 'application/json')] })])]);
+
+    const opts = { outPath: '/sdk/src/things.client.ts', sdkOptionsPath: '/sdk/sdk-options.ts' };
+
+    it('imports the plain parseJson when no response carries a bigint', () => {
+        // `bigIntReviver` matches /^-?\d+n$/ against every string in the document, so a contract
+        // with no bigint anywhere still had a legitimate "123n" silently turned into a BigInt.
+        const out = generateSdk(withBody('Thing'), opts);
+        expect(out).toContain("import { parseJson } from '../sdk-options.js';");
+        expect(out).not.toContain('parseJsonWithBigInt');
+    });
+
+    it('imports the bigint-aware variant under the same name when one does', () => {
+        const root = opRoot([
+            opRoute('/things', [
+                opOperation('get', {
+                    sdk: 'getThing',
+                    responses: [opResponse(200, inlineObjectType([field('seq', scalarType('bigint'))]), 'application/json')],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root, opts);
+        // Aliased, so the method bodies are identical either way and only the import differs.
+        expect(out).toContain("import { parseJsonWithBigInt as parseJson } from '../sdk-options.js';");
+        expect(out).toContain('await parseJson<');
+    });
+
+    it('emits both variants in the shared runtime, since clients pick per contract', () => {
+        const runtime = generateSdkOptions();
+        expect(runtime).toContain('export async function parseJson<T>(res: Response): Promise<T> {');
+        expect(runtime).toContain('export async function parseJsonWithBigInt<T>(res: Response): Promise<T> {');
+        expect(runtime).toContain('return JSON.parse(await res.text()) as T;');
+        expect(runtime).toContain('return JSON.parse(await res.text(), bigIntReviver) as T;');
+    });
+});
