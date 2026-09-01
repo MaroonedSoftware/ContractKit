@@ -36,11 +36,6 @@ export type PaymentInput = z.infer<typeof PaymentInput>;
  * A stored credential — has a writeonly child, so its Base schema is read
  * generated from [Credential](../../contracts/billing.ck#L22)
 */
-const CredentialBase = z.strictObject({
-    id: z.uuid(),
-    secret: z.string(),
-});
-
 export const Credential = z.strictObject({
     id: z.uuid(),
 });
@@ -55,11 +50,6 @@ export type CredentialInput = z.infer<typeof CredentialInput>;
  * A writeonly model nothing extends — its Base schema has no reader
  * generated from [Session](../../contracts/billing.ck#L34)
 */
-const SessionBase = z.strictObject({
-    id: z.string(),
-    refreshToken: z.string(),
-});
-
 export const Session = z.strictObject({
     id: z.string(),
 });
@@ -101,11 +91,6 @@ export type UploadReceiptForm = z.infer<typeof UploadReceiptForm>;
  * Extends a writeonly base and is itself writeonly
  * generated from [AdminCredential](../../contracts/billing.ck#L28)
 */
-const AdminCredentialBase = CredentialBase.extend({
-    scope: z.string(),
-    token: z.string(),
-});
-
 export const AdminCredential = Credential.extend({
     scope: z.string(),
 });

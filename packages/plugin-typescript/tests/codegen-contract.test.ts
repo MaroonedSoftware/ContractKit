@@ -567,7 +567,7 @@ describe('generateContract', () => {
     // ─── Three-schema pattern (visibility) ─────────────────────────
 
     describe('three-schema pattern', () => {
-        it('generates Base, Read, and Write schemas when visibility fields exist', () => {
+        it('generates Read and Write schemas when visibility fields exist', () => {
             const root = contractRoot([
                 model('User', [
                     field('id', scalarType('uuid'), { visibility: 'readonly' }),
@@ -576,11 +576,12 @@ describe('generateContract', () => {
                 ]),
             ]);
             const output = generateContract(root);
-            expect(output).toContain('const UserBase = z.strictObject({');
             expect(output).toContain('export const User = z.strictObject({');
             expect(output).toContain('export const UserInput = z.strictObject({');
             expect(output).toContain('export type User = z.infer<typeof User>;');
             expect(output).toContain('export type UserInput = z.infer<typeof UserInput>;');
+            // No writeonly model extends User, so nothing would read a UserBase.
+            expect(output).not.toContain('const UserBase');
         });
 
         it('read schema omits writeonly fields', () => {
@@ -732,20 +733,31 @@ describe('generateContract', () => {
             expect(output).toContain('export const AdminInput = User.extend({');
         });
 
-        it('parent with writeonly fields generates Base; child Base extends ParentBase', () => {
+        it('inherits writeonly fields through the Input chain, with no Base schema', () => {
             const root = contractRoot([
                 model('User', [field('password', scalarType('string'), { visibility: 'writeonly' }), field('name', scalarType('string'))]),
-                model('Admin', [field('role', scalarType('string'))], { bases: ['User'] }),
+                model('Admin', [field('token', scalarType('string'), { visibility: 'writeonly' }), field('role', scalarType('string'))], {
+                    bases: ['User'],
+                }),
             ]);
             const output = generateContract(root);
-            // User has writeonly — Base !== Read, so UserBase is emitted
-            expect(output).toContain('const UserBase =');
-            expect(output).toContain('export const User =');
-            expect(output).toContain('export const UserInput =');
-            // Admin has no writeonly — no AdminBase; but its Input still extends UserInput
-            expect(output).not.toContain('AdminBase');
-            expect(output).toContain('export const Admin = User.extend({');
+            expect(output).not.toContain('Base');
+            // AdminInput extends UserInput, which carries User's writeonly `password` — which is
+            // what the Base schemas were meant to deliver and never did.
             expect(output).toContain('export const AdminInput = UserInput.extend({');
+            expect(output).toContain('export const Admin = User.extend({');
+        });
+
+        it('leaves a user-declared model named XBase alone', () => {
+            const root = contractRoot([
+                model('User', [field('password', scalarType('string'), { visibility: 'writeonly' }), field('name', scalarType('string'))]),
+                model('UserBase', [field('label', scalarType('string'))]),
+            ]);
+            const output = generateContract(root);
+            // A text-derived rule would have had to distinguish these two; nothing generated is
+            // named UserBase any more, so the user's own model is the only one.
+            expect(output.match(/const UserBase\b/g)).toHaveLength(1);
+            expect(output).toContain('export const UserBase = z.strictObject({');
         });
 
         it('child inheriting from external parent with Input variant uses ParentInput.extend()', () => {

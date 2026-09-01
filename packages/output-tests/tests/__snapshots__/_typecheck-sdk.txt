@@ -24,8 +24,6 @@ TS2591 sdk/types/billing.types.ts: Cannot find name 'Buffer'. Do you need to ins
 TS2693 sdk/clients/hyphenated.client.ts: 'string' only refers to a type, but is being used as a value here.
 TS6133 sdk/clients/billing.client.ts: 'params' is declared but its value is never read.
 TS6133 sdk/clients/hyphenated.client.ts: 'invoice' is declared but its value is never read.
-TS6133 sdk/types/billing.types.ts: 'AdminCredentialBase' is declared but its value is never read.
-TS6133 sdk/types/billing.types.ts: 'SessionBase' is declared but its value is never read.
 TS6138 sdk/clients/hyphenated.client.ts: Property 'fetch' is declared but its value is never read.
 TS6196 sdk/clients/billing.client.ts: 'AdminCredential' is declared but never used.
 TS6196 sdk/clients/billing.client.ts: 'UploadReceiptForm' is declared but never used.

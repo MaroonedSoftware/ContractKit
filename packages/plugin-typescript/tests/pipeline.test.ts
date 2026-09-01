@@ -60,7 +60,8 @@ contract Payslip: {
     it('compiles a contract with visibility to three-schema pattern', () => {
         const { output, diag } = compileContractSource(VISIBILITY_CONTRACT);
         expect(diag.hasErrors()).toBe(false);
-        expect(output).toContain('const UserBase = z.strictObject({');
+        // No writeonly model extends User, so no UserBase is emitted — nothing would read it.
+        expect(output).not.toContain('const UserBase');
         expect(output).toContain('export const User = z.strictObject({');
         expect(output).toContain('export const UserInput = z.strictObject({');
 

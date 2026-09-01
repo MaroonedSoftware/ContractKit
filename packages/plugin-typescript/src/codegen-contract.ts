@@ -136,8 +136,10 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
 /**
  * Generate a TypeScript module containing Zod schemas for every model in `root`.
  *
- * Emits up to three schemas per model when visibility modifiers are present:
- * `ModelBase` (all fields), `Model` (read — no writeonly), `ModelInput` (write — no readonly).
+ * Emits two schemas per model when visibility modifiers are present: `Model` (read — no
+ * writeonly fields) and `ModelInput` (write — no readonly fields). Writeonly inheritance rides
+ * on the Input chain, since a child's `Input` extends its parent's `Input`, which already carries
+ * the parent's writeonly fields.
  *
  * @param root - The parsed contract root node.
  * @param context - Optional cross-file context for import resolution and Input/Output variant tracking.
@@ -209,8 +211,8 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     }
     if (needsBinary || needsDatetime || needsInterval || needsDecimal || needsJson) lines.push('');
 
-    const modelsWithWriteonly = new Set(root.models.filter(m => m.fields.some(f => f.visibility === 'writeonly')).map(m => m.name));
     const modelMap = new Map(root.models.map(m => [m.name, m]));
+
 
     const reviveOpts =
         context?.emitRevivers && context.modelsWithDecimal
@@ -219,7 +221,7 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
 
     const bodyLines: string[] = [];
     for (const model of topoSortModels(root.models)) {
-        bodyLines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelsWithWriteonly, modelMap, allModelsWithOutput));
+        bodyLines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelMap, allModelsWithOutput));
         if (reviveOpts) {
             const revivers = renderReviveFunctions(model, reviveOpts);
             if (revivers.length > 0) {
@@ -281,7 +283,6 @@ function generateModel(
     model: ModelNode,
     outPath?: string,
     modelsWithInput?: Set<string>,
-    modelsWithWriteonly?: Set<string>,
     modelMap?: Map<string, ModelNode>,
     modelsWithOutput?: Set<string>,
 ): string[] {
@@ -297,7 +298,7 @@ function generateModel(
     const needsInputSplit = effective.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(effective.name) ?? false);
 
     const lines = needsInputSplit
-        ? generateThreeSchemaModel(effective, outPath, modelsWithInput, modelsWithWriteonly, modelMap)
+        ? generateThreeSchemaModel(effective, outPath, modelsWithInput, modelMap)
         : generateSimpleModel(effective, outPath);
 
     // Emit Output type alias when this model (transitively) has format(output=...)
@@ -417,7 +418,6 @@ function generateThreeSchemaModel(
     model: ModelNode,
     outPath?: string,
     modelsWithInput?: Set<string>,
-    modelsWithWriteonly?: Set<string>,
     modelMap?: Map<string, ModelNode>,
 ): string[] {
     const lines: string[] = [];
@@ -428,24 +428,8 @@ function generateThreeSchemaModel(
     const wrapper = modeToWrapper(model.mode ?? 'strict');
 
     const allFields = model.fields;
-    const hasWriteonly = allFields.some(f => f.visibility === 'writeonly');
 
     const bases = model.bases ?? [];
-
-    // Base schema — all fields (used internally when a submodel extends this one).
-    // Only needed when this model has writeonly fields; otherwise Base === Read.
-    if (hasWriteonly) {
-        const baseBody = renderFields(allFields, model.mode);
-        if (bases.length > 0) {
-            const { head, tail } = buildExtendChain(bases, b => (modelsWithWriteonly?.has(b) ? `${b}Base` : b));
-            lines.push(`const ${name}Base = ${head}${tail}.extend({`);
-        } else {
-            lines.push(`const ${name}Base = ${wrapper}({`);
-        }
-        lines.push(...baseBody.map(l => `    ${l}`));
-        lines.push(`});`);
-        lines.push('');
-    }
 
     // Read schema — omit writeonly fields; extends parent read schema
     const readFields = allFields.filter(f => f.visibility !== 'writeonly');
