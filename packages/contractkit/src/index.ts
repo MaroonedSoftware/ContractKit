@@ -13,6 +13,7 @@ export * from './validate-refs.js';
 export * from './validate-project.js';
 export * from './plugin.js';
 export * from './content-type.js';
+export * from './path-params.js';
 export * from './response-sets.js';
 export * from './incremental.js';
 export * from './print/index.js';

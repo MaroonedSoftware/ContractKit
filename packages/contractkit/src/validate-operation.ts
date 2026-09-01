@@ -1,11 +1,7 @@
 import type { ContractTypeNode, FieldNode, OpRootNode } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
 import { emittedResponses } from './response-sets.js';
-
-/** Extract `{paramName}` segments from a route path. */
-function extractPathParams(path: string): string[] {
-    return [...path.matchAll(/\{(\w+)\}/g)].map(m => m[1]!);
-}
+import { extractPathParams } from './path-params.js';
 
 /**
  * Warn when a route path contains `{param}` placeholders that are not explicitly declared in a
