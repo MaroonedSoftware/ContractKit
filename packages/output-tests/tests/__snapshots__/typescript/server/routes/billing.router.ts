@@ -36,7 +36,7 @@ BillingRouter.get('/payments', requirePolicy(), async ctx => {
     const query = await parseAndValidate(
         ctx.query,
         z.strictObject({
-            limit: z.coerce.number().int().default(20),
+            limit: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()).default(20),
             cursor: z.string(),
         }),
     );

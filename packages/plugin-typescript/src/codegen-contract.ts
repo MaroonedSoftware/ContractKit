@@ -651,6 +651,21 @@ function regexHasAnchor(source: string): boolean {
     return backslashes % 2 === 0;
 }
 
+/**
+ * Coercion for the numeric scalars: convert a non-empty string, pass everything else through for
+ * `z.number()` to judge.
+ *
+ * `z.coerce.number()` is `Number(v)`, which accepts far more than a number. `[]` and `''` become
+ * `0`, `null` becomes `0`, `true` becomes `1` — so `{"quantity": []}` validated as `0` and the
+ * handler ran on a value the client never sent. Only the string case is a real coercion; it exists
+ * because query strings and headers arrive as text, and it stays because a JSON body carrying
+ * `"42"` is common enough that rejecting it would break working callers.
+ *
+ * The `boolean` scalar below already has this shape and needed no change: its preprocess maps only
+ * the two literal strings and hands everything else to `z.boolean()`, which rejects it.
+ */
+const NUMERIC_PREPROCESS = `(v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v)`;
+
 function renderScalar(s: ScalarTypeNode): string {
     switch (s.name) {
         case 'string': {
@@ -662,17 +677,14 @@ function renderScalar(s: ScalarTypeNode): string {
             if (s.regex) e += `.regex(${renderRegexLiteral(s.regex)})`;
             return e;
         }
-        case 'number': {
-            let e = 'z.coerce.number()';
-            if (s.min !== undefined) e += `.min(${s.min})`;
-            if (s.max !== undefined) e += `.max(${s.max})`;
-            return e;
-        }
+        case 'number':
         case 'int': {
-            let e = 'z.coerce.number().int()';
-            if (s.min !== undefined) e += `.min(${s.min})`;
-            if (s.max !== undefined) e += `.max(${s.max})`;
-            return e;
+            // Constraints go on the inner schema, not the outer expression: `z.preprocess` returns
+            // a ZodPipe, which has no `.min()`. Same shape as the `bigint` case below.
+            let inner = s.name === 'int' ? 'z.number().int()' : 'z.number()';
+            if (s.min !== undefined) inner += `.min(${s.min})`;
+            if (s.max !== undefined) inner += `.max(${s.max})`;
+            return `z.preprocess(${NUMERIC_PREPROCESS}, ${inner})`;
         }
         case 'bigint': {
             let inner = 'z.bigint()';
@@ -858,8 +870,16 @@ function renderInlineObject(o: InlineObjectTypeNode, parseCaseTransform?: 'snake
 // ─── Input type rendering ─────────────────────────────────────────────────
 
 /**
- * Like renderScalar, but coerces from string input (JSON wire format).
- * Used for Input (write) schemas where data arrives as JSON strings.
+ * The request-side rendering of a scalar. A pure passthrough today, and the seam where a genuine
+ * input/wire split would live.
+ *
+ * The docstring here used to claim it "coerces from string input", describing a distinction the
+ * body does not make: `XInput` is a single exported `const`, and `generateParamValidation`'s ref
+ * branch uses that same schema for `query: X` that the body path uses for
+ * `request: { application/json: X }`. Making it strict would break query-by-model; leaving it
+ * coercing leaves a JSON body accepting string-shaped numbers. A real split needs a second emitted
+ * variant (`XInputWire`) plus the import plumbing to reach it, which is separate work — the
+ * narrowed coercion in `renderScalar` closes the soundness hole in the meantime.
  */
 function renderInputScalar(s: ScalarTypeNode): string {
     return renderScalar(s);

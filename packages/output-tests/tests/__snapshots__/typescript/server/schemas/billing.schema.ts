@@ -13,7 +13,7 @@ const _ZodDecimal = z.preprocess((val) => { if (typeof val !== 'string') return 
 */
 export const Payment = z.strictObject({
     id: z.uuid(),
-    amount: z.coerce.number().min(0),
+    amount: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0)),
     unitPrice: _ZodDecimal.refine((v) => v.decimalPlaces() <= 2, { message: 'Must be at most 2 decimal places' }),
     quantity: z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint()),
     createdAt: _ZodDatetime,
@@ -23,7 +23,7 @@ export const Payment = z.strictObject({
 export type Payment = z.infer<typeof Payment>;
 
 export const PaymentInput = z.strictObject({
-    amount: z.coerce.number().min(0),
+    amount: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0)),
     unitPrice: _ZodDecimal.refine((v) => v.decimalPlaces() <= 2, { message: 'Must be at most 2 decimal places' }),
     quantity: z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint()),
     createdAt: _ZodDatetime,

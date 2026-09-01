@@ -19,6 +19,10 @@ import {
     opRoot,
 } from './helpers.js';
 
+/** The narrowed numeric coercion `renderScalar` emits — see NUMERIC_PREPROCESS in codegen-contract. */
+const NUM = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number())`;
+const NUM_INT = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int())`;
+
 describe('generateOperation', () => {
     // ─── Router name derivation ─────────────────────────────────────
 
@@ -401,8 +405,8 @@ describe('generateOperation', () => {
             ]);
             const output = generateOp(root);
             expect(output).toContain('ctx.query');
-            expect(output).toContain('page: z.coerce.number().int()');
-            expect(output).toContain('limit: z.coerce.number().int()');
+            expect(output).toContain(`page: ${NUM_INT}`);
+            expect(output).toContain(`limit: ${NUM_INT}`);
         });
 
         it('generates parseAndValidate import when operation has query', () => {
@@ -441,7 +445,7 @@ describe('generateOperation', () => {
             expect(output).toContain('z.preprocess');
             expect(output).toContain("typeof v === 'string' ? v.split(',') : v");
             // Non-array params should not be wrapped
-            expect(output).toContain('limit: z.coerce.number().int()');
+            expect(output).toContain(`limit: ${NUM_INT}`);
         });
 
         it('imports Input variant for refs inside an intersection query', () => {
@@ -542,7 +546,7 @@ describe('generateOperation', () => {
             // Boolean should use preprocess for string coercion
             expect(output).toContain("active: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean())");
             // Int should still use z.coerce
-            expect(output).toContain('page: z.coerce.number().int()');
+            expect(output).toContain(`page: ${NUM_INT}`);
         });
     });
 

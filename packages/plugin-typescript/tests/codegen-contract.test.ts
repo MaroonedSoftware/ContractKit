@@ -19,6 +19,10 @@ import {
 } from './helpers.js';
 import type { ScalarTypeNode } from '@contractkit/core';
 
+/** The narrowed numeric coercion `renderScalar` emits — see NUMERIC_PREPROCESS in codegen-contract. */
+const NUM = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number())`;
+const NUM_INT = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int())`;
+
 describe('renderType', () => {
     // ─── Scalar types ───────────────────────────────────────────────
 
@@ -71,24 +75,24 @@ describe('renderType', () => {
             expect(renderType(scalarType('string', { regex: 'price:\\$' }))).toBe('z.string().regex(/^price:\\$$/)');
         });
 
-        it('renders z.coerce.number()', () => {
-            expect(renderType(scalarType('number'))).toBe('z.coerce.number()');
+        it('coerces number from a string, rejecting what Number() would swallow', () => {
+            expect(renderType(scalarType('number'))).toBe(NUM);
         });
 
-        it('renders z.coerce.number() with min', () => {
-            expect(renderType(scalarType('number', { min: 0 }))).toBe('z.coerce.number().min(0)');
+        it('renders number with min', () => {
+            expect(renderType(scalarType('number', { min: 0 }))).toBe(`z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0))`);
         });
 
-        it('renders z.coerce.number() with min and max', () => {
-            expect(renderType(scalarType('number', { min: 0, max: 100 }))).toBe('z.coerce.number().min(0).max(100)');
+        it('renders number with min and max', () => {
+            expect(renderType(scalarType('number', { min: 0, max: 100 }))).toBe(`z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0).max(100))`);
         });
 
-        it('renders z.coerce.number().int()', () => {
-            expect(renderType(scalarType('int'))).toBe('z.coerce.number().int()');
+        it('coerces int from a string, rejecting what Number() would swallow', () => {
+            expect(renderType(scalarType('int'))).toBe(NUM_INT);
         });
 
-        it('renders z.coerce.number().int() with constraints', () => {
-            expect(renderType(scalarType('int', { min: 1, max: 10 }))).toBe('z.coerce.number().int().min(1).max(10)');
+        it('renders int with constraints, chained inside the preprocess', () => {
+            expect(renderType(scalarType('int', { min: 1, max: 10 }))).toBe(`z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int().min(1).max(10))`);
         });
 
         it('renders z.bigint() with preprocess coercion from string or bigint', () => {
@@ -239,11 +243,11 @@ describe('renderType', () => {
         });
 
         it('renders tuple type', () => {
-            expect(renderType(tupleType(scalarType('number'), scalarType('string')))).toBe('z.tuple([z.coerce.number(), z.string()])');
+            expect(renderType(tupleType(scalarType('number'), scalarType('string')))).toBe(`z.tuple([${NUM}, z.string()])`);
         });
 
         it('renders record type', () => {
-            expect(renderType(recordType(scalarType('string'), scalarType('number')))).toBe('z.record(z.string(), z.coerce.number())');
+            expect(renderType(recordType(scalarType('string'), scalarType('number')))).toBe(`z.record(z.string(), ${NUM})`);
         });
 
         it('renders enum type', () => {
@@ -267,7 +271,7 @@ describe('renderType', () => {
         });
 
         it('renders union type', () => {
-            expect(renderType(unionType(scalarType('string'), scalarType('number')))).toBe('z.union([z.string(), z.coerce.number()])');
+            expect(renderType(unionType(scalarType('string'), scalarType('number')))).toBe(`z.union([z.string(), ${NUM}])`);
         });
 
         it('renders discriminated union as z.discriminatedUnion', () => {
@@ -287,7 +291,7 @@ describe('renderType', () => {
             const result = renderType(inlineObjectType([field('key', scalarType('string')), field('value', scalarType('number'))]));
             expect(result).toContain('z.strictObject({');
             expect(result).toContain('key: z.string(),');
-            expect(result).toContain('value: z.coerce.number(),');
+            expect(result).toContain(`value: ${NUM},`);
         });
     });
 });
@@ -301,7 +305,7 @@ describe('generateContract', () => {
             const output = generateContract(root);
             expect(output).toContain('export const User = z.strictObject({');
             expect(output).toContain('name: z.string(),');
-            expect(output).toContain('age: z.coerce.number(),');
+            expect(output).toContain(`age: ${NUM},`);
             expect(output).toContain('export type User = z.infer<typeof User>;');
         });
 
@@ -1256,7 +1260,7 @@ describe('generateContract', () => {
             ]);
             const output = generateContract(root);
             // Inline object emits its own transform inside the Webhook input shape.
-            expect(output).toContain('Amount: z.coerce.number().nullish()');
+            expect(output).toContain(`Amount: ${NUM}.nullish()`);
             expect(output).toContain('id: data.Id,');
             expect(output).toContain('...(data.Amount != null ? { amount: data.Amount } : {}),');
             expect(output).not.toContain('?? undefined');
@@ -1291,6 +1295,6 @@ describe('applyFieldModifiers', () => {
         // This is the point of the structural parameter type: it lets a `query:` or `headers:`
         // field render through exactly the same path a model field does.
         const param = opParam('limit', scalarType('int'), { optional: true, default: 20 });
-        expect(applyFieldModifiers('z.coerce.number().int()', param)).toBe('z.coerce.number().int().default(20)');
+        expect(applyFieldModifiers(NUM_INT, param)).toBe(`${NUM_INT}.default(20)`);
     });
 });
