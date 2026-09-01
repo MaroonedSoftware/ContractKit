@@ -23,6 +23,9 @@ import {
     serializeIncrementalManifest,
     hashFingerprint,
     INCREMENTAL_MANIFEST_VERSION,
+    PATH_PARAM_RE_G,
+    extractPathParams,
+    toIdentifier,
 } from '@contractkit/core';
 import { basename } from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
@@ -486,8 +489,10 @@ function generateRequestFile(
 
     // Params — flat array with type: "path" | "query". Optional query params are
     // emitted with disabled: true so users opt in before sending.
-    const pathParams: Array<ParamEntry & { kind: 'path' | 'query' }> = extractPathParamNames(route.path).map(n => ({
-        name: n,
+    const pathParams: Array<ParamEntry & { kind: 'path' | 'query' }> = extractPathParams(route.path).map(n => ({
+        // The entry name must match the `:variable` in the URL above; the type is still looked up
+        // by the contract's own spelling, which is what the `params` block declares.
+        name: toIdentifier(n),
         type: findParamType(route.params, n, modelMap),
         optional: false,
         kind: 'path' as const,
@@ -872,9 +877,16 @@ function fieldsToExampleObject(fields: FieldNode[], modelMap: Map<string, ModelN
 
 // ─── Path helpers ──────────────────────────────────────────────────────────
 
-/** Convert /users/{id}/posts → /users/:id/posts (Bruno path parameter syntax) */
+/**
+ * Convert /users/{id}/posts → /users/:id/posts (Bruno path parameter syntax).
+ *
+ * The name is mapped to an identifier for the same reason the Koa router does it: Bruno's
+ * `:variable` syntax stops at the first character that cannot be part of a name, so `:invoice-id`
+ * would bind `:invoice` and leave `-id` as literal path text. The name has to match the `params:`
+ * entries emitted below, which use the same mapping.
+ */
 function openCollectionPath(path: string): string {
-    return path.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, ':$1');
+    return path.replace(PATH_PARAM_RE_G, (_m, name: string) => `:${toIdentifier(name)}`);
 }
 
 /** Convert "Create an Offer" → create-an-offer (for .yml file names) */
@@ -890,7 +902,7 @@ export function slugifyName(name: string): string {
 export function sanitizePath(path: string): string {
     const result = path
         .replace(/^\//, '')
-        .replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, '$1')
+        .replace(PATH_PARAM_RE_G, '$1')
         .replace(/\//g, '-')
         .replace(/[^a-zA-Z0-9-]/g, '')
         .replace(/-+/g, '-')
@@ -898,10 +910,7 @@ export function sanitizePath(path: string): string {
     return result || 'root';
 }
 
-/** Extract param names from a URL template, e.g. /users/{id} → ['id'] */
-function extractPathParamNames(path: string): string[] {
-    return [...path.matchAll(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g)].map(m => m[1]!);
-}
+
 
 /** Derive folder name from op file path, e.g. src/users.op → users */
 function deriveFolderName(file: string): string {

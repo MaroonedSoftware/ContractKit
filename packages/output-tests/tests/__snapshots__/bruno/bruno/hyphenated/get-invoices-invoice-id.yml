@@ -5,7 +5,11 @@ info:
 
 http:
   method: GET
-  url: "{{baseUrl}}/invoices/{invoice-id}"
+  url: "{{baseUrl}}/invoices/:invoiceId"
+  params:
+    - name: invoiceId
+      value: "00000000-0000-0000-0000-000000000000"
+      type: path
 
 runtime:
   assertions:

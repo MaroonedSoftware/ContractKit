@@ -1498,3 +1498,49 @@ describe('generateOpenCollectionIncremental', () => {
     });
 });
 
+
+// ─── Hyphenated path parameters ───────────────────────────────────────────
+
+describe('generateOpenCollection — path parameter names that are not identifiers', () => {
+    it('emits a bound :variable rather than leaving the braces in the URL', () => {
+        const root = opRoot(
+            [
+                opRoute(
+                    '/invoices/{invoice-id}',
+                    [opOperation('get', { sdk: 'getInvoice', responses: [opResponse(200, 'Invoice')] })],
+                    paramNodes([opParam('invoice-id', scalarType('uuid'))]),
+                ),
+            ],
+            'invoices.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API', randomExamples: false });
+        const request = files.find(f => f.relativePath.includes('get-invoices'))!;
+
+        // Bruno's `:variable` stops at the first character a name cannot contain, so `:invoice-id`
+        // would bind `:invoice` and leave `-id` as literal path text.
+        expect(request.content).toContain('url: "{{baseUrl}}/invoices/:invoiceId"');
+        expect(request.content).toContain('- name: invoiceId');
+        expect(request.content).toContain('type: path');
+        expect(request.content).not.toContain('url: "{{baseUrl}}/invoices/{invoice-id}"');
+        // The request's display name still echoes the contract, which is what a reader wants to
+        // see; only the URL and its bound variable are rewritten.
+        expect(request.content).toContain('name: "/invoices/{invoice-id}"');
+    });
+
+    it('still finds the declared type, which is keyed by the contract spelling', () => {
+        const root = opRoot(
+            [
+                opRoute(
+                    '/invoices/{invoice-id}',
+                    [opOperation('get', { sdk: 'getInvoice', responses: [opResponse(200, 'Invoice')] })],
+                    paramNodes([opParam('invoice-id', scalarType('uuid'))]),
+                ),
+            ],
+            'invoices.op',
+        );
+        const files = generateOpenCollection([root], { collectionName: 'API', randomExamples: false });
+        const request = files.find(f => f.relativePath.includes('get-invoices'))!;
+        // A uuid example, not the generic string placeholder — so the lookup used `invoice-id`.
+        expect(request.content).toContain('00000000-0000-0000-0000-000000000000');
+    });
+});
