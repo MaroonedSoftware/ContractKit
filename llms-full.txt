@@ -219,6 +219,10 @@ Path templates accept `{filename}`, `{dir}`, `{area}`, and `{name}` in `sdk.outp
 - `sdk.scaffold` writes a starter `package.json` and `tsconfig.json` once, so the generated SDK is a
   publishable package. Never overwritten, so your edits survive.
 - `mcp.output.types` must point at Zod schema files, not plain types.
+- The generated `mcp.tools.ts` exports `registerMcpTools(container)`, which builds and returns the
+  `McpToolHandlerMap` without registering it. Bind it with
+  `registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton()`, and register
+  the emitted tool classes on the same `Registry` so the aggregator can resolve them.
 
 ### OpenAPI
 

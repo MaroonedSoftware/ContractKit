@@ -82,6 +82,20 @@ Options worth knowing:
   schema for argument validation and `z.toJSONSchema`. It falls back to `server.output.types` (when
   `server.zod`) or the `zod` sub-config's output.
 
+## Wiring the MCP tools
+
+`mcp.tools.ts` exports `registerMcpTools(container)`, which **builds and returns** the
+`McpToolHandlerMap`. It registers nothing: `register` belongs to InjectKit's `Registry`
+(composition phase), while a `Container` (resolution phase) only resolves. Bind the aggregator from
+a factory, which is also what supplies the `Container` it needs:
+
+```typescript
+registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();
+```
+
+The emitted tool classes are not registered for you either, so register each one on the same
+`Registry` before the aggregator resolves it.
+
 ## Programmatic use
 
 ```typescript

@@ -372,7 +372,10 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     const isVoid = !primaryResponseBody(op);
     const structured = !!outExpr;
 
-    lines.push('    async handle(args: Record<string, unknown>, _context: McpToolContext): Promise<CallToolResult> {');
+    // No args to destructure means the parameter goes unread, which trips no-unused-vars in
+    // consumers that lint generated output; the leading underscore opts it out.
+    const argsParam = destructure.length > 0 ? 'args' : '_args';
+    lines.push(`    async handle(${argsParam}: Record<string, unknown>, _context: McpToolContext): Promise<CallToolResult> {`);
     if (destructure.length > 0) {
         lines.push(`        const { ${destructure.join(', ')} } = await parseAndValidate(args, ${argsConstName});`);
     }
@@ -477,11 +480,19 @@ export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
     lines.push(`import { McpToolHandlerMap } from '@maroonedsoftware/mcp';`);
     for (const e of sorted) lines.push(`import { ${e.registerFn} } from '${e.importPath}';`);
     lines.push('');
-    lines.push('/** Build + register the MCP tool catalog. Call once at startup. */');
+    lines.push('/**');
+    lines.push(' * Build the MCP tool catalog.');
+    lines.push(' *');
+    lines.push(' * Bind it to the `McpToolHandlerMap` token from a factory, which is what supplies the');
+    lines.push(' * `Container` needed to resolve each handler:');
+    lines.push(' *');
+    lines.push(' * ```ts');
+    lines.push(' * registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();');
+    lines.push(' * ```');
+    lines.push(' */');
     lines.push('export function registerMcpTools(container: Container): McpToolHandlerMap {');
     lines.push('    const map = new McpToolHandlerMap();');
     for (const e of sorted) lines.push(`    ${e.registerFn}(map, container);`);
-    lines.push('    container.register(McpToolHandlerMap, { useValue: map });');
     lines.push('    return map;');
     lines.push('}');
     return lines.join('\n') + '\n';
@@ -493,7 +504,7 @@ export function generateMcpRouter(options: { path?: string } = {}): string {
     return `import { ServerKitRouter, bodyParserMiddleware, requireSignature } from '@maroonedsoftware/koa';
 import { McpDispatcher, createMcpRequestContext, MCP_AUTH_POLICY } from '@maroonedsoftware/mcp';
 
-/** Mount the MCP endpoint onto a ServerKit router. Call \`registerMcpTools(container)\` at startup. */
+/** Mount the MCP endpoint onto a ServerKit router. Bind \`registerMcpTools\` to the \`McpToolHandlerMap\` token. */
 export function mountMcp(router: ReturnType<typeof ServerKitRouter>): void {
     router.post('${path}', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async (ctx) => {
         const dispatcher = ctx.container.get(McpDispatcher);
