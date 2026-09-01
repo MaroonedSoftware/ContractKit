@@ -24,7 +24,7 @@ import {
 import { escapeJsDocLines, sourceLink } from './ts-render.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
-import { renderReviveFunctions, reviveFnName, DECIMAL_COERCE_DECL } from './codegen-revive.js';
+import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
 
 /**
  * Maps a ContractKit object mode to its Zod constructor name.
@@ -57,9 +57,9 @@ export interface ContractCodegenContext {
     /** If set, import JsonValue from this path instead of re-declaring it (avoids barrel re-export conflicts) */
     jsonValueImportPath?: string;
     /**
-     * Runtime the emitted plain types describe. Only affects scalars whose TypeScript type differs
-     * per runtime (`binary` → `Buffer` on the server, `Blob` in the client). Ignored by
-     * `generateContract`, whose Zod schemas are server-shaped by construction. Default `'client'`.
+     * Runtime the emitted types describe. Only affects scalars whose TypeScript type differs per
+     * runtime: `binary` is a `Buffer` on a Node server and a `Blob` in a fetch client, and
+     * `_ZodBinary` is generated to match. Default `'client'`.
      */
     target?: TsRenderTarget;
     /** Model names that carry a `decimal`, directly or transitively. */
@@ -188,7 +188,15 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     }
     lines.push('');
     if (needsBinary) {
-        lines.push(`const _ZodBinary = z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' });`);
+        // The one scalar with no single correct runtime type, so it follows `target` here exactly
+        // as `renderTsScalar` does. An SDK type file reaching this through the shared
+        // `generateContract` used to emit `Buffer.isBuffer` into a browser client, whose scaffold
+        // declares no `@types/node` — the type did not resolve and the check could not run.
+        lines.push(
+            context?.target === 'server'
+                ? `const _ZodBinary = z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' });`
+                : `const _ZodBinary = z.custom<Blob>((val) => val instanceof Blob, { error: 'Must be binary data' });`,
+        );
     }
     if (needsDatetime) {
         lines.push(
@@ -233,9 +241,10 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     }
 
     // Decided from the emitted revivers rather than from a predicate over the AST, so the
-    // declaration and its uses cannot drift apart and leave an unused local behind.
-    if (bodyLines.some(l => l.includes('__dec('))) {
-        lines.push(...DECIMAL_COERCE_DECL);
+    // declarations and their uses cannot drift apart and leave an unused local behind.
+    const coerceDecls = coerceDeclsFor(bodyLines);
+    if (coerceDecls.length > 0) {
+        lines.push(...coerceDecls);
         lines.push('');
     }
     lines.push(...bodyLines);

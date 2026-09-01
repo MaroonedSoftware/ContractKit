@@ -21,7 +21,7 @@ import {
     collectTransitiveModelRefs,
     collectTypeRefs,
     computeModelsWithCaseTransform,
-    computeModelsWithDecimal,
+    computeModelsWithScalar,
 } from '@contractkit/core';
 import {
     generateSdk,
@@ -43,6 +43,7 @@ import {
     type SdkScaffoldDeps,
 } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
+import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
 import { generateMcpFile, generateMcpAggregator, generateMcpRouter, hasMcpOperations, deriveMcpRegisterFnName } from './codegen-mcp.js';
 import {
     TEMPLATE_VAR_RE,
@@ -168,6 +169,11 @@ export interface TypescriptPluginConfig {
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
 export const TYPESCRIPT_CODEGEN_VERSION = '2';
+
+// The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
+// temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
+// type. It also feeds every `hashFingerprint` that already slices this set, so a model gaining a
+// `datetime` in another `.ck` file invalidates this file's cached output with no extra plumbing.
 
 /** Filename for the persisted TypeScript manifest under the CLI cache directory. */
 const CACHE_MANIFEST_FILENAME = 'typescript-manifest.json';
@@ -467,7 +473,7 @@ function collectSdkOutput(
     const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
     // Computed across every contract root, not per file: one decimal below a model taints it, and
     // the reference that reaches it may live in another .ck file entirely.
-    const modelsWithDecimal = computeModelsWithDecimal(inputs.contractRoots.flatMap(r => r.models));
+    const modelsWithDecimal = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), DEFAULT_REVIVABLE_SCALARS);
     const modelMap = buildModelMap(inputs.contractRoots);
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const ckCommonRoot = commonDir(allFiles, rootDir);
@@ -527,6 +533,9 @@ function collectSdkOutput(
                         modelsWithOutput,
                         modelsWithDecimal,
                         emitRevivers: true,
+                        // An SDK client runs in a browser as readily as in Node, and its scaffold
+                        // declares no `@types/node`.
+                        target: 'client',
                     });
                 } else {
                     let rel = relative(dirname(typeOutPath), sdkOptionsPath).replace(/\.ts$/, '.js');
@@ -878,7 +887,10 @@ function collectZodOutput(
             render: () => [
                 {
                     relativePath: outPath,
-                    content: generateContract(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput, modelsWithOutput }),
+                    // Server-shaped, which is what this sub-generator has always emitted. The
+                    // standalone `zod:` output has no target option of its own; only the SDK's
+                    // schemas are client-shaped, and they pass their own target.
+                    content: generateContract(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput, modelsWithOutput, target: 'server' }),
                 },
             ],
         });

@@ -127,8 +127,14 @@ function renderTsScalar(name: ScalarTypeNode['name'], target: TsRenderTarget): s
         case 'date':
         case 'time':
         case 'datetime':
+            // Luxon objects on both sides. The router parses them via `_ZodDatetime`, and the SDK
+            // rehydrates them in its generated revivers, so `string` was a claim neither honoured.
+            return 'DateTime';
         case 'duration':
+            return 'Duration';
         case 'interval':
+            // The exception: `_ZodInterval` transforms back to an ISO string on output, so a
+            // string is genuinely what a consumer receives.
             return 'string';
         case 'null':
             return 'null';

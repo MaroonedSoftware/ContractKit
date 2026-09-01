@@ -12,7 +12,7 @@ import {
 import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJsDocLines, sourceLink, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
-import { renderReviveFunctions, reviveFnName, DECIMAL_COERCE_DECL } from './codegen-revive.js';
+import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -50,6 +50,14 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
     // `generateContract`, which emits it ahead of the external model refs.
     const needsDecimal = rootNeedsScalar(root, 'decimal') || (context?.emitRevivers && context.modelsWithDecimal ? root.models.some(m => context.modelsWithDecimal!.has(m.name)) : false);
     if (needsDecimal) lines.push(DECIMAL_IMPORT);
+
+    // Likewise for the temporal scalars: `renderTsScalar` maps them to Luxon classes, which are a
+    // real runtime dependency of anyone holding one. `interval` is not among them — it renders as
+    // a string, since `_ZodInterval` transforms back to ISO on output.
+    const luxonImports: string[] = [];
+    if (rootNeedsScalar(root, 'date') || rootNeedsScalar(root, 'time') || rootNeedsScalar(root, 'datetime')) luxonImports.push('DateTime');
+    if (rootNeedsScalar(root, 'duration')) luxonImports.push('Duration');
+    if (luxonImports.length > 0) lines.push(`import { ${luxonImports.join(', ')} } from 'luxon';`);
 
     // Type-only imports for external references. A cross-file model carrying a decimal also
     // contributes its reviver, which is a value and so needs a second, non-type import.
@@ -98,10 +106,11 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
         lines.push(DECIMAL_CONFIG_LINE);
     }
 
-    // Same rule as in `generateContract`: the helper is emitted only if the revivers actually
+    // Same rule as in `generateContract`: a helper is emitted only if the revivers actually
     // reference it, so the two cannot drift and trip `noUnusedLocals`.
-    if (bodyLines.some(l => l.includes('__dec('))) {
-        lines.push(...DECIMAL_COERCE_DECL);
+    const coerceDecls = coerceDeclsFor(bodyLines);
+    if (coerceDecls.length > 0) {
+        lines.push(...coerceDecls);
         lines.push('');
     }
     lines.push(...bodyLines);

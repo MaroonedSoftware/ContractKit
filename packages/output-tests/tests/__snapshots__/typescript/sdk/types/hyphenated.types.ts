@@ -29,7 +29,7 @@ export const InvoiceInput = z.strictObject({
 });
 export type InvoiceInput = z.infer<typeof InvoiceInput>;
 
-/** Rehydrates every `decimal` in a Invoice from its wire string. Mutates and returns `raw`. */
+/** Rehydrates every wire-encoded scalar in a Invoice into its runtime type. Mutates and returns `raw`. */
 export function reviveInvoice(raw: Invoice): Invoice {
     const __o0 = raw as unknown as Record<string, unknown>;
     __o0["total"] = __dec(__o0["total"], 'Invoice.total');

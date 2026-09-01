@@ -38,13 +38,21 @@ describe('generatePlainTypes', () => {
             expect(output).not.toContain('z.infer');
         });
 
-        it('does not contain luxon imports for date fields', () => {
+        it('imports luxon for date fields, which render as DateTime', () => {
             const root = contractRoot([model('Event', [field('startDate', scalarType('date')), field('endDate', scalarType('datetime'))])]);
             const output = generatePlainTypes(root);
+            // The router parses these into Luxon objects and the SDK's revivers rehydrate them,
+            // so a `string` here was a claim neither side honoured.
+            expect(output).toContain("import { DateTime } from 'luxon';");
+            expect(output).toContain('startDate: DateTime;');
+            expect(output).toContain('endDate: DateTime;');
+        });
+
+        it('leaves interval as a string, since it transforms back to ISO on output', () => {
+            const root = contractRoot([model('Window', [field('span', scalarType('interval'))])]);
+            const output = generatePlainTypes(root);
+            expect(output).toContain('span: string;');
             expect(output).not.toContain('luxon');
-            expect(output).not.toContain('DateTime');
-            expect(output).toContain('startDate: string;');
-            expect(output).toContain('endDate: string;');
         });
     });
 

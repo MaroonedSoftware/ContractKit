@@ -16,7 +16,7 @@ import { resolveModifiers, isJsonMime, classifyContentType, observableResponses,
 import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, sourceLink, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
-import { reviveFnName, renderInlineReviver, typeReachesDecimal, DECIMAL_COERCE_DECL } from './codegen-revive.js';
+import { reviveFnName, renderInlineReviver, typeReachesDecimal, coerceDeclsFor, coerceLuxonImports } from './codegen-revive.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'path';
 
@@ -337,8 +337,20 @@ export function generateClientMethods(
  * config, since nothing else in the file necessarily pulls them in.
  */
 function decimalPreludeFor(declLines: string[]): { imports: string[]; decls: string[] } {
-    if (!declLines.some(l => l.includes('__dec('))) return { imports: [], decls: [] };
-    return { imports: [DECIMAL_IMPORT], decls: [DECIMAL_CONFIG_LINE, '', ...DECIMAL_COERCE_DECL] };
+    const decls = coerceDeclsFor(declLines);
+    if (decls.length === 0) return { imports: [], decls: [] };
+
+    const imports: string[] = [];
+    const preamble: string[] = [];
+    if (declLines.some(l => l.includes('__dec('))) {
+        imports.push(DECIMAL_IMPORT);
+        // The global config keeps decimals out of exponential notation; only decimal.js needs it.
+        preamble.push(DECIMAL_CONFIG_LINE, '');
+    }
+    const luxon = coerceLuxonImports(declLines);
+    if (luxon.length > 0) imports.push(`import { ${luxon.join(', ')} } from 'luxon';`);
+
+    return { imports, decls: [...preamble, ...decls] };
 }
 
 /** Model reviver names referenced by generated method bodies. `__revive…` wrappers are local. */

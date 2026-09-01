@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { DateTime, Duration } from 'luxon';
 import { Decimal } from 'decimal.js';
 
-const _ZodBinary = z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' });
+const _ZodBinary = z.custom<Blob>((val) => val instanceof Blob, { error: 'Must be binary data' });
 const _ZodDatetime = z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }));
 Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });
 const _ZodDecimal = z.preprocess((val) => { if (typeof val !== 'string') return val; try { return new Decimal(val); } catch { return val; } }, z.custom<Decimal>((val) => Decimal.isDecimal(val), { message: 'Must be an exact decimal sent as a quoted string, e.g. "1250.00"' }));
@@ -16,6 +16,22 @@ const __dec = (v: unknown, path: string): Decimal => {
     } catch {
         throw new TypeError(`ContractKit: '${v}' at '${path}' is not a valid decimal.`);
     }
+};
+const __dt = (v: unknown, path: string): DateTime => {
+    if (typeof v !== 'string') {
+        throw new TypeError(`ContractKit: expected an ISO 8601 string at '${path}', received ${typeof v}.`);
+    }
+    const d = DateTime.fromISO(v);
+    if (!d.isValid) throw new TypeError(`ContractKit: '${v}' at '${path}' is not a valid ISO 8601 datetime.`);
+    return d;
+};
+const __dur = (v: unknown, path: string): Duration => {
+    if (typeof v !== 'string') {
+        throw new TypeError(`ContractKit: expected an ISO 8601 duration string at '${path}', received ${typeof v}.`);
+    }
+    const d = Duration.fromISO(v);
+    if (!d.isValid) throw new TypeError(`ContractKit: '${v}' at '${path}' is not a valid ISO 8601 duration.`);
+    return d;
 };
 
 /**
@@ -43,10 +59,14 @@ export const PaymentInput = z.strictObject({
 });
 export type PaymentInput = z.infer<typeof PaymentInput>;
 
-/** Rehydrates every `decimal` in a Payment from its wire string. Mutates and returns `raw`. */
+/** Rehydrates every wire-encoded scalar in a Payment into its runtime type. Mutates and returns `raw`. */
 export function revivePayment(raw: Payment): Payment {
     const __o0 = raw as unknown as Record<string, unknown>;
     __o0["unitPrice"] = __dec(__o0["unitPrice"], 'Payment.unitPrice');
+    __o0["createdAt"] = __dt(__o0["createdAt"], 'Payment.createdAt');
+    if (__o0["processingTime"] != null) {
+        __o0["processingTime"] = __dur(__o0["processingTime"], 'Payment.processingTime');
+    }
     return raw;
 }
 

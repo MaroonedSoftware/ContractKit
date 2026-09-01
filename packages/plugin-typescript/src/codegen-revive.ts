@@ -36,19 +36,81 @@ export interface ReviveCodegenOptions {
     modelMap?: Map<string, ModelNode>;
 }
 
-/** The per-file coercion helper. Emitted once in any file that declares a reviver. */
-export const DECIMAL_COERCE_DECL = [
-    `const __dec = (v: unknown, path: string): Decimal => {`,
-    `    if (typeof v !== 'string') {`,
-    `        throw new TypeError(\`ContractKit: expected a decimal string at '\${path}', received \${typeof v} — decimals must be sent as quoted JSON strings.\`);`,
-    `    }`,
-    `    try {`,
-    `        return new Decimal(v);`,
-    `    } catch {`,
-    `        throw new TypeError(\`ContractKit: '\${v}' at '\${path}' is not a valid decimal.\`);`,
-    `    }`,
-    `};`,
-];
+/**
+ * The per-file coercion helpers, keyed by the call prefix that identifies them in emitted text.
+ *
+ * A file gets only the helpers its revivers actually call, decided by scanning the emitted lines
+ * — the same text-derived idiom the reviver and type imports use, and for the same reason: a
+ * predicate computed separately can drift and leave an unused local behind.
+ *
+ * Each one takes the raw JSON value and throws a `TypeError` naming the path rather than
+ * returning something invalid, because a silently wrong `DateTime` surfaces much further from
+ * the cause than a throw at the boundary does.
+ */
+export const COERCE_DECLS: Record<string, string[]> = {
+    '__dec(': [
+        `const __dec = (v: unknown, path: string): Decimal => {`,
+        `    if (typeof v !== 'string') {`,
+        `        throw new TypeError(\`ContractKit: expected a decimal string at '\${path}', received \${typeof v} — decimals must be sent as quoted JSON strings.\`);`,
+        `    }`,
+        `    try {`,
+        `        return new Decimal(v);`,
+        `    } catch {`,
+        `        throw new TypeError(\`ContractKit: '\${v}' at '\${path}' is not a valid decimal.\`);`,
+        `    }`,
+        `};`,
+    ],
+    '__dt(': [
+        `const __dt = (v: unknown, path: string): DateTime => {`,
+        `    if (typeof v !== 'string') {`,
+        `        throw new TypeError(\`ContractKit: expected an ISO 8601 string at '\${path}', received \${typeof v}.\`);`,
+        `    }`,
+        `    const d = DateTime.fromISO(v);`,
+        `    if (!d.isValid) throw new TypeError(\`ContractKit: '\${v}' at '\${path}' is not a valid ISO 8601 datetime.\`);`,
+        `    return d;`,
+        `};`,
+    ],
+    '__dtf(': [
+        `const __dtf = (v: unknown, path: string, fmt: string): DateTime => {`,
+        `    if (typeof v !== 'string') {`,
+        `        throw new TypeError(\`ContractKit: expected a string at '\${path}' in format \${fmt}, received \${typeof v}.\`);`,
+        `    }`,
+        `    const d = DateTime.fromFormat(v, fmt);`,
+        `    if (!d.isValid) throw new TypeError(\`ContractKit: '\${v}' at '\${path}' does not match format \${fmt}.\`);`,
+        `    return d;`,
+        `};`,
+    ],
+    '__dur(': [
+        `const __dur = (v: unknown, path: string): Duration => {`,
+        `    if (typeof v !== 'string') {`,
+        `        throw new TypeError(\`ContractKit: expected an ISO 8601 duration string at '\${path}', received \${typeof v}.\`);`,
+        `    }`,
+        `    const d = Duration.fromISO(v);`,
+        `    if (!d.isValid) throw new TypeError(\`ContractKit: '\${v}' at '\${path}' is not a valid ISO 8601 duration.\`);`,
+        `    return d;`,
+        `};`,
+    ],
+};
+
+/** Back-compat alias: the decimal helper alone, which several call sites still name directly. */
+export const DECIMAL_COERCE_DECL = COERCE_DECLS['__dec(']!;
+
+/** The helper declarations `lines` actually calls, in a stable order. */
+export function coerceDeclsFor(lines: string[]): string[] {
+    const haystack = lines.join('\n');
+    return Object.entries(COERCE_DECLS)
+        .filter(([prefix]) => haystack.includes(prefix))
+        .flatMap(([, decl]) => decl);
+}
+
+/** Luxon classes referenced by the helpers `lines` calls, for the importing file to bring in. */
+export function coerceLuxonImports(lines: string[]): string[] {
+    const haystack = lines.join('\n');
+    const needed = new Set<string>();
+    if (haystack.includes('__dt(') || haystack.includes('__dtf(')) needed.add('DateTime');
+    if (haystack.includes('__dur(')) needed.add('Duration');
+    return [...needed].sort();
+}
 
 /** `reviveInvoice` / `reviveInvoiceOutput`. */
 export function reviveFnName(model: string, variant: 'base' | 'output' = 'base'): string {
@@ -61,8 +123,21 @@ function applyCase(name: string, caseTransform: 'camel' | 'snake' | 'pascal' | u
     return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-/** The default of {@link ReviveCodegenOptions.revivableScalars}. */
-export const DEFAULT_REVIVABLE_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['decimal']);
+/**
+ * Scalars whose runtime type differs from what `JSON.parse` produces, and which a reviver
+ * therefore has to rehydrate. The default of {@link ReviveCodegenOptions.revivableScalars}.
+ *
+ * `interval` is excluded: `_ZodInterval` ends in `.transform(v => v.toISO()!)`, so its inferred
+ * output type is already `string` and there is nothing to revive it to. Covering it means making
+ * that round-trip idempotent first, which the router's `isRevalidatable` also depends on.
+ */
+export const DEFAULT_REVIVABLE_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set([
+    'decimal',
+    'date',
+    'time',
+    'datetime',
+    'duration',
+]);
 
 /** Whether a type reaches a revivable scalar, following refs through `modelsWithDecimal`. */
 export function typeReachesDecimal(type: ContractTypeNode, opts: ReviveCodegenOptions): boolean {
@@ -94,6 +169,35 @@ export function typeReachesDecimal(type: ContractTypeNode, opts: ReviveCodegenOp
     }
 }
 
+/**
+ * The statement that rehydrates one scalar leaf, or nothing when the scalar needs no conversion.
+ *
+ * `date` and `time` carry their format on the node, and the reviver has to parse with the same
+ * format the schema validates against — which is why the helper takes it as an argument rather
+ * than baking one in. Defaults match `renderTsScalar`'s.
+ *
+ * `interval` is deliberately absent. `_ZodInterval` ends in `.transform(v => v.toISO()!)`, so its
+ * inferred output is a string and there is nothing to revive it to; covering it means making that
+ * round-trip idempotent first, which `isRevalidatable` in the router also depends on.
+ */
+function scalarCoercion(type: ScalarTypeNode, slot: string, path: string, opts: ReviveCodegenOptions): string[] {
+    if (!(opts.revivableScalars ?? DEFAULT_REVIVABLE_SCALARS).has(type.name)) return [];
+    switch (type.name) {
+        case 'decimal':
+            return [`${slot} = __dec(${slot}, '${path}');`];
+        case 'datetime':
+            return [`${slot} = __dt(${slot}, '${path}');`];
+        case 'duration':
+            return [`${slot} = __dur(${slot}, '${path}');`];
+        case 'date':
+            return [`${slot} = __dtf(${slot}, '${path}', '${type.format ?? 'yyyy-MM-dd'}');`];
+        case 'time':
+            return [`${slot} = __dtf(${slot}, '${path}', '${type.format ?? 'HH:mm:ss'}');`];
+        default:
+            return [];
+    }
+}
+
 /** Fresh local names, so nested loops in one function body cannot collide. */
 class Scope {
     private n = 0;
@@ -111,7 +215,7 @@ class Scope {
 function emit(slot: string, type: ContractTypeNode, path: string, opts: ReviveCodegenOptions, scope: Scope, variant: 'base' | 'output'): string[] {
     switch (type.kind) {
         case 'scalar':
-            return type.name === 'decimal' ? [`${slot} = __dec(${slot}, '${path}');`] : [];
+            return scalarCoercion(type, slot, path, opts);
 
         case 'ref':
             return opts.modelsWithDecimal.has(type.name) ? [`${reviveRefName(type.name, opts, variant)}(${slot} as never);`] : [];
@@ -294,7 +398,7 @@ function renderOne(model: ModelNode, opts: ReviveCodegenOptions, variant: 'base'
         const body = emit('__v[0]', model.type, model.name, opts, scope, variant);
         if (body.length === 0) return [];
         return [
-            `/** Rehydrates every \`decimal\` in a ${typeName} from its wire string. Mutates and returns \`raw\`. */`,
+            `/** Rehydrates every wire-encoded scalar in a ${typeName} into its runtime type. Mutates and returns \`raw\`. */`,
             `export function ${fnName}(raw: ${typeName}): ${typeName} {`,
             `    const __v = [raw] as unknown[];`,
             ...body.map(l => `    ${l}`),
@@ -310,7 +414,7 @@ function renderOne(model: ModelNode, opts: ReviveCodegenOptions, variant: 'base'
     if (body.length === 0) return [];
 
     return [
-        `/** Rehydrates every \`decimal\` in a ${typeName} from its wire string. Mutates and returns \`raw\`. */`,
+        `/** Rehydrates every wire-encoded scalar in a ${typeName} into its runtime type. Mutates and returns \`raw\`. */`,
         `export function ${fnName}(raw: ${typeName}): ${typeName} {`,
         `    const ${obj} = raw as unknown as Record<string, unknown>;`,
         ...body.map(l => `    ${l}`),

@@ -1400,9 +1400,15 @@ describe('renderTsType', () => {
             expect(renderTsType(scalarType('uuid'))).toBe('string');
         });
 
-        it('maps date and datetime to string', () => {
-            expect(renderTsType(scalarType('date'))).toBe('string');
-            expect(renderTsType(scalarType('datetime'))).toBe('string');
+        it('maps date and datetime to DateTime', () => {
+            expect(renderTsType(scalarType('date'))).toBe('DateTime');
+            expect(renderTsType(scalarType('datetime'))).toBe('DateTime');
+        });
+
+        it('maps duration to Duration but leaves interval a string', () => {
+            expect(renderTsType(scalarType('duration'))).toBe('Duration');
+            // `_ZodInterval` ends in a transform back to ISO, so a string is what arrives.
+            expect(renderTsType(scalarType('interval'))).toBe('string');
         });
 
         it('maps bigint to bigint', () => {
@@ -1429,8 +1435,8 @@ describe('renderTsType', () => {
             expect(renderTsType(scalarType('json'))).toBe('JsonValue');
         });
 
-        it('maps time to string', () => {
-            expect(renderTsType(scalarType('time'))).toBe('string');
+        it('maps time to DateTime', () => {
+            expect(renderTsType(scalarType('time'))).toBe('DateTime');
         });
 
         it('throws on an unmapped scalar name', () => {

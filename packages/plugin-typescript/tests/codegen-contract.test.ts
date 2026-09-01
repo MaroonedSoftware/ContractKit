@@ -459,11 +459,18 @@ describe('generateContract', () => {
             expect(output).toContain("import { DateTime } from 'luxon';");
         });
 
-        it('emits _ZodBinary helper when binary field present', () => {
+        it('emits a Blob _ZodBinary by default, since the default target is the client', () => {
             const root = contractRoot([model('M', [field('f', scalarType('binary'))])]);
             const output = generateContract(root);
-            expect(output).toContain('const _ZodBinary = z.custom<Buffer>');
+            expect(output).toContain('const _ZodBinary = z.custom<Blob>');
             expect(output).toContain('_ZodBinary,');
+        });
+
+        it('emits a Buffer _ZodBinary for the server target', () => {
+            const root = contractRoot([model('M', [field('f', scalarType('binary'))])]);
+            const output = generateContract(root, { modelOutPaths: new Map(), currentOutPath: '/out/m.ts', target: 'server' });
+            // `Buffer` in an SDK type file is unresolvable: the scaffold declares no @types/node.
+            expect(output).toContain('const _ZodBinary = z.custom<Buffer>');
         });
 
         it('omits _ZodBinary helper when no binary fields', () => {
