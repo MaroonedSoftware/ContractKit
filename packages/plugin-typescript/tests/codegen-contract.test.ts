@@ -1,7 +1,8 @@
-import { generateContract, renderType } from '../src/codegen-contract.js';
+import { generateContract, renderType, applyFieldModifiers } from '../src/codegen-contract.js';
 import type { ContractCodegenContext } from '../src/codegen-contract.js';
 import {
     scalarType,
+    opParam,
     arrayType,
     tupleType,
     recordType,
@@ -1253,5 +1254,36 @@ describe('generateContract', () => {
             expect(output).toContain('...(data.Amount != null ? { amount: data.Amount } : {}),');
             expect(output).not.toContain('?? undefined');
         });
+    });
+});
+
+// ─── applyFieldModifiers ──────────────────────────────────────────────────
+
+describe('applyFieldModifiers', () => {
+    it('appends nothing for a plain required field', () => {
+        expect(applyFieldModifiers('z.string()', {})).toBe('z.string()');
+    });
+
+    it('chains nullable, then optionality, then the description', () => {
+        expect(applyFieldModifiers('z.string()', { nullable: true, optional: true, description: 'a note' })).toBe(
+            'z.string().nullable().optional().describe("a note")',
+        );
+    });
+
+    it('prefers a default over .optional()', () => {
+        // `.default()` already makes the input side optional; adding `.optional()` on top would
+        // widen the output type to include undefined, which is what a default exists to prevent.
+        expect(applyFieldModifiers('z.number()', { optional: true, default: 20 })).toBe('z.number().default(20)');
+    });
+
+    it('quotes and escapes a string default', () => {
+        expect(applyFieldModifiers('z.string()', { default: 'a "quoted" value' })).toBe('z.string().default("a \\"quoted\\" value")');
+    });
+
+    it('accepts an OpParamNode, which is a FieldNode without the visibility modifiers', () => {
+        // This is the point of the structural parameter type: it lets a `query:` or `headers:`
+        // field render through exactly the same path a model field does.
+        const param = opParam('limit', scalarType('int'), { optional: true, default: 20 });
+        expect(applyFieldModifiers('z.coerce.number().int()', param)).toBe('z.coerce.number().int().default(20)');
     });
 });

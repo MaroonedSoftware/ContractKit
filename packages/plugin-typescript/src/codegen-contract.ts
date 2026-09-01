@@ -538,12 +538,20 @@ function renderFieldsAsSnakeCase(fields: FieldNode[], defaultMode?: ObjectMode):
     });
 }
 
-function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
-    const lines: string[] = [];
-    if (field.deprecated) lines.push('/** @deprecated */');
-
-    let expr = renderType(field.type, undefined, defaultMode);
-
+/**
+ * Append the modifier chain a declared field carries: nullability, then a default or optionality,
+ * then the description.
+ *
+ * Takes a structural subset of `FieldNode` rather than the node itself, so an `OpParamNode` — which
+ * is a `FieldNode` minus `visibility`, `deprecated` and `override` — can be rendered through the
+ * same path. That is what lets the router, the SDK and OpenAPI agree on what an inline `query:` or
+ * `headers:` field means.
+ *
+ * A default and `optional` are mutually exclusive on purpose: `.default()` already makes the input
+ * side optional, and adding `.optional()` on top would widen the *output* type to include
+ * `undefined`, which is exactly what a default exists to prevent.
+ */
+export function applyFieldModifiers(expr: string, field: Pick<FieldNode, 'nullable' | 'default' | 'optional' | 'description'>): string {
     if (field.nullable) expr += '.nullable()';
     if (field.default !== undefined) {
         const dv = typeof field.default === 'string' ? `"${escapeString(field.default)}"` : String(field.default);
@@ -552,6 +560,16 @@ function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
         expr += '.optional()';
     }
     if (field.description) expr += `.describe("${escapeString(field.description)}")`;
+    return expr;
+}
+
+function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
+    const lines: string[] = [];
+    if (field.deprecated) lines.push('/** @deprecated */');
+
+    let expr = renderType(field.type, undefined, defaultMode);
+
+    expr = applyFieldModifiers(expr, field);
 
     lines.push(`${quoteKey(field.name)}: ${expr},`);
     return lines;
@@ -907,14 +925,7 @@ function renderInputField(field: FieldNode, modelsWithInput: Set<string>, defaul
 
     let expr = renderInputType(field.type, modelsWithInput, defaultMode);
 
-    if (field.nullable) expr += '.nullable()';
-    if (field.default !== undefined) {
-        const dv = typeof field.default === 'string' ? `"${escapeString(field.default)}"` : String(field.default);
-        expr += `.default(${dv})`;
-    } else if (field.optional) {
-        expr += '.optional()';
-    }
-    if (field.description) expr += `.describe("${escapeString(field.description)}")`;
+    expr = applyFieldModifiers(expr, field);
 
     lines.push(`${quoteKey(field.name)}: ${expr},`);
     return lines;
@@ -979,14 +990,7 @@ function renderQueryField(field: FieldNode, modelsWithInput?: Set<string>, defau
               ? renderInputType(field.type, modelsWithInput, defaultMode)
               : renderType(field.type, undefined, defaultMode);
 
-    if (field.nullable) expr += '.nullable()';
-    if (field.default !== undefined) {
-        const dv = typeof field.default === 'string' ? `"${escapeString(field.default)}"` : String(field.default);
-        expr += `.default(${dv})`;
-    } else if (field.optional) {
-        expr += '.optional()';
-    }
-    if (field.description) expr += `.describe("${escapeString(field.description)}")`;
+    expr = applyFieldModifiers(expr, field);
 
     return `${quoteKey(field.name)}: ${expr},`;
 }
