@@ -29,3 +29,27 @@ export function extractPathParams(path: string): string[] {
 export function hasPathParams(path: string): boolean {
     return PATH_PARAM_RE.test(path);
 }
+
+/**
+ * Derive a name that can be an identifier — in TypeScript, in a Koa route pattern, in a Bruno
+ * `:variable` — from a name the `.ck` grammar accepts.
+ *
+ * Returns the name unchanged when it already qualifies, which is the overwhelmingly common case
+ * and keeps existing generated output byte-identical. Otherwise separators are dropped and the
+ * following segment capitalised, so `payment-id` becomes `paymentId`.
+ *
+ * Use for names generated code has to *bind*: a path parameter, which reaches a handler through a
+ * route pattern the generator authors, or an MCP tool argument, whose schema the generator
+ * publishes. Never for a name that travels on the wire — a query parameter, a header, or an
+ * OpenAPI parameter matching its own path template keeps its declared spelling.
+ *
+ * Python has its own convention (`toPythonFieldName`, snake_case) and does not use this.
+ */
+export function toIdentifier(name: string): string {
+    if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) return name;
+
+    const parts = name.split(/[^a-zA-Z0-9_$]+/).filter(Boolean);
+    const joined = parts.map((p, i) => (i === 0 ? p : p.charAt(0).toUpperCase() + p.slice(1))).join('');
+    if (joined === '') return '_';
+    return /^[0-9]/.test(joined) ? `_${joined}` : joined;
+}

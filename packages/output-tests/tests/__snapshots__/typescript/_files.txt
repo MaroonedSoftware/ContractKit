@@ -10,6 +10,7 @@ sdk/types/hyphenated.types.ts
 sdk/types/index.ts
 sdk/types/simple.types.ts
 server/billing.mcp.ts
+server/hyphenated.mcp.ts
 server/mcp.router.ts
 server/mcp.tools.ts
 server/routes/billing.router.ts

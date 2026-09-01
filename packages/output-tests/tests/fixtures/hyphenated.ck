@@ -22,6 +22,7 @@ operation /invoices/{invoice-id}: {
     get: { # fetch an invoice
         sdk: getInvoice
         service: InvoiceService.getById
+        mcp: true
         response: {
             200: { application/json: Invoice }
             404:

@@ -13,16 +13,16 @@ export const HyphenatedRouter = ServerKitRouter();
  * fetch an invoice
  * from [hyphenated.ck](../../contracts/hyphenated.ck#L22)
 */
-HyphenatedRouter.get('/invoices/{invoice-id}', requirePolicy(), async ctx => {
-    const { invoice-id } = await parseAndValidate(
+HyphenatedRouter.get('/invoices/:invoiceId', requirePolicy(), async ctx => {
+    const { invoiceId } = await parseAndValidate(
         ctx.params,
         z.strictObject({
-            'invoice-id': z.uuid(),
+            invoiceId: z.uuid(),
         }),
     );
 
     const service = ctx.container.get(InvoiceService);
-    const result: Invoice = await service.getById(invoice-id);
+    const result: Invoice = await service.getById(invoiceId);
 
     ctx.status = 200;
     ctx.type = 'application/json';

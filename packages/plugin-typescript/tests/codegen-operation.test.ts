@@ -1637,3 +1637,48 @@ describe('generateOp — route modifiers JSDoc', () => {
         });
     });
 });
+
+// ─── Hyphenated path parameters ───────────────────────────────────────────
+
+describe('generateOperation — path parameter names that are not identifiers', () => {
+    const root = () =>
+        opRoot([
+            opRoute(
+                '/invoices/{invoice-id}',
+                [opOperation('get', { service: 'InvoiceService.getById', responses: [opResponse(200, 'Invoice', 'application/json')] })],
+                [opParam('invoice-id', scalarType('uuid'))],
+            ),
+        ]);
+
+    it('registers a Koa pattern with a bindable name', () => {
+        const out = generateOp(root());
+        // Previously `{invoice-id}` survived verbatim, so the route was a literal path that no
+        // real request could ever match. The name is internal — Koa matches by position — so
+        // renaming it costs nothing on the wire.
+        expect(out).toContain("get('/invoices/:invoiceId'");
+        expect(out).not.toContain('{invoice-id}');
+    });
+
+    it('keys the params schema by the same name, since that is what ctx.params carries', () => {
+        const out = generateOp(root());
+        expect(out).toContain('const { invoiceId } = await parseAndValidate(');
+        expect(out).toContain('invoiceId: z.uuid()');
+        expect(out).toContain('service.getById(invoiceId)');
+    });
+
+    it('leaves query and header names alone, which the client actually sends', () => {
+        const out = generateOp(
+            opRoot([
+                opRoute('/things', [
+                    opOperation('get', {
+                        query: [opParam('sort-by', scalarType('string'))],
+                        headers: [opParam('x-api-key', scalarType('string'))],
+                        responses: [opResponse(200, 'Thing', 'application/json')],
+                    }),
+                ]),
+            ]),
+        );
+        expect(out).toContain("'sort-by': z.string()");
+        expect(out).toContain("'x-api-key': z.string()");
+    });
+});

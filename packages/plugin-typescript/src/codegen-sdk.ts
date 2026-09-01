@@ -12,8 +12,16 @@ import type {
     ParamSource,
     ScalarTypeNode,
 } from '@contractkit/core';
-import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses } from '@contractkit/core';
-import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, sourceLink, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses, PATH_PARAM_RE_G, toIdentifier } from '@contractkit/core';
+import {
+    renderInputTsType,
+    renderOutputTsType,
+    quoteKey,
+    headerNameToProperty,
+    escapeJsDocLines,
+    sourceLink,
+    JSON_VALUE_TYPE_DECL,
+} from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { reviveFnName, renderInlineReviver, typeReachesDecimal, coerceDeclsFor, coerceLuxonImports } from './codegen-revive.js';
@@ -928,18 +936,13 @@ export function generateErrorBodyAliases(root: OpRootNode, options: SdkCodegenOp
  * verbatim. Such a name is not a valid property accessor either, hence the bracket form.
  */
 function buildUrlExpression(path: string, params?: ParamSource): string {
-    return path.replace(/\{([a-zA-Z_$][a-zA-Z0-9_$.-]*)\}/g, (match, name: string) => {
-        const isIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
-        if (!params || params.kind === 'params') {
-            // The expression has to name a signature parameter, and `buildMethodParams` uses the
-            // contract's spelling verbatim. When that is not an identifier the method signature is
-            // already unsalvageable, so leave the placeholder rather than emit an expression that
-            // parses as arithmetic.
-            return isIdentifier ? `\${encodeURIComponent(${name})}` : match;
-        }
-        const access = isIdentifier ? `params.${name}` : `params[${JSON.stringify(name)}]`;
-        // `String(...)` because a model's field may be typed something `encodeURIComponent` does
-        // not accept; the spread-param branch's scalars need no such widening.
+    return path.replace(PATH_PARAM_RE_G, (_m, name: string) => {
+        // Spread across the signature: interpolate the identifier `buildMethodParams` bound.
+        if (!params || params.kind === 'params') return `\${encodeURIComponent(${toIdentifier(name)})}`;
+        // Behind one `params` argument: read the model's field, which keeps its declared spelling
+        // and so may need bracket access. `String(...)` because that field may be typed something
+        // `encodeURIComponent` does not accept.
+        const access = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? `params.${name}` : `params[${JSON.stringify(name)}]`;
         return `\${encodeURIComponent(String(${access}))}`;
     });
 }
@@ -959,7 +962,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     if (route.params) {
         if (route.params.kind === 'params') {
             for (const p of route.params.nodes) {
-                params.push({ name: p.name, type: renderInputTsType(p.type, modelsWithInput), optional: false });
+                params.push({ name: toIdentifier(p.name), type: renderInputTsType(p.type, modelsWithInput), optional: false });
             }
         } else if (route.params.kind === 'ref') {
             const typeName = modelsWithInput?.has(route.params.name) ? `${route.params.name}Input` : route.params.name;

@@ -2209,3 +2209,22 @@ describe('generateSdk — bigint reviver gating', () => {
         expect(runtime).toContain('return JSON.parse(await res.text(), bigIntReviver) as T;');
     });
 });
+
+// ─── Hyphenated path parameters ───────────────────────────────────────────
+
+describe('generateSdk — path parameter names that are not identifiers', () => {
+    it('binds a valid identifier and interpolates it', () => {
+        const root = opRoot([
+            opRoute(
+                '/invoices/{invoice-id}',
+                [opOperation('get', { sdk: 'getInvoice', responses: [opResponse(200, 'Invoice', 'application/json')] })],
+                [opParam('invoice-id', scalarType('uuid'))],
+            ),
+        ]);
+        const out = generateSdk(root);
+        // `async getInvoice(invoice-id: string)` did not parse, and the URL kept the literal braces.
+        expect(out).toContain('async getInvoice(invoiceId: string)');
+        expect(out).toContain('${encodeURIComponent(invoiceId)}');
+        expect(out).not.toContain('{invoice-id}');
+    });
+});

@@ -9,7 +9,7 @@ import type {
     ParamSource,
     ObjectMode,
 } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType, emittedResponses } from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType, emittedResponses, PATH_PARAM_RE_G, toIdentifier } from '@contractkit/core';
 import {
     renderType,
     renderInputType,
@@ -310,7 +310,10 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     lines.push('*/');
 
     const method = op.method;
-    const path = route.path.replace(/\{(\w+)\}/g, ':$1');
+    // `:name` from `{name}`, mapped to a valid identifier. Unlike a query parameter or a header,
+    // a path placeholder's name never reaches the wire — Koa matches by position — so renaming it
+    // is free, and it is what lets `ctx.params` be destructured at all.
+    const path = route.path.replace(PATH_PARAM_RE_G, (_m, name: string) => `:${toIdentifier(name)}`);
     const bodies = op.request?.bodies ?? [];
     const hasBody = bodies.length > 0;
     const isSingleMultipart = bodies.length === 1 && bodies[0]!.contentType === 'multipart/form-data';
@@ -629,7 +632,7 @@ export function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
     // Path params: spread individually (inline) or pass 'params' object (type-ref/ContractTypeNode)
     if (route.params) {
         if (route.params.kind === 'params') {
-            args.push(...route.params.nodes.map(p => p.name));
+            args.push(...route.params.nodes.map(p => toIdentifier(p.name)));
         } else {
             args.push('params');
         }
@@ -805,12 +808,20 @@ function generateParamValidation(
         if (source.nodes.length > 0) {
             // Destructure only for params (spread individually in service call);
             // query/headers are passed as whole objects.
-            const lhs = varName === 'params' ? `{ ${source.nodes.map(p => p.name).join(', ')} }` : varName;
+            // Path params are destructured and spread into the service call; query and headers pass
+            // as whole objects.
+            const isPathParams = ctxExpr === 'ctx.params';
+            const bind = (name: string) => (isPathParams ? toIdentifier(name) : name);
+            const lhs = varName === 'params' ? `{ ${source.nodes.map(p => bind(p.name)).join(', ')} }` : varName;
             lines.push(`    const ${lhs} = await parseAndValidate(`);
             lines.push(`        ${ctxExpr},`);
             lines.push(`        ${modeToWrapper(mode)}({`);
             for (const param of source.nodes) {
-                const key = isValidIdentifier(param.name) ? param.name : `'${param.name}'`;
+                // For path params the key must match the name in the route pattern above, which
+                // is what `ctx.params` is keyed by. For query and headers it is the wire name,
+                // quoted when that is not an identifier — those the client actually sends.
+                const bound = bind(param.name);
+                const key = isValidIdentifier(bound) ? bound : `'${bound}'`;
                 // Delegating to renderQueryType rather than hand-rolling the array preprocess here:
                 // it is the same rule, and a second copy is a second thing to keep in sync. The
                 // modifier chain then comes from the shared helper, so an inline param means the

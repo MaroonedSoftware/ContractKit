@@ -11,10 +11,10 @@ import { buildOnce } from './harness.js';
  * Whether the generated TypeScript compiles. `toContain` assertions cannot see this: most of the
  * defects below produce a file that reads correctly line by line and fails only as a whole.
  *
- * These are hard assertions rather than snapshots: the generated output compiles clean, and a
- * regression is a red test rather than a diff someone has to notice. The single exception is the
- * hyphenated-path-param fixture, whose diagnostics are pinned by count and content so that known
- * defect cannot quietly spread.
+ * Hard assertions rather than snapshots: the generated output compiles clean, and a regression is
+ * a red test rather than a diff someone has to notice. That includes the hyphenated-path-param
+ * fixture, which is why it is still a fixture — the case is easy to reintroduce and invisible
+ * without a compile.
  *
  * Server and SDK output are checked as two separate programs, because they compile under
  * genuinely different assumptions: the server is a Node application and may refer to `Buffer`,
@@ -98,38 +98,12 @@ function check(prefix: string, withNodeTypes: boolean): string[] {
     return formatDiagnostics(ts.getPreEmitDiagnostics(program), dir);
 }
 
-/**
- * The one fixture whose generated TypeScript is still expected not to compile.
- *
- * A hyphenated path param is a valid contract but not a valid TypeScript identifier, so the
- * generators emit `async getInvoice(invoice-id: string)`. It is isolated in its own fixture for
- * exactly this reason: everything else asserts clean, and this file's diagnostics are pinned by
- * count so the defect cannot spread or worsen unnoticed.
- */
-const KNOWN_BROKEN = 'hyphenated';
-
-function partition(diagnostics: string[]) {
-    return {
-        clean: diagnostics.filter(d => !d.includes(KNOWN_BROKEN)),
-        knownBroken: diagnostics.filter(d => d.includes(KNOWN_BROKEN)),
-    };
-}
-
 describe('generated TypeScript', () => {
-    it('compiles the SDK clean, outside the known-broken fixture', () => {
-        const { clean } = partition(check('sdk/', false));
-        expect(clean).toEqual([]);
+    it('compiles the SDK clean', () => {
+        expect(check('sdk/', false)).toEqual([]);
     });
 
-    it('compiles the server clean, outside the known-broken fixture', () => {
-        const { clean } = partition(check('server/', true));
-        expect(clean).toEqual([]);
-    });
-
-    it('pins the known-broken fixture so its damage cannot spread', async () => {
-        const sdk = partition(check('sdk/', false)).knownBroken;
-        const server = partition(check('server/', true)).knownBroken;
-        const report = [`sdk: ${sdk.length} diagnostics`, ...sdk, '', `server: ${server.length} diagnostics`, ...server].join('\n') + '\n';
-        await expect(report).toMatchFileSnapshot('./__snapshots__/_typecheck-hyphenated.txt');
+    it('compiles the server clean', () => {
+        expect(check('server/', true)).toEqual([]);
     });
 });

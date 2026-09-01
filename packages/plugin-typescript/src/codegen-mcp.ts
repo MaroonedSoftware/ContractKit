@@ -1,5 +1,5 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, McpConfigNode, ParamSource, ContractTypeNode } from '@contractkit/core';
-import { resolveModifiers, emittedResponses } from '@contractkit/core';
+import { resolveModifiers, emittedResponses, toIdentifier } from '@contractkit/core';
 import { renderType, renderInputType, pascalToDotCase } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
@@ -110,7 +110,9 @@ function buildArgsProps(route: OpRouteNode, op: OpOperationNode, modelsWithInput
     if (route.params) {
         if (route.params.kind === 'params') {
             for (const node of route.params.nodes) {
-                props.push({ key: node.name, expr: renderInputType(node.type, modelsWithInput), optional: false });
+                // The handler destructures these, so the key has to be a valid identifier. The MCP
+                // input schema is ours to name — nothing on an HTTP wire depends on it.
+                props.push({ key: toIdentifier(node.name), expr: renderInputType(node.type, modelsWithInput), optional: false });
             }
         } else if (route.params.kind === 'ref') {
             props.push({ key: 'params', expr: refSchema(route.params.name, modelsWithInput), optional: false });
