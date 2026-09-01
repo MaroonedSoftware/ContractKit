@@ -8,6 +8,7 @@ import type {
     OpResponseHeaderNode,
     ContractTypeNode,
     ModelNode,
+    OpParamNode,
     ParamSource,
 } from '@contractkit/core';
 import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses } from '@contractkit/core';
@@ -939,33 +940,55 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
         params.push({ name: 'options', type: `{ contentType: ${ctUnion} }`, optional: false });
     }
 
-    // Query (request-side — use Input variants)
-    if (op.query) {
-        if (op.query.kind === 'params') {
-            const fields = op.query.nodes.map(p => `${quoteKey(p.name)}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
-            params.push({ name: 'query', type: `{ ${fields} }`, optional: true });
-        } else if (op.query.kind === 'ref') {
-            const typeName = modelsWithInput?.has(op.query.name) ? `${op.query.name}Input` : op.query.name;
-            params.push({ name: 'query', type: typeName, optional: true });
-        } else {
-            params.push({ name: 'query', type: renderInputTsType(op.query.node, modelsWithInput), optional: true });
-        }
-    }
+    // Query and custom headers (request-side — use Input variants)
+    if (op.query) params.push(inlineArgParam('query', op.query, modelsWithInput));
+    if (op.headers) params.push(inlineArgParam('customHeaders', op.headers, modelsWithInput));
 
-    // Headers (request-side — use Input variants)
-    if (op.headers) {
-        if (op.headers.kind === 'params') {
-            const fields = op.headers.nodes.map(p => `${quoteKey(p.name)}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
-            params.push({ name: 'customHeaders', type: `{ ${fields} }`, optional: true });
-        } else if (op.headers.kind === 'ref') {
-            const typeName = modelsWithInput?.has(op.headers.name) ? `${op.headers.name}Input` : op.headers.name;
-            params.push({ name: 'customHeaders', type: typeName, optional: true });
-        } else {
-            params.push({ name: 'customHeaders', type: renderInputTsType(op.headers.node, modelsWithInput), optional: true });
-        }
-    }
+    return normaliseOptionalOrder(params);
+}
 
-    return params;
+/**
+ * One whole-object argument built from a `query:` or `headers:` source.
+ *
+ * A field is optional only when the contract says so — with `?`, or by carrying a default, which
+ * the caller may equally omit. The argument itself is optional only when every field is, since a
+ * caller cannot omit an object that must supply something. Both were previously hardcoded
+ * optional, which was wrong in both directions at once: it let a caller omit a value the router
+ * demanded, and typed a required field as one you could leave out.
+ *
+ * A `ref` or a whole type node stays optional. Deciding needs the model's own fields, which
+ * `buildMethodParams` has no access to.
+ */
+function inlineArgParam(name: string, source: ParamSource, modelsWithInput?: Set<string>): MethodParam {
+    if (source.kind === 'params') {
+        const isOptional = (p: OpParamNode) => Boolean(p.optional) || p.default !== undefined;
+        const fields = source.nodes
+            .map(p => `${quoteKey(p.name)}${isOptional(p) ? '?' : ''}: ${renderInputTsType(p.type, modelsWithInput)}`)
+            .join('; ');
+        return { name, type: `{ ${fields} }`, optional: source.nodes.every(isOptional) };
+    }
+    if (source.kind === 'ref') {
+        const typeName = modelsWithInput?.has(source.name) ? `${source.name}Input` : source.name;
+        return { name, type: typeName, optional: true };
+    }
+    return { name, type: renderInputTsType(source.node, modelsWithInput), optional: true };
+}
+
+/**
+ * Clear `optional` on every parameter before the last required one.
+ *
+ * Parameter order is path, then body, then query, then customHeaders. An optional parameter
+ * cannot precede a required one in TypeScript (`TS1016`), so an operation with an all-optional
+ * `query:` and an all-required `headers:` would emit `async m(query?: Q, customHeaders: H)` and
+ * fail to compile. Widening the earlier argument to required is the only option that keeps the
+ * positional order the call sites depend on.
+ *
+ * This could not arise while every query and header argument was hardcoded optional; it becomes
+ * reachable the moment optionality is read from the contract.
+ */
+function normaliseOptionalOrder(params: MethodParam[]): MethodParam[] {
+    const lastRequired = params.reduce((last, p, i) => (p.optional ? last : i), -1);
+    return params.map((p, i) => (i < lastRequired ? { ...p, optional: false } : p));
 }
 
 // ─── Method name inference ────────────────────────────────────────────────

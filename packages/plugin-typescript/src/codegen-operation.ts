@@ -14,6 +14,7 @@ import {
     renderType,
     renderInputType,
     renderQueryType,
+    applyFieldModifiers,
     pascalToDotCase,
     modeToWrapper,
 } from './codegen-contract.js';
@@ -807,12 +808,12 @@ function generateParamValidation(
             lines.push(`        ${modeToWrapper(mode)}({`);
             for (const param of source.nodes) {
                 const key = isValidIdentifier(param.name) ? param.name : `'${param.name}'`;
-                if (isQuery && param.type.kind === 'array') {
-                    const inner = renderType(param.type);
-                    lines.push(`            ${key}: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, ${inner}),`);
-                } else {
-                    lines.push(`            ${key}: ${renderType(param.type)},`);
-                }
+                // Delegating to renderQueryType rather than hand-rolling the array preprocess here:
+                // it is the same rule, and a second copy is a second thing to keep in sync. The
+                // modifier chain then comes from the shared helper, so an inline param means the
+                // same thing to the router as a model field does.
+                const base = isQuery ? renderQueryType(param.type, modelsWithInput) : renderInputType(param.type, modelsWithInput);
+                lines.push(`            ${key}: ${applyFieldModifiers(base, param)},`);
             }
             lines.push(`        })${suffix},`);
             lines.push(`    );`);

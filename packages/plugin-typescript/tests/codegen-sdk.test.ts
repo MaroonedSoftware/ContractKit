@@ -499,7 +499,7 @@ describe('generateSdk', () => {
     });
 
     describe('query params', () => {
-        it('adds query parameter to method signature', () => {
+        it('requires the query argument when its fields are not optional', () => {
             const root = opRoot([
                 opRoute('/users', [
                     opOperation('get', {
@@ -510,8 +510,45 @@ describe('generateSdk', () => {
                 ]),
             ]);
             const out = generateSdk(root);
-            expect(out).toContain('query?: { page?: number; limit?: number }');
+            // The contract declares neither field with `?`, so the router demands both. Typing
+            // them optional let a caller omit a value the request would then be rejected for.
+            expect(out).toContain('query: { page: number; limit: number }');
             expect(out).toContain('URLSearchParams');
+        });
+
+        it('makes the query argument optional when every field is', () => {
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        sdk: 'listUsers',
+                        query: [
+                            opParam('page', scalarType('int'), { optional: true }),
+                            // A default is equally omittable by the caller, so it counts as optional.
+                            opParam('limit', scalarType('int'), { default: 20 }),
+                        ],
+                        responses: [opResponse(200, 'array(User)', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('query?: { page?: number; limit?: number }');
+        });
+
+        it('widens an optional query argument that precedes a required one', () => {
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        sdk: 'listUsers',
+                        query: [opParam('page', scalarType('int'), { optional: true })],
+                        headers: [opParam('x-tenant', scalarType('string'))],
+                        responses: [opResponse(200, 'array(User)', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            // `async m(query?: Q, customHeaders: H)` is TS1016. Widening the earlier argument is
+            // the only fix that keeps the positional order call sites depend on.
+            expect(out).toContain("async listUsers(query: { page?: number }, customHeaders: { 'x-tenant': string })");
         });
 
         it('appends qs directly to URL', () => {
@@ -585,7 +622,7 @@ describe('generateSdk', () => {
                 ]),
             ]);
             const out = generateSdk(root);
-            expect(out).toContain("customHeaders?: { 'x-api-key'?: string }");
+            expect(out).toContain("customHeaders: { 'x-api-key': string }");
         });
     });
 

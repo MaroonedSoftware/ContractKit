@@ -640,7 +640,11 @@ function paramSourceToParams(source: ParamSource, location: 'path' | 'query' | '
         return source.nodes.map(p => ({
             name: p.name,
             in: location,
-            required: location === 'path',
+            // A path param is required by definition; anything else takes the contract at its
+            // word, matching the inlineObject branch below. Marking every query and header
+            // parameter optional made the published spec disagree with the router, which has
+            // always rejected a request missing one.
+            required: location === 'path' || !p.optional,
             schema: typeToSchema(p.type),
         }));
     }

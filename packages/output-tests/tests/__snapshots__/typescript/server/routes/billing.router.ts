@@ -36,7 +36,7 @@ BillingRouter.get('/payments', requirePolicy(), async ctx => {
     const query = await parseAndValidate(
         ctx.query,
         z.strictObject({
-            limit: z.coerce.number().int(),
+            limit: z.coerce.number().int().default(20),
             cursor: z.string(),
         }),
     );
@@ -44,7 +44,7 @@ BillingRouter.get('/payments', requirePolicy(), async ctx => {
     const headers = await parseAndValidate(
         ctx.headers,
         z.object({
-            'api-key': z.string(),
+            'api-key': z.string().optional(),
             'x-tenant': z.string(),
         }),
     );
