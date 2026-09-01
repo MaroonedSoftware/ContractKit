@@ -138,7 +138,7 @@ describe('generatePythonClient', () => {
         expect(output).toContain('[Payment.model_validate(item) for item in result]');
     });
 
-    it('generates query parameter', () => {
+    it('emits a TypedDict for an inline query block and requires it when its fields are', () => {
         const root = opRoot([
             opRoute('/payments', [
                 opOperation('get', {
@@ -148,8 +148,57 @@ describe('generatePythonClient', () => {
             ]),
         ]);
         const output = generatePythonClient(root);
-        expect(output).toContain('query: dict | None = None');
+        // A bare `dict` told a type checker nothing about what the request accepts, while the
+        // router has always validated these fields.
+        expect(output).toContain('class GetPaymentsQuery(TypedDict):');
+        expect(output).toContain('    page: int  # page');
+        expect(output).toContain('    limit: int  # limit');
+        expect(output).toContain('query: GetPaymentsQuery');
         expect(output).toContain('params=query');
+    });
+
+    it('marks omittable fields NotRequired and makes the argument optional', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', {
+                    query: [opParam('page', scalarType('int'), { optional: true }), opParam('limit', scalarType('int'), { default: 20 })],
+                    responses: [opResponse(200, 'array(Payment)')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // `NotRequired` rather than `total=False`, so a required field in a mixed block stays so.
+        expect(output).toContain('    page: NotRequired[int]  # page');
+        expect(output).toContain('    limit: NotRequired[int]  # limit');
+        expect(output).toContain('from typing import NotRequired, TypedDict');
+        expect(output).toContain('query: GetPaymentsQuery | None = None');
+    });
+
+    it('widens an optional argument that precedes a required one', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', {
+                    query: [opParam('page', scalarType('int'), { optional: true })],
+                    headers: [opParam('x-tenant', scalarType('string'))],
+                    responses: [opResponse(200, 'array(Payment)')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // In Python a defaulted parameter before a bare one is a SyntaxError, not a type error.
+        expect(output).toContain('query: GetPaymentsQuery, custom_headers: GetPaymentsHeaders');
+        expect(output).not.toContain('query: GetPaymentsQuery | None = None, custom_headers');
+    });
+
+    it('leaves a query declared as a model ref alone', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', { query: paramRef('PaymentFilter'), responses: [opResponse(200, 'array(Payment)')] }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // Deciding optionality needs the model's own fields, which this generator does not have.
+        expect(output).toContain('query: PaymentFilter | None = None');
     });
 
     it('generates body parameter for POST', () => {

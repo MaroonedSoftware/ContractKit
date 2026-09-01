@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from uuid import UUID
 from urllib.parse import quote
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 from ._base_client import BaseClient, SdkError  # noqa: F401
 from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm, UploadReceiptForm
 
@@ -12,6 +12,16 @@ class CreatePaymentHeaders(TypedDict, total=False):
     x_request_id: str  # x-request-id (required)
     x_ratelimit_remaining: int  # x-ratelimit-remaining (required)
     x_cache_hit: bool  # x-cache-hit (optional)
+
+
+class ListPaymentsQuery(TypedDict):
+    limit: NotRequired[int]  # limit
+    cursor: str  # cursor
+
+
+class ListPaymentsHeaders(TypedDict):
+    api_key: NotRequired[str]  # api-key
+    x_tenant: str  # x-tenant
 
 
 class BillingClient(BaseClient):
@@ -30,7 +40,7 @@ class BillingClient(BaseClient):
             headers["x_cache_hit"] = _response_headers["x-cache-hit"] == "true"
         return Payment.model_validate(result), headers
 
-    async def list_payments(self, query: dict | None = None, custom_headers: dict | None = None) -> list[Payment]:
+    async def list_payments(self, query: ListPaymentsQuery, custom_headers: ListPaymentsHeaders) -> list[Payment]:
         """
         list payments
         """

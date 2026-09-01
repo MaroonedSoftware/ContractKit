@@ -143,13 +143,20 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         return (shape.resp?.headers?.length ?? 0) > 0;
     });
     const opsWithResponseDict = publicOps.filter(({ op }) => opShapes.get(op)!.kind !== 'simple');
-    const needsTypedDict = opsWithRespHeaders.length > 0 || opsWithResponseDict.length > 0;
+    /** Inline `query:`/`headers:` blocks, each of which gets a request-side TypedDict. */
+    const inlineRequestDicts = publicOps
+        .flatMap(({ op }) => [op.query, op.headers])
+        .filter((src): src is Extract<ParamSource, { kind: 'params' }> => src?.kind === 'params' && src.nodes.length > 0);
+    const needsTypedDict = opsWithRespHeaders.length > 0 || opsWithResponseDict.length > 0 || inlineRequestDicts.length > 0;
     const needsLiteral = opsWithResponseDict.length > 0;
+    // `NotRequired` needs Python 3.11; only a request dict with an optional field pulls it in.
+    const needsNotRequired = inlineRequestDicts.some(src => src.nodes.some(p => Boolean(p.optional) || p.default !== undefined));
 
     if (needsAny || needsTypedDict) {
         const typingImports: string[] = [];
         if (needsAny) typingImports.push('Any');
         if (needsLiteral) typingImports.push('Literal');
+        if (needsNotRequired) typingImports.push('NotRequired');
         if (needsTypedDict) typingImports.push('TypedDict');
         lines.push(`from typing import ${typingImports.join(', ')}`);
     }
@@ -192,6 +199,28 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
                 const pyName = toPythonFieldName(h.name);
                 const tag = h.optional ? 'optional' : 'required';
                 lines.push(`    ${pyName}: ${pyHeaderReader(h, where).type}  # ${h.name} (${tag})`);
+            }
+        }
+    }
+
+    // Per-method request TypedDicts for inline `query:` and `headers:` blocks. A bare `dict`
+    // told a type checker nothing about what the request accepts, while the router has always
+    // validated these fields — so a typo in a key was a runtime 400 with nothing to catch it.
+    for (const { route, op } of publicOps) {
+        const base = snakeToPascal(deriveMethodName(op, route));
+        for (const { source, suffix } of [
+            { source: op.query, suffix: 'Query' },
+            { source: op.headers, suffix: 'Headers' },
+        ]) {
+            if (source?.kind !== 'params' || source.nodes.length === 0) continue;
+            lines.push('');
+            lines.push('');
+            lines.push(`class ${base}${suffix}(TypedDict):`);
+            for (const p of source.nodes) {
+                // `NotRequired` rather than `total=False`, so a required field stays required.
+                const optional = Boolean(p.optional) || p.default !== undefined;
+                const type = renderPyType(p.type, modelsWithInput, true);
+                lines.push(`    ${toPythonFieldName(p.name)}: ${optional ? `NotRequired[${type}]` : type}  # ${p.name}`);
             }
         }
     }
@@ -664,32 +693,48 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
         }
     }
 
-    // Query
+    // Query and custom headers. A `params` block is optional only when every field is, matching
+    // the TypeScript SDK; a ref or whole type stays optional, since deciding needs the model.
+    const base = snakeToPascal(deriveMethodName(op, route));
     if (op.query) {
-        const queryType = renderParamSourceType(op.query, modelsWithInput, true);
-        params.push({ name: 'query', type: queryType, optional: true, isModel: false });
+        params.push({
+            name: 'query',
+            type: renderParamSourceType(op.query, modelsWithInput, true, `${base}Query`),
+            optional: allFieldsOptional(op.query),
+            isModel: false,
+        });
     }
-
-    // Headers
     if (op.headers) {
-        const headersType = renderParamSourceType(op.headers, modelsWithInput, true);
-        params.push({ name: 'custom_headers', type: headersType, optional: true, isModel: false });
+        params.push({
+            name: 'custom_headers',
+            type: renderParamSourceType(op.headers, modelsWithInput, true, `${base}Headers`),
+            optional: allFieldsOptional(op.headers),
+            isModel: false,
+        });
     }
 
-    return params;
+    // Python has the same ordering constraint as TypeScript, but as a SyntaxError rather than a
+    // type error: a parameter with a default cannot precede one without. Widen the earlier
+    // arguments rather than reordering, which would break every positional call site.
+    const lastRequired = params.reduce((last, p, i) => (p.optional ? last : i), -1);
+    return params.map((p, i) => (i < lastRequired ? { ...p, optional: false } : p));
 }
 
-function renderParamSourceType(source: ParamSource, modelsWithInput?: Set<string>, forInput = false): string {
+/** Whether every field of a param source may be omitted — `?` in the contract, or a default. */
+function allFieldsOptional(source: ParamSource): boolean {
+    if (source.kind !== 'params') return true;
+    return source.nodes.every(p => Boolean(p.optional) || p.default !== undefined);
+}
+
+function renderParamSourceType(source: ParamSource, modelsWithInput?: Set<string>, forInput = false, typedDictName?: string): string {
     if (source.kind === 'ref') {
         const typeName = forInput && modelsWithInput?.has(source.name) ? `${source.name}Input` : source.name;
         return typeName;
     }
     if (source.kind === 'params') {
-        // const fields = source.nodes.map(p => {
-        //     const pyName = toPythonFieldName(p.name);
-        //     return `"${pyName}": ${renderPyType(p.type, modelsWithInput, forInput)}`;
-        // });
-        return `dict`; // simplified — inline dicts are hard to type concisely in Python signatures
+        // The module-level TypedDict emitted for this method, or a bare dict when the block
+        // declares nothing to describe.
+        return source.nodes.length > 0 ? typedDictName! : 'dict';
     }
     return renderPyType(source.node, modelsWithInput, forInput);
 }
