@@ -1,5 +1,104 @@
 # @contractkit/contractkit-plugin-python
 
+## 0.14.0
+
+### Minor Changes
+
+- 729d59c: Send multipart and urlencoded request bodies as forms.
+
+    `body_kind` was emitted only for `text` and `binary`, so `application/x-www-form-urlencoded` and `multipart/form-data` fell through to the `"json"` default and the base client sent them via httpx's `json=`. A urlencoded body went out as a JSON document under a form `Content-Type`, which no server parses; a multipart body raised a `TypeError` before it left the process.
+
+    The generated call now passes `body_kind="form"` or `body_kind="multipart"`, and `_request` routes them to httpx's `data=` and `files=` respectively.
+
+    The `Content-Type` header is no longer set for multipart. httpx has to generate the boundary itself, and it can only do that if it owns the header; setting it here produced a multipart content type with no boundary parameter. This mirrors why the TypeScript SDK omits the header for `FormData` bodies.
+
+    **Minor rather than patch, because a multipart body's parameter type changes** from `bytes` to `dict`. httpx's `files=` takes a mapping of part name to content and derives the boundary from it, so `bytes` could never have worked: it is the whole payload with no boundary, and a caller had no way to supply one. Anyone with a multipart operation has code that raises today, so the signature change cannot break a working call site.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `2` earlier in this batch.
+
+- 164983e: Type and coerce response headers from the contract, instead of calling everything `str`.
+
+    The generated per-method `TypedDict` annotated every response header `str` and assigned the raw value. That was at least self-consistent, but it discarded the declared type: a header the contract calls `int` reached the caller as a string, and `mypy` and `pyright` users saw `str` where they had written `int`.
+
+    The annotation now comes from the contract and the value is coerced to match it. The accepted set mirrors the TypeScript SDK's, with one asymmetry worth stating: temporals need real conversion here, because `renderPyType` maps them to `date`/`time`/`datetime` objects, while the TypeScript side maps them to `string` and passes the raw value straight through.
+
+    | Declared type                        | Python type        | Read as                   |
+    | ------------------------------------ | ------------------ | ------------------------- |
+    | `string`, `email`, `url`, `interval` | `str`              | the raw value             |
+    | `int`, `bigint`                      | `int`              | `int(...)`                |
+    | `number`                             | `float`            | `float(...)`              |
+    | `boolean`                            | `bool`             | compared against `"true"` |
+    | `uuid`                               | `UUID`             | `UUID(...)`               |
+    | `date`, `time`, `datetime`           | the matching class | `.fromisoformat(...)`     |
+    | anything else                        |                    | rejected at codegen       |
+
+    `duration` is rejected even though the TypeScript SDK accepts it: it maps to `timedelta`, and the standard library has no ISO 8601 duration parser to convert a header string with. Half-supporting it would mean an annotation the runtime does not honour, which is the defect being fixed.
+
+    A related gap goes with it: `collectReferencedModels` walked response _bodies_ but not response _headers_, so a header declared `datetime` or `uuid` would have missed the stdlib import it needs.
+
+    **Minor rather than patch**, because the annotation on a generated `TypedDict` changes and type-checked call sites will see it.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `2` earlier in this batch.
+
+- 769947d: Emit a `TypedDict` for inline `query:` and `headers:` blocks, instead of a bare `dict`.
+
+    `renderParamSourceType` returned `dict` for an inline param block, so the generated signature said nothing about what the request actually accepts:
+
+    ```python
+    async def list_payments(self, query: dict | None = None, custom_headers: dict | None = None) -> list[Payment]:
+    ```
+
+    The router has always validated those fields, so a typo in a key was a runtime 400 with nothing to catch it first. Each block now gets a module-level `TypedDict` named after its method, alongside the response-header ones already emitted there:
+
+    ```python
+    class ListPaymentsQuery(TypedDict):
+        limit: NotRequired[int]  # limit
+        cursor: str  # cursor
+    ```
+
+    Optionality follows the contract, with the same rule the TypeScript SDK and the OpenAPI document now use: a field is omittable when it is declared with `?` or carries a default, and the argument itself is optional only when every field is. `NotRequired` rather than `total=False`, so a required field in a mixed block stays required.
+
+    Python's parameter ordering constraint is the same as TypeScript's but stricter in kind: a defaulted parameter cannot precede a bare one, and that is a `SyntaxError` rather than a type error. Arguments before the last required one are widened to required, which keeps the positional order every call site depends on.
+
+    A `query:` or `headers:` declared as a model reference is unchanged and stays optional — deciding needs the model's own fields, which this generator does not have.
+
+    ### What this breaks
+
+    **`query: dict | None` narrows to a `TypedDict`.** `mypy` and `pyright` users will see new errors on loosely typed call sites, which is the point: those call sites were passing dictionaries nothing checked.
+
+    **`NotRequired` requires Python 3.11.** `requirements.txt` pins only `httpx` and `pydantic>=2.0` and states no floor, so this is the first version constraint the generated SDK carries. It applies only to clients that have an inline `query:` or `headers:` block with an optional field.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `2` earlier in this batch.
+
+### Patch Changes
+
+- 4a284d1: Fix generated Python SDK methods raising `NameError` on every path parameter whose contract name is not already snake_case.
+
+    `buildUrlExpression` interpolated the placeholder exactly as written in the contract, while `buildMethodParams` snake_cases it for the signature. A route declaring `{paymentId}` produced:
+
+    ```python
+    async def get_payment(self, payment_id: UUID) -> Payment:
+        result = await self._fetch(f"/payments/{paymentId}", method="GET")
+    ```
+
+    The module imports cleanly and the call raises `NameError: name 'paymentId' is not defined`, which is why `ast.parse` never caught it. The URL now interpolates the name the signature actually binds.
+
+    Two related cases are fixed with it:
+    - **Placeholders that are not Python identifiers.** The old pattern matched only `[a-zA-Z_]\w*`, so `{payment-id}` was left alone, no f-string was produced at all, and the literal braces went out on the wire. The pattern now covers what the `.ck` grammar allows, where `identPart` admits `-` and `.`.
+    - **Path params declared as a model.** When a route says `params: PaymentRef`, the method takes a single `params` argument, so the value is read as `params.payment_id`.
+
+    Path values are also percent-encoded now, via `urllib.parse.quote` with `safe=''` so that a `/` inside a value cannot forge a path segment. Nothing encoded them before, while the TypeScript SDK has always used `encodeURIComponent`. The import is emitted only when a route actually interpolates something.
+
+    `PYTHON_CODEGEN_VERSION` is bumped to `2`, so a warm `.contractkit/cache` does not preserve the broken clients across an upgrade.
+
+    Visible in diffs but not breaking: URLs that were already correct gain percent-encoding.
+
+- Updated dependencies [27af3f2]
+- Updated dependencies [227c224]
+- Updated dependencies [135947f]
+- Updated dependencies [cb06aec]
+    - @contractkit/core@0.29.0
+
 ## 0.13.2
 
 ### Patch Changes

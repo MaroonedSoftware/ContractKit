@@ -1,5 +1,70 @@
 # @contractkit/core
 
+## 0.29.0
+
+### Minor Changes
+
+- 135947f: Add an optional `warn` channel to `PluginContext`, so a plugin can report a non-fatal problem against the build's diagnostics.
+
+    Plugins previously had two options for a misconfiguration: emit something wrong and stay silent, or throw. Throwing is too blunt for a problem that affects one file — the CLI catches a `generateTargets` throw and continues to the next plugin, so a single bad path template would silently cost you that plugin's entire output.
+
+    ```ts
+    ctx.warn?.('output path contains an unresolved {area}', file, line);
+    ```
+
+    lands as `[plugin:typescript] output path contains an unresolved {area}` in the same diagnostics the rest of the build reports through.
+
+    The member is **optional**, and callers should use `ctx.warn?.(…)`. `PluginContext` is constructed as an object literal by test harnesses and by third-party tooling, and a required member would break every one of them at compile time.
+
+    `makePluginContext` takes the collector and the plugin name as a single argument, since a warning with no plugin name in it is not much use in a build log and the two should not be separable.
+
+    No plugin calls it yet and no generated output changes.
+
+- cb06aec: Derive valid identifiers from path parameter names, so a hyphenated path param generates code that works.
+
+    `operation /invoices/{invoice-id}` is a legal contract — the grammar's `identPart` admits `-` and `.` — but it is not a valid TypeScript identifier, and every TypeScript generator used the contract's spelling directly:
+
+    ```ts
+    HyphenatedRouter.get('/invoices/{invoice-id}', requirePolicy(), async ctx => {
+        const { invoice-id } = await parseAndValidate(ctx.params, ...);
+    ```
+
+    Three separate failures in those two lines. The route pattern kept the braces, so Koa registered a literal path no request could match. The destructuring did not parse. And the SDK emitted `async getInvoice(invoice-id: string)`, which did not parse either.
+
+    Names the generated code has to _bind_ are now mapped through `toIdentifier`, so `invoice-id` becomes `invoiceId`:
+    - **Router** — the Koa pattern becomes `/invoices/:invoiceId`, the params schema is keyed to match (that is what `ctx.params` carries), and the service call passes the bound name.
+    - **SDK** — the method parameter and the URL interpolation use the identifier.
+    - **MCP** — the tool's input schema and the handler's destructuring use it.
+
+    **Nothing on the wire changes.** A path placeholder's name never reaches the client: Koa matches by position, so `GET /invoices/abc123` behaves exactly as before. That is what makes the rename safe, and it is the reason query parameters, headers and OpenAPI parameters are deliberately _not_ renamed — those names are what the client actually sends, or must match a path template the same document declares.
+
+    `toIdentifier` returns its input unchanged whenever it is already an identifier, so no existing generated output moves. It lives in core next to the path-parameter pattern, because the Bruno plugin needs the same mapping for its own `:variable` syntax.
+
+### Patch Changes
+
+- 27af3f2: Generalise the decimal taint-set helpers over an arbitrary set of scalars.
+
+    `typeHasDecimal` and `computeModelsWithDecimal` hardcoded `decimal`, but the question they answer is not specific to it: any scalar whose runtime type differs from what `JSON.parse` produces taints a model the same way, and needs the same transitive answer through referenced models.
+
+    Core now exports `typeHasScalar(type, scalars)` and `computeModelsWithScalar(models, scalars, external)`. `computeModelsWithDecimal` stays as a thin wrapper over a one-member set, so every existing caller is untouched. The TypeScript plugin's `ReviveCodegenOptions` gains an optional `revivableScalars`, defaulting to the same one-member set.
+
+    Decimal remains the only member and no generated output changes.
+
+    One thing settled in passing: core's predicate checks a `record`'s key _and_ value while the reviver's checks only the value, and that divergence is correct rather than an oversight. Core answers "is this scalar mentioned", which decides imports, and a `record(decimal, string)` schema does reference the `Decimal` type. The reviver answers "is there a value to rehydrate", and a JSON object key is always a string, so there is nothing at a key position to convert. Both are now documented in place.
+
+- 227c224: Warn at build time when an operation declares responses but emits none of them.
+
+    The generated router answers such an operation with 204, since a bare status means the service does not produce it. That is the right status, but it is silent: nothing told you that the `400:` you wrote is documentation and that your success path therefore returns an empty 204. The build now says so, with the slug `no-emitted-response`:
+
+    ```
+    Operation declares only non-emitted responses (400) — the generated router will return 204.
+    Add a block to the success status, e.g. '200: { … }' or a bare '204:'.
+    ```
+
+    Two details worth recording. The check sits **above** the `if (!op.request) continue` guard, because a bodyless operation is the common case for this warning and skipping it would miss most of what the warning exists to catch. And it is gated on the operation having declared _some_ response: an operation with no `response:` block at all has not said anything to be inconsistent about, and warning on those would fire on a large fraction of every codebase.
+
+    `validateOp` runs in both the CLI and `validateProject`, so no wiring was needed.
+
 ## 0.28.2
 
 ### Patch Changes

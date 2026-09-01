@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/explorer-ui",
-    "version": "0.5.2",
+    "version": "0.5.3",
     "description": "ContractKit API explorer renderer — pure HTML output, themable via CSS custom properties",
     "license": "MIT",
     "author": {

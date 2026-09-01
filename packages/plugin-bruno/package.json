@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-bruno",
-    "version": "1.6.2",
+    "version": "1.6.3",
     "description": "ContractKit built-in plugin: Bruno REST collection generation",
     "license": "MIT",
     "author": {

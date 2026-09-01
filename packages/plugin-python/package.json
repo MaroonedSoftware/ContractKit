@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-python",
-    "version": "0.13.2",
+    "version": "0.14.0",
     "description": "ContractKit built-in plugin: Python SDK client generation (Pydantic v2 + httpx)",
     "license": "MIT",
     "author": {
