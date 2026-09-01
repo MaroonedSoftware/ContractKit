@@ -448,9 +448,12 @@ function generateSingleStatusResult(
     }
 
     lines.push('');
-    // With nothing emitted, the status is still declared somewhere — fall back to the first
-    // one written, which is what a documentation-only 3xx/4xx operation means.
-    lines.push(`    ctx.status = ${resp?.statusCode ?? op.responses[0]?.statusCode ?? 200};`);
+    // 204 when the operation emits nothing. Falling back to the first *declared* status wrote an
+    // error code on the success path, since a documentation-only block starts at a 4xx. 204 is
+    // also what aligns the three generators: `observableResponses` excludes a bare `400:` too, so
+    // the SDK already types such a method `Promise<void>` and `thrownResponses` puts the 400 in
+    // `@throws`. A bodyless 204 success is exactly what `Promise<void>` means.
+    lines.push(`    ctx.status = ${resp?.statusCode ?? 204};`);
     lines.push(...headerSetLines(respHeaders, '    '));
 
     if (bodies.length === 1) {

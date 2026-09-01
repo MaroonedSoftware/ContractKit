@@ -756,10 +756,21 @@ describe('generateOperation', () => {
             expect(output).not.toContain('ctx.body =');
         });
 
-        it('defaults to status 200 when no response specified', () => {
+        it('defaults to status 204 when no response is specified', () => {
             const root = opRoot([opRoute('/users', [opOperation('get')])]);
             const output = generateOp(root);
-            expect(output).toContain('ctx.status = 200');
+            // Nothing is emitted, so there is no body to send; 204 says that precisely, and it is
+            // what the SDK's `Promise<void>` for the same operation already means.
+            expect(output).toContain('ctx.status = 204');
+        });
+
+        it('returns 204 rather than an error status when only a 4xx is declared', () => {
+            const root = opRoot([opRoute('/users', [opOperation('delete', { responses: [opResponse(400)] })])]);
+            const output = generateOp(root);
+            // A bare `400:` is documentation — something else produces it. Falling back to the
+            // first declared status wrote 400 on the success path.
+            expect(output).toContain('ctx.status = 204');
+            expect(output).not.toContain('ctx.status = 400');
         });
 
         // ─── Which statuses the service produces ─────────────────────────

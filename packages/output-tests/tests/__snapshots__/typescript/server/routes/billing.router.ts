@@ -112,7 +112,7 @@ BillingRouter.delete('/payments/:paymentId', requirePolicy(), async ctx => {
     const service = ctx.container.get(PaymentService);
     await service.delete(paymentId);
 
-    ctx.status = 400;
+    ctx.status = 204;
 });
 
 /**
