@@ -21,7 +21,7 @@ import {
     computeModelsWithOutput as ckComputeModelsWithOutput,
     collectExternalOutputRefs as ckCollectExternalOutputRefs,
 } from '@contractkit/core';
-import { escapeJsDocLines } from './ts-render.js';
+import { escapeJsDocLines, sourceLink } from './ts-render.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, DECIMAL_COERCE_DECL } from './codegen-revive.js';
@@ -128,8 +128,7 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
         for (const l of escapeJsDocLines(model.description)) lines.push(` * ${l}`);
     }
 
-    const relPath = outPath ? relative(dirname(outPath), model.loc.file) : model.loc.file;
-    lines.push(` * generated from [${model.name}](file://./${relPath}#L${model.loc.line})`);
+    lines.push(` * generated from ${sourceLink(model.name, outPath, model.loc.file, model.loc.line)}`);
     lines.push('*/');
     return lines;
 }

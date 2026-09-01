@@ -1345,7 +1345,7 @@ describe('generateOperation', () => {
         it('includes source location in JSDoc above handler', () => {
             const root = opRoot([opRoute('/users', [opOperation('get', { loc: { file: 'users.op', line: 3 } })])], 'users.op');
             const output = generateOp(root);
-            expect(output).toContain('file://./users.op#L3');
+            expect(output).toContain('[users.op](./users.op#L3)');
         });
     });
 
@@ -1369,7 +1369,7 @@ describe('generateOperation', () => {
             const root = opRoot([opRoute('/users', [opOperation('get')])]);
             const output = generateOp(root);
             expect(output).toContain('/**');
-            expect(output).toContain('file://');
+            expect(output).toMatch(/ \* from \[[^\]]+\]\(\.\/[^)]+#L\d+\)/);
         });
     });
 

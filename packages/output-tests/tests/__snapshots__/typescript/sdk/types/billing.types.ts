@@ -20,7 +20,7 @@ const __dec = (v: unknown, path: string): Decimal => {
 
 /**
  * A customer payment
- * generated from [Payment](file://./../../contracts/billing.ck#L11)
+ * generated from [Payment](../../contracts/billing.ck#L11)
 */
 export const Payment = z.strictObject({
     id: z.uuid(),
@@ -52,7 +52,7 @@ export function revivePayment(raw: Payment): Payment {
 
 /**
  * A stored credential — has a writeonly child, so its Base schema is read
- * generated from [Credential](file://./../../contracts/billing.ck#L22)
+ * generated from [Credential](../../contracts/billing.ck#L22)
 */
 const CredentialBase = z.strictObject({
     id: z.uuid(),
@@ -71,7 +71,7 @@ export type CredentialInput = z.infer<typeof CredentialInput>;
 
 /**
  * A writeonly model nothing extends — its Base schema has no reader
- * generated from [Session](file://./../../contracts/billing.ck#L34)
+ * generated from [Session](../../contracts/billing.ck#L34)
 */
 const SessionBase = z.strictObject({
     id: z.string(),
@@ -91,7 +91,7 @@ export type SessionInput = z.infer<typeof SessionInput>;
 
 /**
  * Path params declared as a model, referenced via `params: PaymentRef`
- * generated from [PaymentRef](file://./../../contracts/billing.ck#L40)
+ * generated from [PaymentRef](../../contracts/billing.ck#L40)
 */
 export const PaymentRef = z.strictObject({
     paymentId: z.uuid(),
@@ -99,7 +99,7 @@ export const PaymentRef = z.strictObject({
 export type PaymentRef = z.infer<typeof PaymentRef>;
 
 /**
- * generated from [UpdatePaymentForm](file://./../../contracts/billing.ck#L44)
+ * generated from [UpdatePaymentForm](../../contracts/billing.ck#L44)
 */
 export const UpdatePaymentForm = z.strictObject({
     note: z.string().optional(),
@@ -107,7 +107,7 @@ export const UpdatePaymentForm = z.strictObject({
 export type UpdatePaymentForm = z.infer<typeof UpdatePaymentForm>;
 
 /**
- * generated from [UploadReceiptForm](file://./../../contracts/billing.ck#L48)
+ * generated from [UploadReceiptForm](../../contracts/billing.ck#L48)
 */
 export const UploadReceiptForm = z.strictObject({
     caption: z.string().optional(),
@@ -117,7 +117,7 @@ export type UploadReceiptForm = z.infer<typeof UploadReceiptForm>;
 
 /**
  * Extends a writeonly base and is itself writeonly
- * generated from [AdminCredential](file://./../../contracts/billing.ck#L28)
+ * generated from [AdminCredential](../../contracts/billing.ck#L28)
 */
 const AdminCredentialBase = CredentialBase.extend({
     scope: z.string(),

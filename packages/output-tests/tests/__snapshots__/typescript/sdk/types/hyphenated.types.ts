@@ -16,7 +16,7 @@ const __dec = (v: unknown, path: string): Decimal => {
 };
 
 /**
- * generated from [Invoice](file://./../../contracts/hyphenated.ck#L12)
+ * generated from [Invoice](../../contracts/hyphenated.ck#L12)
 */
 export const Invoice = z.strictObject({
     id: z.uuid(),

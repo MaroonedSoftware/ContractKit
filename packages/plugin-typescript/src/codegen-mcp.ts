@@ -2,7 +2,7 @@ import type { OpRootNode, OpRouteNode, OpOperationNode, McpConfigNode, ParamSour
 import { resolveModifiers, emittedResponses } from '@contractkit/core';
 import { renderType, renderInputType, pascalToDotCase } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName } from './codegen-operation.js';
-import { quoteKey, escapeSingleQuoted } from './ts-render.js';
+import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'node:path';
 
@@ -337,9 +337,8 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     const lines: string[] = [];
 
     // JSDoc source link
-    const relFile = options.outPath ? relative(dirname(options.outPath), file) : file;
     lines.push('/**');
-    lines.push(` * from [${basename(file)}](file://./${relFile}#L${op.loc.line})`);
+    lines.push(` * from ${sourceLink(basename(file), options.outPath, file, op.loc.line)}`);
     lines.push(' */');
 
     lines.push('@Injectable()');
@@ -455,8 +454,7 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     // Schema imports.
     imports.push(...schemaImportLines(collectSchemaIds(plans, options.modelsWithInput), options));
 
-    const relFile = options.outPath ? relative(dirname(options.outPath), root.file) : root.file;
-    const header = `// Auto-generated MCP tools\n// generated from [${basename(root.file)}](file://./${relFile})`;
+    const header = `// Auto-generated MCP tools\n// generated from ${sourceLink(basename(root.file), options.outPath, root.file)}`;
 
     return `${header}\n${imports.join('\n')}\n\n${bodyWithHelpers}\n`;
 }

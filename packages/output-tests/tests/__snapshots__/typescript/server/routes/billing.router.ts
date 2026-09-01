@@ -6,13 +6,13 @@ import { parseAndValidate } from '@maroonedsoftware/zod';
 import { MultipartBody } from '@maroonedsoftware/multipart';
 
 /**
- * generated from [billing.ck](file://./../../contracts/billing.ck)
+ * generated from [billing.ck](../../contracts/billing.ck)
 */
 export const BillingRouter = ServerKitRouter();
 
 /**
  * create a payment
- * from [billing.ck](file://./../../contracts/billing.ck#L56)
+ * from [billing.ck](../../contracts/billing.ck#L56)
 */
 BillingRouter.post('/payments', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, PaymentInput);
@@ -30,7 +30,7 @@ BillingRouter.post('/payments', requirePolicy(), bodyParserMiddleware(['json']),
 
 /**
  * list payments
- * from [billing.ck](file://./../../contracts/billing.ck#L75)
+ * from [billing.ck](../../contracts/billing.ck#L75)
 */
 BillingRouter.get('/payments', requirePolicy(), async ctx => {
     const query = await parseAndValidate(
@@ -59,7 +59,7 @@ BillingRouter.get('/payments', requirePolicy(), async ctx => {
 
 /**
  * fetch one payment
- * from [billing.ck](file://./../../contracts/billing.ck#L97)
+ * from [billing.ck](../../contracts/billing.ck#L97)
 */
 BillingRouter.get('/payments/:paymentId', requirePolicy(), async ctx => {
     const { paymentId } = await parseAndValidate(
@@ -79,7 +79,7 @@ BillingRouter.get('/payments/:paymentId', requirePolicy(), async ctx => {
 
 /**
  * update a payment with form data
- * from [billing.ck](file://./../../contracts/billing.ck#L106)
+ * from [billing.ck](../../contracts/billing.ck#L106)
 */
 BillingRouter.post('/payments/:paymentId', requirePolicy(), bodyParserMiddleware(['urlencoded']), async ctx => {
     const { paymentId } = await parseAndValidate(
@@ -99,7 +99,7 @@ BillingRouter.post('/payments/:paymentId', requirePolicy(), bodyParserMiddleware
 
 /**
  * delete a payment — declares only a documented error status
- * from [billing.ck](file://./../../contracts/billing.ck#L117)
+ * from [billing.ck](../../contracts/billing.ck#L117)
 */
 BillingRouter.delete('/payments/:paymentId', requirePolicy(), async ctx => {
     const { paymentId } = await parseAndValidate(
@@ -117,7 +117,7 @@ BillingRouter.delete('/payments/:paymentId', requirePolicy(), async ctx => {
 
 /**
  * upload a receipt image
- * from [billing.ck](file://./../../contracts/billing.ck#L131)
+ * from [billing.ck](../../contracts/billing.ck#L131)
 */
 BillingRouter.post('/payments/:paymentId/receipt', requirePolicy(), bodyParserMiddleware(['multipart']), async ctx => {
     const { paymentId } = await parseAndValidate(
@@ -139,7 +139,7 @@ BillingRouter.post('/payments/:paymentId/receipt', requirePolicy(), bodyParserMi
 
 /**
  * look up a refund by its originating payment
- * from [billing.ck](file://./../../contracts/billing.ck#L146)
+ * from [billing.ck](../../contracts/billing.ck#L146)
  * @deprecated
 */
 BillingRouter.get('/refunds/:paymentId', requirePolicy(), async ctx => {
@@ -155,7 +155,7 @@ BillingRouter.get('/refunds/:paymentId', requirePolicy(), async ctx => {
 
 /**
  * store a credential
- * from [billing.ck](file://./../../contracts/billing.ck#L160)
+ * from [billing.ck](../../contracts/billing.ck#L160)
 */
 BillingRouter.post('/credentials', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, AdminCredentialInput);
@@ -170,7 +170,7 @@ BillingRouter.post('/credentials', requirePolicy(), bodyParserMiddleware(['json'
 
 /**
  * open a session
- * from [billing.ck](file://./../../contracts/billing.ck#L173)
+ * from [billing.ck](../../contracts/billing.ck#L173)
 */
 BillingRouter.post('/sessions', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, SessionInput);

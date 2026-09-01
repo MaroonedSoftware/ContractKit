@@ -167,7 +167,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '1';
+export const TYPESCRIPT_CODEGEN_VERSION = '2';
 
 /** Filename for the persisted TypeScript manifest under the CLI cache directory. */
 const CACHE_MANIFEST_FILENAME = 'typescript-manifest.json';

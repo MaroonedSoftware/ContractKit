@@ -1,5 +1,5 @@
 // Auto-generated MCP tools
-// generated from [billing.ck](file://./../contracts/billing.ck)
+// generated from [billing.ck](../contracts/billing.ck)
 import { Injectable, type Container } from 'injectkit';
 import { z } from 'zod';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -11,7 +11,7 @@ import { Payment, PaymentRef } from './schemas/billing.schema.js';
 const GetRefundArgs = z.object({ params: PaymentRef });
 
 /**
- * from [billing.ck](file://./../contracts/billing.ck#L146)
+ * from [billing.ck](../contracts/billing.ck#L146)
  */
 @Injectable()
 export class GetRefundMcpTool implements McpToolHandler {

@@ -1,3 +1,4 @@
+import { dirname, relative } from 'node:path';
 import type { ContractTypeNode, FieldNode, ScalarTypeNode } from '@contractkit/core';
 
 /** Declaration emitted into generated files that reference the `json` scalar. */
@@ -18,6 +19,25 @@ export function escapeJsDocLines(text: string): string[] {
 /** Escape a string for inclusion inside a single-quoted TypeScript string literal. */
 export function escapeSingleQuoted(s: string): string {
     return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+}
+
+/**
+ * Render the markdown link back to the `.ck` declaration a generated construct came from, as
+ * `[label](./path/to/file.ck#L12)`. Returns the link only; callers supply the surrounding prose
+ * and comment prefix, since some sites emit it inside a JSDoc block and others inside a `//` line.
+ *
+ * The path is relative to the emitted file's own directory, so it resolves when the reader clicks
+ * it from wherever the file was written. `outPath` is optional because codegen can run without a
+ * destination (the prettier plugin, and several tests), in which case the source path is used
+ * as-is.
+ *
+ * Not `file://./path`: `file://` opens an authority component, so the `.` parses as the host and
+ * the link resolves to nothing. A plain relative path is the correct form.
+ */
+export function sourceLink(label: string, outPath: string | undefined, sourceFile: string, line?: number): string {
+    const rel = outPath ? relative(dirname(outPath), sourceFile) : sourceFile;
+    const href = rel.startsWith('.') ? rel : `./${rel}`;
+    return `[${label}](${href}${line === undefined ? '' : `#L${line}`})`;
 }
 
 /** Convert an HTTP header name (e.g. `preference-applied`, `X-Request-ID`, `ETag`) to camelCase for use as a JS property. */

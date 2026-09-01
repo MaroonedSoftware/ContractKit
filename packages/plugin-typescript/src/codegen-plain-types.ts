@@ -1,4 +1,3 @@
-import { relative, dirname } from 'node:path';
 import type { ContractRootNode, ModelNode, FieldNode } from '@contractkit/core';
 import { computeModelsWithOutput, collectExternalOutputRefs } from '@contractkit/core';
 import type { ContractCodegenContext } from './codegen-contract.js';
@@ -10,7 +9,7 @@ import {
     resolveImportPath,
     rootNeedsScalar,
 } from './codegen-contract.js';
-import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJsDocLines, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJsDocLines, sourceLink, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, DECIMAL_COERCE_DECL } from './codegen-revive.js';
@@ -174,8 +173,7 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
         for (const l of escapeJsDocLines(model.description)) lines.push(` * ${l}`);
     }
 
-    const relPath = outPath ? relative(dirname(outPath), model.loc.file) : model.loc.file;
-    lines.push(` * generated from [${model.name}](file://./${relPath}#L${model.loc.line})`);
+    lines.push(` * generated from ${sourceLink(model.name, outPath, model.loc.file, model.loc.line)}`);
     lines.push(' */');
     return lines;
 }

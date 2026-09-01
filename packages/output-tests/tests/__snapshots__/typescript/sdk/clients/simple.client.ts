@@ -3,7 +3,7 @@ import type { SdkFetch } from '../sdk-options.js';
 import { parseJson } from '../sdk-options.js';
 
 /**
- * generated from [simple.ck](file://./../../contracts/simple.ck)
+ * generated from [simple.ck](../../contracts/simple.ck)
  */
 export class SimpleClient {
     constructor(private fetch: SdkFetch) {}

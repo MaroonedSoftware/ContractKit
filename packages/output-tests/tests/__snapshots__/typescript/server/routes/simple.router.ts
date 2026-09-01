@@ -3,13 +3,13 @@ import { StatusService } from '#src/services/status.service.js';
 import { Heartbeat } from '../schemas/simple.schema.js';
 
 /**
- * generated from [simple.ck](file://./../../contracts/simple.ck)
+ * generated from [simple.ck](../../contracts/simple.ck)
 */
 export const SimpleRouter = ServerKitRouter();
 
 /**
  * current service status
- * from [simple.ck](file://./../../contracts/simple.ck#L14)
+ * from [simple.ck](../../contracts/simple.ck#L14)
 */
 SimpleRouter.get('/status', requirePolicy(), async ctx => {
     const service = ctx.container.get(StatusService);

@@ -17,7 +17,7 @@ import {
     pascalToDotCase,
     modeToWrapper,
 } from './codegen-contract.js';
-import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted } from './ts-render.js';
+import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'path';
 
@@ -174,8 +174,7 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
     lines.push('');
     lines.push('/**');
-    const relFile = options.outPath ? relative(dirname(options.outPath), root.file) : root.file;
-    lines.push(` * generated from [${basename(root.file)}](file://./${relFile})`);
+    lines.push(` * generated from ${sourceLink(basename(root.file), options.outPath, root.file)}`);
     lines.push('*/');
     lines.push(`export const ${routerName} = ServerKitRouter();`);
     lines.push('');
@@ -294,8 +293,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
         for (const l of escapeJsDocLines(desc)) lines.push(` * ${l}`);
     }
     // Source location comment
-    const relFile = outPath ? relative(dirname(outPath), file) : file;
-    lines.push(` * from [${basename(file)}](file://./${relFile}#L${op.loc.line})`);
+    lines.push(` * from ${sourceLink(basename(file), outPath, file, op.loc.line)}`);
 
     // Security annotation (operation-level wins; falls back to route → file level)
     const effectiveSecurity = resolveSecurity(route, op, root);

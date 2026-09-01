@@ -922,7 +922,7 @@ describe('generateContract', () => {
         it('includes source location comment above schema', () => {
             const root = contractRoot([model('User', [field('name', scalarType('string'))], { loc: { file: 'user.ck', line: 5 } })]);
             const output = generateContract(root);
-            expect(output).toContain('file://./user.ck#L5');
+            expect(output).toContain('[User](./user.ck#L5)');
         });
 
         it('includes source location for three-schema models', () => {
@@ -932,7 +932,7 @@ describe('generateContract', () => {
                 }),
             ]);
             const output = generateContract(root);
-            expect(output).toContain('file://./user.ck#L1');
+            expect(output).toContain('[User](./user.ck#L1)');
         });
     });
 

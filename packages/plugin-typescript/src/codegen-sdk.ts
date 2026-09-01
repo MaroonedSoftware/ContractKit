@@ -11,7 +11,7 @@ import type {
     ParamSource,
 } from '@contractkit/core';
 import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses } from '@contractkit/core';
-import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, sourceLink, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { reviveFnName, renderInlineReviver, typeReachesDecimal, DECIMAL_COERCE_DECL } from './codegen-revive.js';
@@ -268,8 +268,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
 
     // Client class
     lines.push('/**');
-    const relFile = options.outPath ? relative(dirname(options.outPath), root.file) : root.file;
-    lines.push(` * generated from [${basename(root.file)}](file://./${relFile})`);
+    lines.push(` * generated from ${sourceLink(basename(root.file), options.outPath, root.file)}`);
     lines.push(' */');
     lines.push(`export class ${clientClassName} {`);
     lines.push('    constructor(private fetch: SdkFetch) {}');
