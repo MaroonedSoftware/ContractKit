@@ -19,6 +19,10 @@ import {
     opRoot,
 } from './helpers.js';
 
+/** The narrowed numeric coercion `renderScalar` emits — see NUMERIC_PREPROCESS in codegen-contract. */
+const NUM = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number())`;
+const NUM_INT = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int())`;
+
 describe('generateOperation', () => {
     // ─── Router name derivation ─────────────────────────────────────
 
@@ -401,8 +405,8 @@ describe('generateOperation', () => {
             ]);
             const output = generateOp(root);
             expect(output).toContain('ctx.query');
-            expect(output).toContain('page: z.coerce.number().int()');
-            expect(output).toContain('limit: z.coerce.number().int()');
+            expect(output).toContain(`page: ${NUM_INT}`);
+            expect(output).toContain(`limit: ${NUM_INT}`);
         });
 
         it('generates parseAndValidate import when operation has query', () => {
@@ -441,7 +445,7 @@ describe('generateOperation', () => {
             expect(output).toContain('z.preprocess');
             expect(output).toContain("typeof v === 'string' ? v.split(',') : v");
             // Non-array params should not be wrapped
-            expect(output).toContain('limit: z.coerce.number().int()');
+            expect(output).toContain(`limit: ${NUM_INT}`);
         });
 
         it('imports Input variant for refs inside an intersection query', () => {
@@ -542,7 +546,7 @@ describe('generateOperation', () => {
             // Boolean should use preprocess for string coercion
             expect(output).toContain("active: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean())");
             // Int should still use z.coerce
-            expect(output).toContain('page: z.coerce.number().int()');
+            expect(output).toContain(`page: ${NUM_INT}`);
         });
     });
 
@@ -756,10 +760,21 @@ describe('generateOperation', () => {
             expect(output).not.toContain('ctx.body =');
         });
 
-        it('defaults to status 200 when no response specified', () => {
+        it('defaults to status 204 when no response is specified', () => {
             const root = opRoot([opRoute('/users', [opOperation('get')])]);
             const output = generateOp(root);
-            expect(output).toContain('ctx.status = 200');
+            // Nothing is emitted, so there is no body to send; 204 says that precisely, and it is
+            // what the SDK's `Promise<void>` for the same operation already means.
+            expect(output).toContain('ctx.status = 204');
+        });
+
+        it('returns 204 rather than an error status when only a 4xx is declared', () => {
+            const root = opRoot([opRoute('/users', [opOperation('delete', { responses: [opResponse(400)] })])]);
+            const output = generateOp(root);
+            // A bare `400:` is documentation — something else produces it. Falling back to the
+            // first declared status wrote 400 on the success path.
+            expect(output).toContain('ctx.status = 204');
+            expect(output).not.toContain('ctx.status = 400');
         });
 
         // ─── Which statuses the service produces ─────────────────────────
@@ -1345,7 +1360,7 @@ describe('generateOperation', () => {
         it('includes source location in JSDoc above handler', () => {
             const root = opRoot([opRoute('/users', [opOperation('get', { loc: { file: 'users.op', line: 3 } })])], 'users.op');
             const output = generateOp(root);
-            expect(output).toContain('file://./users.op#L3');
+            expect(output).toContain('[users.op](./users.op#L3)');
         });
     });
 
@@ -1369,7 +1384,7 @@ describe('generateOperation', () => {
             const root = opRoot([opRoute('/users', [opOperation('get')])]);
             const output = generateOp(root);
             expect(output).toContain('/**');
-            expect(output).toContain('file://');
+            expect(output).toMatch(/ \* from \[[^\]]+\]\(\.\/[^)]+#L\d+\)/);
         });
     });
 
@@ -1620,5 +1635,50 @@ describe('generateOp — route modifiers JSDoc', () => {
             const out = generateOp(root);
             expect(out).toContain(`requirePolicy({ policy: 'paymentsWrite' })`);
         });
+    });
+});
+
+// ─── Hyphenated path parameters ───────────────────────────────────────────
+
+describe('generateOperation — path parameter names that are not identifiers', () => {
+    const root = () =>
+        opRoot([
+            opRoute(
+                '/invoices/{invoice-id}',
+                [opOperation('get', { service: 'InvoiceService.getById', responses: [opResponse(200, 'Invoice', 'application/json')] })],
+                [opParam('invoice-id', scalarType('uuid'))],
+            ),
+        ]);
+
+    it('registers a Koa pattern with a bindable name', () => {
+        const out = generateOp(root());
+        // Previously `{invoice-id}` survived verbatim, so the route was a literal path that no
+        // real request could ever match. The name is internal — Koa matches by position — so
+        // renaming it costs nothing on the wire.
+        expect(out).toContain("get('/invoices/:invoiceId'");
+        expect(out).not.toContain('{invoice-id}');
+    });
+
+    it('keys the params schema by the same name, since that is what ctx.params carries', () => {
+        const out = generateOp(root());
+        expect(out).toContain('const { invoiceId } = await parseAndValidate(');
+        expect(out).toContain('invoiceId: z.uuid()');
+        expect(out).toContain('service.getById(invoiceId)');
+    });
+
+    it('leaves query and header names alone, which the client actually sends', () => {
+        const out = generateOp(
+            opRoot([
+                opRoute('/things', [
+                    opOperation('get', {
+                        query: [opParam('sort-by', scalarType('string'))],
+                        headers: [opParam('x-api-key', scalarType('string'))],
+                        responses: [opResponse(200, 'Thing', 'application/json')],
+                    }),
+                ]),
+            ]),
+        );
+        expect(out).toContain("'sort-by': z.string()");
+        expect(out).toContain("'x-api-key': z.string()");
     });
 });

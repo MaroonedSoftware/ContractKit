@@ -107,8 +107,13 @@ export function contractRoot(models: ModelNode[], file = 'test.ck'): ContractRoo
     return { kind: 'contractRoot', meta: {}, models, file };
 }
 
-export function opParam(name: string, type: ContractTypeNode): OpParamNode {
-    return { name, type, loc: loc(1, 'test.op') };
+/**
+ * `optional` and `nullable` default to `false` rather than being omitted. Once codegen reads
+ * them, an omitted `undefined` is falsy and so silently means "required" — which would make a
+ * fixture that meant to say nothing accidentally assert something.
+ */
+export function opParam(name: string, type: ContractTypeNode, overrides?: Partial<OpParamNode>): OpParamNode {
+    return { name, type, optional: false, nullable: false, loc: loc(1, 'test.op'), ...overrides };
 }
 
 export function paramNodes(nodes: OpParamNode[]): ParamSource {

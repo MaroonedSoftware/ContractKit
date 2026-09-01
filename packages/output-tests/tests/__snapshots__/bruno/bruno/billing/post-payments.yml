@@ -1,0 +1,40 @@
+info:
+  name: /payments
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/payments"
+  body:
+    type: json
+    data: |
+      {
+        "amount": 0,
+        "unitPrice": "0.00",
+        "quantity": 0,
+        "createdAt": "2024-01-01T00:00:00Z",
+        "status": "pending"
+      }
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.headers["x-request-id"]
+      operator: isDefined
+      value: ""
+    - expression: res.headers["x-ratelimit-remaining"]
+      operator: isDefined
+      value: ""
+
+docs: |-
+  create a payment
+  
+  **Response headers**
+  
+  - `x-request-id` (required)
+  - `x-ratelimit-remaining` (required)
+  - `x-cache-hit` (optional)
+  - `x-expires-after` (optional)

@@ -1,0 +1,21 @@
+info:
+  name: "/payments/{paymentId}"
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: "{{baseUrl}}/payments/:paymentId"
+  params:
+    - name: paymentId
+      value: "00000000-0000-0000-0000-000000000000"
+      type: path
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+docs: |-
+  fetch one payment

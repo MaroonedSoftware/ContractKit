@@ -640,7 +640,11 @@ function paramSourceToParams(source: ParamSource, location: 'path' | 'query' | '
         return source.nodes.map(p => ({
             name: p.name,
             in: location,
-            required: location === 'path',
+            // A path param is required by definition; anything else takes the contract at its
+            // word, matching the inlineObject branch below. Marking every query and header
+            // parameter optional made the published spec disagree with the router, which has
+            // always rejected a request missing one.
+            required: location === 'path' || !p.optional,
             schema: typeToSchema(p.type),
         }));
     }
@@ -794,8 +798,11 @@ function yamlString(s: string): string {
 }
 
 function yamlKey(key: string): string {
-    // Keys with special chars need quoting
-    if (/^[\w-]+$/.test(key) && !/^(true|false|null|yes|no|on|off)$/i.test(key)) {
+    // Keys with special chars need quoting. A leading digit is excluded for the same reason
+    // `yamlString` excludes it: a bare `200` is an integer to a YAML 1.2 parser, and OpenAPI 3.x
+    // requires the keys of a `responses` object to be strings. `\w` also matches `_`, so a key
+    // like `_3DModel` correctly stays bare.
+    if (/^[\w-]+$/.test(key) && !/^(true|false|null|yes|no|on|off)$/i.test(key) && !/^\d/.test(key)) {
         return key;
     }
     return `'${key.replace(/'/g, "''")}'`;

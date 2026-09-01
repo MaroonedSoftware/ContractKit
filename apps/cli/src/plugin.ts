@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { computeHash } from './cache.js';
 import { readNearestPackageVersion } from './compiler-fingerprint.js';
 import type { PluginEntry, ResolvedConfig } from './config.js';
-import type { ContractKitPlugin, PluginContext, EmitFileOptions } from '@contractkit/core';
+import type { ContractKitPlugin, PluginContext, EmitFileOptions, DiagnosticCollector } from '@contractkit/core';
 import type { FileHashMap } from './cache.js';
 
 export type { ContractKitPlugin };
@@ -55,6 +55,9 @@ export function makePluginContext(
     cacheEnabled: boolean,
     cacheDir: string,
     emitFile?: (outPath: string, content: string, opts?: EmitFileOptions) => void,
+    /** Where `ctx.warn` reports to. The collector and the name always travel together, so they
+     *  are one argument: a warning with no plugin name in it is not much use in a build log. */
+    warnTo?: { diag: DiagnosticCollector; pluginName: string },
 ): PluginContext {
     return {
         rootDir: config.rootDir,
@@ -66,6 +69,9 @@ export function makePluginContext(
             (() => {
                 throw new Error('emitFile is only available in generateTargets');
             }),
+        warn: warnTo
+            ? (message, file, line) => warnTo.diag.warn(file ?? '', line ?? 0, `[plugin:${warnTo.pluginName}] ${message}`)
+            : undefined,
     };
 }
 

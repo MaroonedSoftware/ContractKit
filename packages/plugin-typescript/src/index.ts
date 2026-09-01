@@ -8,6 +8,7 @@ import type {
     ContractRootNode,
     OpRootNode,
     ModelNode,
+    ScalarTypeNode,
     IncrementalManifest,
     IncrementalUnit,
     IncrementalOutputFile,
@@ -21,7 +22,7 @@ import {
     collectTransitiveModelRefs,
     collectTypeRefs,
     computeModelsWithCaseTransform,
-    computeModelsWithDecimal,
+    computeModelsWithScalar,
 } from '@contractkit/core';
 import {
     generateSdk,
@@ -43,9 +44,14 @@ import {
     type SdkScaffoldDeps,
 } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
+import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
+
+/** Taint set for the SDK's bigint response reviver. */
+const BIGINT_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['bigint']);
 import { generateMcpFile, generateMcpAggregator, generateMcpRouter, hasMcpOperations, deriveMcpRegisterFnName } from './codegen-mcp.js';
 import {
     TEMPLATE_VAR_RE,
+    TEMPLATE_VAR_RE_G,
     resolveTemplate,
     commonDir,
     computeOpOutPath,
@@ -167,7 +173,12 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '1';
+export const TYPESCRIPT_CODEGEN_VERSION = '2';
+
+// The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
+// temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
+// type. It also feeds every `hashFingerprint` that already slices this set, so a model gaining a
+// `datetime` in another `.ck` file invalidates this file's cached output with no extra plumbing.
 
 /** Filename for the persisted TypeScript manifest under the CLI cache directory. */
 const CACHE_MANIFEST_FILENAME = 'typescript-manifest.json';
@@ -241,8 +252,22 @@ async function runTypescriptCodegen(
 
     deleteStalePaths(result.deletedPaths);
 
+    const unresolved = new Set<string>();
     for (const { relativePath, content, ifAbsent } of result.filesToWrite) {
+        for (const [, key] of relativePath.matchAll(TEMPLATE_VAR_RE_G)) unresolved.add(`${key}::${relativePath}`);
         ctx.emitFile(relativePath, content, ifAbsent ? { ifAbsent: true } : undefined);
+    }
+    // `resolveTemplate` leaves an unknown `{key}` in place, which then joins straight into the
+    // output path — producing a literal `{area}` directory rather than an error. `assertWithinBase`
+    // does not catch it, since the path is inside the base, just wrong. Checked here rather than
+    // threaded down through five path helpers: every output path passes through this one funnel,
+    // whichever helper built it.
+    for (const entry of [...unresolved].sort()) {
+        const [key, outPath] = entry.split('::');
+        ctx.warn?.(
+            `Output path template variable {${key}} has no value, so '${outPath}' contains it literally. ` +
+                `Declare it in the source file's 'options { keys { ${key}: ... } }' block, or remove it from the path template.`,
+        );
     }
 
     writeManifest(manifestPath, result.manifest);
@@ -467,7 +492,11 @@ function collectSdkOutput(
     const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
     // Computed across every contract root, not per file: one decimal below a model taints it, and
     // the reference that reaches it may live in another .ck file entirely.
-    const modelsWithDecimal = computeModelsWithDecimal(inputs.contractRoots.flatMap(r => r.models));
+    const modelsWithDecimal = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), DEFAULT_REVIVABLE_SCALARS);
+    // Which response bodies need the `123n` reviver. Transitive, because a bigint reached through
+    // a referenced model counts, and cross-file, because that model may live in another .ck file —
+    // which is also why it is sliced into every fingerprint below, exactly as modelsWithDecimal is.
+    const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
     const modelMap = buildModelMap(inputs.contractRoots);
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const ckCommonRoot = commonDir(allFiles, rootDir);
@@ -509,6 +538,7 @@ function collectSdkOutput(
             // Not covered by `root`: adding a decimal to a model in a *different* .ck file changes
             // this file's revivers with no change to `root` or the config.
             modelsWithDecimal: sliceModelSet(refs, ownNames, modelsWithDecimal),
+            modelsWithBigInt: sliceModelSet(refs, ownNames, modelsWithBigInt),
             sdkOptionsPath,
             sub: subConfigKey,
         });
@@ -527,6 +557,9 @@ function collectSdkOutput(
                         modelsWithOutput,
                         modelsWithDecimal,
                         emitRevivers: true,
+                        // An SDK client runs in a browser as readily as in Node, and its scaffold
+                        // declares no `@types/node`.
+                        target: 'client',
                     });
                 } else {
                     let rel = relative(dirname(typeOutPath), sdkOptionsPath).replace(/\.ts$/, '.js');
@@ -587,6 +620,7 @@ function collectSdkOutput(
                     modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
                     modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
                     modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
+                modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
                     sdkOptionsPath,
                     className,
                     includeInternal: config.includeInternal ?? false,
@@ -606,6 +640,7 @@ function collectSdkOutput(
                                 modelsWithInput,
                                 modelsWithOutput,
                                 modelsWithDecimal,
+                                modelsWithBigInt,
                                 modelMap,
                                 includeInternal: config.includeInternal,
                                 clientClassName: className,
@@ -630,6 +665,7 @@ function collectSdkOutput(
                 modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
                 modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
                 modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
+                modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
                 sdkOptionsPath,
                 includeInternal: config.includeInternal ?? false,
                 sub: subConfigKey,
@@ -648,6 +684,7 @@ function collectSdkOutput(
                             modelsWithInput,
                             modelsWithOutput,
                             modelsWithDecimal,
+                            modelsWithBigInt,
                             modelMap,
                             includeInternal: config.includeInternal,
                         }),
@@ -731,6 +768,7 @@ function collectSdkOutput(
                 modelsWithInput: sliceModelSet(allInlineRefs, new Set(), modelsWithInput),
                 modelsWithOutput: sliceModelSet(allInlineRefs, new Set(), modelsWithOutput),
                 modelsWithDecimal: sliceModelSet(allInlineRefs, new Set(), modelsWithDecimal),
+                modelsWithBigInt: sliceModelSet(allInlineRefs, new Set(), modelsWithBigInt),
                 sdkOptionsPath,
                 includeInternal: config.includeInternal ?? false,
                 sub: subConfigKey,
@@ -746,6 +784,7 @@ function collectSdkOutput(
                     modelsWithInput,
                     modelsWithOutput,
                     modelsWithDecimal,
+                    modelsWithBigInt,
                     modelMap,
                     includeInternal: config.includeInternal,
                 },
@@ -878,7 +917,10 @@ function collectZodOutput(
             render: () => [
                 {
                     relativePath: outPath,
-                    content: generateContract(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput, modelsWithOutput }),
+                    // Server-shaped, which is what this sub-generator has always emitted. The
+                    // standalone `zod:` output has no target option of its own; only the SDK's
+                    // schemas are client-shaped, and they pass their own target.
+                    content: generateContract(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput, modelsWithOutput, target: 'server' }),
                 },
             ],
         });

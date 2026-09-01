@@ -194,6 +194,39 @@ importers:
         specifier: workspace:*
         version: link:../config-typescript
 
+  packages/output-tests:
+    devDependencies:
+      '@contractkit/core':
+        specifier: workspace:*
+        version: link:../contractkit
+      '@contractkit/plugin-bruno':
+        specifier: workspace:*
+        version: link:../plugin-bruno
+      '@contractkit/plugin-markdown':
+        specifier: workspace:*
+        version: link:../plugin-markdown
+      '@contractkit/plugin-openapi':
+        specifier: workspace:*
+        version: link:../plugin-openapi
+      '@contractkit/plugin-python':
+        specifier: workspace:*
+        version: link:../plugin-python
+      '@contractkit/plugin-typescript':
+        specifier: workspace:*
+        version: link:../plugin-typescript
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+
   packages/plugin-bruno:
     dependencies:
       '@contractkit/core':
@@ -273,6 +306,9 @@ importers:
       '@repo/config-typescript':
         specifier: workspace:*
         version: link:../config-typescript
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
 
 packages:
 

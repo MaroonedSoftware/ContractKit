@@ -23,6 +23,7 @@ import {
     opRoute,
     opOperation,
     opParam,
+    paramRef,
     opRequest,
     opMultiRequest,
     opResponse,
@@ -133,6 +134,34 @@ describe('generateSdk', () => {
             expect(out).toContain('encodeURIComponent(id)');
             expect(out).toContain("method: 'GET'");
             expect(out).toContain('return await parseJson<User>(result)');
+        });
+
+        it('reads path params off the params argument when the route declares a model', () => {
+            const root = opRoot([
+                opRoute(
+                    '/pets/{petId}',
+                    [opOperation('get', { sdk: 'getPet', responses: [opResponse(200, 'Pet', 'application/json')] })],
+                    paramRef('PetRef'),
+                ),
+            ]);
+            const out = generateSdk(root);
+            // The signature has one argument named `params`, so a bare `petId` refers to nothing.
+            expect(out).toContain('async getPet(params: PetRef)');
+            expect(out).toContain('${encodeURIComponent(String(params.petId))}');
+            expect(out).not.toContain('encodeURIComponent(petId)');
+        });
+
+        it('brackets a hyphenated path param, which is not a property accessor', () => {
+            const root = opRoot([
+                opRoute(
+                    '/pets/{pet-id}',
+                    [opOperation('get', { sdk: 'getPet', responses: [opResponse(200, 'Pet', 'application/json')] })],
+                    paramRef('PetRef'),
+                ),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('${encodeURIComponent(String(params["pet-id"]))}');
+            expect(out).not.toContain('{pet-id}');
         });
     });
 
@@ -369,7 +398,7 @@ describe('generateSdk', () => {
             const out = generateSdk(root);
             expect(out).toContain('Promise<{ data: Transfer; headers: { preferenceApplied?: string; etag: string } }>');
             expect(out).toContain("preferenceApplied: result.headers.get('preference-applied') ?? undefined");
-            expect(out).toContain("etag: result.headers.get('etag') ?? undefined");
+            expect(out).toContain("etag: result.headers.get('etag')!");
             expect(out).toContain('return { data, headers:');
         });
 
@@ -395,9 +424,72 @@ describe('generateSdk', () => {
             ]);
             const out = generateSdk(root);
             expect(out).toContain('Promise<{ headers: { xDeletedAt: string } }>');
-            expect(out).toContain("xDeletedAt: result.headers.get('x-deleted-at') ?? undefined");
+            expect(out).toContain("xDeletedAt: result.headers.get('x-deleted-at')!");
             expect(out).toContain('return { headers:');
             expect(out).not.toContain('parseJson<void>');
+        });
+
+        it('coerces each header to the type the return shape declares', () => {
+            const root = opRoot([
+                opRoute('/things', [
+                    opOperation('get', {
+                        sdk: 'getThing',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Thing' } }],
+                                headers: [
+                                    { name: 'x-count', optional: false, type: scalarType('int') },
+                                    { name: 'x-ratio', optional: true, type: scalarType('number') },
+                                    { name: 'x-cached', optional: false, type: scalarType('boolean') },
+                                    { name: 'x-fresh', optional: true, type: scalarType('boolean') },
+                                    { name: 'x-seq', optional: false, type: scalarType('bigint') },
+                                    { name: 'x-prev', optional: true, type: scalarType('bigint') },
+                                    { name: 'x-expires', optional: true, type: scalarType('datetime') },
+                                    { name: 'x-day', optional: false, type: scalarType('date') },
+                                ],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            // Header values arrive as strings; the shape is typed from the contract, so without
+            // coercion every one of these is a TS2322 in one direction or the other.
+            expect(out).toContain('xCount: Number(result.headers.get(\'x-count\'))');
+            expect(out).toContain("xRatio: result.headers.get('x-ratio') === null ? undefined : Number(result.headers.get('x-ratio'))");
+            expect(out).toContain("xCached: result.headers.get('x-cached') === 'true'");
+            expect(out).toContain("xFresh: result.headers.get('x-fresh') === null ? undefined : result.headers.get('x-fresh') === 'true'");
+            expect(out).toContain("xSeq: BigInt(result.headers.get('x-seq')!)");
+            // Asserted in both branches: TS does not carry the null narrowing across a second
+            // `get()` call, and `BigInt` takes no null.
+            expect(out).toContain("xPrev: result.headers.get('x-prev') === null ? undefined : BigInt(result.headers.get('x-prev')!)");
+            // Temporals are Luxon objects since the SDK started reviving them, so a raw string no
+            // longer satisfies the shape `renderOutputTsType` produces.
+            expect(out).toContain("xExpires: result.headers.get('x-expires') === null ? undefined : DateTime.fromISO(result.headers.get('x-expires')!)");
+            expect(out).toContain("xDay: DateTime.fromFormat(result.headers.get('x-day')!, 'yyyy-MM-dd')");
+        });
+
+        it('rejects a header type that cannot be read from a header', () => {
+            const root = opRoot([
+                opRoute('/things', [
+                    opOperation('get', {
+                        sdk: 'getThing',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Thing' } }],
+                                headers: [{ name: 'x-money', optional: false, type: scalarType('decimal') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            // Emitting code that does not compile would be worse than refusing; the CLI turns this
+            // into a plugin-scoped error naming the operation.
+            expect(() => generateSdk(root)).toThrow(/x-money.*GET \/things.*'decimal' scalar/s);
         });
 
         it('preserves plain return type when no response headers are declared', () => {
@@ -415,7 +507,7 @@ describe('generateSdk', () => {
     });
 
     describe('query params', () => {
-        it('adds query parameter to method signature', () => {
+        it('requires the query argument when its fields are not optional', () => {
             const root = opRoot([
                 opRoute('/users', [
                     opOperation('get', {
@@ -426,8 +518,45 @@ describe('generateSdk', () => {
                 ]),
             ]);
             const out = generateSdk(root);
-            expect(out).toContain('query?: { page?: number; limit?: number }');
+            // The contract declares neither field with `?`, so the router demands both. Typing
+            // them optional let a caller omit a value the request would then be rejected for.
+            expect(out).toContain('query: { page: number; limit: number }');
             expect(out).toContain('URLSearchParams');
+        });
+
+        it('makes the query argument optional when every field is', () => {
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        sdk: 'listUsers',
+                        query: [
+                            opParam('page', scalarType('int'), { optional: true }),
+                            // A default is equally omittable by the caller, so it counts as optional.
+                            opParam('limit', scalarType('int'), { default: 20 }),
+                        ],
+                        responses: [opResponse(200, 'array(User)', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            expect(out).toContain('query?: { page?: number; limit?: number }');
+        });
+
+        it('widens an optional query argument that precedes a required one', () => {
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        sdk: 'listUsers',
+                        query: [opParam('page', scalarType('int'), { optional: true })],
+                        headers: [opParam('x-tenant', scalarType('string'))],
+                        responses: [opResponse(200, 'array(User)', 'application/json')],
+                    }),
+                ]),
+            ]);
+            const out = generateSdk(root);
+            // `async m(query?: Q, customHeaders: H)` is TS1016. Widening the earlier argument is
+            // the only fix that keeps the positional order call sites depend on.
+            expect(out).toContain("async listUsers(query: { page?: number }, customHeaders: { 'x-tenant': string })");
         });
 
         it('appends qs directly to URL', () => {
@@ -501,7 +630,7 @@ describe('generateSdk', () => {
                 ]),
             ]);
             const out = generateSdk(root);
-            expect(out).toContain("customHeaders?: { 'x-api-key'?: string }");
+            expect(out).toContain("customHeaders: { 'x-api-key': string }");
         });
     });
 
@@ -1201,6 +1330,25 @@ describe('generateSdk — route-level deprecated cascade', () => {
         expect(deprecatedCount).toBe(2);
     });
 
+    it('keeps @deprecated in the same block as the description', () => {
+        const root = opRoot([
+            opRoute('/users', [
+                opOperation('get', {
+                    description: 'list the users',
+                    responses: [opResponse(200, 'User', 'application/json')],
+                    modifiers: ['deprecated'],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root);
+        // TypeScript honours only the JSDoc adjacent to the declaration, so a standalone
+        // `/** @deprecated */` above a description block is dropped by editors entirely.
+        expect(out).not.toContain('/** @deprecated */');
+        const block = out.slice(out.indexOf('    /**'), out.indexOf('async getUsers'));
+        expect(block).toContain('@description list the users');
+        expect(block).toContain('@deprecated');
+    });
+
     it('operation-level modifiers override route-level deprecated', () => {
         const root = opRoot([
             opRoute('/users', [opOperation('get', { modifiers: [], responses: [opResponse(200, 'User', 'application/json')] })], undefined, [
@@ -1260,9 +1408,15 @@ describe('renderTsType', () => {
             expect(renderTsType(scalarType('uuid'))).toBe('string');
         });
 
-        it('maps date and datetime to string', () => {
-            expect(renderTsType(scalarType('date'))).toBe('string');
-            expect(renderTsType(scalarType('datetime'))).toBe('string');
+        it('maps date and datetime to DateTime', () => {
+            expect(renderTsType(scalarType('date'))).toBe('DateTime');
+            expect(renderTsType(scalarType('datetime'))).toBe('DateTime');
+        });
+
+        it('maps duration to Duration but leaves interval a string', () => {
+            expect(renderTsType(scalarType('duration'))).toBe('Duration');
+            // `_ZodInterval` ends in a transform back to ISO, so a string is what arrives.
+            expect(renderTsType(scalarType('interval'))).toBe('string');
         });
 
         it('maps bigint to bigint', () => {
@@ -1289,8 +1443,8 @@ describe('renderTsType', () => {
             expect(renderTsType(scalarType('json'))).toBe('JsonValue');
         });
 
-        it('maps time to string', () => {
-            expect(renderTsType(scalarType('time'))).toBe('string');
+        it('maps time to DateTime', () => {
+            expect(renderTsType(scalarType('time'))).toBe('DateTime');
         });
 
         it('throws on an unmapped scalar name', () => {
@@ -1483,6 +1637,48 @@ describe('generateSdk — multipart/form-data', () => {
         expect(out).toContain('body: body');
         expect(out).not.toContain("'Content-Type': 'application/json'");
         expect(out).not.toContain('JSON.stringify');
+    });
+
+    it('does not import a model used only as a multipart body', () => {
+        const root = opRoot([
+            opRoute('/uploads', [
+                opOperation('post', {
+                    sdk: 'upload',
+                    request: opRequest('UploadForm', 'multipart/form-data'),
+                    responses: [opResponse(201, 'Upload', 'application/json')],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root, {
+            outPath: '/sdk/clients/uploads.client.ts',
+            modelOutPaths: new Map([
+                ['UploadForm', '/sdk/types/uploads.types.ts'],
+                ['Upload', '/sdk/types/uploads.types.ts'],
+            ]),
+        });
+        // The body is typed `FormData`, so UploadForm is never named in the output; importing it
+        // leaves an unused local that fails `noUnusedLocals` in the generated package.
+        expect(out).toContain('async upload(body: FormData)');
+        expect(out).not.toContain('UploadForm');
+        // Negative control: the response model is genuinely referenced and must still be imported.
+        expect(out).toContain('Upload');
+    });
+
+    it('still imports a model that is a multipart body and also a response body', () => {
+        const root = opRoot([
+            opRoute('/uploads', [
+                opOperation('post', {
+                    sdk: 'upload',
+                    request: opRequest('UploadForm', 'multipart/form-data'),
+                    responses: [opResponse(201, 'UploadForm', 'application/json')],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root, {
+            outPath: '/sdk/clients/uploads.client.ts',
+            modelOutPaths: new Map([['UploadForm', '/sdk/types/uploads.types.ts']]),
+        });
+        expect(out).toContain("import type { UploadForm } from '../types/uploads.types.js';");
     });
 });
 
@@ -1971,5 +2167,64 @@ describe('generateSdkTsconfig', () => {
         expect(cfg.compilerOptions.strict).toBe(true);
         expect(cfg.include).toEqual(['src']);
         expect(raw.endsWith('}\n')).toBe(true);
+    });
+});
+
+// ─── bigint reviver gating ────────────────────────────────────────────────
+
+describe('generateSdk — bigint reviver gating', () => {
+    const withBody = (bodyType: string) =>
+        opRoot([opRoute('/things', [opOperation('get', { sdk: 'getThing', responses: [opResponse(200, bodyType, 'application/json')] })])]);
+
+    const opts = { outPath: '/sdk/src/things.client.ts', sdkOptionsPath: '/sdk/sdk-options.ts' };
+
+    it('imports the plain parseJson when no response carries a bigint', () => {
+        // `bigIntReviver` matches /^-?\d+n$/ against every string in the document, so a contract
+        // with no bigint anywhere still had a legitimate "123n" silently turned into a BigInt.
+        const out = generateSdk(withBody('Thing'), opts);
+        expect(out).toContain("import { parseJson } from '../sdk-options.js';");
+        expect(out).not.toContain('parseJsonWithBigInt');
+    });
+
+    it('imports the bigint-aware variant under the same name when one does', () => {
+        const root = opRoot([
+            opRoute('/things', [
+                opOperation('get', {
+                    sdk: 'getThing',
+                    responses: [opResponse(200, inlineObjectType([field('seq', scalarType('bigint'))]), 'application/json')],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root, opts);
+        // Aliased, so the method bodies are identical either way and only the import differs.
+        expect(out).toContain("import { parseJsonWithBigInt as parseJson } from '../sdk-options.js';");
+        expect(out).toContain('await parseJson<');
+    });
+
+    it('emits both variants in the shared runtime, since clients pick per contract', () => {
+        const runtime = generateSdkOptions();
+        expect(runtime).toContain('export async function parseJson<T>(res: Response): Promise<T> {');
+        expect(runtime).toContain('export async function parseJsonWithBigInt<T>(res: Response): Promise<T> {');
+        expect(runtime).toContain('return JSON.parse(await res.text()) as T;');
+        expect(runtime).toContain('return JSON.parse(await res.text(), bigIntReviver) as T;');
+    });
+});
+
+// ─── Hyphenated path parameters ───────────────────────────────────────────
+
+describe('generateSdk — path parameter names that are not identifiers', () => {
+    it('binds a valid identifier and interpolates it', () => {
+        const root = opRoot([
+            opRoute(
+                '/invoices/{invoice-id}',
+                [opOperation('get', { sdk: 'getInvoice', responses: [opResponse(200, 'Invoice', 'application/json')] })],
+                [opParam('invoice-id', scalarType('uuid'))],
+            ),
+        ]);
+        const out = generateSdk(root);
+        // `async getInvoice(invoice-id: string)` did not parse, and the URL kept the literal braces.
+        expect(out).toContain('async getInvoice(invoiceId: string)');
+        expect(out).toContain('${encodeURIComponent(invoiceId)}');
+        expect(out).not.toContain('{invoice-id}');
     });
 });

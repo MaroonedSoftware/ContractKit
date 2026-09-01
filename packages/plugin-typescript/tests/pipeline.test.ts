@@ -5,6 +5,10 @@ import { generateSdk } from '../src/codegen-sdk.js';
 import { generateMcpFile } from '../src/codegen-mcp.js';
 import { SIMPLE_USER_CONTRACT, VISIBILITY_CONTRACT, INHERITANCE_CONTRACT, SIMPLE_USERS_OP, PARAMETERIZED_OP } from './helpers.js';
 
+/** The narrowed numeric coercion `renderScalar` emits — see NUMERIC_PREPROCESS in codegen-contract. */
+const NUM = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number())`;
+const NUM_INT = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int())`;
+
 function compileContractSource(source: string) {
     const diag = new DiagnosticCollector();
     const ck = parseCk(source, 'test.ck', diag);
@@ -29,7 +33,7 @@ describe('Contract pipeline (source -> parse -> codegen)', () => {
         expect(output).toContain('id: z.uuid()');
         expect(output).toContain('name: z.string()');
         expect(output).toContain('email: z.email()');
-        expect(output).toContain('age: z.coerce.number().optional()');
+        expect(output).toContain(`age: ${NUM}.optional()`);
         expect(output).toContain(`active: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).default(true)`);
     });
 
@@ -60,7 +64,8 @@ contract Payslip: {
     it('compiles a contract with visibility to three-schema pattern', () => {
         const { output, diag } = compileContractSource(VISIBILITY_CONTRACT);
         expect(diag.hasErrors()).toBe(false);
-        expect(output).toContain('const UserBase = z.strictObject({');
+        // No writeonly model extends User, so no UserBase is emitted — nothing would read it.
+        expect(output).not.toContain('const UserBase');
         expect(output).toContain('export const User = z.strictObject({');
         expect(output).toContain('export const UserInput = z.strictObject({');
 
@@ -95,11 +100,11 @@ contract Kitchen: {
         const { output, diag } = compileContractSource(source);
         expect(diag.hasErrors()).toBe(false);
         expect(output).toContain('z.array(z.string())');
-        expect(output).toContain('z.tuple([z.coerce.number(), z.coerce.number()])');
+        expect(output).toContain(`z.tuple([${NUM}, ${NUM}])`);
         expect(output).toContain('z.record(z.string(), z.unknown())');
         expect(output).toContain('z.enum(["open", "closed"])');
         expect(output).toContain('z.literal("kitchen")');
-        expect(output).toContain('z.union([z.string(), z.coerce.number()])');
+        expect(output).toContain(`z.union([z.string(), ${NUM}])`);
         expect(output).toContain('Address');
         expect(output).toContain('z.lazy(() => Kitchen)');
     });
@@ -460,5 +465,47 @@ operation /users: {
         validateRefs([], [op], diagAll);
         const warnings = diagAll.getAll().filter(d => d.severity === 'warning');
         expect(warnings).toHaveLength(0);
+    });
+});
+
+// ─── Numeric coercion, as it actually behaves at runtime ─────────────────
+
+describe('numeric scalar coercion', () => {
+    /** Build the emitted schema for one field and run real Zod against it. */
+    async function schemaFor(fieldDecl: string) {
+        const { output } = compileContractSource(`contract M: {\n    ${fieldDecl}\n}\n`);
+        const body = output.split('export const M = ')[1]!.split(');')[0]! + ')';
+        const { z } = await import('zod');
+        return new Function('z', `return ${body}`)(z) as { parse: (v: unknown) => unknown };
+    }
+
+    it('still coerces a string-shaped number, which query strings and headers depend on', async () => {
+        const M = await schemaFor('n: number');
+        expect(M.parse({ n: '42' })).toEqual({ n: 42 });
+        expect(M.parse({ n: 42 })).toEqual({ n: 42 });
+    });
+
+    it('rejects the values Number() silently turned into a number', async () => {
+        // `z.coerce.number()` is `Number(v)`: [] and '' become 0, null becomes 0, true becomes 1.
+        // Each of these validated cleanly and handed the handler a value the client never sent.
+        const M = await schemaFor('n: number');
+        for (const bad of [[], {}, null, true, '']) {
+            expect(() => M.parse({ n: bad }), `expected ${JSON.stringify(bad)} to be rejected`).toThrow();
+        }
+    });
+
+    it('keeps min and max chaining onto the outer schema', async () => {
+        const M = await schemaFor('n: int(min=1, max=5)');
+        expect(M.parse({ n: '3' })).toEqual({ n: 3 });
+        expect(() => M.parse({ n: 9 })).toThrow();
+        expect(() => M.parse({ n: 2.5 })).toThrow();
+    });
+
+    it('leaves boolean alone, which was already safe', async () => {
+        // Its preprocess maps only the two literal strings and hands everything else to
+        // z.boolean(), which rejects it — the shape the numeric scalars now share.
+        const M = await schemaFor('b: boolean');
+        expect(M.parse({ b: 'true' })).toEqual({ b: true });
+        expect(() => M.parse({ b: 1 })).toThrow();
     });
 });

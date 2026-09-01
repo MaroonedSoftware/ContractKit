@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parseDocument, type Scalar, type YAMLMap } from 'yaml';
 import { parseCk, decomposeCk, applyOptionsDefaults, DiagnosticCollector } from '@contractkit/core';
 import { generateOpenApi, toYaml, scalarToSchema } from '../src/codegen-openapi.js';
 import {
@@ -382,9 +383,29 @@ describe('generateOpenApi', () => {
                 config: {},
             });
             expect(output).toContain('get:');
-            expect(output).toContain('200:');
+            expect(output).toContain("'200':");
             expect(output).toContain("'application/json':");
             expect(output).toContain("'$ref': '#/components/schemas/User'");
+        });
+
+        it('emits every response key as a YAML string, not an integer', () => {
+            const op = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        responses: [opResponse(200, 'User', 'application/json'), opResponse(404), opResponse(500)],
+                    }),
+                ]),
+            ]);
+            const output = generateOpenApi({ contractRoots: [], opRoots: [op], config: {} });
+
+            // Parsed as a document rather than a plain object: JavaScript coerces every key to a
+            // string, which would destroy the distinction. OpenAPI 3.x requires string keys, and a
+            // bare `200:` is an integer to a YAML 1.2 parser.
+            const doc = parseDocument(output);
+            const responses = (doc.contents as YAMLMap).getIn(['paths', '/users', 'get', 'responses'], true);
+            const keys = (responses as YAMLMap).items.map(i => (i.key as Scalar).value);
+            expect(keys).toEqual(['200', '404', '500']);
+            for (const key of keys) expect(typeof key).toBe('string');
         });
 
         it('gives a status one content entry per declared mime', () => {
@@ -514,7 +535,7 @@ describe('generateOpenApi', () => {
                 opRoots: [op],
                 config: {},
             });
-            expect(output).toContain('204:');
+            expect(output).toContain("'204':");
             expect(output).toContain("description: 'No content'");
         });
 

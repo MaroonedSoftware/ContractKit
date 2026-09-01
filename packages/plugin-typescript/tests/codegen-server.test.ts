@@ -5,8 +5,12 @@ import { opRoot, opRoute, opOperation, opParam, opRequest, opResponse, scalarTyp
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function makeCtx(rootDir = '/project', options: Record<string, unknown> = {}): PluginContext & { emitted: Map<string, string> } {
+function makeCtx(
+    rootDir = '/project',
+    options: Record<string, unknown> = {},
+): PluginContext & { emitted: Map<string, string>; warnings: string[] } {
     const emitted = new Map<string, string>();
+    const warnings: string[] = [];
     return {
         rootDir,
         options,
@@ -15,7 +19,11 @@ function makeCtx(rootDir = '/project', options: Record<string, unknown> = {}): P
         emitFile: (outPath: string, content: string) => {
             emitted.set(outPath, content);
         },
+        warn: (message: string) => {
+            warnings.push(message);
+        },
         emitted,
+        warnings,
     };
 }
 
@@ -493,5 +501,39 @@ describe('createTypescriptPlugin (sdk) — scaffold', () => {
         expect(pkg.dependencies?.luxon).toBeUndefined();
         // zod also absent (zod not enabled) → no dependencies block at all.
         expect(pkg.dependencies).toBeUndefined();
+    });
+});
+
+// ─── Output path template variables ───────────────────────────────────────
+
+describe('unresolved output path template variables', () => {
+    it('warns and names the key when a template variable has no value', async () => {
+        const plugin = createTypescriptPlugin({ server: { output: { routes: '{area}/{filename}.router.ts' } } }, '/project');
+        const ctx = makeCtx('/project');
+        // The .ck file declares no `options { keys { area } }`, so `{area}` has no value.
+        await plugin.generateTargets!(inputs(), ctx);
+
+        expect(ctx.warnings).toHaveLength(1);
+        expect(ctx.warnings[0]).toContain('{area}');
+        expect(ctx.warnings[0]).toContain('users.router.ts');
+        expect(ctx.warnings[0]).toContain('options { keys { area');
+    });
+
+    it('still emits the file, since visibility is the point and not refusal', async () => {
+        // Throwing would be worse than a literal directory: cli.ts catches and continues to the
+        // next plugin, so one bad template would cost this plugin its entire output.
+        const plugin = createTypescriptPlugin({ server: { output: { routes: '{area}/{filename}.router.ts' } } }, '/project');
+        const ctx = makeCtx('/project');
+        await plugin.generateTargets!(inputs(), ctx);
+
+        expect([...ctx.emitted.keys()].some(p => p.includes('{area}'))).toBe(true);
+    });
+
+    it('stays quiet when every variable resolves', async () => {
+        const plugin = createTypescriptPlugin({ server: { output: { routes: '{filename}.router.ts' } } }, '/project');
+        const ctx = makeCtx('/project');
+        await plugin.generateTargets!(inputs(), ctx);
+
+        expect(ctx.warnings).toEqual([]);
     });
 });

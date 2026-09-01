@@ -9,15 +9,16 @@ import type {
     ParamSource,
     ObjectMode,
 } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType, emittedResponses } from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType, emittedResponses, PATH_PARAM_RE_G, toIdentifier } from '@contractkit/core';
 import {
     renderType,
     renderInputType,
     renderQueryType,
+    applyFieldModifiers,
     pascalToDotCase,
     modeToWrapper,
 } from './codegen-contract.js';
-import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted } from './ts-render.js';
+import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'path';
 
@@ -174,8 +175,7 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
     lines.push('');
     lines.push('/**');
-    const relFile = options.outPath ? relative(dirname(options.outPath), root.file) : root.file;
-    lines.push(` * generated from [${basename(root.file)}](file://./${relFile})`);
+    lines.push(` * generated from ${sourceLink(basename(root.file), options.outPath, root.file)}`);
     lines.push('*/');
     lines.push(`export const ${routerName} = ServerKitRouter();`);
     lines.push('');
@@ -294,8 +294,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
         for (const l of escapeJsDocLines(desc)) lines.push(` * ${l}`);
     }
     // Source location comment
-    const relFile = outPath ? relative(dirname(outPath), file) : file;
-    lines.push(` * from [${basename(file)}](file://./${relFile}#L${op.loc.line})`);
+    lines.push(` * from ${sourceLink(basename(file), outPath, file, op.loc.line)}`);
 
     // Security annotation (operation-level wins; falls back to route → file level)
     const effectiveSecurity = resolveSecurity(route, op, root);
@@ -311,7 +310,10 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     lines.push('*/');
 
     const method = op.method;
-    const path = route.path.replace(/\{(\w+)\}/g, ':$1');
+    // `:name` from `{name}`, mapped to a valid identifier. Unlike a query parameter or a header,
+    // a path placeholder's name never reaches the wire — Koa matches by position — so renaming it
+    // is free, and it is what lets `ctx.params` be destructured at all.
+    const path = route.path.replace(PATH_PARAM_RE_G, (_m, name: string) => `:${toIdentifier(name)}`);
     const bodies = op.request?.bodies ?? [];
     const hasBody = bodies.length > 0;
     const isSingleMultipart = bodies.length === 1 && bodies[0]!.contentType === 'multipart/form-data';
@@ -449,9 +451,12 @@ function generateSingleStatusResult(
     }
 
     lines.push('');
-    // With nothing emitted, the status is still declared somewhere — fall back to the first
-    // one written, which is what a documentation-only 3xx/4xx operation means.
-    lines.push(`    ctx.status = ${resp?.statusCode ?? op.responses[0]?.statusCode ?? 200};`);
+    // 204 when the operation emits nothing. Falling back to the first *declared* status wrote an
+    // error code on the success path, since a documentation-only block starts at a 4xx. 204 is
+    // also what aligns the three generators: `observableResponses` excludes a bare `400:` too, so
+    // the SDK already types such a method `Promise<void>` and `thrownResponses` puts the 400 in
+    // `@throws`. A bodyless 204 success is exactly what `Promise<void>` means.
+    lines.push(`    ctx.status = ${resp?.statusCode ?? 204};`);
     lines.push(...headerSetLines(respHeaders, '    '));
 
     if (bodies.length === 1) {
@@ -627,7 +632,7 @@ export function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
     // Path params: spread individually (inline) or pass 'params' object (type-ref/ContractTypeNode)
     if (route.params) {
         if (route.params.kind === 'params') {
-            args.push(...route.params.nodes.map(p => p.name));
+            args.push(...route.params.nodes.map(p => toIdentifier(p.name)));
         } else {
             args.push('params');
         }
@@ -803,18 +808,26 @@ function generateParamValidation(
         if (source.nodes.length > 0) {
             // Destructure only for params (spread individually in service call);
             // query/headers are passed as whole objects.
-            const lhs = varName === 'params' ? `{ ${source.nodes.map(p => p.name).join(', ')} }` : varName;
+            // Path params are destructured and spread into the service call; query and headers pass
+            // as whole objects.
+            const isPathParams = ctxExpr === 'ctx.params';
+            const bind = (name: string) => (isPathParams ? toIdentifier(name) : name);
+            const lhs = varName === 'params' ? `{ ${source.nodes.map(p => bind(p.name)).join(', ')} }` : varName;
             lines.push(`    const ${lhs} = await parseAndValidate(`);
             lines.push(`        ${ctxExpr},`);
             lines.push(`        ${modeToWrapper(mode)}({`);
             for (const param of source.nodes) {
-                const key = isValidIdentifier(param.name) ? param.name : `'${param.name}'`;
-                if (isQuery && param.type.kind === 'array') {
-                    const inner = renderType(param.type);
-                    lines.push(`            ${key}: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, ${inner}),`);
-                } else {
-                    lines.push(`            ${key}: ${renderType(param.type)},`);
-                }
+                // For path params the key must match the name in the route pattern above, which
+                // is what `ctx.params` is keyed by. For query and headers it is the wire name,
+                // quoted when that is not an identifier — those the client actually sends.
+                const bound = bind(param.name);
+                const key = isValidIdentifier(bound) ? bound : `'${bound}'`;
+                // Delegating to renderQueryType rather than hand-rolling the array preprocess here:
+                // it is the same rule, and a second copy is a second thing to keep in sync. The
+                // modifier chain then comes from the shared helper, so an inline param means the
+                // same thing to the router as a model field does.
+                const base = isQuery ? renderQueryType(param.type, modelsWithInput) : renderInputType(param.type, modelsWithInput);
+                lines.push(`            ${key}: ${applyFieldModifiers(base, param)},`);
             }
             lines.push(`        })${suffix},`);
             lines.push(`    );`);

@@ -8,13 +8,23 @@ import type {
     OpResponseHeaderNode,
     ContractTypeNode,
     ModelNode,
+    OpParamNode,
     ParamSource,
+    ScalarTypeNode,
 } from '@contractkit/core';
-import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses } from '@contractkit/core';
-import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses, PATH_PARAM_RE_G, toIdentifier } from '@contractkit/core';
+import {
+    renderInputTsType,
+    renderOutputTsType,
+    quoteKey,
+    headerNameToProperty,
+    escapeJsDocLines,
+    sourceLink,
+    JSON_VALUE_TYPE_DECL,
+} from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
-import { reviveFnName, renderInlineReviver, typeReachesDecimal, DECIMAL_COERCE_DECL } from './codegen-revive.js';
+import { reviveFnName, renderInlineReviver, typeReachesDecimal, coerceDeclsFor, coerceLuxonImports } from './codegen-revive.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'path';
 
@@ -86,6 +96,8 @@ export interface SdkCodegenOptions {
     modelsWithOutput?: Set<string>;
     /** Model names carrying a `decimal`, whose response bodies need rehydrating client-side. */
     modelsWithDecimal?: Set<string>;
+    /** Model names carrying a `bigint`, directly or transitively. Selects the JSON reviver. */
+    modelsWithBigInt?: Set<string>;
     /** Every model in scope, for resolving discriminated-union members inside an inline reviver. */
     modelMap?: Map<string, ModelNode>;
     /**
@@ -139,19 +151,31 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
             const mods = resolveModifiers(route, op);
             if (!includeInternal && mods.includes('internal')) continue;
             classBody.push('');
-            if (mods.includes('deprecated')) classBody.push('    /** @deprecated */');
             classBody.push(...generateMethod(route, op, root.file, options, inlineRevivers));
         }
     }
 
     const inlineReviverDecls = [...inlineRevivers.values()].flat();
     const decimalPrelude = decimalPreludeFor(inlineReviverDecls);
+    // Computed here rather than at its splice point below, so the import filter can see the
+    // aliases: an error-body alias is a genuine reference to a model type.
+    const errorAliases = generateErrorBodyAliases(root, options);
 
     // Type-only imports, plus the model revivers the methods actually call.
-    if (types.length > 0) {
-        lines.push(...generateTypeImports(types, root.file, options, usedRevivers(classBody)));
+    //
+    // `collectTypes` walks the AST and so reports every model a request body names, including one
+    // carried by a `multipart/form-data` body — which `buildMethodParams` types as `FormData`, so
+    // the model is never mentioned in the emitted code and its import is unused. Rather than
+    // special-casing multipart in `collectTypes`, which validating multipart bodies would later
+    // have to undo, keep only the types the emitted text actually names. This is the same
+    // text-derived idiom the reviver imports already use just below.
+    const referenced = referencedTypes(types, [...classBody, ...errorAliases, ...inlineReviverDecls]);
+    if (referenced.length > 0) {
+        lines.push(...generateTypeImports(referenced, root.file, options, usedRevivers(classBody)));
     }
     lines.push(...decimalPrelude.imports);
+    const headerLuxon = headerLuxonImport(classBody, decimalPrelude.imports);
+    if (headerLuxon) lines.push(headerLuxon);
 
     // SdkOptions import (from shared file) or inline fallback
     if (options.sdkOptionsPath && options.outPath) {
@@ -162,7 +186,11 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push(`import type { SdkFetch${jsonImport} } from '${rel}';`);
         const valueImports: string[] = [];
         if (sdkNeedsBigIntReplacer(root, includeInternal)) valueImports.push('bigIntReplacer');
-        if (sdkNeedsBigIntReviver(root, includeInternal)) valueImports.push('parseJson');
+        // Aliased rather than emitted at each call site: the method bodies are identical either
+        // way, and the import line is where the choice is legible.
+        if (sdkParsesJsonResponse(root, includeInternal)) {
+            valueImports.push(sdkResponsesUseBigInt(root, options, includeInternal) ? 'parseJsonWithBigInt as parseJson' : 'parseJson');
+        }
         if (sdkNeedsQueryString(root, includeInternal)) valueImports.push('buildQueryString');
         if (sdkNeedsReadContentType(root, includeInternal)) valueImports.push('readContentType');
         if (valueImports.length > 0) {
@@ -239,7 +267,11 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('}');
         lines.push('');
         lines.push('export async function parseJson<T>(res: Response): Promise<T> {');
-        lines.push('    return JSON.parse(await res.text(), bigIntReviver) as T;');
+        lines.push(
+            sdkResponsesUseBigInt(root, options, includeInternal)
+                ? '    return JSON.parse(await res.text(), bigIntReviver) as T;'
+                : '    return JSON.parse(await res.text()) as T;',
+        );
         lines.push('}');
     }
 
@@ -249,7 +281,6 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
 
     lines.push('');
 
-    const errorAliases = generateErrorBodyAliases(root, options);
     if (errorAliases.length > 0) {
         lines.push(...errorAliases);
         lines.push('');
@@ -268,8 +299,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
 
     // Client class
     lines.push('/**');
-    const relFile = options.outPath ? relative(dirname(options.outPath), root.file) : root.file;
-    lines.push(` * generated from [${basename(root.file)}](file://./${relFile})`);
+    lines.push(` * generated from ${sourceLink(basename(root.file), options.outPath, root.file)}`);
     lines.push(' */');
     lines.push(`export class ${clientClassName} {`);
     lines.push('    constructor(private fetch: SdkFetch) {}');
@@ -307,7 +337,6 @@ export function generateClientMethods(
             const mods = resolveModifiers(route, op);
             if (!includeInternal && mods.includes('internal')) continue;
             lines.push('');
-            if (mods.includes('deprecated')) lines.push('    /** @deprecated */');
             lines.push(...generateMethod(route, op, root.file, options, inlineRevivers));
             methodNames.push(deriveMethodName(op, route));
         }
@@ -328,11 +357,51 @@ export function generateClientMethods(
  * config, since nothing else in the file necessarily pulls them in.
  */
 function decimalPreludeFor(declLines: string[]): { imports: string[]; decls: string[] } {
-    if (!declLines.some(l => l.includes('__dec('))) return { imports: [], decls: [] };
-    return { imports: [DECIMAL_IMPORT], decls: [DECIMAL_CONFIG_LINE, '', ...DECIMAL_COERCE_DECL] };
+    const decls = coerceDeclsFor(declLines);
+    if (decls.length === 0) return { imports: [], decls: [] };
+
+    const imports: string[] = [];
+    const preamble: string[] = [];
+    if (declLines.some(l => l.includes('__dec('))) {
+        imports.push(DECIMAL_IMPORT);
+        // The global config keeps decimals out of exponential notation; only decimal.js needs it.
+        preamble.push(DECIMAL_CONFIG_LINE, '');
+    }
+    const luxon = coerceLuxonImports(declLines);
+    if (luxon.length > 0) imports.push(`import { ${luxon.join(', ')} } from 'luxon';`);
+
+    return { imports, decls: [...preamble, ...decls] };
+}
+
+/**
+ * The `luxon` import a client needs for its response-header coercions, or undefined.
+ *
+ * Header conversions call `DateTime.fromISO` and friends directly rather than through a reviver,
+ * so they are invisible to `decimalPreludeFor`. Decided from the emitted method bodies, like every
+ * other import in these files, and skipped when the reviver prelude already brought luxon in.
+ */
+function headerLuxonImport(methodLines: string[], existingImports: string[]): string | undefined {
+    if (existingImports.some(l => l.includes("from 'luxon'"))) return undefined;
+    const needed = ['DateTime', 'Duration'].filter(c => methodLines.some(l => l.includes(`${c}.from`)));
+    return needed.length > 0 ? `import { ${needed.join(', ')} } from 'luxon';` : undefined;
 }
 
 /** Model reviver names referenced by generated method bodies. `__revive…` wrappers are local. */
+/**
+ * Narrow a collected type list to the names the emitted code actually mentions.
+ *
+ * Boundaries are spelled out rather than using `\b`, so a model name containing `-`, `.` or `$`
+ * is matched correctly. A name appearing only inside a doc string counts as a reference and the
+ * import is kept: an unnecessary import is untidy, a missing one does not compile.
+ */
+function referencedTypes(types: string[], emitted: string[]): string[] {
+    const haystack = emitted.join('\n');
+    return types.filter(t => {
+        const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(?<![A-Za-z0-9_$])${escaped}(?![A-Za-z0-9_$])`).test(haystack);
+    });
+}
+
 function usedRevivers(lines: string[]): string[] {
     const found = new Set<string>();
     for (const m of lines.join('\n').matchAll(/\brevive[A-Z]\w*/g)) found.add(m[0]);
@@ -360,6 +429,8 @@ function generateMethod(
             : undefined;
     const lines: string[] = [];
     const methodName = deriveMethodName(op, route);
+    /** Identifies the operation in a codegen rejection, which the CLI scopes to this plugin. */
+    const where = `${op.method.toUpperCase()} ${route.path}`;
     const mRevive = hint(revive, `${methodName.charAt(0).toUpperCase()}${methodName.slice(1)}`);
     const httpMethod = op.method.toUpperCase();
     const { modelsWithInput, modelsWithOutput } = options;
@@ -408,11 +479,16 @@ function generateMethod(
     // JSDoc
     const desc = op.description ?? route.description;
     const errorBodyName = thrown.some(r => r.bodies.length > 0) ? errorBodyTypeName(route, op) : undefined;
-    if (op.name || desc || errorBodyName) {
+    // `@deprecated` belongs in this block rather than in one of its own: TypeScript honours only
+    // the JSDoc comment adjacent to the declaration, so a separate `/** @deprecated */` above a
+    // description block is dropped by editors entirely. Tag order mirrors the router's.
+    const deprecated = resolveModifiers(route, op).includes('deprecated');
+    if (op.name || desc || errorBodyName || deprecated) {
         const tags: string[] = [];
         if (op.name) tags.push(`@name ${op.name}`);
         if (desc) tags.push(`@description ${desc}`);
         if (errorBodyName) tags.push(`@throws {SdkError<${errorBodyName}>} on ${thrown.map(r => r.statusCode).join(', ')}`);
+        if (deprecated) tags.push('@deprecated');
         const contentLines = tags.flatMap(t => escapeJsDocLines(t));
         if (contentLines.length === 1) {
             lines.push(`    /** ${contentLines[0]} */`);
@@ -530,15 +606,15 @@ function generateMethod(
         lines.push(`        switch (result.status) {`);
         for (const resp of rest) {
             lines.push(`            case ${resp.statusCode}:`);
-            lines.push(...sdkReturnLines(resp, modelsWithOutput, '                ', true, mRevive));
+            lines.push(...sdkReturnLines(resp, modelsWithOutput, '                ', true, mRevive, where));
         }
         lines.push(`            default:`);
-        lines.push(...sdkReturnLines(fallback!, modelsWithOutput, '                ', true, mRevive));
+        lines.push(...sdkReturnLines(fallback!, modelsWithOutput, '                ', true, mRevive, where));
         lines.push(`        }`);
     } else if (primaryBodies.length > 1) {
-        lines.push(...sdkReturnLines(primaryResponse!, modelsWithOutput, '        ', false, mRevive));
+        lines.push(...sdkReturnLines(primaryResponse!, modelsWithOutput, '        ', false, mRevive, where));
     } else if (hasRespHeaders) {
-        const headerEntries = sdkHeaderEntries(respHeaders);
+        const headerEntries = sdkHeaderEntries(respHeaders, where);
         if (isVoid) {
             lines.push(`        return { headers: { ${headerEntries} } };`);
         } else {
@@ -599,6 +675,8 @@ function hint(revive: ReviveContext | undefined, segment: string | number): Revi
 /** What `sdkReadExpr` needs to decide whether a body has to be revived, and with which function. */
 interface ReviveContext {
     modelsWithDecimal: Set<string>;
+    /** Which scalars need rehydrating; see `ReviveCodegenOptions.revivableScalars`. */
+    revivableScalars?: ReadonlySet<ScalarTypeNode['name']>;
     modelsWithOutput?: Set<string>;
     /** Inline reviver declarations accumulated for the current file, keyed by function name. */
     inlineRevivers: Map<string, string[]>;
@@ -607,10 +685,15 @@ interface ReviveContext {
     nameHint: string;
 }
 
-/** The reviver to apply to a response body, or `null` when the body holds no decimal. */
+/** The reviver to apply to a response body, or `null` when the body holds nothing to rehydrate. */
 function reviveExprFor(bodyType: ContractTypeNode, ctx: ReviveContext | undefined): { name: string; kind: 'value' | 'array' } | null {
     if (!ctx || ctx.modelsWithDecimal.size === 0) return null;
-    const opts = { modelsWithDecimal: ctx.modelsWithDecimal, modelsWithOutput: ctx.modelsWithOutput, modelMap: ctx.modelMap };
+    const opts = {
+        modelsWithDecimal: ctx.modelsWithDecimal,
+        revivableScalars: ctx.revivableScalars,
+        modelsWithOutput: ctx.modelsWithOutput,
+        modelMap: ctx.modelMap,
+    };
     if (!typeReachesDecimal(bodyType, opts)) return null;
 
     const refName = (t: ContractTypeNode): string | null => (t.kind === 'ref' ? t.name : t.kind === 'lazy' ? refName(t.inner) : null);
@@ -642,8 +725,79 @@ function renderSdkHeadersShape(headers: OpResponseHeaderNode[], modelsWithOutput
     return `{ ${fields.join('; ')} }`;
 }
 
-function sdkHeaderEntries(headers: OpResponseHeaderNode[]): string {
-    return headers.map(h => `${quoteKey(headerNameToProperty(h.name))}: result.headers.get('${h.name}') ?? undefined`).join(', ');
+/**
+ * The value expression for one response header, matching the type `renderSdkHeadersShape` gives it.
+ *
+ * Header values always arrive as strings, but the shape is typed from the contract — so a header
+ * declared `int` was typed `number` and assigned `string | undefined`, and a required one was
+ * typed `T` and assigned `T | undefined`. Both are `TS2322`, in opposite directions.
+ *
+ * `null` is what `Headers.get` returns for an absent header. A required header is asserted rather
+ * than defaulted, because the contract says the service always sends it; an optional one maps the
+ * absence onto `undefined`, which is what its `?` in the shape means.
+ *
+ * Anything that is not one of the scalars below cannot be read from a header at all, and is
+ * rejected here rather than emitted as code that does not compile. The list is shared with the
+ * Python SDK, except that temporals need coercion there — `renderPyType` maps them to `datetime`
+ * objects, while `renderOutputTsType` maps them to `string`.
+ */
+function sdkHeaderEntry(h: OpResponseHeaderNode, where: string): string {
+    const raw = `result.headers.get('${h.name}')`;
+    const key = quoteKey(headerNameToProperty(h.name));
+    const scalar = h.type.kind === 'scalar' ? h.type.name : undefined;
+
+    /**
+     * Wrap a conversion so an optional header maps an absent value onto `undefined`.
+     *
+     * The value is asserted non-null in both branches. TypeScript does not carry a narrowing from
+     * `get(x) === null` across a *second* `get(x)` call, and the conversions below take a `string`
+     * — so without the assertion the optional form is a TS2345 even though the ternary has
+     * already excluded null.
+     */
+    const convert = (expr: (v: string) => string) =>
+        `${key}: ${h.optional ? `${raw} === null ? undefined : ${expr(`${raw}!`)}` : expr(`${raw}!`)}`;
+
+    switch (scalar) {
+        case 'string':
+        case 'email':
+        case 'url':
+        case 'uuid':
+        case 'interval':
+        case 'unknown':
+            return `${key}: ${raw}${h.optional ? ' ?? undefined' : '!'}`;
+        // Temporals are Luxon objects since the SDK started reviving them, so the shape
+        // `renderOutputTsType` produces says `DateTime` and the raw string no longer satisfies it.
+        // The format for date and time comes from the contract, as it does in the reviver.
+        case 'datetime':
+            return convert(v => `DateTime.fromISO(${v})`);
+        case 'duration':
+            return convert(v => `Duration.fromISO(${v})`);
+        case 'date':
+            return convert(v => `DateTime.fromFormat(${v}, '${(h.type.kind === 'scalar' && h.type.format) || 'yyyy-MM-dd'}')`);
+        case 'time':
+            return convert(v => `DateTime.fromFormat(${v}, '${(h.type.kind === 'scalar' && h.type.format) || 'HH:mm:ss'}')`);
+        case 'number':
+        case 'int':
+            return `${key}: ${h.optional ? `${raw} === null ? undefined : Number(${raw})` : `Number(${raw})`}`;
+        case 'boolean':
+            return `${key}: ${h.optional ? `${raw} === null ? undefined : ${raw} === 'true'` : `${raw} === 'true'`}`;
+        case 'bigint':
+            return convert(v => `BigInt(${v})`);
+        default:
+            throw new Error(
+                `Response header '${h.name}' on ${where} is declared as ${describeHeaderType(h.type)}, which cannot be read from an HTTP header. ` +
+                    `Header values arrive as strings — declare it as string, email, url, uuid, a date/time type, int, number, boolean or bigint.`,
+            );
+    }
+}
+
+/** A short, contract-facing description of a header type, for the rejection message above. */
+function describeHeaderType(type: ContractTypeNode): string {
+    return type.kind === 'scalar' ? `the '${type.name}' scalar` : type.kind === 'ref' ? `the model '${type.name}'` : `${type.kind === 'array' ? 'an' : 'a'} ${type.kind}`;
+}
+
+function sdkHeaderEntries(headers: OpResponseHeaderNode[], where: string): string {
+    return headers.map(h => sdkHeaderEntry(h, where)).join(', ');
 }
 
 /**
@@ -677,12 +831,13 @@ function sdkReturnLines(
     modelsWithOutput: Set<string> | undefined,
     indent: string,
     includeStatus: boolean,
-    revive?: ReviveContext,
+    revive: ReviveContext | undefined,
+    where: string,
 ): string[] {
     const bodies = resp.bodies;
     const headers = resp.headers ?? [];
     const leading = includeStatus ? [`status: ${resp.statusCode}`] : [];
-    const trailing = headers.length > 0 ? [`headers: { ${sdkHeaderEntries(headers)} }`] : [];
+    const trailing = headers.length > 0 ? [`headers: { ${sdkHeaderEntries(headers, where)} }`] : [];
 
     if (bodies.length === 0) {
         return [`${indent}return { ${[...leading, ...trailing].join(', ')} };`];
@@ -769,10 +924,26 @@ export function generateErrorBodyAliases(root: OpRootNode, options: SdkCodegenOp
 
 // ─── URL building ─────────────────────────────────────────────────────────
 
-function buildUrlExpression(path: string, _?: ParamSource): string {
-    // Replace {paramName} with ${encodeURIComponent(paramName)}
-    return path.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (_match, name) => {
-        return `\${encodeURIComponent(${name})}`;
+/**
+ * Render a route path as the template-literal body that produces the request URL.
+ *
+ * `params` says where each value lives. `buildMethodParams` spreads a `params { … }` block across
+ * the signature, so those interpolate by bare name; but for `params: SomeModel` it emits a single
+ * argument called `params`, and interpolating the bare name then refers to nothing that exists.
+ *
+ * The placeholder pattern matches what the `.ck` grammar allows rather than just
+ * `[a-zA-Z_]\w*`, so a hyphenated `{payment-id}` is interpolated instead of being left in the URL
+ * verbatim. Such a name is not a valid property accessor either, hence the bracket form.
+ */
+function buildUrlExpression(path: string, params?: ParamSource): string {
+    return path.replace(PATH_PARAM_RE_G, (_m, name: string) => {
+        // Spread across the signature: interpolate the identifier `buildMethodParams` bound.
+        if (!params || params.kind === 'params') return `\${encodeURIComponent(${toIdentifier(name)})}`;
+        // Behind one `params` argument: read the model's field, which keeps its declared spelling
+        // and so may need bracket access. `String(...)` because that field may be typed something
+        // `encodeURIComponent` does not accept.
+        const access = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? `params.${name}` : `params[${JSON.stringify(name)}]`;
+        return `\${encodeURIComponent(String(${access}))}`;
     });
 }
 
@@ -791,7 +962,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     if (route.params) {
         if (route.params.kind === 'params') {
             for (const p of route.params.nodes) {
-                params.push({ name: p.name, type: renderInputTsType(p.type, modelsWithInput), optional: false });
+                params.push({ name: toIdentifier(p.name), type: renderInputTsType(p.type, modelsWithInput), optional: false });
             }
         } else if (route.params.kind === 'ref') {
             const typeName = modelsWithInput?.has(route.params.name) ? `${route.params.name}Input` : route.params.name;
@@ -835,33 +1006,55 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
         params.push({ name: 'options', type: `{ contentType: ${ctUnion} }`, optional: false });
     }
 
-    // Query (request-side — use Input variants)
-    if (op.query) {
-        if (op.query.kind === 'params') {
-            const fields = op.query.nodes.map(p => `${quoteKey(p.name)}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
-            params.push({ name: 'query', type: `{ ${fields} }`, optional: true });
-        } else if (op.query.kind === 'ref') {
-            const typeName = modelsWithInput?.has(op.query.name) ? `${op.query.name}Input` : op.query.name;
-            params.push({ name: 'query', type: typeName, optional: true });
-        } else {
-            params.push({ name: 'query', type: renderInputTsType(op.query.node, modelsWithInput), optional: true });
-        }
-    }
+    // Query and custom headers (request-side — use Input variants)
+    if (op.query) params.push(inlineArgParam('query', op.query, modelsWithInput));
+    if (op.headers) params.push(inlineArgParam('customHeaders', op.headers, modelsWithInput));
 
-    // Headers (request-side — use Input variants)
-    if (op.headers) {
-        if (op.headers.kind === 'params') {
-            const fields = op.headers.nodes.map(p => `${quoteKey(p.name)}?: ${renderInputTsType(p.type, modelsWithInput)}`).join('; ');
-            params.push({ name: 'customHeaders', type: `{ ${fields} }`, optional: true });
-        } else if (op.headers.kind === 'ref') {
-            const typeName = modelsWithInput?.has(op.headers.name) ? `${op.headers.name}Input` : op.headers.name;
-            params.push({ name: 'customHeaders', type: typeName, optional: true });
-        } else {
-            params.push({ name: 'customHeaders', type: renderInputTsType(op.headers.node, modelsWithInput), optional: true });
-        }
-    }
+    return normaliseOptionalOrder(params);
+}
 
-    return params;
+/**
+ * One whole-object argument built from a `query:` or `headers:` source.
+ *
+ * A field is optional only when the contract says so — with `?`, or by carrying a default, which
+ * the caller may equally omit. The argument itself is optional only when every field is, since a
+ * caller cannot omit an object that must supply something. Both were previously hardcoded
+ * optional, which was wrong in both directions at once: it let a caller omit a value the router
+ * demanded, and typed a required field as one you could leave out.
+ *
+ * A `ref` or a whole type node stays optional. Deciding needs the model's own fields, which
+ * `buildMethodParams` has no access to.
+ */
+function inlineArgParam(name: string, source: ParamSource, modelsWithInput?: Set<string>): MethodParam {
+    if (source.kind === 'params') {
+        const isOptional = (p: OpParamNode) => Boolean(p.optional) || p.default !== undefined;
+        const fields = source.nodes
+            .map(p => `${quoteKey(p.name)}${isOptional(p) ? '?' : ''}: ${renderInputTsType(p.type, modelsWithInput)}`)
+            .join('; ');
+        return { name, type: `{ ${fields} }`, optional: source.nodes.every(isOptional) };
+    }
+    if (source.kind === 'ref') {
+        const typeName = modelsWithInput?.has(source.name) ? `${source.name}Input` : source.name;
+        return { name, type: typeName, optional: true };
+    }
+    return { name, type: renderInputTsType(source.node, modelsWithInput), optional: true };
+}
+
+/**
+ * Clear `optional` on every parameter before the last required one.
+ *
+ * Parameter order is path, then body, then query, then customHeaders. An optional parameter
+ * cannot precede a required one in TypeScript (`TS1016`), so an operation with an all-optional
+ * `query:` and an all-required `headers:` would emit `async m(query?: Q, customHeaders: H)` and
+ * fail to compile. Widening the earlier argument to required is the only option that keeps the
+ * positional order the call sites depend on.
+ *
+ * This could not arise while every query and header argument was hardcoded optional; it becomes
+ * reachable the moment optionality is read from the contract.
+ */
+function normaliseOptionalOrder(params: MethodParam[]): MethodParam[] {
+    const lastRequired = params.reduce((last, p, i) => (p.optional ? last : i), -1);
+    return params.map((p, i) => (i < lastRequired ? { ...p, optional: false } : p));
 }
 
 // ─── Method name inference ────────────────────────────────────────────────
@@ -1118,14 +1311,63 @@ function sdkNeedsBigIntReplacer(root: OpRootNode, includeInternal = false): bool
     return false;
 }
 
-/** True if any public operation parses a JSON response body (uses bigIntReviver). */
-function sdkNeedsBigIntReviver(root: OpRootNode, includeInternal = false): boolean {
+/** True if any public operation parses a JSON response body, and so calls `parseJson`. */
+function sdkParsesJsonResponse(root: OpRootNode, includeInternal = false): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             // Only JSON-shaped responses use parseJson — text/binary read raw.
             if (op.responses.some(r => r.bodies.some(b => classifyContentType(b.contentType) === 'json'))) {
                 return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * True if a public operation's JSON *response* carries a `bigint`, so the client needs the
+ * `123n` reviver when parsing one.
+ *
+ * Response bodies only: the request side is handled by `bigIntReplacer` on the way out. This is
+ * the test the reviver always needed and never made — it was applied to every client that read
+ * any JSON at all, so a contract with no bigint anywhere still had a legitimate string like
+ * "123n" silently converted.
+ */
+function sdkResponsesUseBigInt(root: OpRootNode, options: SdkCodegenOptions, includeInternal = false): boolean {
+    const tainted = options.modelsWithBigInt;
+    const reachesBigInt = (type: ContractTypeNode): boolean => {
+        // `typeNeedsScalar` stops at a `ref` leaf, so the transitive answer has to come from the
+        // precomputed set — a bigint two models down still arrives on the wire as `123n`.
+        switch (type.kind) {
+            case 'ref':
+                return tainted?.has(type.name) ?? false;
+            case 'array':
+                return reachesBigInt(type.item);
+            case 'lazy':
+                return reachesBigInt(type.inner);
+            case 'tuple':
+                return type.items.some(reachesBigInt);
+            case 'record':
+                return reachesBigInt(type.value);
+            case 'union':
+            case 'discriminatedUnion':
+            case 'intersection':
+                return type.members.some(reachesBigInt);
+            case 'inlineObject':
+                return type.fields.some(f => reachesBigInt(f.type));
+            default:
+                return typeNeedsScalar(type, 'bigint');
+        }
+    };
+
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
+            for (const resp of op.responses) {
+                for (const body of resp.bodies) {
+                    if (classifyContentType(body.contentType) === 'json' && reachesBigInt(body.bodyType)) return true;
+                }
             }
         }
     }
@@ -1345,7 +1587,20 @@ export function generateSdkOptions(): string {
         "    return qs ? `?${qs}` : '';",
         '}',
         '',
+        '/**',
+        ' * Read a JSON response body.',
+        ' *',
+        ' * No reviver: `bigIntReviver` matches any string of the form `123n` anywhere in the',
+        ' * document, so a contract with no bigint field would still have a legitimate string like',
+        ' * "123n" silently turned into a BigInt. Clients whose contracts do use bigint import',
+        ' * `parseJsonWithBigInt` under this name instead.',
+        ' */',
         'export async function parseJson<T>(res: Response): Promise<T> {',
+        '    return JSON.parse(await res.text()) as T;',
+        '}',
+        '',
+        '/** `parseJson` for contracts that declare a bigint, applying the `123n` reviver. */',
+        'export async function parseJsonWithBigInt<T>(res: Response): Promise<T> {',
         '    return JSON.parse(await res.text(), bigIntReviver) as T;',
         '}',
         '',
@@ -1524,6 +1779,7 @@ export function generateAreaClient(input: AreaClientInput): string {
     const unresolvedTypes = new Set<string>();
     let needsJson = false;
     let needsBigIntReplacer = false;
+    let needsParseJson = false;
     let needsBigIntReviver = false;
     let needsQueryString = false;
     let needsReadContentType = false;
@@ -1545,7 +1801,8 @@ export function generateAreaClient(input: AreaClientInput): string {
         for (const alias of generateErrorBodyAliases(inline.root, inline.codegenOptions)) collectedErrorAliases.add(alias);
         if (sdkNeedsJson(inline.root, includeInternal)) needsJson = true;
         if (sdkNeedsBigIntReplacer(inline.root, includeInternal)) needsBigIntReplacer = true;
-        if (sdkNeedsBigIntReviver(inline.root, includeInternal)) needsBigIntReviver = true;
+        if (sdkParsesJsonResponse(inline.root, includeInternal)) needsParseJson = true;
+        if (sdkResponsesUseBigInt(inline.root, inline.codegenOptions, includeInternal)) needsBigIntReviver = true;
         if (sdkNeedsQueryString(inline.root, includeInternal)) needsQueryString = true;
         if (sdkNeedsReadContentType(inline.root, includeInternal)) needsReadContentType = true;
 
@@ -1565,11 +1822,11 @@ export function generateAreaClient(input: AreaClientInput): string {
         // Resolve each file's type refs against THIS file's modelOutPaths, but
         // produce import paths relative to the area client's outPath (not the
         // contributing file's outPath, which pointed at the now-defunct sdk.ts).
-        const typesForFile = collectTypes(
-            inline.root,
-            inline.codegenOptions.modelsWithInput,
-            inline.codegenOptions.modelsWithOutput,
-            includeInternal,
+        // Filtered against this file's own emitted text for the same reason `generateSdk` filters
+        // its own — a multipart body's model is collected but never named in the output.
+        const typesForFile = referencedTypes(
+            collectTypes(inline.root, inline.codegenOptions.modelsWithInput, inline.codegenOptions.modelsWithOutput, includeInternal),
+            [...methodLines, ...generateErrorBodyAliases(inline.root, inline.codegenOptions), ...preludeLines],
         );
         const { modelOutPaths } = inline.codegenOptions;
         if (modelOutPaths) {
@@ -1598,7 +1855,7 @@ export function generateAreaClient(input: AreaClientInput): string {
     lines.push(`import type { SdkFetch${jsonImport} } from '${sdkOptionsRel}';`);
     const valueImports: string[] = [];
     if (needsBigIntReplacer) valueImports.push('bigIntReplacer');
-    if (needsBigIntReviver) valueImports.push('parseJson');
+    if (needsParseJson) valueImports.push(needsBigIntReviver ? 'parseJsonWithBigInt as parseJson' : 'parseJson');
     if (needsQueryString) valueImports.push('buildQueryString');
     if (needsReadContentType) valueImports.push('readContentType');
     if (valueImports.length > 0) {
@@ -1616,6 +1873,8 @@ export function generateAreaClient(input: AreaClientInput): string {
     }
 
     if (areaNeedsDecimalImport) lines.push(DECIMAL_IMPORT);
+    const areaHeaderLuxon = headerLuxonImport(collectedMethodLines, collectedRevivePrelude);
+    if (areaHeaderLuxon) lines.push(areaHeaderLuxon);
 
     // Leaf client imports (subareas only — top-level clients live next to sdk.ts).
     const importedClients = new Set<string>();

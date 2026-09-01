@@ -1,0 +1,24 @@
+info:
+  name: "/payments/{paymentId}/receipt"
+  type: http
+  seq: 7
+
+http:
+  method: POST
+  url: "{{baseUrl}}/payments/:paymentId/receipt"
+  params:
+    - name: paymentId
+      value: "00000000-0000-0000-0000-000000000000"
+      type: path
+  body:
+    type: multipart-form
+    data: []
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+docs: |-
+  upload a receipt image

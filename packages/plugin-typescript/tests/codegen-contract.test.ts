@@ -1,7 +1,8 @@
-import { generateContract, renderType } from '../src/codegen-contract.js';
+import { generateContract, renderType, applyFieldModifiers } from '../src/codegen-contract.js';
 import type { ContractCodegenContext } from '../src/codegen-contract.js';
 import {
     scalarType,
+    opParam,
     arrayType,
     tupleType,
     recordType,
@@ -17,6 +18,10 @@ import {
     contractRoot,
 } from './helpers.js';
 import type { ScalarTypeNode } from '@contractkit/core';
+
+/** The narrowed numeric coercion `renderScalar` emits — see NUMERIC_PREPROCESS in codegen-contract. */
+const NUM = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number())`;
+const NUM_INT = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int())`;
 
 describe('renderType', () => {
     // ─── Scalar types ───────────────────────────────────────────────
@@ -70,24 +75,24 @@ describe('renderType', () => {
             expect(renderType(scalarType('string', { regex: 'price:\\$' }))).toBe('z.string().regex(/^price:\\$$/)');
         });
 
-        it('renders z.coerce.number()', () => {
-            expect(renderType(scalarType('number'))).toBe('z.coerce.number()');
+        it('coerces number from a string, rejecting what Number() would swallow', () => {
+            expect(renderType(scalarType('number'))).toBe(NUM);
         });
 
-        it('renders z.coerce.number() with min', () => {
-            expect(renderType(scalarType('number', { min: 0 }))).toBe('z.coerce.number().min(0)');
+        it('renders number with min', () => {
+            expect(renderType(scalarType('number', { min: 0 }))).toBe(`z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0))`);
         });
 
-        it('renders z.coerce.number() with min and max', () => {
-            expect(renderType(scalarType('number', { min: 0, max: 100 }))).toBe('z.coerce.number().min(0).max(100)');
+        it('renders number with min and max', () => {
+            expect(renderType(scalarType('number', { min: 0, max: 100 }))).toBe(`z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0).max(100))`);
         });
 
-        it('renders z.coerce.number().int()', () => {
-            expect(renderType(scalarType('int'))).toBe('z.coerce.number().int()');
+        it('coerces int from a string, rejecting what Number() would swallow', () => {
+            expect(renderType(scalarType('int'))).toBe(NUM_INT);
         });
 
-        it('renders z.coerce.number().int() with constraints', () => {
-            expect(renderType(scalarType('int', { min: 1, max: 10 }))).toBe('z.coerce.number().int().min(1).max(10)');
+        it('renders int with constraints, chained inside the preprocess', () => {
+            expect(renderType(scalarType('int', { min: 1, max: 10 }))).toBe(`z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int().min(1).max(10))`);
         });
 
         it('renders z.bigint() with preprocess coercion from string or bigint', () => {
@@ -238,11 +243,11 @@ describe('renderType', () => {
         });
 
         it('renders tuple type', () => {
-            expect(renderType(tupleType(scalarType('number'), scalarType('string')))).toBe('z.tuple([z.coerce.number(), z.string()])');
+            expect(renderType(tupleType(scalarType('number'), scalarType('string')))).toBe(`z.tuple([${NUM}, z.string()])`);
         });
 
         it('renders record type', () => {
-            expect(renderType(recordType(scalarType('string'), scalarType('number')))).toBe('z.record(z.string(), z.coerce.number())');
+            expect(renderType(recordType(scalarType('string'), scalarType('number')))).toBe(`z.record(z.string(), ${NUM})`);
         });
 
         it('renders enum type', () => {
@@ -266,7 +271,7 @@ describe('renderType', () => {
         });
 
         it('renders union type', () => {
-            expect(renderType(unionType(scalarType('string'), scalarType('number')))).toBe('z.union([z.string(), z.coerce.number()])');
+            expect(renderType(unionType(scalarType('string'), scalarType('number')))).toBe(`z.union([z.string(), ${NUM}])`);
         });
 
         it('renders discriminated union as z.discriminatedUnion', () => {
@@ -286,7 +291,7 @@ describe('renderType', () => {
             const result = renderType(inlineObjectType([field('key', scalarType('string')), field('value', scalarType('number'))]));
             expect(result).toContain('z.strictObject({');
             expect(result).toContain('key: z.string(),');
-            expect(result).toContain('value: z.coerce.number(),');
+            expect(result).toContain(`value: ${NUM},`);
         });
     });
 });
@@ -300,7 +305,7 @@ describe('generateContract', () => {
             const output = generateContract(root);
             expect(output).toContain('export const User = z.strictObject({');
             expect(output).toContain('name: z.string(),');
-            expect(output).toContain('age: z.coerce.number(),');
+            expect(output).toContain(`age: ${NUM},`);
             expect(output).toContain('export type User = z.infer<typeof User>;');
         });
 
@@ -458,11 +463,18 @@ describe('generateContract', () => {
             expect(output).toContain("import { DateTime } from 'luxon';");
         });
 
-        it('emits _ZodBinary helper when binary field present', () => {
+        it('emits a Blob _ZodBinary by default, since the default target is the client', () => {
             const root = contractRoot([model('M', [field('f', scalarType('binary'))])]);
             const output = generateContract(root);
-            expect(output).toContain('const _ZodBinary = z.custom<Buffer>');
+            expect(output).toContain('const _ZodBinary = z.custom<Blob>');
             expect(output).toContain('_ZodBinary,');
+        });
+
+        it('emits a Buffer _ZodBinary for the server target', () => {
+            const root = contractRoot([model('M', [field('f', scalarType('binary'))])]);
+            const output = generateContract(root, { modelOutPaths: new Map(), currentOutPath: '/out/m.ts', target: 'server' });
+            // `Buffer` in an SDK type file is unresolvable: the scaffold declares no @types/node.
+            expect(output).toContain('const _ZodBinary = z.custom<Buffer>');
         });
 
         it('omits _ZodBinary helper when no binary fields', () => {
@@ -567,7 +579,7 @@ describe('generateContract', () => {
     // ─── Three-schema pattern (visibility) ─────────────────────────
 
     describe('three-schema pattern', () => {
-        it('generates Base, Read, and Write schemas when visibility fields exist', () => {
+        it('generates Read and Write schemas when visibility fields exist', () => {
             const root = contractRoot([
                 model('User', [
                     field('id', scalarType('uuid'), { visibility: 'readonly' }),
@@ -576,11 +588,12 @@ describe('generateContract', () => {
                 ]),
             ]);
             const output = generateContract(root);
-            expect(output).toContain('const UserBase = z.strictObject({');
             expect(output).toContain('export const User = z.strictObject({');
             expect(output).toContain('export const UserInput = z.strictObject({');
             expect(output).toContain('export type User = z.infer<typeof User>;');
             expect(output).toContain('export type UserInput = z.infer<typeof UserInput>;');
+            // No writeonly model extends User, so nothing would read a UserBase.
+            expect(output).not.toContain('const UserBase');
         });
 
         it('read schema omits writeonly fields', () => {
@@ -732,20 +745,31 @@ describe('generateContract', () => {
             expect(output).toContain('export const AdminInput = User.extend({');
         });
 
-        it('parent with writeonly fields generates Base; child Base extends ParentBase', () => {
+        it('inherits writeonly fields through the Input chain, with no Base schema', () => {
             const root = contractRoot([
                 model('User', [field('password', scalarType('string'), { visibility: 'writeonly' }), field('name', scalarType('string'))]),
-                model('Admin', [field('role', scalarType('string'))], { bases: ['User'] }),
+                model('Admin', [field('token', scalarType('string'), { visibility: 'writeonly' }), field('role', scalarType('string'))], {
+                    bases: ['User'],
+                }),
             ]);
             const output = generateContract(root);
-            // User has writeonly — Base !== Read, so UserBase is emitted
-            expect(output).toContain('const UserBase =');
-            expect(output).toContain('export const User =');
-            expect(output).toContain('export const UserInput =');
-            // Admin has no writeonly — no AdminBase; but its Input still extends UserInput
-            expect(output).not.toContain('AdminBase');
-            expect(output).toContain('export const Admin = User.extend({');
+            expect(output).not.toContain('Base');
+            // AdminInput extends UserInput, which carries User's writeonly `password` — which is
+            // what the Base schemas were meant to deliver and never did.
             expect(output).toContain('export const AdminInput = UserInput.extend({');
+            expect(output).toContain('export const Admin = User.extend({');
+        });
+
+        it('leaves a user-declared model named XBase alone', () => {
+            const root = contractRoot([
+                model('User', [field('password', scalarType('string'), { visibility: 'writeonly' }), field('name', scalarType('string'))]),
+                model('UserBase', [field('label', scalarType('string'))]),
+            ]);
+            const output = generateContract(root);
+            // A text-derived rule would have had to distinguish these two; nothing generated is
+            // named UserBase any more, so the user's own model is the only one.
+            expect(output.match(/const UserBase\b/g)).toHaveLength(1);
+            expect(output).toContain('export const UserBase = z.strictObject({');
         });
 
         it('child inheriting from external parent with Input variant uses ParentInput.extend()', () => {
@@ -922,7 +946,7 @@ describe('generateContract', () => {
         it('includes source location comment above schema', () => {
             const root = contractRoot([model('User', [field('name', scalarType('string'))], { loc: { file: 'user.ck', line: 5 } })]);
             const output = generateContract(root);
-            expect(output).toContain('file://./user.ck#L5');
+            expect(output).toContain('[User](./user.ck#L5)');
         });
 
         it('includes source location for three-schema models', () => {
@@ -932,7 +956,7 @@ describe('generateContract', () => {
                 }),
             ]);
             const output = generateContract(root);
-            expect(output).toContain('file://./user.ck#L1');
+            expect(output).toContain('[User](./user.ck#L1)');
         });
     });
 
@@ -1236,10 +1260,41 @@ describe('generateContract', () => {
             ]);
             const output = generateContract(root);
             // Inline object emits its own transform inside the Webhook input shape.
-            expect(output).toContain('Amount: z.coerce.number().nullish()');
+            expect(output).toContain(`Amount: ${NUM}.nullish()`);
             expect(output).toContain('id: data.Id,');
             expect(output).toContain('...(data.Amount != null ? { amount: data.Amount } : {}),');
             expect(output).not.toContain('?? undefined');
         });
+    });
+});
+
+// ─── applyFieldModifiers ──────────────────────────────────────────────────
+
+describe('applyFieldModifiers', () => {
+    it('appends nothing for a plain required field', () => {
+        expect(applyFieldModifiers('z.string()', {})).toBe('z.string()');
+    });
+
+    it('chains nullable, then optionality, then the description', () => {
+        expect(applyFieldModifiers('z.string()', { nullable: true, optional: true, description: 'a note' })).toBe(
+            'z.string().nullable().optional().describe("a note")',
+        );
+    });
+
+    it('prefers a default over .optional()', () => {
+        // `.default()` already makes the input side optional; adding `.optional()` on top would
+        // widen the output type to include undefined, which is what a default exists to prevent.
+        expect(applyFieldModifiers('z.number()', { optional: true, default: 20 })).toBe('z.number().default(20)');
+    });
+
+    it('quotes and escapes a string default', () => {
+        expect(applyFieldModifiers('z.string()', { default: 'a "quoted" value' })).toBe('z.string().default("a \\"quoted\\" value")');
+    });
+
+    it('accepts an OpParamNode, which is a FieldNode without the visibility modifiers', () => {
+        // This is the point of the structural parameter type: it lets a `query:` or `headers:`
+        // field render through exactly the same path a model field does.
+        const param = opParam('limit', scalarType('int'), { optional: true, default: 20 });
+        expect(applyFieldModifiers(NUM_INT, param)).toBe(`${NUM_INT}.default(20)`);
     });
 });

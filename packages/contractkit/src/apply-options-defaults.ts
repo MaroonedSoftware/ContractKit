@@ -19,6 +19,7 @@
  */
 import type { CkRootNode, OpOperationNode, OpParamNode, OpResponseHeaderNode, OpResponseNode, OpRootNode } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
+import { extractPathParams } from './path-params.js';
 
 type RootWithGlobals = Pick<CkRootNode, 'file' | 'routes' | 'requestHeaders' | 'responseHeaders'> | Pick<OpRootNode, 'file' | 'routes' | 'requestHeaders' | 'responseHeaders'>;
 
@@ -28,7 +29,7 @@ export function applyOptionsDefaults(root: RootWithGlobals, diag: DiagnosticColl
     if (reqGlobals.length === 0 && resGlobals.length === 0) return;
 
     for (const route of root.routes) {
-        const pathParams = new Set([...route.path.matchAll(/\{(\w+)\}/g)].map(m => m[1]!));
+        const pathParams = new Set(extractPathParams(route.path));
         for (const g of reqGlobals) {
             if (pathParams.has(g.name)) {
                 diag.error(root.file, route.loc.line, `Global request header '${g.name}' collides with path parameter on '${route.path}'`);

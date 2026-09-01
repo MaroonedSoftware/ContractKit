@@ -21,10 +21,10 @@ import {
     computeModelsWithOutput as ckComputeModelsWithOutput,
     collectExternalOutputRefs as ckCollectExternalOutputRefs,
 } from '@contractkit/core';
-import { escapeJsDocLines } from './ts-render.js';
+import { escapeJsDocLines, sourceLink } from './ts-render.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
-import { renderReviveFunctions, reviveFnName, DECIMAL_COERCE_DECL } from './codegen-revive.js';
+import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
 
 /**
  * Maps a ContractKit object mode to its Zod constructor name.
@@ -57,9 +57,9 @@ export interface ContractCodegenContext {
     /** If set, import JsonValue from this path instead of re-declaring it (avoids barrel re-export conflicts) */
     jsonValueImportPath?: string;
     /**
-     * Runtime the emitted plain types describe. Only affects scalars whose TypeScript type differs
-     * per runtime (`binary` → `Buffer` on the server, `Blob` in the client). Ignored by
-     * `generateContract`, whose Zod schemas are server-shaped by construction. Default `'client'`.
+     * Runtime the emitted types describe. Only affects scalars whose TypeScript type differs per
+     * runtime: `binary` is a `Buffer` on a Node server and a `Blob` in a fetch client, and
+     * `_ZodBinary` is generated to match. Default `'client'`.
      */
     target?: TsRenderTarget;
     /** Model names that carry a `decimal`, directly or transitively. */
@@ -128,8 +128,7 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
         for (const l of escapeJsDocLines(model.description)) lines.push(` * ${l}`);
     }
 
-    const relPath = outPath ? relative(dirname(outPath), model.loc.file) : model.loc.file;
-    lines.push(` * generated from [${model.name}](file://./${relPath}#L${model.loc.line})`);
+    lines.push(` * generated from ${sourceLink(model.name, outPath, model.loc.file, model.loc.line)}`);
     lines.push('*/');
     return lines;
 }
@@ -137,8 +136,10 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
 /**
  * Generate a TypeScript module containing Zod schemas for every model in `root`.
  *
- * Emits up to three schemas per model when visibility modifiers are present:
- * `ModelBase` (all fields), `Model` (read — no writeonly), `ModelInput` (write — no readonly).
+ * Emits two schemas per model when visibility modifiers are present: `Model` (read — no
+ * writeonly fields) and `ModelInput` (write — no readonly fields). Writeonly inheritance rides
+ * on the Input chain, since a child's `Input` extends its parent's `Input`, which already carries
+ * the parent's writeonly fields.
  *
  * @param root - The parsed contract root node.
  * @param context - Optional cross-file context for import resolution and Input/Output variant tracking.
@@ -187,7 +188,15 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     }
     lines.push('');
     if (needsBinary) {
-        lines.push(`const _ZodBinary = z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' });`);
+        // The one scalar with no single correct runtime type, so it follows `target` here exactly
+        // as `renderTsScalar` does. An SDK type file reaching this through the shared
+        // `generateContract` used to emit `Buffer.isBuffer` into a browser client, whose scaffold
+        // declares no `@types/node` — the type did not resolve and the check could not run.
+        lines.push(
+            context?.target === 'server'
+                ? `const _ZodBinary = z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' });`
+                : `const _ZodBinary = z.custom<Blob>((val) => val instanceof Blob, { error: 'Must be binary data' });`,
+        );
     }
     if (needsDatetime) {
         lines.push(
@@ -210,8 +219,8 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     }
     if (needsBinary || needsDatetime || needsInterval || needsDecimal || needsJson) lines.push('');
 
-    const modelsWithWriteonly = new Set(root.models.filter(m => m.fields.some(f => f.visibility === 'writeonly')).map(m => m.name));
     const modelMap = new Map(root.models.map(m => [m.name, m]));
+
 
     const reviveOpts =
         context?.emitRevivers && context.modelsWithDecimal
@@ -220,7 +229,7 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
 
     const bodyLines: string[] = [];
     for (const model of topoSortModels(root.models)) {
-        bodyLines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelsWithWriteonly, modelMap, allModelsWithOutput));
+        bodyLines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelMap, allModelsWithOutput));
         if (reviveOpts) {
             const revivers = renderReviveFunctions(model, reviveOpts);
             if (revivers.length > 0) {
@@ -232,9 +241,10 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     }
 
     // Decided from the emitted revivers rather than from a predicate over the AST, so the
-    // declaration and its uses cannot drift apart and leave an unused local behind.
-    if (bodyLines.some(l => l.includes('__dec('))) {
-        lines.push(...DECIMAL_COERCE_DECL);
+    // declarations and their uses cannot drift apart and leave an unused local behind.
+    const coerceDecls = coerceDeclsFor(bodyLines);
+    if (coerceDecls.length > 0) {
+        lines.push(...coerceDecls);
         lines.push('');
     }
     lines.push(...bodyLines);
@@ -282,7 +292,6 @@ function generateModel(
     model: ModelNode,
     outPath?: string,
     modelsWithInput?: Set<string>,
-    modelsWithWriteonly?: Set<string>,
     modelMap?: Map<string, ModelNode>,
     modelsWithOutput?: Set<string>,
 ): string[] {
@@ -298,7 +307,7 @@ function generateModel(
     const needsInputSplit = effective.fields.some(f => f.visibility !== 'normal') || (modelsWithInput?.has(effective.name) ?? false);
 
     const lines = needsInputSplit
-        ? generateThreeSchemaModel(effective, outPath, modelsWithInput, modelsWithWriteonly, modelMap)
+        ? generateThreeSchemaModel(effective, outPath, modelsWithInput, modelMap)
         : generateSimpleModel(effective, outPath);
 
     // Emit Output type alias when this model (transitively) has format(output=...)
@@ -418,7 +427,6 @@ function generateThreeSchemaModel(
     model: ModelNode,
     outPath?: string,
     modelsWithInput?: Set<string>,
-    modelsWithWriteonly?: Set<string>,
     modelMap?: Map<string, ModelNode>,
 ): string[] {
     const lines: string[] = [];
@@ -429,24 +437,8 @@ function generateThreeSchemaModel(
     const wrapper = modeToWrapper(model.mode ?? 'strict');
 
     const allFields = model.fields;
-    const hasWriteonly = allFields.some(f => f.visibility === 'writeonly');
 
     const bases = model.bases ?? [];
-
-    // Base schema — all fields (used internally when a submodel extends this one).
-    // Only needed when this model has writeonly fields; otherwise Base === Read.
-    if (hasWriteonly) {
-        const baseBody = renderFields(allFields, model.mode);
-        if (bases.length > 0) {
-            const { head, tail } = buildExtendChain(bases, b => (modelsWithWriteonly?.has(b) ? `${b}Base` : b));
-            lines.push(`const ${name}Base = ${head}${tail}.extend({`);
-        } else {
-            lines.push(`const ${name}Base = ${wrapper}({`);
-        }
-        lines.push(...baseBody.map(l => `    ${l}`));
-        lines.push(`});`);
-        lines.push('');
-    }
 
     // Read schema — omit writeonly fields; extends parent read schema
     const readFields = allFields.filter(f => f.visibility !== 'writeonly');
@@ -555,12 +547,20 @@ function renderFieldsAsSnakeCase(fields: FieldNode[], defaultMode?: ObjectMode):
     });
 }
 
-function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
-    const lines: string[] = [];
-    if (field.deprecated) lines.push('/** @deprecated */');
-
-    let expr = renderType(field.type, undefined, defaultMode);
-
+/**
+ * Append the modifier chain a declared field carries: nullability, then a default or optionality,
+ * then the description.
+ *
+ * Takes a structural subset of `FieldNode` rather than the node itself, so an `OpParamNode` — which
+ * is a `FieldNode` minus `visibility`, `deprecated` and `override` — can be rendered through the
+ * same path. That is what lets the router, the SDK and OpenAPI agree on what an inline `query:` or
+ * `headers:` field means.
+ *
+ * A default and `optional` are mutually exclusive on purpose: `.default()` already makes the input
+ * side optional, and adding `.optional()` on top would widen the *output* type to include
+ * `undefined`, which is exactly what a default exists to prevent.
+ */
+export function applyFieldModifiers(expr: string, field: Pick<FieldNode, 'nullable' | 'default' | 'optional' | 'description'>): string {
     if (field.nullable) expr += '.nullable()';
     if (field.default !== undefined) {
         const dv = typeof field.default === 'string' ? `"${escapeString(field.default)}"` : String(field.default);
@@ -569,6 +569,16 @@ function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
         expr += '.optional()';
     }
     if (field.description) expr += `.describe("${escapeString(field.description)}")`;
+    return expr;
+}
+
+function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
+    const lines: string[] = [];
+    if (field.deprecated) lines.push('/** @deprecated */');
+
+    let expr = renderType(field.type, undefined, defaultMode);
+
+    expr = applyFieldModifiers(expr, field);
 
     lines.push(`${quoteKey(field.name)}: ${expr},`);
     return lines;
@@ -641,6 +651,21 @@ function regexHasAnchor(source: string): boolean {
     return backslashes % 2 === 0;
 }
 
+/**
+ * Coercion for the numeric scalars: convert a non-empty string, pass everything else through for
+ * `z.number()` to judge.
+ *
+ * `z.coerce.number()` is `Number(v)`, which accepts far more than a number. `[]` and `''` become
+ * `0`, `null` becomes `0`, `true` becomes `1` — so `{"quantity": []}` validated as `0` and the
+ * handler ran on a value the client never sent. Only the string case is a real coercion; it exists
+ * because query strings and headers arrive as text, and it stays because a JSON body carrying
+ * `"42"` is common enough that rejecting it would break working callers.
+ *
+ * The `boolean` scalar below already has this shape and needed no change: its preprocess maps only
+ * the two literal strings and hands everything else to `z.boolean()`, which rejects it.
+ */
+const NUMERIC_PREPROCESS = `(v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v)`;
+
 function renderScalar(s: ScalarTypeNode): string {
     switch (s.name) {
         case 'string': {
@@ -652,17 +677,14 @@ function renderScalar(s: ScalarTypeNode): string {
             if (s.regex) e += `.regex(${renderRegexLiteral(s.regex)})`;
             return e;
         }
-        case 'number': {
-            let e = 'z.coerce.number()';
-            if (s.min !== undefined) e += `.min(${s.min})`;
-            if (s.max !== undefined) e += `.max(${s.max})`;
-            return e;
-        }
+        case 'number':
         case 'int': {
-            let e = 'z.coerce.number().int()';
-            if (s.min !== undefined) e += `.min(${s.min})`;
-            if (s.max !== undefined) e += `.max(${s.max})`;
-            return e;
+            // Constraints go on the inner schema, not the outer expression: `z.preprocess` returns
+            // a ZodPipe, which has no `.min()`. Same shape as the `bigint` case below.
+            let inner = s.name === 'int' ? 'z.number().int()' : 'z.number()';
+            if (s.min !== undefined) inner += `.min(${s.min})`;
+            if (s.max !== undefined) inner += `.max(${s.max})`;
+            return `z.preprocess(${NUMERIC_PREPROCESS}, ${inner})`;
         }
         case 'bigint': {
             let inner = 'z.bigint()';
@@ -848,8 +870,16 @@ function renderInlineObject(o: InlineObjectTypeNode, parseCaseTransform?: 'snake
 // ─── Input type rendering ─────────────────────────────────────────────────
 
 /**
- * Like renderScalar, but coerces from string input (JSON wire format).
- * Used for Input (write) schemas where data arrives as JSON strings.
+ * The request-side rendering of a scalar. A pure passthrough today, and the seam where a genuine
+ * input/wire split would live.
+ *
+ * The docstring here used to claim it "coerces from string input", describing a distinction the
+ * body does not make: `XInput` is a single exported `const`, and `generateParamValidation`'s ref
+ * branch uses that same schema for `query: X` that the body path uses for
+ * `request: { application/json: X }`. Making it strict would break query-by-model; leaving it
+ * coercing leaves a JSON body accepting string-shaped numbers. A real split needs a second emitted
+ * variant (`XInputWire`) plus the import plumbing to reach it, which is separate work — the
+ * narrowed coercion in `renderScalar` closes the soundness hole in the meantime.
  */
 function renderInputScalar(s: ScalarTypeNode): string {
     return renderScalar(s);
@@ -924,14 +954,7 @@ function renderInputField(field: FieldNode, modelsWithInput: Set<string>, defaul
 
     let expr = renderInputType(field.type, modelsWithInput, defaultMode);
 
-    if (field.nullable) expr += '.nullable()';
-    if (field.default !== undefined) {
-        const dv = typeof field.default === 'string' ? `"${escapeString(field.default)}"` : String(field.default);
-        expr += `.default(${dv})`;
-    } else if (field.optional) {
-        expr += '.optional()';
-    }
-    if (field.description) expr += `.describe("${escapeString(field.description)}")`;
+    expr = applyFieldModifiers(expr, field);
 
     lines.push(`${quoteKey(field.name)}: ${expr},`);
     return lines;
@@ -996,14 +1019,7 @@ function renderQueryField(field: FieldNode, modelsWithInput?: Set<string>, defau
               ? renderInputType(field.type, modelsWithInput, defaultMode)
               : renderType(field.type, undefined, defaultMode);
 
-    if (field.nullable) expr += '.nullable()';
-    if (field.default !== undefined) {
-        const dv = typeof field.default === 'string' ? `"${escapeString(field.default)}"` : String(field.default);
-        expr += `.default(${dv})`;
-    } else if (field.optional) {
-        expr += '.optional()';
-    }
-    if (field.description) expr += `.describe("${escapeString(field.description)}")`;
+    expr = applyFieldModifiers(expr, field);
 
     return `${quoteKey(field.name)}: ${expr},`;
 }

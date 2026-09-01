@@ -105,6 +105,15 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     lines.push('from __future__ import annotations');
     lines.push('');
 
+    // Collect public ops once — used both for TypedDict emission and method generation.
+    const publicOps: Array<{ route: OpRouteNode; op: OpOperationNode }> = [];
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
+            publicOps.push({ route, op });
+        }
+    }
+
     // stdlib imports
     const needsDatetime = referencedModels.has('__datetime__');
     const needsDate = referencedModels.has('__date__');
@@ -122,15 +131,11 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     }
     if (needsDecimal) lines.push('from decimal import Decimal');
     if (needsUUID) lines.push('from uuid import UUID');
-
-    // Collect public ops once — used both for TypedDict emission and method generation.
-    const publicOps: Array<{ route: OpRouteNode; op: OpOperationNode }> = [];
-    for (const route of root.routes) {
-        for (const op of route.operations) {
-            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
-            publicOps.push({ route, op });
-        }
+    // Path params are percent-encoded, so `quote` is needed wherever a route interpolates one.
+    if (publicOps.some(({ route }) => /\{[a-zA-Z_$][a-zA-Z0-9_$.-]*\}/.test(route.path))) {
+        lines.push('from urllib.parse import quote');
     }
+
     const opShapes = new Map<OpOperationNode, PyResponseShape>(publicOps.map(({ op }) => [op, responseShape(op)]));
     const opsWithRespHeaders = publicOps.filter(({ op }) => {
         const shape = opShapes.get(op)!;
@@ -138,13 +143,20 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         return (shape.resp?.headers?.length ?? 0) > 0;
     });
     const opsWithResponseDict = publicOps.filter(({ op }) => opShapes.get(op)!.kind !== 'simple');
-    const needsTypedDict = opsWithRespHeaders.length > 0 || opsWithResponseDict.length > 0;
+    /** Inline `query:`/`headers:` blocks, each of which gets a request-side TypedDict. */
+    const inlineRequestDicts = publicOps
+        .flatMap(({ op }) => [op.query, op.headers])
+        .filter((src): src is Extract<ParamSource, { kind: 'params' }> => src?.kind === 'params' && src.nodes.length > 0);
+    const needsTypedDict = opsWithRespHeaders.length > 0 || opsWithResponseDict.length > 0 || inlineRequestDicts.length > 0;
     const needsLiteral = opsWithResponseDict.length > 0;
+    // `NotRequired` needs Python 3.11; only a request dict with an optional field pulls it in.
+    const needsNotRequired = inlineRequestDicts.some(src => src.nodes.some(p => Boolean(p.optional) || p.default !== undefined));
 
     if (needsAny || needsTypedDict) {
         const typingImports: string[] = [];
         if (needsAny) typingImports.push('Any');
         if (needsLiteral) typingImports.push('Literal');
+        if (needsNotRequired) typingImports.push('NotRequired');
         if (needsTypedDict) typingImports.push('TypedDict');
         lines.push(`from typing import ${typingImports.join(', ')}`);
     }
@@ -182,10 +194,33 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
             lines.push('');
             lines.push('');
             lines.push(`class ${name}(TypedDict, total=False):`);
+            const where = `${op.method.toUpperCase()} ${route.path}`;
             for (const h of resp.headers!) {
                 const pyName = toPythonFieldName(h.name);
                 const tag = h.optional ? 'optional' : 'required';
-                lines.push(`    ${pyName}: str  # ${h.name} (${tag})`);
+                lines.push(`    ${pyName}: ${pyHeaderReader(h, where).type}  # ${h.name} (${tag})`);
+            }
+        }
+    }
+
+    // Per-method request TypedDicts for inline `query:` and `headers:` blocks. A bare `dict`
+    // told a type checker nothing about what the request accepts, while the router has always
+    // validated these fields — so a typo in a key was a runtime 400 with nothing to catch it.
+    for (const { route, op } of publicOps) {
+        const base = snakeToPascal(deriveMethodName(op, route));
+        for (const { source, suffix } of [
+            { source: op.query, suffix: 'Query' },
+            { source: op.headers, suffix: 'Headers' },
+        ]) {
+            if (source?.kind !== 'params' || source.nodes.length === 0) continue;
+            lines.push('');
+            lines.push('');
+            lines.push(`class ${base}${suffix}(TypedDict):`);
+            for (const p of source.nodes) {
+                // `NotRequired` rather than `total=False`, so a required field stays required.
+                const optional = Boolean(p.optional) || p.default !== undefined;
+                const type = renderPyType(p.type, modelsWithInput, true);
+                lines.push(`    ${toPythonFieldName(p.name)}: ${optional ? `NotRequired[${type}]` : type}  # ${p.name}`);
             }
         }
     }
@@ -253,6 +288,8 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     const { modelsWithInput } = opts;
     const methodName = deriveMethodName(op, route);
     const httpMethod = op.method.toUpperCase();
+    /** Identifies the operation in a codegen rejection, which the CLI scopes to this plugin. */
+    const where = `${httpMethod} ${route.path}`;
 
     const params = buildMethodParams(route, op, modelsWithInput);
     const selfParam = 'self';
@@ -302,7 +339,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     }
 
     // Build URL
-    const urlExpr = buildUrlExpression(route.path);
+    const urlExpr = buildUrlExpression(route.path, route.params);
 
     // Query params
     const hasQuery = !!op.query;
@@ -334,8 +371,11 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
         if (primaryBody.contentType !== 'application/json') {
             fetchKwargs.push(`content_type=${JSON.stringify(primaryBody.contentType)}`);
         }
-        if (reqCategory === 'text' || reqCategory === 'binary') {
-            fetchKwargs.push(`body_kind="${reqCategory}"`);
+        // Without this, urlencoded and multipart fell through to the `"json"` default and httpx
+        // sent them via `json=` — a JSON document under a form Content-Type, which no server
+        // parses, and a TypeError outright when the body is bytes.
+        if (reqCategory !== 'json') {
+            fetchKwargs.push(`body_kind="${reqCategory === 'urlencoded' ? 'form' : reqCategory}"`);
         }
     }
     if (shape.kind !== 'simple') {
@@ -365,13 +405,13 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
 
     if (shape.kind !== 'simple') {
         lines.push(`        _status, _content_type, result, _response_headers = await self._fetch_full(${urlExpr}, ${kwargsStr})`);
-        lines.push(...buildMultiReturnLines(shape, methodBase, modelsWithInput));
+        lines.push(...buildMultiReturnLines(shape, methodBase, where, modelsWithInput));
         return lines;
     }
 
     if (hasRespHeaders) {
         lines.push(`        result, _response_headers = await self._fetch_with_headers(${urlExpr}, ${kwargsStr})`);
-        lines.push(...buildHeadersDictLines(respHeaders, headersTypeName));
+        lines.push(...buildHeadersDictLines(respHeaders, headersTypeName, where));
     } else {
         lines.push(`        result = await self._fetch(${urlExpr}, ${kwargsStr})`);
     }
@@ -423,6 +463,7 @@ function pyDataExpr(body: OpResponseBodyNode, modelsWithInput?: Set<string>): st
 function buildMultiReturnLines(
     shape: Extract<PyResponseShape, { kind: 'multiMime' | 'multiStatus' }>,
     methodBase: string,
+    where: string,
     modelsWithInput?: Set<string>,
 ): string[] {
     const lines: string[] = [];
@@ -447,7 +488,7 @@ function buildMultiReturnLines(
         if ((resp.headers?.length ?? 0) > 0) {
             headersVar = includeStatus ? `headers_${resp.statusCode}` : 'headers';
             const typeName = headersClassName(methodBase, includeStatus ? resp.statusCode : undefined);
-            out.push(...buildHeadersDictLines(resp.headers!, typeName, indent, headersVar));
+            out.push(...buildHeadersDictLines(resp.headers!, typeName, where, indent, headersVar));
         }
 
         const bodies = resp.bodies;
@@ -478,13 +519,74 @@ function buildMultiReturnLines(
 }
 
 /** Build the lines that construct a TypedDict literal of declared response headers. */
-function buildHeadersDictLines(headers: OpResponseHeaderNode[], typeName: string, indent = '        ', varName = 'headers'): string[] {
+/**
+ * The Python type of one response header, and the expression that reads it out of the response.
+ *
+ * Header values arrive as strings, so the TypedDict annotated everything `str` and assigned raw —
+ * which was at least self-consistent, but discarded the declared type and left `mypy` users with
+ * a `str` where the contract said `int`. The annotation now comes from the contract and the value
+ * is coerced to match.
+ *
+ * The accepted set mirrors the TypeScript SDK's, with one asymmetry: temporals need real
+ * conversion here, because `renderPyType` maps them to `date`/`time`/`datetime` objects while the
+ * TypeScript side maps them to `string` and can pass the raw value straight through. `duration` is
+ * the exception in the other direction — it maps to `timedelta`, and the standard library has no
+ * ISO 8601 duration parser to convert with, so it is rejected rather than half-supported.
+ */
+function pyHeaderReader(h: OpResponseHeaderNode, where: string): { type: string; read: (raw: string) => string } {
+    const scalar = h.type.kind === 'scalar' ? h.type.name : undefined;
+    switch (scalar) {
+        case 'string':
+        case 'email':
+        case 'url':
+        case 'interval':
+            return { type: 'str', read: raw => raw };
+        case 'unknown':
+            return { type: 'Any', read: raw => raw };
+        case 'number':
+            return { type: 'float', read: raw => `float(${raw})` };
+        case 'int':
+        case 'bigint':
+            return { type: 'int', read: raw => `int(${raw})` };
+        case 'boolean':
+            return { type: 'bool', read: raw => `${raw} == "true"` };
+        case 'uuid':
+            return { type: 'UUID', read: raw => `UUID(${raw})` };
+        case 'date':
+            return { type: 'date', read: raw => `date.fromisoformat(${raw})` };
+        case 'time':
+            return { type: 'time', read: raw => `time.fromisoformat(${raw})` };
+        case 'datetime':
+            return { type: 'datetime', read: raw => `datetime.fromisoformat(${raw})` };
+        default:
+            throw new Error(
+                `Response header '${h.name}' on ${where} is declared as ${describeHeaderType(h.type)}, which cannot be read from an HTTP header. ` +
+                    `Header values arrive as strings — declare it as string, email, url, uuid, date, time, datetime, interval, int, number, boolean or bigint.`,
+            );
+    }
+}
+
+/** A short, contract-facing description of a header type, for the rejection message above. */
+function describeHeaderType(type: ContractTypeNode): string {
+    if (type.kind === 'scalar') return `the '${type.name}' scalar`;
+    if (type.kind === 'ref') return `the model '${type.name}'`;
+    return `${type.kind === 'array' || type.kind === 'inlineObject' ? 'an' : 'a'} ${type.kind}`;
+}
+
+function buildHeadersDictLines(
+    headers: OpResponseHeaderNode[],
+    typeName: string,
+    where: string,
+    indent = '        ',
+    varName = 'headers',
+): string[] {
     const lines: string[] = [];
     lines.push(`${indent}${varName}: ${typeName} = {}`);
     for (const h of headers) {
         const pyName = toPythonFieldName(h.name);
-        lines.push(`${indent}if ${JSON.stringify(h.name.toLowerCase())} in _response_headers:`);
-        lines.push(`${indent}    ${varName}[${JSON.stringify(pyName)}] = _response_headers[${JSON.stringify(h.name.toLowerCase())}]`);
+        const key = JSON.stringify(h.name.toLowerCase());
+        lines.push(`${indent}if ${key} in _response_headers:`);
+        lines.push(`${indent}    ${varName}[${JSON.stringify(pyName)}] = ${pyHeaderReader(h, where).read(`_response_headers[${key}]`)}`);
     }
     return lines;
 }
@@ -515,11 +617,34 @@ function snakeToPascal(s: string): string {
 
 // ─── URL building ─────────────────────────────────────────────────────────
 
-function buildUrlExpression(path: string): string {
-    // Replace {paramName} with Python f-string interpolation
-    const hasBraces = /\{[a-zA-Z_][a-zA-Z0-9_]*\}/.test(path);
-    if (!hasBraces) return `"${path}"`;
-    const interpolated = path.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (_m, name) => `{${name}}`);
+/**
+ * Placeholder names as the `.ck` grammar allows them: `identStart identPart*`, where `identPart`
+ * admits `-` and `.` alongside the usual identifier characters. Matching only `[a-zA-Z_]\w*` left
+ * `{payment-id}` untouched, so the braces travelled to the server verbatim.
+ */
+const PATH_PLACEHOLDER = /\{([a-zA-Z_$][a-zA-Z0-9_$.-]*)\}/g;
+
+/**
+ * Render a route path as the Python expression that produces the request URL.
+ *
+ * The placeholder in the path carries the name as written in the contract, while the method
+ * signature carries its snake_cased form — so interpolating the raw name emits an f-string
+ * referring to something nothing binds, and the method raises `NameError` when called. `params`
+ * says where the value lives: spread across the signature, or behind a single `params` argument
+ * when the route declares its params as a model.
+ *
+ * Values are percent-encoded, which the TypeScript SDK has always done via `encodeURIComponent`
+ * and Python did not do at all. `safe=''` because a path segment must escape `/` too.
+ */
+function buildUrlExpression(path: string, params?: ParamSource): string {
+    if (!PATH_PLACEHOLDER.test(path)) return `"${path}"`;
+    PATH_PLACEHOLDER.lastIndex = 0;
+
+    const interpolated = path.replace(PATH_PLACEHOLDER, (_m, name: string) => {
+        const field = toPythonFieldName(name);
+        const expr = params && params.kind !== 'params' ? `params.${field}` : field;
+        return `{quote(str(${expr}), safe='')}`;
+    });
     return `f"${interpolated}"`;
 }
 
@@ -552,7 +677,12 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     const primaryBody = op.request?.bodies[0];
     if (primaryBody) {
         const cat = classifyContentType(primaryBody.contentType);
-        if (cat === 'multipart' || cat === 'binary') {
+        if (cat === 'multipart') {
+            // httpx's `files=` takes a mapping of part name to content, and generates the
+            // boundary from it. `bytes` could never have worked: it is the whole payload with no
+            // boundary, and there is no way for the client to supply one.
+            params.push({ name: 'body', type: 'dict', optional: false, isModel: false });
+        } else if (cat === 'binary') {
             params.push({ name: 'body', type: 'bytes', optional: false, isModel: false });
         } else if (cat === 'text') {
             params.push({ name: 'body', type: 'str', optional: false, isModel: false });
@@ -563,32 +693,48 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
         }
     }
 
-    // Query
+    // Query and custom headers. A `params` block is optional only when every field is, matching
+    // the TypeScript SDK; a ref or whole type stays optional, since deciding needs the model.
+    const base = snakeToPascal(deriveMethodName(op, route));
     if (op.query) {
-        const queryType = renderParamSourceType(op.query, modelsWithInput, true);
-        params.push({ name: 'query', type: queryType, optional: true, isModel: false });
+        params.push({
+            name: 'query',
+            type: renderParamSourceType(op.query, modelsWithInput, true, `${base}Query`),
+            optional: allFieldsOptional(op.query),
+            isModel: false,
+        });
     }
-
-    // Headers
     if (op.headers) {
-        const headersType = renderParamSourceType(op.headers, modelsWithInput, true);
-        params.push({ name: 'custom_headers', type: headersType, optional: true, isModel: false });
+        params.push({
+            name: 'custom_headers',
+            type: renderParamSourceType(op.headers, modelsWithInput, true, `${base}Headers`),
+            optional: allFieldsOptional(op.headers),
+            isModel: false,
+        });
     }
 
-    return params;
+    // Python has the same ordering constraint as TypeScript, but as a SyntaxError rather than a
+    // type error: a parameter with a default cannot precede one without. Widen the earlier
+    // arguments rather than reordering, which would break every positional call site.
+    const lastRequired = params.reduce((last, p, i) => (p.optional ? last : i), -1);
+    return params.map((p, i) => (i < lastRequired ? { ...p, optional: false } : p));
 }
 
-function renderParamSourceType(source: ParamSource, modelsWithInput?: Set<string>, forInput = false): string {
+/** Whether every field of a param source may be omitted — `?` in the contract, or a default. */
+function allFieldsOptional(source: ParamSource): boolean {
+    if (source.kind !== 'params') return true;
+    return source.nodes.every(p => Boolean(p.optional) || p.default !== undefined);
+}
+
+function renderParamSourceType(source: ParamSource, modelsWithInput?: Set<string>, forInput = false, typedDictName?: string): string {
     if (source.kind === 'ref') {
         const typeName = forInput && modelsWithInput?.has(source.name) ? `${source.name}Input` : source.name;
         return typeName;
     }
     if (source.kind === 'params') {
-        // const fields = source.nodes.map(p => {
-        //     const pyName = toPythonFieldName(p.name);
-        //     return `"${pyName}": ${renderPyType(p.type, modelsWithInput, forInput)}`;
-        // });
-        return `dict`; // simplified — inline dicts are hard to type concisely in Python signatures
+        // The module-level TypedDict emitted for this method, or a bare dict when the block
+        // declares nothing to describe.
+        return source.nodes.length > 0 ? typedDictName! : 'dict';
     }
     return renderPyType(source.node, modelsWithInput, forInput);
 }
@@ -635,6 +781,9 @@ function collectReferencedModels(root: OpRootNode, modelsWithInput?: Set<string>
             }
             for (const resp of op.responses) {
                 for (const body of resp.bodies) collectTypeRefs(body.bodyType, refs, modelsWithInput, false);
+                // Response headers are typed from the contract too, so a header declared
+                // `datetime` or `uuid` needs the same stdlib import a body of that type would.
+                for (const h of resp.headers ?? []) collectTypeRefs(h.type, refs, modelsWithInput, false);
             }
             if (op.query) collectParamSourceRefs(op.query, refs, modelsWithInput);
             if (op.headers) collectParamSourceRefs(op.headers, refs, modelsWithInput);
@@ -882,15 +1031,24 @@ class BaseClient:
         expect_statuses: tuple[int, ...] = (),
     ) -> tuple[Any, dict[str, str]]:
         headers = {**self._headers, **(extra_headers or {})}
-        if body is not None:
+        # multipart is the exception: httpx has to generate the boundary itself, and it can only
+        # do that if it owns the Content-Type header. Setting it here would produce a header with
+        # no boundary parameter, which no server can parse.
+        if body is not None and body_kind != "multipart":
             headers["Content-Type"] = content_type or "application/json"
         # body_kind controls how httpx serializes the request body:
-        #   "json"   — body is a JSON-serializable object, sent via httpx's json= kwarg
-        #   "text"/"binary" — body is a raw str/bytes payload, sent via content= unchanged
+        #   "json"      — a JSON-serializable object, sent via httpx's json= kwarg
+        #   "form"      — a mapping sent as application/x-www-form-urlencoded via data=
+        #   "multipart" — a mapping of file parts sent via files=, boundary generated by httpx
+        #   "text"/"binary" — a raw str/bytes payload, sent via content= unchanged
         request_kwargs: dict[str, Any] = {"method": method, "url": f"{self._base_url}{path}", "params": params, "headers": headers}
         if body is not None:
             if body_kind == "json":
                 request_kwargs["json"] = body
+            elif body_kind == "form":
+                request_kwargs["data"] = body
+            elif body_kind == "multipart":
+                request_kwargs["files"] = body
             else:
                 request_kwargs["content"] = body
         response = await self._http.request(**request_kwargs)

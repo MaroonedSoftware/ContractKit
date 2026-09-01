@@ -32,6 +32,18 @@ export interface PluginContext {
      * overwrite normally so it stays in sync with the contracts.
      */
     emitFile(outPath: string, content: string, opts?: EmitFileOptions): void;
+    /**
+     * Report a non-fatal problem against the build's diagnostics, prefixed with the plugin's name.
+     *
+     * The alternative to a channel like this is throwing, and for a misconfiguration that affects
+     * one file that is too blunt: the CLI catches a `generateTargets` throw and moves on to the
+     * next plugin, so one bad path template would silently cost you that plugin's entire output.
+     *
+     * Optional because `PluginContext` is constructed as a literal by test harnesses and by
+     * third-party tooling; a required member would break those at compile time. Call it as
+     * `ctx.warn?.(...)`.
+     */
+    warn?(message: string, file?: string, line?: number): void;
 }
 
 export interface EmitFileOptions {

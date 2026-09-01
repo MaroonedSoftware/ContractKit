@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generatePythonClient, deriveClientClassName, deriveClientModuleName, hasPublicOperations } from '../src/codegen-client.js';
+import { generatePythonClient, deriveClientClassName, deriveClientModuleName, hasPublicOperations, BASE_CLIENT_PY } from '../src/codegen-client.js';
 import {
     scalarType, arrayType, refType, enumType,
     opParam, paramNodes, paramRef, paramType, opRequest, opResponse, opOperation, opRoute, opRoot,
@@ -138,7 +138,7 @@ describe('generatePythonClient', () => {
         expect(output).toContain('[Payment.model_validate(item) for item in result]');
     });
 
-    it('generates query parameter', () => {
+    it('emits a TypedDict for an inline query block and requires it when its fields are', () => {
         const root = opRoot([
             opRoute('/payments', [
                 opOperation('get', {
@@ -148,8 +148,57 @@ describe('generatePythonClient', () => {
             ]),
         ]);
         const output = generatePythonClient(root);
-        expect(output).toContain('query: dict | None = None');
+        // A bare `dict` told a type checker nothing about what the request accepts, while the
+        // router has always validated these fields.
+        expect(output).toContain('class GetPaymentsQuery(TypedDict):');
+        expect(output).toContain('    page: int  # page');
+        expect(output).toContain('    limit: int  # limit');
+        expect(output).toContain('query: GetPaymentsQuery');
         expect(output).toContain('params=query');
+    });
+
+    it('marks omittable fields NotRequired and makes the argument optional', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', {
+                    query: [opParam('page', scalarType('int'), { optional: true }), opParam('limit', scalarType('int'), { default: 20 })],
+                    responses: [opResponse(200, 'array(Payment)')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // `NotRequired` rather than `total=False`, so a required field in a mixed block stays so.
+        expect(output).toContain('    page: NotRequired[int]  # page');
+        expect(output).toContain('    limit: NotRequired[int]  # limit');
+        expect(output).toContain('from typing import NotRequired, TypedDict');
+        expect(output).toContain('query: GetPaymentsQuery | None = None');
+    });
+
+    it('widens an optional argument that precedes a required one', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', {
+                    query: [opParam('page', scalarType('int'), { optional: true })],
+                    headers: [opParam('x-tenant', scalarType('string'))],
+                    responses: [opResponse(200, 'array(Payment)')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // In Python a defaulted parameter before a bare one is a SyntaxError, not a type error.
+        expect(output).toContain('query: GetPaymentsQuery, custom_headers: GetPaymentsHeaders');
+        expect(output).not.toContain('query: GetPaymentsQuery | None = None, custom_headers');
+    });
+
+    it('leaves a query declared as a model ref alone', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', { query: paramRef('PaymentFilter'), responses: [opResponse(200, 'array(Payment)')] }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // Deciding optionality needs the model's own fields, which this generator does not have.
+        expect(output).toContain('query: PaymentFilter | None = None');
     });
 
     it('generates body parameter for POST', () => {
@@ -166,6 +215,48 @@ describe('generatePythonClient', () => {
         expect(output).toContain('body=body.model_dump(mode="json")');
     });
 
+    it('sends a urlencoded body as form data, not JSON', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('post', {
+                    request: opRequest('PaymentForm', 'application/x-www-form-urlencoded'),
+                    responses: [opResponse(200, 'Payment')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // Without body_kind this fell through to the "json" default, so httpx sent a JSON
+        // document under a form Content-Type.
+        expect(output).toContain('body_kind="form"');
+        expect(output).toContain('content_type="application/x-www-form-urlencoded"');
+    });
+
+    it('sends a multipart body through files= and lets httpx own the Content-Type', () => {
+        const root = opRoot([
+            opRoute('/receipts', [
+                opOperation('post', {
+                    request: opRequest('ReceiptForm', 'multipart/form-data'),
+                    responses: [opResponse(200, 'Payment')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('body_kind="multipart"');
+        // A mapping of parts, not bytes: httpx generates the boundary from it, and a caller
+        // could never have supplied a boundary of their own.
+        expect(output).toContain('body: dict');
+    });
+
+    it('leaves a JSON body on the json= path with no body_kind', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('post', { request: opRequest('PaymentInput'), responses: [opResponse(201, 'Payment')] }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).not.toContain('body_kind=');
+    });
+
     it('generates path param interpolation in f-string', () => {
         const root = opRoot([
             opRoute('/payments/{id}', [
@@ -173,7 +264,51 @@ describe('generatePythonClient', () => {
             ], paramNodes([opParam('id', scalarType('uuid'))])),
         ]);
         const output = generatePythonClient(root);
-        expect(output).toContain('f"/payments/{id}"');
+        expect(output).toContain('f"/payments/{quote(str(id), safe=\'\')}"');
+        expect(output).toContain('from urllib.parse import quote');
+    });
+
+    it('interpolates the snake_cased name the signature actually binds', () => {
+        const root = opRoot([
+            opRoute('/payments/{paymentId}', [
+                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
+            ], paramNodes([opParam('paymentId', scalarType('uuid'))])),
+        ]);
+        const output = generatePythonClient(root);
+        // The signature snake_cases the name, so interpolating `paymentId` raises NameError.
+        expect(output).toContain('async def get_payments_by_payment_id(self, payment_id: UUID)');
+        expect(output).toContain("f\"/payments/{quote(str(payment_id), safe='')}\"");
+        expect(output).not.toContain('{paymentId}');
+    });
+
+    it('interpolates a hyphenated path param, which is not a Python identifier', () => {
+        const root = opRoot([
+            opRoute('/payments/{payment-id}', [
+                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
+            ], paramNodes([opParam('payment-id', scalarType('uuid'))])),
+        ]);
+        const output = generatePythonClient(root);
+        // Previously left untouched, so the literal braces went out on the wire.
+        expect(output).toContain("f\"/payments/{quote(str(payment_id), safe='')}\"");
+        expect(output).not.toContain('{payment-id}');
+    });
+
+    it('reads path params off the params argument when the route declares a model', () => {
+        const root = opRoot([
+            opRoute('/payments/{paymentId}', [
+                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
+            ], { kind: 'ref', name: 'PaymentRef' }),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('async def get_payments_by_payment_id(self, params: PaymentRef)');
+        expect(output).toContain("f\"/payments/{quote(str(params.payment_id), safe='')}\"");
+    });
+
+    it('leaves a path with no params as a plain string', () => {
+        const root = opRoot([opRoute('/payments', [opOperation('get', { responses: [opResponse(200, 'Payment')] })])]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('"/payments"');
+        expect(output).not.toContain('from urllib.parse import quote');
     });
 
     it('imports model types from their modules', () => {
@@ -421,6 +556,67 @@ describe('generatePythonClient', () => {
             expect(output).toContain('return Transfer.model_validate(result), headers');
         });
 
+        it('annotates and coerces each header to its declared type', () => {
+            const root = opRoot([
+                opRoute('/things', [
+                    opOperation('get', {
+                        sdk: 'getThing',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Thing' } }],
+                                headers: [
+                                    { name: 'x-count', optional: false, type: scalarType('int') },
+                                    { name: 'x-ratio', optional: true, type: scalarType('number') },
+                                    { name: 'x-cached', optional: false, type: scalarType('boolean') },
+                                    { name: 'x-trace', optional: false, type: scalarType('uuid') },
+                                    { name: 'x-expires', optional: true, type: scalarType('datetime') },
+                                ],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            // The annotation was hardcoded `str`, which discarded the contract's type.
+            expect(output).toContain('    x_count: int  # x-count (required)');
+            expect(output).toContain('    x_ratio: float  # x-ratio (optional)');
+            expect(output).toContain('    x_cached: bool  # x-cached (required)');
+            expect(output).toContain('    x_trace: UUID  # x-trace (required)');
+            expect(output).toContain('    x_expires: datetime  # x-expires (optional)');
+            // ...and the value was assigned raw, so the annotation was also a lie at runtime.
+            expect(output).toContain('headers["x_count"] = int(_response_headers["x-count"])');
+            expect(output).toContain('headers["x_ratio"] = float(_response_headers["x-ratio"])');
+            expect(output).toContain('headers["x_cached"] = _response_headers["x-cached"] == "true"');
+            expect(output).toContain('headers["x_trace"] = UUID(_response_headers["x-trace"])');
+            expect(output).toContain('headers["x_expires"] = datetime.fromisoformat(_response_headers["x-expires"])');
+            // A header-only `datetime` still pulls in the stdlib import it needs.
+            expect(output).toContain('from datetime import datetime');
+            expect(output).toContain('from uuid import UUID');
+        });
+
+        it('rejects a header type that cannot be read from a header', () => {
+            const root = opRoot([
+                opRoute('/things', [
+                    opOperation('get', {
+                        sdk: 'getThing',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Thing' } }],
+                                headers: [{ name: 'x-window', optional: false, type: scalarType('duration') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            // `duration` maps to timedelta, and the standard library has no ISO 8601 duration
+            // parser to convert a header string with — so it is refused rather than half-supported.
+            expect(() => generatePythonClient(root)).toThrow(/x-window.*GET \/things.*'duration' scalar/s);
+        });
+
         it('returns just headers TypedDict for void ops with declared response headers', () => {
             const root = opRoot([
                 opRoute('/resources/{id}', [
@@ -516,5 +712,22 @@ describe('generatePythonClient', () => {
             expect(output).toContain('        first line');
             expect(output).toContain('        second line');
         });
+    });
+});
+
+// ─── BASE_CLIENT_PY ───────────────────────────────────────────────────────
+
+describe('BASE_CLIENT_PY', () => {
+    it('routes each body_kind to the httpx kwarg that serializes it', () => {
+        expect(BASE_CLIENT_PY).toContain('request_kwargs["json"] = body');
+        expect(BASE_CLIENT_PY).toContain('request_kwargs["data"] = body');
+        expect(BASE_CLIENT_PY).toContain('request_kwargs["files"] = body');
+        expect(BASE_CLIENT_PY).toContain('request_kwargs["content"] = body');
+    });
+
+    it('leaves Content-Type to httpx for multipart, so it can generate the boundary', () => {
+        // A multipart Content-Type set here would carry no boundary parameter, and no server
+        // can parse that. Every other body kind still gets its declared content type.
+        expect(BASE_CLIENT_PY).toContain('if body is not None and body_kind != "multipart":');
     });
 });
