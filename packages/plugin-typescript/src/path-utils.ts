@@ -21,6 +21,16 @@ function assertWithinBase(baseOutDir: string, outPath: string): string {
     return outPath;
 }
 
+/** Global-flagged twin of {@link TEMPLATE_VAR_RE}, for finding every variable in a string. */
+export const TEMPLATE_VAR_RE_G = /\{(\w+)\}/g;
+
+/**
+ * Substitute `{key}` placeholders from `vars`.
+ *
+ * An unknown key is left in place rather than throwing, because the caller is mid-way through
+ * building a path and has better context for the complaint — see the check at the emit funnel in
+ * `index.ts`, which reports it against the file it would have been written to.
+ */
 export function resolveTemplate(template: string, vars: Record<string, string>): string {
     return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
 }

@@ -47,6 +47,7 @@ import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
 import { generateMcpFile, generateMcpAggregator, generateMcpRouter, hasMcpOperations, deriveMcpRegisterFnName } from './codegen-mcp.js';
 import {
     TEMPLATE_VAR_RE,
+    TEMPLATE_VAR_RE_G,
     resolveTemplate,
     commonDir,
     computeOpOutPath,
@@ -247,8 +248,22 @@ async function runTypescriptCodegen(
 
     deleteStalePaths(result.deletedPaths);
 
+    const unresolved = new Set<string>();
     for (const { relativePath, content, ifAbsent } of result.filesToWrite) {
+        for (const [, key] of relativePath.matchAll(TEMPLATE_VAR_RE_G)) unresolved.add(`${key}::${relativePath}`);
         ctx.emitFile(relativePath, content, ifAbsent ? { ifAbsent: true } : undefined);
+    }
+    // `resolveTemplate` leaves an unknown `{key}` in place, which then joins straight into the
+    // output path — producing a literal `{area}` directory rather than an error. `assertWithinBase`
+    // does not catch it, since the path is inside the base, just wrong. Checked here rather than
+    // threaded down through five path helpers: every output path passes through this one funnel,
+    // whichever helper built it.
+    for (const entry of [...unresolved].sort()) {
+        const [key, outPath] = entry.split('::');
+        ctx.warn?.(
+            `Output path template variable {${key}} has no value, so '${outPath}' contains it literally. ` +
+                `Declare it in the source file's 'options { keys { ${key}: ... } }' block, or remove it from the path template.`,
+        );
     }
 
     writeManifest(manifestPath, result.manifest);
