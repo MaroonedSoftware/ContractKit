@@ -10,6 +10,7 @@ import type {
     ModelNode,
     OpParamNode,
     ParamSource,
+    ScalarTypeNode,
 } from '@contractkit/core';
 import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses } from '@contractkit/core';
 import { renderInputTsType, renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, sourceLink, JSON_VALUE_TYPE_DECL } from './ts-render.js';
@@ -629,6 +630,8 @@ function hint(revive: ReviveContext | undefined, segment: string | number): Revi
 /** What `sdkReadExpr` needs to decide whether a body has to be revived, and with which function. */
 interface ReviveContext {
     modelsWithDecimal: Set<string>;
+    /** Which scalars need rehydrating; see `ReviveCodegenOptions.revivableScalars`. */
+    revivableScalars?: ReadonlySet<ScalarTypeNode['name']>;
     modelsWithOutput?: Set<string>;
     /** Inline reviver declarations accumulated for the current file, keyed by function name. */
     inlineRevivers: Map<string, string[]>;
@@ -637,10 +640,15 @@ interface ReviveContext {
     nameHint: string;
 }
 
-/** The reviver to apply to a response body, or `null` when the body holds no decimal. */
+/** The reviver to apply to a response body, or `null` when the body holds nothing to rehydrate. */
 function reviveExprFor(bodyType: ContractTypeNode, ctx: ReviveContext | undefined): { name: string; kind: 'value' | 'array' } | null {
     if (!ctx || ctx.modelsWithDecimal.size === 0) return null;
-    const opts = { modelsWithDecimal: ctx.modelsWithDecimal, modelsWithOutput: ctx.modelsWithOutput, modelMap: ctx.modelMap };
+    const opts = {
+        modelsWithDecimal: ctx.modelsWithDecimal,
+        revivableScalars: ctx.revivableScalars,
+        modelsWithOutput: ctx.modelsWithOutput,
+        modelMap: ctx.modelMap,
+    };
     if (!typeReachesDecimal(bodyType, opts)) return null;
 
     const refName = (t: ContractTypeNode): string | null => (t.kind === 'ref' ? t.name : t.kind === 'lazy' ? refName(t.inner) : null);

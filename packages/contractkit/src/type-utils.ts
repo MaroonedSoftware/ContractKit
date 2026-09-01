@@ -1,4 +1,4 @@
-import type { ContractTypeNode, ContractRootNode, FieldNode, ModelNode, OpRootNode, ParamSource } from './ast.js';
+import type { ContractTypeNode, ContractRootNode, FieldNode, ModelNode, OpRootNode, ParamSource, ScalarTypeNode } from './ast.js';
 import { resolveModifiers } from './ast.js';
 
 // ─── Effective-field resolution ────────────────────────────────────────────
@@ -466,24 +466,31 @@ export function computeModelsWithCaseTransform(models: ModelNode[], externalMode
     return result;
 }
 
-/** Whether a type node contains a `decimal` scalar anywhere below it, not following `ref` leaves. */
-function typeHasDecimal(type: ContractTypeNode): boolean {
+/**
+ * Whether a type node contains any of `scalars` anywhere below it, not following `ref` leaves.
+ *
+ * Parameterised over the scalar set rather than hardcoding `decimal`, because every scalar whose
+ * wire form differs from its runtime form taints a model the same way and needs the same
+ * transitive answer.
+ */
+export function typeHasScalar(type: ContractTypeNode, scalars: ReadonlySet<ScalarTypeNode['name']>): boolean {
+    const has = (t: ContractTypeNode) => typeHasScalar(t, scalars);
     switch (type.kind) {
         case 'scalar':
-            return type.name === 'decimal';
+            return scalars.has(type.name);
         case 'array':
         case 'lazy':
-            return typeHasDecimal(type.kind === 'array' ? type.item : type.inner);
+            return has(type.kind === 'array' ? type.item : type.inner);
         case 'tuple':
-            return type.items.some(typeHasDecimal);
+            return type.items.some(has);
         case 'record':
-            return typeHasDecimal(type.key) || typeHasDecimal(type.value);
+            return has(type.key) || has(type.value);
         case 'union':
         case 'discriminatedUnion':
         case 'intersection':
-            return type.members.some(typeHasDecimal);
+            return type.members.some(has);
         case 'inlineObject':
-            return type.fields.some(f => typeHasDecimal(f.type));
+            return type.fields.some(f => has(f.type));
         default:
             // ref (resolved by the closure below), enum, literal
             return false;
@@ -503,11 +510,26 @@ function typeHasDecimal(type: ContractTypeNode): boolean {
  * representation, and a model can easily be in one set and not the others.
  */
 export function computeModelsWithDecimal(models: ModelNode[], externalModelsWithDecimal: Set<string> = new Set()): Set<string> {
+    return computeModelsWithScalar(models, DECIMAL_SCALARS, externalModelsWithDecimal);
+}
+
+/** The scalar set behind {@link computeModelsWithDecimal}. */
+const DECIMAL_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['decimal']);
+
+/**
+ * The general form of {@link computeModelsWithDecimal}: which models carry any of `scalars`,
+ * directly or through a referenced model.
+ */
+export function computeModelsWithScalar(
+    models: ModelNode[],
+    scalars: ReadonlySet<ScalarTypeNode['name']>,
+    externalModelsWithScalar: Set<string> = new Set(),
+): Set<string> {
     const result = new Set<string>();
 
-    // Initial pass: a decimal in the model's own fields or type alias
+    // Initial pass: one of the scalars in the model's own fields or type alias
     for (const model of models) {
-        if (model.fields.some(f => typeHasDecimal(f.type)) || (model.type && typeHasDecimal(model.type))) {
+        if (model.fields.some(f => typeHasScalar(f.type, scalars)) || (model.type && typeHasScalar(model.type, scalars))) {
             result.add(model.name);
         }
     }
@@ -525,7 +547,7 @@ export function computeModelsWithDecimal(models: ModelNode[], externalModelsWith
             if (model.bases) for (const b of model.bases) refs.add(b);
             if (model.type) collectTypeRefs(model.type, refs);
             for (const ref of refs) {
-                if (result.has(ref) || externalModelsWithDecimal.has(ref)) {
+                if (result.has(ref) || externalModelsWithScalar.has(ref)) {
                     result.add(model.name);
                     changed = true;
                     break;

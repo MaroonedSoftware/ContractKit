@@ -1,4 +1,4 @@
-import type { ContractTypeNode, FieldNode, ModelNode } from '@contractkit/core';
+import type { ContractTypeNode, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
 
 /**
  * Emitters for the `reviveX` functions that rehydrate `decimal` fields in an SDK response.
@@ -19,8 +19,17 @@ import type { ContractTypeNode, FieldNode, ModelNode } from '@contractkit/core';
  */
 
 export interface ReviveCodegenOptions {
-    /** Models that carry a decimal, directly or transitively. Only these get a reviver. */
+    /** Models that carry a revivable scalar, directly or transitively. Only these get a reviver. */
     modelsWithDecimal: Set<string>;
+    /**
+     * Which scalars need rehydrating from their wire form. Defaults to `decimal`, the only scalar
+     * whose runtime type currently differs from what `JSON.parse` produces.
+     *
+     * A set rather than a boolean because the question a reviver asks is not "does this reach a
+     * decimal" but "which conversion does this leaf need" — and the answer becomes plural as soon
+     * as a second scalar joins.
+     */
+    revivableScalars?: ReadonlySet<ScalarTypeNode['name']>;
     /** Models with an `Output` variant, which need a second reviver keyed by the output casing. */
     modelsWithOutput?: Set<string>;
     /** Every model in scope, for resolving discriminated-union members to their literal tag. */
@@ -52,11 +61,14 @@ function applyCase(name: string, caseTransform: 'camel' | 'snake' | 'pascal' | u
     return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-/** Whether a type reaches a decimal, following refs through `modelsWithDecimal`. */
+/** The default of {@link ReviveCodegenOptions.revivableScalars}. */
+export const DEFAULT_REVIVABLE_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['decimal']);
+
+/** Whether a type reaches a revivable scalar, following refs through `modelsWithDecimal`. */
 export function typeReachesDecimal(type: ContractTypeNode, opts: ReviveCodegenOptions): boolean {
     switch (type.kind) {
         case 'scalar':
-            return type.name === 'decimal';
+            return (opts.revivableScalars ?? DEFAULT_REVIVABLE_SCALARS).has(type.name);
         case 'ref':
             return opts.modelsWithDecimal.has(type.name);
         case 'array':
@@ -66,6 +78,10 @@ export function typeReachesDecimal(type: ContractTypeNode, opts: ReviveCodegenOp
         case 'tuple':
             return type.items.some(t => typeReachesDecimal(t, opts));
         case 'record':
+            // Value only, deliberately unlike `typeHasScalar` in core, which also checks the key.
+            // That one answers "is this scalar mentioned", which decides imports; this one answers
+            // "is there a value to rehydrate", and a JSON object key is always a string — there is
+            // nothing at a key position for a reviver to convert.
             return typeReachesDecimal(type.value, opts);
         case 'union':
         case 'discriminatedUnion':
