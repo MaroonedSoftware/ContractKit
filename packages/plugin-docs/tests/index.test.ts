@@ -142,8 +142,10 @@ describe('emitted file set', () => {
 describe('docs.json', () => {
     it('lists every emitted page and nothing else', async () => {
         const emitted = await run(plugin);
-        const nav = JSON.parse(emitted.get('docs/docs.json')!).navigation as { tabs: { groups: { pages: string[] }[] }[] };
-        const listed = nav.tabs.flatMap(t => t.groups.flatMap(g => g.pages)).sort();
+        type NavNode = string | { pages: NavNode[] };
+        const flatten = (nodes: NavNode[]): string[] => nodes.flatMap(n => (typeof n === 'string' ? [n] : flatten(n.pages)));
+        const nav = JSON.parse(emitted.get('docs/docs.json')!).navigation as { tabs: { groups: { pages: NavNode[] }[] }[] };
+        const listed = nav.tabs.flatMap(t => flatten(t.groups.flatMap(g => g.pages))).sort();
         const pages = [...emitted.keys()]
             .filter(k => k.endsWith('.mdx'))
             .map(k => k.replace(/^docs\//, '').replace(/\.mdx$/, ''))
@@ -154,6 +156,18 @@ describe('docs.json', () => {
     it('names the site from the OpenAPI title', async () => {
         const emitted = await run(plugin, { openapi: { info: { title: 'Acme API', version: '1.0.0' } } });
         expect(JSON.parse(emitted.get('docs/docs.json')!).name).toBe('Acme API');
+    });
+
+    it('nests model pages by area, in the navigation and on disk', async () => {
+        const areaContracts = [contractRoot([model('User', [field('id', scalarType('string'))])], 'identity.ck', { area: 'identity' })];
+        const ctx = makeCtx();
+        await plugin.generateTargets!({ ...inputs, contractRoots: areaContracts }, ctx);
+
+        expect([...ctx.emitted.keys()]).toContain('docs/api-reference/models/identity/user.mdx');
+
+        const nav = JSON.parse(ctx.emitted.get('docs/docs.json')!).navigation as { tabs: { groups: { group: string; pages: unknown[] }[] }[] };
+        const modelsGroup = nav.tabs[0]!.groups.find(g => g.group === 'Models')!;
+        expect(modelsGroup.pages).toEqual([{ group: 'Identity', pages: ['api-reference/models/identity/user'] }]);
     });
 
     it('drops the Models group when model pages are off', async () => {

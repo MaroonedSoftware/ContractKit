@@ -206,6 +206,11 @@ you want to keep goes in `docs`: its keys override the generated defaults, and u
 your `tabs` (or `groups`) are kept with the generated API reference appended after them. Other
 `navigation` keys such as `global` pass through untouched.
 
+Endpoint and model pages are both grouped by the source file's `area`. Models with an area become
+a nested subgroup inside `Models` and live under `<modelsDir>/<area>/`; models from files that
+declare no area stay directly in `Models`. A project with no areas therefore gets the flat list it
+would have had anyway.
+
 Endpoint pages are grouped by the source file's `area`, and page titles follow `name:`, then the
 description, then the service method, then the HTTP verb and path. `index.mdx` is written only when
 absent, so it is yours to edit; every other file is regenerated.

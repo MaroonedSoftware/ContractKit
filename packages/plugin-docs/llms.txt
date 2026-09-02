@@ -52,7 +52,7 @@ docs/
 ├── index.mdx                      starter landing page (write-once, user-owned)
 └── api-reference/
     ├── <area>/<endpoint>.mdx      one per documented operation
-    └── models/<model>.mdx         one per documented model
+    └── models/[<area>/]<model>.mdx one per documented model, nested by area
 ```
 
 An endpoint page is frontmatter only:
@@ -69,8 +69,11 @@ A model page uses `openapi-schema: "/openapi.yaml Payment"` instead.
 
 ## Naming
 
-- **Groups** come from the source file's `area`. Area-less files land in one `Endpoints` group,
-  listed first; areas follow in first-seen order.
+- **Groups** come from the source file's `area`, for models as well as endpoints. Area-less
+  endpoints land in one `Endpoints` group, listed first; areas follow in first-seen order.
+- **Models are nested by area** inside the `Models` group and written to `<modelsDir>/<area>/`.
+  Models from files with no area stay directly in `Models`, so a project without areas keeps the
+  flat list. A schema name only has to be unique within its own area.
 - **Titles**: `name:` → description → service method → HTTP verb plus path.
 - **Slugs**: `sdk:` → `name:` → service method → HTTP method plus path. Collisions within a group
   get a numeric suffix.

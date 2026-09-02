@@ -60,7 +60,9 @@ docs/
 ├── index.mdx                              starter landing page (written once, then yours)
 └── api-reference/
     ├── <area>/<endpoint>.mdx              one per documented operation
-    └── models/<model>.mdx                 one per documented model
+    └── models/
+        ├── <model>.mdx                    models from files with no area
+        └── <area>/<model>.mdx             models grouped by area
 ```
 
 Pages are frontmatter only:
@@ -80,8 +82,10 @@ is where your own prose goes if you take a page over.
 
 ## How things are named
 
-- **Groups** come from the source file's `area`. Files with no area land in a single `Endpoints`
-  group, listed first.
+- **Groups** come from the source file's `area`, for models as well as endpoints. Endpoints with
+  no area land in a single `Endpoints` group, listed first. Models with an area become a nested
+  subgroup inside `Models`, under `<modelsDir>/<area>/`; area-less models sit directly in `Models`,
+  so a project with no areas keeps a flat list.
 - **Page titles** follow `name:`, then the description, then the service method, then the HTTP verb
   and path. A description beats a method name because `PaymentService.create` alone gives "Create",
   where the description gives "Create a payment".

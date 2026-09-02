@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { buildOpenApiDocument, toYaml } from '@contractkit/plugin-openapi';
-import { collectModels, groupEndpoints } from '../../naming.js';
+import { groupModels, groupEndpoints } from '../../naming.js';
 import { renderEndpointPage, renderIndexPage, renderModelPage } from './pages.js';
 import { renderDocsJson, resolveSiteName } from './docs-json.js';
 import type { DocsPluginConfig, DocsTarget, GenerateInputs } from '../../target.js';
@@ -80,10 +80,14 @@ const target: DocsTarget = {
             }
         }
 
-        const models = config.modelPages === false ? [] : collectModels(inputs.contractRoots, schemaNames(spec));
-        for (const entry of models) {
-            const path = resolve(layout.baseDir, layout.modelsDir, `${entry.slug}.mdx`);
-            ctx.emitFile(path, renderModelPage(entry, layout.specPath));
+        // Model pages live under their area directory, mirroring the endpoint layout, so a
+        // schema name is only required to be unique within its own area.
+        const models = config.modelPages === false ? [] : groupModels(inputs.contractRoots, schemaNames(spec));
+        for (const group of models) {
+            for (const entry of group.models) {
+                const path = resolve(layout.baseDir, layout.modelsDir, group.slug, `${entry.slug}.mdx`);
+                ctx.emitFile(path, renderModelPage(entry, layout.specPath));
+            }
         }
 
         // Written once and then owned by the user. `ifAbsent` keeps it out of the manifest, so

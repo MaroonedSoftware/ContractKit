@@ -1,5 +1,5 @@
 import type { DocsPluginConfig } from '../../target.js';
-import type { EndpointGroup, ModelEntry } from '../../naming.js';
+import type { EndpointGroup, ModelGroup } from '../../naming.js';
 
 /**
  * `docs.json` — Mintlify's site config and navigation.
@@ -10,10 +10,15 @@ import type { EndpointGroup, ModelEntry } from '../../naming.js';
  * here, which keeps it in one place instead of split between a config file and a generated one.
  */
 
-/** A Mintlify navigation group: a sidebar section listing page paths. */
+/**
+ * A Mintlify navigation group: a sidebar section listing page paths.
+ *
+ * A nested group is an *element of `pages`*, not a sibling key — that is the shape Mintlify's
+ * schema defines, and a `groups` key alongside `pages` would simply be ignored.
+ */
 export interface NavGroup {
     group: string;
-    pages: string[];
+    pages: (string | NavGroup)[];
 }
 
 /** A Mintlify navigation tab, holding groups. */
@@ -30,7 +35,7 @@ export interface DocsJsonContext {
     /** Model page directory, relative to the docs root. */
     modelsDir: string;
     groups: EndpointGroup[];
-    models: ModelEntry[];
+    models: ModelGroup[];
     /** Whether an `index.mdx` exists to link from the Overview group. */
     hasIndex: boolean;
 }
@@ -61,11 +66,36 @@ function buildGroups(ctx: DocsJsonContext): NavGroup[] {
         });
     }
 
-    if (ctx.models.length > 0) {
-        groups.push({ group: 'Models', pages: ctx.models.map(m => `${ctx.modelsDir}/${m.slug}`) });
+    const modelPages = buildModelPages(ctx);
+    if (modelPages.length > 0) {
+        groups.push({ group: 'Models', pages: modelPages });
     }
 
     return groups;
+}
+
+/**
+ * The contents of the Models group.
+ *
+ * Models carrying an `area` become a nested, collapsed subgroup each; area-less models sit
+ * directly in the Models group. A schema list that runs to hundreds of entries is unusable as
+ * one flat sidebar section, and area is the same axis the endpoints are already grouped on.
+ */
+function buildModelPages(ctx: DocsJsonContext): (string | NavGroup)[] {
+    const pages: (string | NavGroup)[] = [];
+
+    for (const group of ctx.models) {
+        if (group.models.length === 0) continue;
+        const dir = group.slug ? `${ctx.modelsDir}/${group.slug}` : ctx.modelsDir;
+        const paths = group.models.map(m => `${dir}/${m.slug}`);
+        if (group.area === undefined) {
+            pages.push(...paths);
+        } else {
+            pages.push({ group: group.title, pages: paths });
+        }
+    }
+
+    return pages;
 }
 
 /**

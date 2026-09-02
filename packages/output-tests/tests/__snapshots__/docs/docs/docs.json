@@ -40,15 +40,20 @@
                     {
                         "group": "Models",
                         "pages": [
-                            "api-reference/models/payment",
-                            "api-reference/models/credential",
-                            "api-reference/models/admin-credential",
-                            "api-reference/models/session",
-                            "api-reference/models/payment-ref",
-                            "api-reference/models/update-payment-form",
-                            "api-reference/models/upload-receipt-form",
                             "api-reference/models/invoice",
-                            "api-reference/models/heartbeat"
+                            "api-reference/models/heartbeat",
+                            {
+                                "group": "Billing",
+                                "pages": [
+                                    "api-reference/models/billing/payment",
+                                    "api-reference/models/billing/credential",
+                                    "api-reference/models/billing/admin-credential",
+                                    "api-reference/models/billing/session",
+                                    "api-reference/models/billing/payment-ref",
+                                    "api-reference/models/billing/update-payment-form",
+                                    "api-reference/models/billing/upload-receipt-form"
+                                ]
+                            }
                         ]
                     }
                 ]

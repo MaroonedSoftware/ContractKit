@@ -35,6 +35,17 @@ export interface ModelEntry {
     slug: string;
 }
 
+/** A navigation group of models, keyed by the source file's `area` meta. */
+export interface ModelGroup {
+    /** The `area` meta value, or undefined for files that declare none. */
+    area: string | undefined;
+    /** Display name for the group. */
+    title: string;
+    /** Directory slug the group's pages live under, empty for area-less models. */
+    slug: string;
+    models: ModelEntry[];
+}
+
 /**
  * Verb used when an operation has no name to derive a title from. Mirrors the mapping
  * plugin-markdown uses so the two generators title the same endpoint the same way.
@@ -204,21 +215,49 @@ export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): 
 }
 
 /**
- * Every model reachable from a documented operation, in declaration order.
+ * Every model reachable from a documented operation, grouped by its source file's `area` meta
+ * and in declaration order within each group.
  *
  * Reachability is computed from the OpenAPI document rather than re-walked here: the spec's
  * `components.schemas` already holds exactly the models the operations can reach, filtered by
  * the same `includeInternal` setting. Reading it keeps one definition of "public model" instead
  * of two that can drift.
+ *
+ * Area-less models come first as a single group, matching how {@link groupEndpoints} orders its
+ * output. A project whose contracts declare no areas therefore gets exactly one group, which is
+ * the flat list it had before grouping existed.
  */
-export function collectModels(contractRoots: ContractRootNode[], schemaNames: ReadonlySet<string>): ModelEntry[] {
-    const entries: ModelEntry[] = [];
-    const taken = new Set<string>();
+export function groupModels(contractRoots: ContractRootNode[], schemaNames: ReadonlySet<string>): ModelGroup[] {
+    const grouped = new Map<string, ModelEntry[]>();
+    const ungrouped: ModelEntry[] = [];
+    const slugsByGroup = new Map<string, Set<string>>();
+
     for (const contractRoot of contractRoots) {
+        const area = contractRoot.meta?.area;
+        let taken = slugsByGroup.get(area ?? '');
+        if (!taken) {
+            taken = new Set<string>();
+            slugsByGroup.set(area ?? '', taken);
+        }
         for (const model of contractRoot.models) {
             if (!schemaNames.has(model.name)) continue;
-            entries.push({ model, title: model.name, slug: uniqueSlug(slugify(model.name), taken) });
+            const entry: ModelEntry = { model, title: model.name, slug: uniqueSlug(slugify(model.name), taken) };
+            if (area) {
+                const list = grouped.get(area) ?? [];
+                list.push(entry);
+                grouped.set(area, list);
+            } else {
+                ungrouped.push(entry);
+            }
         }
     }
-    return entries;
+
+    const result: ModelGroup[] = [];
+    if (ungrouped.length > 0) {
+        result.push({ area: undefined, title: 'Models', slug: '', models: ungrouped });
+    }
+    for (const [area, models] of grouped) {
+        result.push({ area, title: humanize(area), slug: slugify(area), models });
+    }
+    return result;
 }

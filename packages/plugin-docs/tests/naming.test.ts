@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { slugify, titleCase, humanize, deriveTitle, derivePageSlug, groupEndpoints, collectModels } from '../src/naming.js';
+import { slugify, titleCase, humanize, deriveTitle, derivePageSlug, groupEndpoints, groupModels } from '../src/naming.js';
 import { contractRoot, field, model, opOperation, opRoute, opRoot, scalarType } from './helpers.js';
 
 describe('slugify', () => {
@@ -174,23 +174,72 @@ describe('groupEndpoints', () => {
     });
 });
 
-describe('collectModels', () => {
+describe('groupModels', () => {
     const roots = [contractRoot([model('User', [field('id', scalarType('string'))]), model('Secret', [field('key', scalarType('string'))])])];
 
     it('keeps only models present in the spec', () => {
-        expect(collectModels(roots, new Set(['User'])).map(m => m.title)).toEqual(['User']);
+        expect(groupModels(roots, new Set(['User'])).flatMap(g => g.models.map(m => m.title))).toEqual(['User']);
     });
 
     it('slugs the model name', () => {
-        expect(collectModels(roots, new Set(['User']))[0]!.slug).toBe('user');
+        expect(groupModels(roots, new Set(['User']))[0]!.models[0]!.slug).toBe('user');
     });
 
     it('returns nothing when the spec has no schemas', () => {
-        expect(collectModels(roots, new Set())).toEqual([]);
+        expect(groupModels(roots, new Set())).toEqual([]);
     });
 
-    it('de-duplicates slugs that collide across files', () => {
-        const dupes = [contractRoot([model('User', [])], 'a.ck'), contractRoot([model('user', [])], 'b.ck')];
-        expect(collectModels(dupes, new Set(['User', 'user'])).map(m => m.slug)).toEqual(['user', 'user-2']);
+    it('puts area-less models in one group with an empty directory slug', () => {
+        const groups = groupModels(roots, new Set(['User', 'Secret']));
+        expect(groups).toHaveLength(1);
+        expect(groups[0]!.area).toBeUndefined();
+        expect(groups[0]!.title).toBe('Models');
+        expect(groups[0]!.slug).toBe('');
+    });
+
+    it('groups by the contract file area', () => {
+        const areaed = [
+            contractRoot([model('Invoice', [])], 'billing.ck', { area: 'billing' }),
+            contractRoot([model('User', [])], 'identity.ck', { area: 'identity' }),
+        ];
+        const groups = groupModels(areaed, new Set(['Invoice', 'User']));
+        expect(groups.map(g => [g.title, g.slug])).toEqual([
+            ['Billing', 'billing'],
+            ['Identity', 'identity'],
+        ]);
+    });
+
+    it('splits camelCase areas the way endpoint groups do', () => {
+        const areaed = [contractRoot([model('Link', [])], 'bc.ck', { area: 'bankConnections' })];
+        const group = groupModels(areaed, new Set(['Link']))[0]!;
+        expect(group.title).toBe('Bank Connections');
+        expect(group.slug).toBe('bank-connections');
+    });
+
+    it('puts area-less models first, before any area group', () => {
+        const mixed = [contractRoot([model('Invoice', [])], 'billing.ck', { area: 'billing' }), contractRoot([model('Shared', [])], 'shared.ck')];
+        expect(groupModels(mixed, new Set(['Invoice', 'Shared'])).map(g => g.title)).toEqual(['Models', 'Billing']);
+    });
+
+    it('orders areas by first appearance', () => {
+        const areaed = [contractRoot([model('A', [])], 'z.ck', { area: 'zeta' }), contractRoot([model('B', [])], 'a.ck', { area: 'alpha' })];
+        expect(groupModels(areaed, new Set(['A', 'B'])).map(g => g.area)).toEqual(['zeta', 'alpha']);
+    });
+
+    it('merges two files that share an area', () => {
+        const areaed = [contractRoot([model('A', [])], 'a.ck', { area: 'billing' }), contractRoot([model('B', [])], 'b.ck', { area: 'billing' })];
+        const groups = groupModels(areaed, new Set(['A', 'B']));
+        expect(groups).toHaveLength(1);
+        expect(groups[0]!.models.map(m => m.title)).toEqual(['A', 'B']);
+    });
+
+    it('de-duplicates slugs that collide within one area', () => {
+        const dupes = [contractRoot([model('User', [])], 'a.ck', { area: 'x' }), contractRoot([model('user', [])], 'b.ck', { area: 'x' })];
+        expect(groupModels(dupes, new Set(['User', 'user']))[0]!.models.map(m => m.slug)).toEqual(['user', 'user-2']);
+    });
+
+    it('lets the same slug appear in two different areas, since they get separate directories', () => {
+        const same = [contractRoot([model('User', [])], 'a.ck', { area: 'alpha' }), contractRoot([model('User', [])], 'b.ck', { area: 'beta' })];
+        expect(groupModels(same, new Set(['User'])).map(g => g.models[0]!.slug)).toEqual(['user', 'user']);
     });
 });

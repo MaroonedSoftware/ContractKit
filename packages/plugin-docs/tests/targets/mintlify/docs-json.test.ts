@@ -7,7 +7,19 @@ import type { DocsPluginConfig } from '../../../src/target.js';
 
 const groups = groupEndpoints([opRoot([opRoute('/invoices', [opOperation('get', { name: 'listInvoices' })])], 'invoices.op', { area: 'billing' })]);
 
-const models = [{ model: model('User', []), title: 'User', slug: 'user' }];
+const models = [{ area: undefined, title: 'Models', slug: '', models: [{ model: model('User', []), title: 'User', slug: 'user' }] }];
+
+/** Model groups carrying an area, which become nested subgroups. */
+const areaModels = [
+    { area: 'billing', title: 'Billing', slug: 'billing', models: [{ model: model('Invoice', []), title: 'Invoice', slug: 'invoice' }] },
+    { area: 'identity', title: 'Identity', slug: 'identity', models: [{ model: model('User', []), title: 'User', slug: 'user' }] },
+];
+
+/** The Models group's contents. */
+function modelPages(doc: Record<string, unknown>): (string | NavGroup)[] {
+    const nav = doc.navigation as { tabs: NavTab[] };
+    return nav.tabs[nav.tabs.length - 1]!.groups.find(g => g.group === 'Models')!.pages;
+}
 
 function ctxWith(config: DocsPluginConfig, overrides: Partial<DocsJsonContext> = {}): DocsJsonContext {
     return { config, apiDir: 'api-reference', modelsDir: 'api-reference/models', groups, models, hasIndex: true, ...overrides };
@@ -66,9 +78,8 @@ describe('generated navigation', () => {
         expect(billing!.pages).toEqual(['api-reference/billing/list-invoices']);
     });
 
-    it('lists model pages under the models directory', () => {
-        const modelGroup = generatedTab(buildDocsJson(ctxWith({}))).groups.find(g => g.group === 'Models');
-        expect(modelGroup!.pages).toEqual(['api-reference/models/user']);
+    it('lists area-less model pages directly under the models directory', () => {
+        expect(modelPages(buildDocsJson(ctxWith({})))).toEqual(['api-reference/models/user']);
     });
 
     it('respects custom directories', () => {
@@ -87,10 +98,48 @@ describe('generated navigation', () => {
         expect(generatedTab(doc).groups.map(g => g.group)).toEqual(['Overview', 'Billing']);
     });
 
+    it('omits a model group that ended up empty', () => {
+        const empty = [{ area: 'billing', title: 'Billing', slug: 'billing', models: [] }];
+        const doc = buildDocsJson(ctxWith({}, { models: empty }));
+        expect(generatedTab(doc).groups.map(g => g.group)).not.toContain('Models');
+    });
+
     it('omits an endpoint group that ended up empty', () => {
         const empty = [{ area: 'billing', title: 'Billing', slug: 'billing', endpoints: [] }];
         const doc = buildDocsJson(ctxWith({}, { groups: empty }));
         expect(generatedTab(doc).groups.map(g => g.group)).toEqual(['Overview', 'Models']);
+    });
+});
+
+describe('models split by area', () => {
+    it('nests each area as a subgroup inside Models', () => {
+        const pages = modelPages(buildDocsJson(ctxWith({}, { models: areaModels })));
+        expect(pages).toEqual([
+            { group: 'Billing', pages: ['api-reference/models/billing/invoice'] },
+            { group: 'Identity', pages: ['api-reference/models/identity/user'] },
+        ]);
+    });
+
+    it('puts the area slug in the page path so names only clash within an area', () => {
+        const pages = modelPages(buildDocsJson(ctxWith({}, { models: areaModels })));
+        expect((pages[0] as NavGroup).pages).toEqual(['api-reference/models/billing/invoice']);
+    });
+
+    it('mixes area-less pages and area subgroups, area-less first', () => {
+        const mixed = [...models, ...areaModels];
+        const pages = modelPages(buildDocsJson(ctxWith({}, { models: mixed })));
+        expect(pages[0]).toBe('api-reference/models/user');
+        expect((pages[1] as NavGroup).group).toBe('Billing');
+    });
+
+    it('stays a flat list when no contract declares an area', () => {
+        const pages = modelPages(buildDocsJson(ctxWith({})));
+        expect(pages.every(p => typeof p === 'string')).toBe(true);
+    });
+
+    it('honours a custom models directory', () => {
+        const pages = modelPages(buildDocsJson(ctxWith({}, { models: areaModels, modelsDir: 'schemas' })));
+        expect((pages[0] as NavGroup).pages).toEqual(['schemas/billing/invoice']);
     });
 });
 

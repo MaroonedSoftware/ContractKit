@@ -93,8 +93,8 @@ export function model(name: string, fields: FieldNode[], overrides?: Partial<Mod
     };
 }
 
-export function contractRoot(models: ModelNode[], file = 'test.ck'): ContractRootNode {
-    return { kind: 'contractRoot', meta: {}, models, file };
+export function contractRoot(models: ModelNode[], file = 'test.ck', meta: Record<string, string> = {}): ContractRootNode {
+    return { kind: 'contractRoot', meta, models, file };
 }
 
 export function opParam(name: string, type: ContractTypeNode): OpParamNode {
