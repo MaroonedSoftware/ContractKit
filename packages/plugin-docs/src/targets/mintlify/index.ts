@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { buildOpenApiDocument, toYaml } from '../openapi/codegen.js';
 import { groupModels, groupEndpoints } from '../../naming.js';
+import { normalizeDir } from '../../layout.js';
 import { renderEndpointPage, renderIndexPage, renderModelPage } from './pages.js';
 import { renderDocsJson, resolveSiteName } from './docs-json.js';
 import type { DocsTarget, GenerateInputs, MintlifyConfig } from '../../target.js';
@@ -26,11 +27,6 @@ export interface MintlifyLayout {
     specFile: string;
     /** Docs-root-absolute spec reference used in frontmatter, e.g. `/openapi.yaml`. */
     specPath: string;
-}
-
-/** Strip leading and trailing slashes so a configured directory joins predictably. */
-function normalizeDir(value: string): string {
-    return value.replace(/^\/+|\/+$/g, '');
 }
 
 export function resolveLayout(config: MintlifyConfig, rootDir: string): MintlifyLayout {

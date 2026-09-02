@@ -1,4 +1,5 @@
 import { resolveModifiers } from '@contractkit/core';
+import { frontmatter, page } from '../../frontmatter.js';
 import type { EndpointEntry, ModelEntry } from '../../naming.js';
 
 /**
@@ -8,29 +9,6 @@ import type { EndpointEntry, ModelEntry } from '../../naming.js';
  * the interactive playground from the OpenAPI document the frontmatter points at, so duplicating
  * any of that in MDX would only create a second thing to keep in sync.
  */
-
-/** Frontmatter entry. A `false` value is dropped, so optional flags can be passed unconditionally. */
-type FrontmatterValue = string | boolean | undefined;
-
-/**
- * Render a YAML frontmatter block. Strings are JSON-quoted so a title containing a colon,
- * a quote or a leading `@` stays valid YAML rather than becoming a parse error at build time.
- */
-function frontmatter(entries: [string, FrontmatterValue][]): string {
-    const lines = ['---'];
-    for (const [key, value] of entries) {
-        if (value === undefined || value === false) continue;
-        lines.push(`${key}: ${value === true ? 'true' : JSON.stringify(value)}`);
-    }
-    lines.push('---');
-    return lines.join('\n');
-}
-
-/** Frontmatter block plus an optional body, as a complete file with a trailing newline. */
-function page(front: string, body?: string): string {
-    const trimmed = body?.trim();
-    return trimmed ? `${front}\n\n${trimmed}\n` : `${front}\n`;
-}
 
 /**
  * One endpoint page.
