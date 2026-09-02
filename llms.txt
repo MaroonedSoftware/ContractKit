@@ -1,6 +1,6 @@
 # ContractKit
 
-> A DSL for API contracts. `.ck` files compile to Zod schemas, Koa routers, TypeScript and
+> A DSL for API contracts. `.ck` files compile to Zod schemas, Koa or Fastify routers, TypeScript and
 > Python SDK clients, OpenAPI 3.1 YAML, Bruno collections, and Markdown docs. One file is the
 > source of truth; every artefact is generated from it.
 
@@ -25,7 +25,7 @@ grammar and the editor's completion provider consume the same syntax.
 ## Packages
 
 - [@contractkit/core](packages/contractkit/README.md): Grammar, parser, AST types, semantics, validation passes, plugin interface. Start here to understand the AST any plugin receives.
-- [@contractkit/plugin-typescript](packages/plugin-typescript/README.md): Koa routers, TypeScript SDK, Zod schemas, plain types, MCP tool handlers.
+- [@contractkit/plugin-typescript](packages/plugin-typescript/README.md): Koa or Fastify routers, TypeScript SDK, Zod schemas, plain types, MCP tool handlers.
 - [@contractkit/plugin-python](packages/plugin-python/README.md): Python SDK built on Pydantic v2 and httpx.
 - [@contractkit/plugin-docs](packages/plugin-docs/README.md): Every documentation output — an OpenAPI 3.1 spec, a Markdown reference, a Mintlify site, and a Docusaurus docs folder — as targets you enable individually.
 - [@contractkit/plugin-bruno](packages/plugin-bruno/README.md): Bruno REST collection.

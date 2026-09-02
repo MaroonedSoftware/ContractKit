@@ -57,7 +57,7 @@ Generates server router files from `operation` declarations and optionally type 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `baseDir` | `string` | `rootDir` | Base directory for output files |
-| `framework` | `string` | `"koa"` | HTTP framework the routers target. Only `koa` is supported today. |
+| `framework` | `string` | `"koa"` | HTTP framework the routers target: `"koa"` or `"fastify"`. Also selects the `mcp.router.ts` flavour. |
 | `zod` | `boolean` | `false` | Emit Zod schemas in `output.types` instead of plain interfaces |
 | `output.routes` | `string` | — | Path template for router files |
 | `output.types` | `string` | — | Path template for type/schema files |
@@ -132,7 +132,7 @@ Contracts without visibility modifiers generate a single `Model` schema.
 
 ### Router shape (from `operation`)
 
-Each operation file generates one router, targeting the framework named by `framework` (`koa` today). Request bodies and path/query params are validated against the Zod schemas (when `zod: true`) or plain types. Handlers are expected to be exported from the service module specified by `servicePathTemplate`.
+Each operation file generates one router, targeting the framework named by `framework`. On Koa a handler is `async ctx => {}` writing `ctx.status` / `ctx.type` / `ctx.body`; on Fastify it is `async (request, reply) => {}` reading `request.parsedBody` and returning `reply.send(...)`. Validation, service dispatch and the response shape are identical either way. Request bodies and path/query params are validated against the Zod schemas (when `zod: true`) or plain types. Handlers are expected to be exported from the service module specified by `servicePathTemplate`.
 
 Responses are only type-annotated by default. With `validateResponses: true` (which requires `zod: true`) the service's return value is re-parsed against its declared response schema and the parsed value is written to `ctx.body`, so a service returning a shape the contract does not allow fails with a 500 instead of shipping it. See [docs/config.md](../../docs/config.md#validateresponses) for the caveats — notably that models using `format(input=…)`/`format(output=…)` are skipped.
 

@@ -1,6 +1,6 @@
 # ContractKit
 
-A DSL for API contracts. `.ck` files compile to Zod schemas, Koa routers, TypeScript SDK
+A DSL for API contracts. `.ck` files compile to Zod schemas, Koa or Fastify routers, TypeScript SDK
 clients, Python SDK clients, OpenAPI 3.1 YAML, Bruno collections, and Markdown docs.
 
 The pipeline is: Ohm grammar (`contractkit.ohm`) → `semantics.ts` → typed AST (`ast.ts`) →

@@ -56,7 +56,7 @@ Path templates accept `{filename}`, `{dir}`, `{area}`, and — in `sdk.output.sd
 
 | Key | Emits |
 | --- | --- |
-| `server` | Server routers from `operation` declarations, plus the type or Zod files they import. `framework` selects the HTTP framework; only `koa` today |
+| `server` | Server routers from `operation` declarations, plus the type or Zod files they import. `framework` selects the HTTP framework: `koa` or `fastify` |
 | `sdk` | The SDK class, per-area operation clients, and their types |
 | `zod` | Standalone Zod schemas, independent of `server` and `sdk` |
 | `types` | Standalone plain TypeScript types, independent of `server` and `sdk` |
