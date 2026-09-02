@@ -69,6 +69,30 @@ declare module '@maroonedsoftware/koa' {
     export function requireSignature(name: string, opts?: any): RouteHandler;
 }
 
+declare module '@maroonedsoftware/fastify' {
+    /**
+     * Both parameters are typed for the same reason the Koa stub types its one: without a contextual
+     * type every emitted `async (request, reply) => …` arrow reports two implicit-any parameters,
+     * which is a fact about this stub and not about the generated router. The return type stays `any`
+     * so `return reply.send(...)` is assignable wherever the generator puts it.
+     */
+    type RouteHandler = (request: any, reply: any) => any;
+    export interface ServerKitRouterType {
+        get(path: string, ...handlers: RouteHandler[]): this;
+        post(path: string, ...handlers: RouteHandler[]): this;
+        put(path: string, ...handlers: RouteHandler[]): this;
+        patch(path: string, ...handlers: RouteHandler[]): this;
+        delete(path: string, ...handlers: RouteHandler[]): this;
+    }
+    export function ServerKitRouter(): ServerKitRouterType;
+    export function bodyParserMiddleware(kinds: string[]): RouteHandler;
+    export function requirePolicy(options?: { policy?: string | false }): RouteHandler;
+    export function requireSignature(optionsKey: string, opts?: any): RouteHandler;
+    /** Declared as returning `string` so the generated `switch` compares like with like. */
+    export function requestMediaType(request: any): string;
+    export function requestHeader(request: any, name: string): string;
+}
+
 declare module '@maroonedsoftware/zod' {
     /**
      * Inferred through the schema's own `parse` rather than declared `<T>(v, schema: any)`, which

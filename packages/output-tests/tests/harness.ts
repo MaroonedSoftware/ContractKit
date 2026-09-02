@@ -46,7 +46,7 @@ export interface BuildResult {
     diagnostics: Diagnostic[];
 }
 
-export type PluginName = 'typescript' | 'python' | 'openapi' | 'markdown' | 'bruno' | 'docs' | 'docusaurus';
+export type PluginName = 'typescript' | 'typescript-fastify' | 'python' | 'openapi' | 'markdown' | 'bruno' | 'docs' | 'docusaurus';
 
 /**
  * Fake `PluginContext` capturing `emitFile` in memory, mirroring `makeCtx` in
@@ -127,6 +127,24 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
                 ROOT_DIR,
             ),
         },
+        {
+            // The same contracts through the Fastify adapter, at the same `baseDir`, so the tree is a
+            // file-for-file mirror of the Koa one and diffs against it read directly. No `sdk` block:
+            // SDK output is framework-independent, and a second copy of it would be noise.
+            name: 'typescript-fastify',
+            plugin: createTypescriptPlugin(
+                {
+                    server: {
+                        baseDir: 'server',
+                        framework: 'fastify',
+                        zod: true,
+                        output: { routes: 'routes/{filename}.router.ts', types: 'schemas/{filename}.schema.ts' },
+                    },
+                    mcp: { baseDir: 'server' },
+                },
+                ROOT_DIR,
+            ),
+        },
         { name: 'python', plugin: createPythonSdkPlugin({ baseDir: 'pysdk' }, ROOT_DIR) },
         {
             name: 'openapi',
@@ -165,11 +183,13 @@ export async function buildFixtures(): Promise<BuildResult> {
         modelsWithOutput: computeModelsWithOutput(models),
     };
 
-    const cacheDir = mkdtempSync(join(tmpdir(), 'ck-output-tests-'));
     const files = {} as Record<PluginName, EmittedFiles>;
 
     for (const { name, plugin } of makePlugins()) {
-        const ctx = makeCtx(cacheDir);
+        // A directory per entry: the TypeScript plugin's manifest filename is fixed, so the two
+        // TypeScript entries would otherwise write the same file. Inert while `cacheEnabled` is
+        // false, but the collision is real.
+        const ctx = makeCtx(mkdtempSync(join(tmpdir(), 'ck-output-tests-')));
         await plugin.generateTargets!(inputs, ctx);
         files[name] = ctx.emitted;
     }

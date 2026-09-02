@@ -93,7 +93,7 @@ export const FASTIFY_SERVER_FRAMEWORK: ServerFramework = {
     },
 
     mcpRouter({ path }) {
-        return `import { ServerKitRouter, type ServerKitRouterType, bodyParserMiddleware, requireSignature, requestHeader } from '${FASTIFY_RUNTIME_MODULE}';
+        return `import { type ServerKitRouterType, bodyParserMiddleware, requireSignature, requestHeader } from '${FASTIFY_RUNTIME_MODULE}';
 import { McpDispatcher, createMcpRequestContext, MCP_AUTH_POLICY } from '@maroonedsoftware/mcp';
 
 /** Mount the MCP endpoint onto a ServerKit router. Bind \`registerMcpTools\` to the \`McpToolHandlerMap\` token. */

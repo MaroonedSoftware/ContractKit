@@ -117,6 +117,8 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
 
         it('names the exported router type rather than inferring it', () => {
             expect(out).toContain('export function mountMcp(router: ServerKitRouterType): void {');
+            // And therefore never imports the factory value, which `noUnusedLocals` would reject.
+            expect(out).toContain("import { type ServerKitRouterType, bodyParserMiddleware, requireSignature, requestHeader } from '@maroonedsoftware/fastify';");
         });
 
         it('hijacks the reply for a stateful session, which is Fastify\'s ctx.respond = false', () => {

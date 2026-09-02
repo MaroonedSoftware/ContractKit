@@ -5,7 +5,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
-import { buildOnce } from './harness.js';
+import { buildOnce, type PluginName } from './harness.js';
 
 /**
  * Whether the generated TypeScript compiles. `toContain` assertions cannot see this: most of the
@@ -51,11 +51,11 @@ const { files } = await buildOnce();
  * Materialise one subtree of the emitted TypeScript on disk so relative imports between the files
  * resolve, alongside a `node_modules` holding the dependencies that are resolved for real.
  */
-function materialise(prefix: string, withNodeTypes: boolean): { dir: string; rootNames: string[] } {
+function materialise(pluginName: PluginName, prefix: string, withNodeTypes: boolean): { dir: string; rootNames: string[] } {
     const dir = mkdtempSync(join(tmpdir(), 'ck-typecheck-'));
     const rootNames: string[] = [];
 
-    for (const [relPath, content] of files.typescript) {
+    for (const [relPath, content] of files[pluginName]) {
         if (!relPath.startsWith(prefix) || !relPath.endsWith('.ts')) continue;
         const outPath = join(dir, relPath);
         mkdirSync(dirname(outPath), { recursive: true });
@@ -92,18 +92,24 @@ function formatDiagnostics(diagnostics: readonly ts.Diagnostic[], dir: string): 
         .sort();
 }
 
-function check(prefix: string, withNodeTypes: boolean): string[] {
-    const { dir, rootNames } = materialise(prefix, withNodeTypes);
+function check(pluginName: PluginName, prefix: string, withNodeTypes: boolean): string[] {
+    const { dir, rootNames } = materialise(pluginName, prefix, withNodeTypes);
     const program = ts.createProgram(rootNames, compilerOptions(withNodeTypes));
     return formatDiagnostics(ts.getPreEmitDiagnostics(program), dir);
 }
 
 describe('generated TypeScript', () => {
     it('compiles the SDK clean', () => {
-        expect(check('sdk/', false)).toEqual([]);
+        expect(check('typescript', 'sdk/', false)).toEqual([]);
     });
 
-    it('compiles the server clean', () => {
-        expect(check('server/', true)).toEqual([]);
+    it('compiles the Koa server clean', () => {
+        expect(check('typescript', 'server/', true)).toEqual([]);
+    });
+
+    it('compiles the Fastify server clean', () => {
+        // The strongest signal the adapter is right: `noUnusedParameters` catches a handler that
+        // binds `reply` and never writes through it, and `strict` catches a send that cannot type.
+        expect(check('typescript-fastify', 'server/', true)).toEqual([]);
     });
 });
