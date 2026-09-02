@@ -205,12 +205,6 @@ importers:
       '@contractkit/plugin-docs':
         specifier: workspace:*
         version: link:../plugin-docs
-      '@contractkit/plugin-markdown':
-        specifier: workspace:*
-        version: link:../plugin-markdown
-      '@contractkit/plugin-openapi':
-        specifier: workspace:*
-        version: link:../plugin-openapi
       '@contractkit/plugin-python':
         specifier: workspace:*
         version: link:../plugin-python
@@ -251,35 +245,6 @@ importers:
       '@contractkit/core':
         specifier: workspace:*
         version: link:../contractkit
-      '@contractkit/plugin-openapi':
-        specifier: workspace:*
-        version: link:../plugin-openapi
-    devDependencies:
-      '@repo/config-eslint':
-        specifier: workspace:*
-        version: link:../config-eslint
-      '@repo/config-typescript':
-        specifier: workspace:*
-        version: link:../config-typescript
-
-  packages/plugin-markdown:
-    dependencies:
-      '@contractkit/core':
-        specifier: workspace:*
-        version: link:../contractkit
-    devDependencies:
-      '@repo/config-eslint':
-        specifier: workspace:*
-        version: link:../config-eslint
-      '@repo/config-typescript':
-        specifier: workspace:*
-        version: link:../config-typescript
-
-  packages/plugin-openapi:
-    dependencies:
-      '@contractkit/core':
-        specifier: workspace:*
-        version: link:../contractkit
     devDependencies:
       '@contractkit/openapi-to-ck':
         specifier: workspace:*
@@ -293,6 +258,38 @@ importers:
       yaml:
         specifier: ^2.8.3
         version: 2.8.3
+
+  packages/plugin-markdown:
+    dependencies:
+      '@contractkit/core':
+        specifier: workspace:*
+        version: link:../contractkit
+      '@contractkit/plugin-docs':
+        specifier: workspace:*
+        version: link:../plugin-docs
+    devDependencies:
+      '@repo/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/config-typescript':
+        specifier: workspace:*
+        version: link:../config-typescript
+
+  packages/plugin-openapi:
+    dependencies:
+      '@contractkit/core':
+        specifier: workspace:*
+        version: link:../contractkit
+      '@contractkit/plugin-docs':
+        specifier: workspace:*
+        version: link:../plugin-docs
+    devDependencies:
+      '@repo/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/config-typescript':
+        specifier: workspace:*
+        version: link:../config-typescript
 
   packages/plugin-python:
     dependencies:

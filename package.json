@@ -5,6 +5,7 @@
     "scripts": {
         "build": "turbo run build",
         "build:ci": "turbo run build:ci",
+        "bootstrap:npm": "bash scripts/bootstrap.npm.packages.sh",
         "dev": "turbo run dev",
         "lint": "turbo run lint",
         "format": "turbo run format",
