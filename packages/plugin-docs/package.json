@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-docs",
-    "version": "0.2.1",
+    "version": "0.3.0",
     "description": "ContractKit built-in plugin: documentation generation (OpenAPI, Markdown, Mintlify, Docusaurus)",
     "license": "MIT",
     "author": {
