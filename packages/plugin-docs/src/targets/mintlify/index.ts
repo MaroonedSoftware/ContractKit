@@ -3,7 +3,7 @@ import { buildOpenApiDocument, toYaml } from '@contractkit/plugin-openapi';
 import { groupModels, groupEndpoints } from '../../naming.js';
 import { renderEndpointPage, renderIndexPage, renderModelPage } from './pages.js';
 import { renderDocsJson, resolveSiteName } from './docs-json.js';
-import type { DocsPluginConfig, DocsTarget, GenerateInputs } from '../../target.js';
+import type { DocsTarget, GenerateInputs, MintlifyConfig } from '../../target.js';
 import type { PluginContext } from '@contractkit/core';
 
 /**
@@ -33,7 +33,7 @@ function normalizeDir(value: string): string {
     return value.replace(/^\/+|\/+$/g, '');
 }
 
-export function resolveLayout(config: DocsPluginConfig, rootDir: string): MintlifyLayout {
+export function resolveLayout(config: MintlifyConfig, rootDir: string): MintlifyLayout {
     const baseDir = resolve(rootDir, config.baseDir ?? 'docs');
     const apiDir = normalizeDir(config.apiDir ?? 'api-reference');
     const modelsDir = normalizeDir(config.modelsDir ?? `${apiDir}/models`);
@@ -48,7 +48,7 @@ export function resolveLayout(config: DocsPluginConfig, rootDir: string): Mintli
  * owns where the spec lands, and letting the nested config redirect it would leave every page's
  * frontmatter pointing at a file that isn't there.
  */
-export function buildSpec(inputs: GenerateInputs, config: DocsPluginConfig): Record<string, unknown> {
+export function buildSpec(inputs: GenerateInputs, config: MintlifyConfig): Record<string, unknown> {
     const { info, servers, security, securitySchemes } = config.openapi ?? {};
     return buildOpenApiDocument({
         contractRoots: inputs.contractRoots,
@@ -64,9 +64,9 @@ export function schemaNames(doc: Record<string, unknown>): Set<string> {
     return new Set(Object.keys(components?.schemas ?? {}));
 }
 
-const target: DocsTarget = {
+const target: DocsTarget<MintlifyConfig> = {
     name: 'mintlify',
-    generate(inputs: GenerateInputs, ctx: PluginContext, config: DocsPluginConfig, rootDir: string): void {
+    async generate(inputs: GenerateInputs, ctx: PluginContext, config: MintlifyConfig, rootDir: string): Promise<void> {
         const layout = resolveLayout(config, rootDir);
         const spec = buildSpec(inputs, config);
 

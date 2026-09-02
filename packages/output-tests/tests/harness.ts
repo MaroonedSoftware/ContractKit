@@ -129,10 +129,7 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
         { name: 'bruno', plugin: createBrunoPlugin({ output: 'bruno', randomExamples: false }, ROOT_DIR) },
         {
             name: 'docs',
-            plugin: createDocsPlugin(
-                { target: 'mintlify', baseDir: 'docs', openapi: { info: { title: 'Kitchen Sink', version: '1.0.0' } } },
-                ROOT_DIR,
-            ),
+            plugin: createDocsPlugin({ mintlify: { baseDir: 'docs', openapi: { info: { title: 'Kitchen Sink', version: '1.0.0' } } } }, ROOT_DIR),
         },
     ];
 }

@@ -23,17 +23,21 @@ pnpm add -D @contractkit/cli @contractkit/plugin-docs
     "patterns": ["contracts/**/*.ck"],
     "plugins": {
         "@contractkit/plugin-docs": {
-            "baseDir": "docs/",
-            "openapi": { "info": { "title": "Acme API", "version": "1.0.0" } },
-            "docs": { "theme": "mint", "colors": { "primary": "#0D9373" } }
+            "mintlify": {
+                "baseDir": "docs/",
+                "openapi": { "info": { "title": "Acme API", "version": "1.0.0" } },
+                "docs": { "theme": "mint", "colors": { "primary": "#0D9373" } }
+            }
         }
     }
 }
 ```
 
+Each key under the plugin is one target, enabled by being present. `mintlify` is the only target
+today. The options below are the contents of the `mintlify` block.
+
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `target` | `string` | `"mintlify"` | Documentation platform. Only `mintlify` is supported; any other value fails the build |
 | `baseDir` | `string` | `"docs"` | Docs root, relative to `rootDir` |
 | `apiDir` | `string` | `"api-reference"` | Endpoint page directory under `baseDir` |
 | `modelsDir` | `string` | `"<apiDir>/models"` | Model page directory under `baseDir` |
@@ -83,7 +87,7 @@ A model page uses `openapi-schema: "/openapi.yaml Payment"` instead.
 ```typescript
 import { createDocsPlugin } from '@contractkit/plugin-docs';
 
-const plugin = createDocsPlugin({ target: 'mintlify', baseDir: 'docs' }, process.cwd());
+const plugin = createDocsPlugin({ mintlify: { baseDir: 'docs' } }, process.cwd());
 ```
 
 Prefer the default export when loading through `contractkit.config.json`; the factory is for

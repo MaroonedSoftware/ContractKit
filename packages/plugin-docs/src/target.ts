@@ -4,13 +4,8 @@ import type { OpenApiPluginOptions } from '@contractkit/plugin-openapi';
 /** Documentation platforms this plugin can emit for. */
 export type DocsTargetName = 'mintlify';
 
-/** Config accepted under `"@contractkit/plugin-docs"` in `contractkit.config.json`. */
-export interface DocsPluginConfig {
-    /**
-     * Documentation platform to emit for. Defaults to `mintlify`, the only target implemented
-     * today. An unrecognized value fails the build rather than emitting nothing.
-     */
-    target?: DocsTargetName;
+/** A Mintlify documentation site: MDX pages, `docs.json` navigation, and the spec they render from. */
+export interface MintlifyConfig {
     /** Docs root, relative to `rootDir`. Default: `docs`. */
     baseDir?: string;
     /** Directory under `baseDir` holding endpoint pages. Default: `api-reference`. */
@@ -34,16 +29,32 @@ export interface DocsPluginConfig {
     includeInternal?: boolean;
     /**
      * Merged over the generated site config (`name`, `theme`, `colors`, `logo`, `favicon`, extra
-     * navigation tabs or groups, global anchors, …). Shape is target-specific.
+     * navigation tabs or groups, global anchors, …).
      */
     docs?: Record<string, unknown>;
+}
+
+/**
+ * Config accepted under `"@contractkit/plugin-docs"` in `contractkit.config.json`.
+ *
+ * Each key is one target, enabled by being present, mirroring how `@contractkit/plugin-typescript`
+ * turns on `server` / `sdk` / `zod` / `types` / `mcp`. The CLI keys its `plugins` block by package
+ * name, so this package can be listed only once; a single `target` field would therefore have
+ * allowed just one documentation format per build.
+ */
+export interface DocsPluginConfig {
+    mintlify?: MintlifyConfig;
 }
 
 /** The inputs `generateTargets` hands a plugin. */
 export type GenerateInputs = Parameters<NonNullable<ContractKitPlugin['generateTargets']>>[0];
 
-/** One documentation platform's generator. */
-export interface DocsTarget {
+/**
+ * One documentation platform's generator.
+ *
+ * `generate` is async to match `generateTargets`, even where a target has no awaiting to do.
+ */
+export interface DocsTarget<TConfig> {
     name: DocsTargetName;
-    generate(inputs: GenerateInputs, ctx: PluginContext, config: DocsPluginConfig, rootDir: string): void;
+    generate(inputs: GenerateInputs, ctx: PluginContext, config: TConfig, rootDir: string): Promise<void>;
 }

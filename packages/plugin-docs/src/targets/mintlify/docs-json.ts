@@ -1,4 +1,4 @@
-import type { DocsPluginConfig } from '../../target.js';
+import type { MintlifyConfig } from '../../target.js';
 import type { EndpointGroup, ModelGroup } from '../../naming.js';
 
 /**
@@ -29,7 +29,7 @@ export interface NavTab {
 
 /** Inputs the navigation is built from. */
 export interface DocsJsonContext {
-    config: DocsPluginConfig;
+    config: MintlifyConfig;
     /** Endpoint page directory, relative to the docs root. */
     apiDir: string;
     /** Model page directory, relative to the docs root. */
@@ -122,7 +122,7 @@ function buildNavigation(ctx: DocsJsonContext, userNav: Record<string, unknown>)
 }
 
 /** The site name: explicit config first, then the OpenAPI title, then a generic fallback. */
-export function resolveSiteName(config: DocsPluginConfig): string {
+export function resolveSiteName(config: MintlifyConfig): string {
     const configured = config.docs?.name;
     if (typeof configured === 'string' && configured.length > 0) return configured;
     return config.openapi?.info?.title ?? 'API';

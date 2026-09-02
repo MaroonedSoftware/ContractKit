@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import plugin, { createDocsPlugin } from '../src/index.js';
 import { contractRoot, field, model, opOperation, opRequest, opResponse, opRoute, opRoot, refType, scalarType } from './helpers.js';
 import type { ContractKitPlugin, PluginContext } from '@contractkit/core';
-import type { DocsPluginConfig } from '../src/target.js';
+import type { MintlifyConfig } from '../src/target.js';
 
 const ROOT_DIR = '/project';
 
@@ -48,8 +48,8 @@ const opRoots = [
 const inputs = { contractRoots, opRoots, modelsWithInput: new Set<string>(), modelsWithOutput: new Set<string>() };
 
 /** Run a plugin over the shared fixtures and return what it emitted. */
-async function run(p: ContractKitPlugin, options: Record<string, unknown> = {}): Promise<Map<string, string>> {
-    const ctx = makeCtx(options);
+async function run(p: ContractKitPlugin, mintlifyOptions: Record<string, unknown> = {}): Promise<Map<string, string>> {
+    const ctx = makeCtx({ mintlify: mintlifyOptions });
     await p.generateTargets!(inputs, ctx);
     return ctx.emitted;
 }
@@ -57,27 +57,23 @@ async function run(p: ContractKitPlugin, options: Record<string, unknown> = {}):
 describe('plugin shell', () => {
     it('is named docs', () => {
         expect(plugin.name).toBe('docs');
-        expect(createDocsPlugin({}, ROOT_DIR).name).toBe('docs');
+        expect(createDocsPlugin({ mintlify: {} }, ROOT_DIR).name).toBe('docs');
     });
 
     it('folds the config into the factory cache key so a config change busts the cache', () => {
-        const a = createDocsPlugin({ baseDir: 'docs' }, ROOT_DIR).cacheKey;
-        const b = createDocsPlugin({ baseDir: 'site' }, ROOT_DIR).cacheKey;
+        const a = createDocsPlugin({ mintlify: { baseDir: 'docs' } }, ROOT_DIR).cacheKey;
+        const b = createDocsPlugin({ mintlify: { baseDir: 'site' } }, ROOT_DIR).cacheKey;
         expect(a).not.toBe(b);
     });
 
-    it('defaults to the mintlify target', async () => {
+    it('runs the mintlify target when its sub-config is present', async () => {
         const emitted = await run(plugin);
         expect([...emitted.keys()]).toContain('docs/openapi.yaml');
     });
 
-    it('accepts an explicit mintlify target', async () => {
-        const emitted = await run(plugin, { target: 'mintlify' });
-        expect([...emitted.keys()]).toContain('docs/openapi.yaml');
-    });
-
-    it('rejects an unknown target rather than emitting the wrong site', async () => {
-        await expect(run(plugin, { target: 'docusaurus' })).rejects.toThrow(/unknown target "docusaurus".*Supported targets: mintlify/);
+    it('fails when no target is configured rather than emitting nothing', async () => {
+        const ctx = makeCtx({});
+        await expect(plugin.generateTargets!(inputs, ctx)).rejects.toThrow(/no target configured.*mintlify/);
     });
 
     it('reads config from ctx.options for the default export', async () => {
@@ -86,8 +82,8 @@ describe('plugin shell', () => {
     });
 
     it('reads config from the factory argument, ignoring ctx.options', async () => {
-        const ctx = makeCtx({ baseDir: 'ignored' });
-        await createDocsPlugin({ baseDir: 'site' }, ROOT_DIR).generateTargets!(inputs, ctx);
+        const ctx = makeCtx({ mintlify: { baseDir: 'ignored' } });
+        await createDocsPlugin({ mintlify: { baseDir: 'site' } }, ROOT_DIR).generateTargets!(inputs, ctx);
         expect([...ctx.emitted.keys()]).toContain('site/openapi.yaml');
     });
 });
@@ -107,7 +103,7 @@ describe('emitted file set', () => {
 
     it('groups endpoint pages under the area directory', async () => {
         const areaRoots = [opRoot([opRoute('/invoices', [opOperation('get', { name: 'listInvoices' })])], 'invoices.op', { area: 'billing' })];
-        const ctx = makeCtx();
+        const ctx = makeCtx({ mintlify: {} });
         await plugin.generateTargets!({ ...inputs, opRoots: areaRoots }, ctx);
         expect([...ctx.emitted.keys()]).toContain('docs/api-reference/billing/list-invoices.mdx');
     });
@@ -160,7 +156,7 @@ describe('docs.json', () => {
 
     it('nests model pages by area, in the navigation and on disk', async () => {
         const areaContracts = [contractRoot([model('User', [field('id', scalarType('string'))])], 'identity.ck', { area: 'identity' })];
-        const ctx = makeCtx();
+        const ctx = makeCtx({ mintlify: {} });
         await plugin.generateTargets!({ ...inputs, contractRoots: areaContracts }, ctx);
 
         expect([...ctx.emitted.keys()]).toContain('docs/api-reference/models/identity/user.mdx');
@@ -179,13 +175,13 @@ describe('docs.json', () => {
 
 describe('index page', () => {
     it('is written once and never overwritten', async () => {
-        const ctx = makeCtx();
+        const ctx = makeCtx({ mintlify: {} });
         await plugin.generateTargets!(inputs, ctx);
         expect(ctx.ifAbsent.has('docs/index.mdx')).toBe(true);
     });
 
     it('is the only user-owned file — generated pages must stay in sync', async () => {
-        const ctx = makeCtx();
+        const ctx = makeCtx({ mintlify: {} });
         await plugin.generateTargets!(inputs, ctx);
         expect([...ctx.ifAbsent]).toEqual(['docs/index.mdx']);
     });
@@ -209,7 +205,7 @@ describe('openapi spec', () => {
     });
 
     it('ignores a baseDir inside the openapi config, which would strand every page reference', async () => {
-        const emitted = await run(plugin, { openapi: { baseDir: 'elsewhere/' } as DocsPluginConfig['openapi'] });
+        const emitted = await run(plugin, { openapi: { baseDir: 'elsewhere/' } as MintlifyConfig['openapi'] });
         expect([...emitted.keys()]).toContain('docs/openapi.yaml');
     });
 

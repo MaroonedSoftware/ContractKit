@@ -97,8 +97,10 @@ export function contractRoot(models: ModelNode[], file = 'test.ck', meta: Record
     return { kind: 'contractRoot', meta, models, file };
 }
 
-export function opParam(name: string, type: ContractTypeNode): OpParamNode {
-    return { name, type, loc: loc(1, 'test.op') };
+export function opParam(name: string, type: ContractTypeNode, overrides?: Partial<OpParamNode>): OpParamNode {
+    // `optional` and `nullable` are required on OpParamNode; omitting them leaves them `undefined`,
+    // which reads as "required" only by accident. Set them explicitly.
+    return { name, type, optional: false, nullable: false, loc: loc(1, 'test.op'), ...overrides };
 }
 
 export function paramNodes(nodes: OpParamNode[]): ParamSource {

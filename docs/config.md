@@ -184,14 +184,12 @@ Unreachable types are excluded.
 
 ### `@contractkit/plugin-docs`
 
-Generates a documentation site from the contracts. `mintlify` is the only `target` today: it emits
-an OpenAPI spec, one MDX page per endpoint and per documented model, a `docs.json`, and a starter
-`index.mdx`. Mintlify renders parameters, schemas and the interactive playground from the spec, so
+Generates a documentation site from the contracts. The `mintlify` target emits an OpenAPI spec, one
+MDX page per endpoint and per documented model, a `docs.json`, and a starter `index.mdx`. Mintlify renders parameters, schemas and the interactive playground from the spec, so
 the pages themselves are frontmatter only.
 
 | Field             | Type              | Description                                                                                                                                |
 | ----------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `target`          | `string`          | Documentation platform. Only `mintlify` is supported. Default: `mintlify`                                                                  |
 | `baseDir`         | `string`          | Docs root, relative to `rootDir`. Default: `docs`                                                                                          |
 | `apiDir`          | `string`          | Endpoint page directory under `baseDir`. Default: `api-reference`                                                                          |
 | `modelsDir`       | `string`          | Model page directory under `baseDir`. Default: `<apiDir>/models`                                                                           |

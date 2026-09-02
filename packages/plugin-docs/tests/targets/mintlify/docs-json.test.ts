@@ -3,7 +3,7 @@ import { buildDocsJson, renderDocsJson, resolveSiteName } from '../../../src/tar
 import { groupEndpoints } from '../../../src/naming.js';
 import { model, opOperation, opRoute, opRoot } from '../../helpers.js';
 import type { DocsJsonContext, NavGroup, NavTab } from '../../../src/targets/mintlify/docs-json.js';
-import type { DocsPluginConfig } from '../../../src/target.js';
+import type { MintlifyConfig } from '../../../src/target.js';
 
 const groups = groupEndpoints([opRoot([opRoute('/invoices', [opOperation('get', { name: 'listInvoices' })])], 'invoices.op', { area: 'billing' })]);
 
@@ -21,7 +21,7 @@ function modelPages(doc: Record<string, unknown>): (string | NavGroup)[] {
     return nav.tabs[nav.tabs.length - 1]!.groups.find(g => g.group === 'Models')!.pages;
 }
 
-function ctxWith(config: DocsPluginConfig, overrides: Partial<DocsJsonContext> = {}): DocsJsonContext {
+function ctxWith(config: MintlifyConfig, overrides: Partial<DocsJsonContext> = {}): DocsJsonContext {
     return { config, apiDir: 'api-reference', modelsDir: 'api-reference/models', groups, models, hasIndex: true, ...overrides };
 }
 
@@ -151,7 +151,7 @@ describe('tab: false', () => {
     });
 
     it('appends after any groups the user configured', () => {
-        const config: DocsPluginConfig = { tab: false, docs: { navigation: { groups: [{ group: 'Guides', pages: ['guides/start'] }] } } };
+        const config: MintlifyConfig = { tab: false, docs: { navigation: { groups: [{ group: 'Guides', pages: ['guides/start'] }] } } };
         const nav = buildDocsJson(ctxWith(config)).navigation as { groups: NavGroup[] };
         expect(nav.groups.map(g => g.group)).toEqual(['Guides', 'Overview', 'Billing', 'Models']);
     });
@@ -172,21 +172,21 @@ describe('user config merge', () => {
     });
 
     it('appends the generated tab after user tabs rather than replacing them', () => {
-        const config: DocsPluginConfig = { docs: { navigation: { tabs: [{ tab: 'Guides', groups: [] }] } } };
+        const config: MintlifyConfig = { docs: { navigation: { tabs: [{ tab: 'Guides', groups: [] }] } } };
         const nav = buildDocsJson(ctxWith(config)).navigation as { tabs: NavTab[] };
         expect(nav.tabs.map(t => t.tab)).toEqual(['Guides', 'API Reference']);
     });
 
     it('keeps other navigation keys such as global anchors', () => {
         const anchors = { anchors: [{ anchor: 'Blog', href: 'https://example.com' }] };
-        const config: DocsPluginConfig = { docs: { navigation: { global: anchors } } };
+        const config: MintlifyConfig = { docs: { navigation: { global: anchors } } };
         const nav = buildDocsJson(ctxWith(config)).navigation as { global: unknown; tabs: NavTab[] };
         expect(nav.global).toEqual(anchors);
         expect(nav.tabs).toHaveLength(1);
     });
 
     it('cannot have navigation replaced wholesale, which would drop the generated pages', () => {
-        const config: DocsPluginConfig = { docs: { navigation: { tabs: [] } } };
+        const config: MintlifyConfig = { docs: { navigation: { tabs: [] } } };
         expect(generatedTab(buildDocsJson(ctxWith(config))).groups.length).toBeGreaterThan(0);
     });
 });

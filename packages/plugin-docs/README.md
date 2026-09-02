@@ -23,25 +23,30 @@ pnpm add -D @contractkit/cli @contractkit/plugin-docs
     "patterns": ["contracts/**/*.ck"],
     "plugins": {
         "@contractkit/plugin-docs": {
-            "baseDir": "docs/",
-            "openapi": {
-                "info": { "title": "Acme API", "version": "1.0.0" },
-                "servers": [{ "url": "https://api.acme.com" }]
-            },
-            "docs": {
-                "theme": "mint",
-                "colors": { "primary": "#0D9373" }
+            "mintlify": {
+                "baseDir": "docs/",
+                "openapi": {
+                    "info": { "title": "Acme API", "version": "1.0.0" },
+                    "servers": [{ "url": "https://api.acme.com" }]
+                },
+                "docs": {
+                    "theme": "mint",
+                    "colors": { "primary": "#0D9373" }
+                }
             }
         }
     }
 }
 ```
 
+Each key under the plugin is one target, enabled by being present, the same way
+`@contractkit/plugin-typescript` turns on `server` / `sdk` / `mcp`. `mintlify` is the only target
+today.
+
 ## Options
 
 | Field             | Type              | Description                                                                                                                                     |
 | ----------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `target`          | `string`          | Documentation platform. Only `mintlify` is supported. Default: `mintlify`                                                                       |
 | `baseDir`         | `string`          | Docs root, relative to `rootDir`. Default: `docs`                                                                                               |
 | `apiDir`          | `string`          | Endpoint page directory under `baseDir`. Default: `api-reference`                                                                               |
 | `modelsDir`       | `string`          | Model page directory under `baseDir`. Default: `<apiDir>/models`                                                                                |
@@ -109,7 +114,7 @@ is where your own prose goes if you take a page over.
 ```ts
 import { createDocsPlugin } from '@contractkit/plugin-docs';
 
-const plugin = createDocsPlugin({ target: 'mintlify', baseDir: 'docs' }, process.cwd());
+const plugin = createDocsPlugin({ mintlify: { baseDir: 'docs' } }, process.cwd());
 ```
 
 ## License
