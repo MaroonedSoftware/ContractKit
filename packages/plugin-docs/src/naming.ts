@@ -1,4 +1,4 @@
-import { resolveModifiers } from '@contractkit/core';
+import { collectPublicTypeNames, collectTypeRefs, resolveModifiers } from '@contractkit/core';
 import type { ContractRootNode, HttpMethod, ModelNode, OpOperationNode, OpRootNode, OpRouteNode } from '@contractkit/core';
 
 /**
@@ -68,9 +68,15 @@ export function slugify(value: string): string {
     return slug.length > 0 ? slug : 'untitled';
 }
 
-/** Upper-case the first letter of each word. */
+/**
+ * Sentence case: upper-case the first letter only.
+ *
+ * Titles are mostly whole descriptions, and Title-Casing those reads badly — a real contract
+ * produced "Look Up A Refund By Its Originating Payment". Capitalising just the first letter keeps
+ * "Look up a refund by its originating payment".
+ */
 export function titleCase(value: string): string {
-    return value.replace(/\b[a-z]/g, c => c.toUpperCase());
+    return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 /**
@@ -79,11 +85,21 @@ export function titleCase(value: string): string {
  * splitting on the case boundary as well as on separators is what keeps a sidebar readable.
  */
 export function humanize(value: string): string {
-    return titleCase(
+    return startCase(
         splitCamel(value)
             .replace(/[._-]+/g, ' ')
             .trim(),
     );
+}
+
+/**
+ * Upper-case the first letter of every word.
+ *
+ * Group labels are short noun phrases where every word reads as part of a name, so they take
+ * start case; page titles are whole sentences and take {@link titleCase} instead.
+ */
+function startCase(value: string): string {
+    return value.replace(/\b[a-z]/g, c => c.toUpperCase());
 }
 
 /** `listActiveUsers` → `list active users`. */
@@ -226,8 +242,12 @@ export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): 
  * Area-less models come first as a single group, matching how {@link groupEndpoints} orders its
  * output. A project whose contracts declare no areas therefore gets exactly one group, which is
  * the flat list it had before grouping existed.
+ *
+ * `schemaNames` is the set of models to document. Passing `null` documents every model, which is
+ * what a project with no operation files needs: there are no public operations to reach anything
+ * from, but the contracts are still worth rendering.
  */
-export function groupModels(contractRoots: ContractRootNode[], schemaNames: ReadonlySet<string>): ModelGroup[] {
+export function groupModels(contractRoots: ContractRootNode[], schemaNames: ReadonlySet<string> | null): ModelGroup[] {
     const grouped = new Map<string, ModelEntry[]>();
     const ungrouped: ModelEntry[] = [];
     const slugsByGroup = new Map<string, Set<string>>();
@@ -240,7 +260,7 @@ export function groupModels(contractRoots: ContractRootNode[], schemaNames: Read
             slugsByGroup.set(area ?? '', taken);
         }
         for (const model of contractRoot.models) {
-            if (!schemaNames.has(model.name)) continue;
+            if (schemaNames !== null && !schemaNames.has(model.name)) continue;
             const entry: ModelEntry = { model, title: model.name, slug: uniqueSlug(slugify(model.name), taken) };
             if (area) {
                 const list = grouped.get(area) ?? [];
@@ -260,4 +280,44 @@ export function groupModels(contractRoots: ContractRootNode[], schemaNames: Read
         result.push({ area, title: humanize(area), slug: slugify(area), models });
     }
     return result;
+}
+
+/**
+ * The set of model names reachable from public operations, closed transitively.
+ *
+ * Returns `null` when there are no operation files at all, meaning "document everything": there
+ * are no public operations to reach anything from, but the contracts are still worth rendering.
+ * Feed the result straight to {@link groupModels}, which understands the same `null`.
+ */
+export function computePubliclyReachableModels(opRoots: OpRootNode[], contractRoots: ContractRootNode[]): Set<string> | null {
+    if (opRoots.length === 0) return null;
+
+    const reachable = new Set<string>();
+    for (const opRoot of opRoots) {
+        for (const name of collectPublicTypeNames(opRoot)) reachable.add(name);
+    }
+
+    const modelDeps = new Map<string, Set<string>>();
+    for (const contractRoot of contractRoots) {
+        for (const model of contractRoot.models) {
+            const deps = new Set<string>();
+            if (model.bases) for (const b of model.bases) deps.add(b);
+            if (model.type) collectTypeRefs(model.type, deps);
+            for (const field of model.fields) collectTypeRefs(field.type, deps);
+            modelDeps.set(model.name, deps);
+        }
+    }
+
+    const frontier = [...reachable];
+    while (frontier.length > 0) {
+        const name = frontier.pop()!;
+        for (const dep of modelDeps.get(name) ?? []) {
+            if (!reachable.has(dep)) {
+                reachable.add(dep);
+                frontier.push(dep);
+            }
+        }
+    }
+
+    return reachable;
 }

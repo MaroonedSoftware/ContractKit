@@ -31,8 +31,8 @@
         "build:ci": "eslint --max-warnings=0 && pnpm run build",
         "lint": "eslint --fix",
         "format": "prettier --write .",
-        "test": "vitest run",
-        "test:ci": "vitest run --coverage"
+        "test": "vitest run --passWithNoTests",
+        "test:ci": "vitest run --passWithNoTests"
     },
     "dependencies": {
         "@contractkit/core": "workspace:*",

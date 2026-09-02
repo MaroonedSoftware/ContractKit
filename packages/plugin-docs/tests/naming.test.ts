@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { slugify, titleCase, humanize, deriveTitle, derivePageSlug, groupEndpoints, groupModels } from '../src/naming.js';
-import { contractRoot, field, model, opOperation, opRoute, opRoot, scalarType } from './helpers.js';
+import {
+    slugify,
+    titleCase,
+    humanize,
+    deriveTitle,
+    derivePageSlug,
+    groupEndpoints,
+    groupModels,
+    computePubliclyReachableModels,
+} from '../src/naming.js';
+import { contractRoot, field, model, opOperation, opResponse, opRoute, opRoot, refType, scalarType } from './helpers.js';
 
 describe('slugify', () => {
     it('lowercases and hyphenates', () => {
@@ -25,8 +34,8 @@ describe('slugify', () => {
 });
 
 describe('titleCase', () => {
-    it('capitalizes each word', () => {
-        expect(titleCase('list active users')).toBe('List Active Users');
+    it('capitalizes the first letter only, so a description-length title stays readable', () => {
+        expect(titleCase('list active users')).toBe('List active users');
     });
 });
 
@@ -50,23 +59,23 @@ describe('deriveTitle', () => {
     const route = opRoute('/users', []);
 
     it('prefers the name field', () => {
-        expect(deriveTitle(opOperation('get', { name: 'listActiveUsers' }), route)).toBe('List Active Users');
+        expect(deriveTitle(opOperation('get', { name: 'listActiveUsers' }), route)).toBe('List active users');
     });
 
     it('falls back to the description, which titles better than a bare method name', () => {
-        expect(deriveTitle(opOperation('get', { description: 'list every user', service: 'users.findAll' }), route)).toBe('List Every User');
+        expect(deriveTitle(opOperation('get', { description: 'list every user', service: 'users.findAll' }), route)).toBe('List every user');
     });
 
     it('makes a third-person description imperative', () => {
-        expect(deriveTitle(opOperation('post', { description: 'creates a payment' }), route)).toBe('Create A Payment');
+        expect(deriveTitle(opOperation('post', { description: 'creates a payment' }), route)).toBe('Create a payment');
     });
 
     it('leaves a double-s verb alone', () => {
-        expect(deriveTitle(opOperation('post', { description: 'process a refund' }), route)).toBe('Process A Refund');
+        expect(deriveTitle(opOperation('post', { description: 'process a refund' }), route)).toBe('Process a refund');
     });
 
     it('falls back to the service method when there is no description', () => {
-        expect(deriveTitle(opOperation('get', { service: 'users.findAll' }), route)).toBe('Find All');
+        expect(deriveTitle(opOperation('get', { service: 'users.findAll' }), route)).toBe('Find all');
     });
 
     it('falls back to verb plus path words', () => {
@@ -241,5 +250,23 @@ describe('groupModels', () => {
     it('lets the same slug appear in two different areas, since they get separate directories', () => {
         const same = [contractRoot([model('User', [])], 'a.ck', { area: 'alpha' }), contractRoot([model('User', [])], 'b.ck', { area: 'beta' })];
         expect(groupModels(same, new Set(['User'])).map(g => g.models[0]!.slug)).toEqual(['user', 'user']);
+    });
+});
+
+describe('computePubliclyReachableModels', () => {
+    const roots = [contractRoot([model('User', [field('id', scalarType('string'))]), model('Orphan', [])])];
+
+    it('documents every model when there are no operation files', () => {
+        // The `null` sentinel: with no operations there is nothing to reach from, but a
+        // contracts-only project still wants its models rendered.
+        expect(computePubliclyReachableModels([], roots)).toBeNull();
+        expect(groupModels(roots, null).flatMap(g => g.models.map(m => m.title))).toEqual(['User', 'Orphan']);
+    });
+
+    it('returns only what public operations reach once operations exist', () => {
+        const ops = [opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, refType('User'))] })])])];
+        const reachable = computePubliclyReachableModels(ops, roots)!;
+        expect(reachable.has('User')).toBe(true);
+        expect(reachable.has('Orphan')).toBe(false);
     });
 });

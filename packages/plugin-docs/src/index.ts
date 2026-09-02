@@ -9,7 +9,7 @@ export { generateOpenApi, buildOpenApiDocument, toYaml, scalarToSchema } from '.
 export { generateMarkdown, renderTsScalar } from './targets/markdown/codegen.js';
 export type { MarkdownCodegenContext } from './targets/markdown/codegen.js';
 export type { OpenApiConfig, OpenApiServerEntry, OpenApiSecurityScheme, OpenApiCodegenContext } from './targets/openapi/codegen.js';
-export { slugify, titleCase, humanize, deriveTitle, derivePageSlug, groupEndpoints, groupModels } from './naming.js';
+export { slugify, titleCase, humanize, deriveTitle, derivePageSlug, groupEndpoints, groupModels, computePubliclyReachableModels } from './naming.js';
 export type { EndpointEntry, EndpointGroup, ModelEntry, ModelGroup } from './naming.js';
 
 /** Config keys that name a target, for the "nothing configured" error message. */

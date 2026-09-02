@@ -169,6 +169,11 @@ export async function buildFixtures(): Promise<BuildResult> {
     return { files, diagnostics: diag.getAll() };
 }
 
+/** The parsed fixtures, for tests that need the AST rather than the emitted files. */
+export function parsedFixtures(): { contractRoots: ContractRootNode[]; opRoots: OpRootNode[] } {
+    return parseFixtures(new DiagnosticCollector());
+}
+
 let cached: Promise<BuildResult> | undefined;
 
 /** Shared single build — every test file reads the same emitted output. */

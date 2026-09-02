@@ -13,7 +13,7 @@ describe('renderEndpointPage', () => {
     it('renders the frontmatter block a Mintlify endpoint page needs', () => {
         const route = opRoute('/users', [opOperation('get', { name: 'listUsers' })]);
         expect(renderEndpointPage(entryFor(route), '/openapi.yaml')).toBe(
-            ['---', 'title: "List Users"', 'sidebarTitle: "List Users"', 'openapi: "/openapi.yaml GET /users"', '---', ''].join('\n'),
+            ['---', 'title: "List users"', 'sidebarTitle: "List users"', 'openapi: "/openapi.yaml GET /users"', '---', ''].join('\n'),
         );
     });
 
@@ -56,12 +56,12 @@ describe('renderEndpointPage', () => {
 
     it('quotes a title containing a colon so the YAML stays parseable', () => {
         const route = opRoute('/users', [opOperation('get', { name: 'users: list' })]);
-        expect(renderEndpointPage(entryFor(route), '/openapi.yaml')).toContain('title: "Users: List"');
+        expect(renderEndpointPage(entryFor(route), '/openapi.yaml')).toContain('title: "Users: list"');
     });
 
     it('escapes a quote inside a title', () => {
         const route = opRoute('/users', [opOperation('get', { name: 'the "good" users' })]);
-        expect(renderEndpointPage(entryFor(route), '/openapi.yaml')).toContain('title: "The \\"Good\\" Users"');
+        expect(renderEndpointPage(entryFor(route), '/openapi.yaml')).toContain('title: "The \\"good\\" users"');
     });
 });
 
