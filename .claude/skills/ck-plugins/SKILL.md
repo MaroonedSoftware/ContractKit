@@ -59,6 +59,7 @@ null, object, array). Each entry's key maps to a plugin by `name`.
 "@contractkit/plugin-typescript": {
     "server": {
         "baseDir": "apps/api/",
+        "framework": "koa",
         "zod": true,
         "output": {
             "routes": "src/routes/{filename}.router.ts",
@@ -78,6 +79,14 @@ null, object, array). Each entry's key maps to a plugin by `name`.
     }
 }
 ```
+
+`server.framework` picks the HTTP framework the routers target. It defaults to `koa`, which is the
+only one shipped; `assertValidConfig` in `index.ts` rejects anything else by name. Every
+framework-specific string — the router declaration, the import line, path-param syntax, middleware
+calls, the request accessors, the container lookup, the status/header/type/body writes, and the whole
+`mcp.router.ts` template — comes from a `ServerFramework` (`src/server-framework.ts`, Koa's
+implementation in `src/server-framework-koa.ts`). Codegen keeps ownership of control flow, so a new
+framework is a new adapter rather than a change to `codegen-operation.ts`.
 
 `zod: true` makes `output.types` emit Zod schemas (via `generateContract`) instead of plain
 TypeScript interfaces. Path templates support `{filename}`, `{dir}`, `{area}`, `{subarea}`,

@@ -52,11 +52,12 @@ Add the plugin to `contractkit.config.json`. Each sub-config is independent — 
 
 ### `server`
 
-Generates Koa router files from `operation` declarations and optionally type files from `contract` declarations.
+Generates server router files from `operation` declarations and optionally type files from `contract` declarations.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `baseDir` | `string` | `rootDir` | Base directory for output files |
+| `framework` | `string` | `"koa"` | HTTP framework the routers target. Only `koa` is supported today. |
 | `zod` | `boolean` | `false` | Emit Zod schemas in `output.types` instead of plain interfaces |
 | `output.routes` | `string` | — | Path template for router files |
 | `output.types` | `string` | — | Path template for type/schema files |
@@ -129,9 +130,9 @@ Contracts with `readonly` or `writeonly` fields generate up to three schemas:
 
 Contracts without visibility modifiers generate a single `Model` schema.
 
-### Koa router shape (from `operation`)
+### Router shape (from `operation`)
 
-Each operation file generates one Koa router. Request bodies and path/query params are validated against the Zod schemas (when `zod: true`) or plain types. Handlers are expected to be exported from the service module specified by `servicePathTemplate`.
+Each operation file generates one router, targeting the framework named by `framework` (`koa` today). Request bodies and path/query params are validated against the Zod schemas (when `zod: true`) or plain types. Handlers are expected to be exported from the service module specified by `servicePathTemplate`.
 
 Responses are only type-annotated by default. With `validateResponses: true` (which requires `zod: true`) the service's return value is re-parsed against its declared response schema and the parsed value is written to `ctx.body`, so a service returning a shape the contract does not allow fails with a 500 instead of shipping it. See [docs/config.md](../../docs/config.md#validateresponses) for the caveats — notably that models using `format(input=…)`/`format(output=…)` are skipped.
 

@@ -76,13 +76,14 @@ Has up to four optional sub-configs. Each is independent — include only the on
 
 #### `server`
 
-Generates Koa router files from `operation` declarations. Optionally also emits Zod schemas or plain TypeScript types from `contract` declarations (used for typing route handlers).
+Generates server router files from `operation` declarations. Koa is the only framework today; `framework` is where another one would be selected. Optionally also emits Zod schemas or plain TypeScript types from `contract` declarations (used for typing route handlers).
 
 | Field                 | Type      | Description                                                                                                                |
 | --------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `baseDir`             | `string`  | Directory (relative to `rootDir`) where server files are written                                                           |
+| `framework`           | `string`  | HTTP framework the routers target. Only `koa` today, which is the default. Also selects the `mcp.router.ts` flavour.        |
 | `zod`                 | `boolean` | When true, `output.types` emits Zod schemas. When false/omitted, emits plain TypeScript interfaces.                        |
-| `output.routes`       | `string`  | Path template for Koa router files. Default: `{filename}.router.ts`                                                        |
+| `output.routes`       | `string`  | Path template for router files. Default: `{filename}.router.ts`                                                            |
 | `output.types`        | `string`  | Path template for type/schema files                                                                                        |
 | `servicePathTemplate` | `string`  | Import path template for service implementations. Supports `{module}`.                                                     |
 | `includeInternal`     | `boolean` | Whether to emit handlers for `internal` operations. Default: `true`.                                                       |

@@ -37,6 +37,13 @@ function inputs(opRoots = [opRoot([opRoute('/users', [opOperation('get')])], '/p
     };
 }
 
+/** Inputs carrying an MCP-exposed operation, which is what makes the mcp sub-generator emit a router. */
+function mcpInputs() {
+    return inputs([
+        opRoot([opRoute('/users', [opOperation('get', { mcp: true, responses: [opResponse(200, 'User', 'application/json')] })])], '/project/contracts/users.ck'),
+    ]);
+}
+
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe('createTypescriptPlugin (server)', () => {
@@ -221,6 +228,55 @@ describe('createTypescriptPlugin (server)', () => {
             await plugin.generateTargets!(inputs([root]), ctx);
             const content = [...ctx.emitted.values()][0]!;
             expect(content).toContain('User');
+        });
+    });
+
+    describe('framework', () => {
+        it('emits a Koa router when no framework is configured', async () => {
+            const plugin = createTypescriptPlugin({ server: {} }, '/project');
+            const ctx = makeCtx('/project');
+            await plugin.generateTargets!(inputs(), ctx);
+            const [content] = [...ctx.emitted.values()];
+            expect(content).toContain("from '@maroonedsoftware/koa'");
+        });
+
+        it('emits byte-identical output when koa is named explicitly', async () => {
+            const runWith = async (server: Record<string, unknown>) => {
+                const ctx = makeCtx('/project');
+                await createTypescriptPlugin({ server }, '/project').generateTargets!(inputs(), ctx);
+                return [...ctx.emitted.values()].join('\n');
+            };
+            expect(await runWith({ framework: 'koa' })).toEqual(await runWith({}));
+        });
+
+        it('rejects a framework that has no adapter', async () => {
+            const plugin = createTypescriptPlugin({ server: { framework: 'express' as never } }, '/project');
+            await expect(plugin.generateTargets!(inputs(), makeCtx('/project'))).rejects.toThrow(
+                /server\.framework 'express' is not supported — expected one of: koa/,
+            );
+        });
+
+        it('rejects the unknown framework before any other config complaint', async () => {
+            // Both rules are broken here; the framework is the one reported, since a router for a
+            // framework that does not exist cannot be generated whatever the other settings say.
+            const plugin = createTypescriptPlugin({ server: { framework: 'express' as never, validateResponses: true } }, '/project');
+            await expect(plugin.generateTargets!(inputs(), makeCtx('/project'))).rejects.toThrow(/server\.framework/);
+        });
+
+        it('renders mcp.router.ts for the configured framework', async () => {
+            const plugin = createTypescriptPlugin({ server: { framework: 'koa' }, mcp: {} }, '/project');
+            const ctx = makeCtx('/project');
+            await plugin.generateTargets!(mcpInputs(), ctx);
+            const router = [...ctx.emitted.entries()].find(([p]) => p.endsWith('mcp.router.ts'))?.[1];
+            expect(router).toContain("from '@maroonedsoftware/koa'");
+        });
+
+        it('still emits a Koa mcp.router.ts when there is no server sub-config', async () => {
+            const plugin = createTypescriptPlugin({ mcp: {} }, '/project');
+            const ctx = makeCtx('/project');
+            await plugin.generateTargets!(mcpInputs(), ctx);
+            const router = [...ctx.emitted.entries()].find(([p]) => p.endsWith('mcp.router.ts'))?.[1];
+            expect(router).toContain("from '@maroonedsoftware/koa'");
         });
     });
 
