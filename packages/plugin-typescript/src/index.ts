@@ -65,7 +65,7 @@ import {
 
 // ─── Sub-config interfaces ─────────────────────────────────────────────────
 
-/** Koa server output: routers, and the type or Zod schema files they import. */
+/** Server output: routers, and the type or Zod schema files they import. */
 export interface ServerConfig {
     /** Directory (relative to rootDir) where server files are written. Default: rootDir. */
     baseDir?: string;
@@ -418,7 +418,7 @@ function collectServerOutput(
                     currentOutPath: typeOutPath,
                     modelsWithInput,
                     modelsWithOutput,
-                    // These types are consumed by Koa handlers, so `binary` is a Buffer, not a Blob.
+                    // These types are consumed by server handlers, so `binary` is a Buffer, not a Blob.
                     target: 'server' as const,
                 };
                 const content = config.zod ? generateContract(ast, renderCtx) : generatePlainTypes(ast, renderCtx);

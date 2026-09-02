@@ -22,9 +22,16 @@ import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, e
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'path';
 
+/** Which request-side object a validation block reads from. Names the variable the block declares. */
+export type ParamKind = 'params' | 'query' | 'headers';
+
 // ─── Content-type helpers ──────────────────────────────────────────────────
 
-/** Map a request MIME type to the koa-bodyparser parser token used in middleware. */
+/**
+ * Map a request MIME type to the ServerKit parser token used in middleware. The tokens are the keys
+ * of the parser map in `@maroonedsoftware/servercore`, so they are the same whichever HTTP framework
+ * the router targets.
+ */
 function bodyParserToken(contentType: string): string {
     switch (classifyContentType(contentType)) {
         case 'urlencoded':
@@ -34,9 +41,8 @@ function bodyParserToken(contentType: string): string {
         case 'text':
             return 'text';
         case 'binary':
-            // koa-bodyparser has no native binary token; fall back to text so the body is
-            // still readable as a string. Services handling binary uploads should switch to
-            // multipart/form-data.
+            // There is no native binary token; fall back to text so the body is still readable as a
+            // string. Services handling binary uploads should switch to multipart/form-data.
             return 'text';
         default:
             return 'json';
@@ -125,7 +131,7 @@ export function bodyTypesStructurallyEqual(a: ContractTypeNode, b: ContractTypeN
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
-/** Options controlling how {@link generateOp} renders a Koa router module. */
+/** Options controlling how {@link generateOp} renders a server router module. */
 export interface OpCodegenOptions {
     servicePathTemplate?: string;
     typeImportPathTemplate?: string;
@@ -143,8 +149,8 @@ export interface OpCodegenOptions {
      */
     includeInternal?: boolean;
     /**
-     * Re-parse the service result through its declared response schema before writing `ctx.body`,
-     * and write the parsed value. Requires the type file to hold Zod schemas (`server.zod`) —
+     * Re-parse the service result through its declared response schema before writing the response
+     * body, and write the parsed value. Requires the type file to hold Zod schemas (`server.zod`) —
      * plain interfaces are types, with no runtime schema value to validate against. Default false.
      */
     validateResponses?: boolean;
@@ -157,7 +163,7 @@ export interface OpCodegenOptions {
 }
 
 /**
- * Generate a Koa router module for every operation in `root`, including the imports, type
+ * Generate a server router module for every operation in `root`, including the imports, type
  * aliases, and handler list.
  *
  * Imports are derived from the generated body — each candidate symbol is emitted only if it
@@ -310,9 +316,9 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     lines.push('*/');
 
     const method = op.method;
-    // `:name` from `{name}`, mapped to a valid identifier. Unlike a query parameter or a header,
-    // a path placeholder's name never reaches the wire — Koa matches by position — so renaming it
-    // is free, and it is what lets `ctx.params` be destructured at all.
+    // The framework's placeholder syntax, from `{name}`, mapped to a valid identifier. Unlike a query
+    // parameter or a header, a path placeholder's name never reaches the wire — the framework matches
+    // by position — so renaming it is free, and it is what lets the params object be destructured.
     const path = route.path.replace(PATH_PARAM_RE_G, (_m, name: string) => `:${toIdentifier(name)}`);
     const bodies = op.request?.bodies ?? [];
     const hasBody = bodies.length > 0;
@@ -346,9 +352,9 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     lines.push(`${deriveRouterName(file)}.${method}('${path}'${middlewareStr} async ctx => {`);
 
     // Params / query / headers validation (request-side — use Input variants)
-    lines.push(...generateParamValidation(route.params, 'ctx.params', 'params', route.paramsMode ?? 'strict', '', modelsWithInput));
-    lines.push(...generateParamValidation(op.query, 'ctx.query', 'query', op.queryMode ?? 'strict', '', modelsWithInput));
-    lines.push(...generateParamValidation(op.headers, 'ctx.headers', 'headers', op.headersMode ?? 'strip', '', modelsWithInput));
+    lines.push(...generateParamValidation(route.params, 'params', 'ctx.params', route.paramsMode ?? 'strict', '', modelsWithInput));
+    lines.push(...generateParamValidation(op.query, 'query', 'ctx.query', op.queryMode ?? 'strict', '', modelsWithInput));
+    lines.push(...generateParamValidation(op.headers, 'headers', 'ctx.headers', op.headersMode ?? 'strip', '', modelsWithInput));
 
     // Body validation (request-side — use Input variants)
     if (hasBody && op.request) {
@@ -565,7 +571,7 @@ function renderHeadersAnnotation(headers: OpResponseHeaderNode[], modelsWithOutp
     return `{ ${fields.join('; ')} }`;
 }
 
-/** `ctx.set(...)` calls for a status's declared response headers, guarding the optional ones. */
+/** Response-header writes for a status's declared headers, guarding the optional ones. */
 function headerSetLines(headers: OpResponseHeaderNode[], indent: string): string[] {
     return headers.map(h => {
         const accessor = `result.headers[${JSON.stringify(headerNameToProperty(h.name))}]`;
@@ -778,7 +784,7 @@ function responseBodySchema(bodyType: ContractTypeNode, options: OpCodegenOption
 }
 
 /**
- * The `ctx.body = ...` right-hand side for a response body: the raw result expression, or a
+ * The right-hand side of a response body write: the raw result expression, or a
  * `parseAndValidate` of it. The `500` is deliberate — a service returning a shape its own contract
  * rejects is a server fault, not a client one, and `@maroonedsoftware/zod` routes the field-level
  * detail to `internalDetails` (log-only) rather than the response body at 5xx.
@@ -789,37 +795,35 @@ function responseBodyExpr(value: string, schema: string | undefined): string {
 
 function generateParamValidation(
     source: ParamSource | undefined,
-    ctxExpr: string,
-    varName: string,
+    kind: ParamKind,
+    sourceExpr: string,
     mode: ObjectMode,
     suffix = '',
     modelsWithInput?: Set<string>,
 ): string[] {
     if (!source) return [];
     const lines: string[] = [];
-    const isQuery = ctxExpr === 'ctx.query';
+    const isQuery = kind === 'query';
+    // Path params are destructured and spread into the service call; query and headers pass as
+    // whole objects. The variable the block declares is named after the kind either way.
+    const isPathParams = kind === 'params';
     if (source.kind === 'ref') {
         // Type reference — apply mode as a method call on the schema
         const typeName = modelsWithInput?.has(source.name) ? `${source.name}Input` : source.name;
-        lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, ${typeName}.${mode}());`);
+        lines.push(`    const ${kind} = await parseAndValidate(${sourceExpr}, ${typeName}.${mode}());`);
         lines.push('');
     } else if (source.kind === 'params') {
         // Inline param declarations — wrap with the appropriate z.*Object constructor
         if (source.nodes.length > 0) {
-            // Destructure only for params (spread individually in service call);
-            // query/headers are passed as whole objects.
-            // Path params are destructured and spread into the service call; query and headers pass
-            // as whole objects.
-            const isPathParams = ctxExpr === 'ctx.params';
             const bind = (name: string) => (isPathParams ? toIdentifier(name) : name);
-            const lhs = varName === 'params' ? `{ ${source.nodes.map(p => bind(p.name)).join(', ')} }` : varName;
+            const lhs = isPathParams ? `{ ${source.nodes.map(p => bind(p.name)).join(', ')} }` : kind;
             lines.push(`    const ${lhs} = await parseAndValidate(`);
-            lines.push(`        ${ctxExpr},`);
+            lines.push(`        ${sourceExpr},`);
             lines.push(`        ${modeToWrapper(mode)}({`);
             for (const param of source.nodes) {
                 // For path params the key must match the name in the route pattern above, which
-                // is what `ctx.params` is keyed by. For query and headers it is the wire name,
-                // quoted when that is not an identifier — those the client actually sends.
+                // is what the framework keys its params object by. For query and headers it is the
+                // wire name, quoted when that is not an identifier — those the client actually sends.
                 const bound = bind(param.name);
                 const key = isValidIdentifier(bound) ? bound : `'${bound}'`;
                 // Delegating to renderQueryType rather than hand-rolling the array preprocess here:
@@ -837,7 +841,7 @@ function generateParamValidation(
         // ContractTypeNode — use query-aware rendering for query params (coerces single string → array),
         // otherwise use Input variant rendering; apply mode as a method call
         const schema = isQuery ? renderQueryType(source.node, modelsWithInput) : renderInputType(source.node, modelsWithInput);
-        lines.push(`    const ${varName} = await parseAndValidate(${ctxExpr}, (${schema}).${mode}());`);
+        lines.push(`    const ${kind} = await parseAndValidate(${sourceExpr}, (${schema}).${mode}());`);
         lines.push('');
     }
     return lines;
