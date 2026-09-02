@@ -42,11 +42,23 @@ export function resolveLayout(config: MintlifyConfig, rootDir: string): Mintlify
 }
 
 /**
+ * A spec another target already emitted, which this one should reference instead of writing its
+ * own copy.
+ */
+export interface SharedSpec {
+    /** Docs-root-relative path for the `openapi:` frontmatter, e.g. `/openapi.yaml`. */
+    specPath: string;
+    /** The document itself, needed to work out which models get a page. */
+    doc: Record<string, unknown>;
+}
+
+/**
  * Build the OpenAPI document the pages reference.
  *
- * `baseDir` and `output` are dropped from the OpenAPI config on the way through: this plugin
- * owns where the spec lands, and letting the nested config redirect it would leave every page's
- * frontmatter pointing at a file that isn't there.
+ * `baseDir` and `output` are dropped from the nested OpenAPI config on the way through: this
+ * target owns where its own spec lands, and letting the nested config redirect it would leave
+ * every page's frontmatter pointing at a file that isn't there. To put the spec somewhere else,
+ * configure the `openapi` target instead — see {@link generateMintlify}.
  */
 export function buildSpec(inputs: GenerateInputs, config: MintlifyConfig): Record<string, unknown> {
     const { info, servers, security, securitySchemes } = config.openapi ?? {};
@@ -64,19 +76,34 @@ export function schemaNames(doc: Record<string, unknown>): Set<string> {
     return new Set(Object.keys(components?.schemas ?? {}));
 }
 
-const target: DocsTarget<MintlifyConfig> = {
-    name: 'mintlify',
-    async generate(inputs: GenerateInputs, ctx: PluginContext, config: MintlifyConfig, rootDir: string): Promise<void> {
+/**
+ * Emit the Mintlify site.
+ *
+ * When `shared` is given, the `openapi` target has already emitted a spec inside this docs folder,
+ * so the pages point at that one and no second copy is written. Otherwise this target emits its
+ * own spec from the nested `openapi` settings.
+ */
+export async function generateMintlify(
+    inputs: GenerateInputs,
+    ctx: PluginContext,
+    config: MintlifyConfig,
+    rootDir: string,
+    shared?: SharedSpec,
+): Promise<void> {
+    {
         const layout = resolveLayout(config, rootDir);
-        const spec = buildSpec(inputs, config);
+        const spec = shared ? shared.doc : buildSpec(inputs, config);
+        const specPath = shared ? shared.specPath : layout.specPath;
 
-        ctx.emitFile(resolve(layout.baseDir, layout.specFile), toYaml(spec));
+        if (!shared) {
+            ctx.emitFile(resolve(layout.baseDir, layout.specFile), toYaml(spec));
+        }
 
         const groups = groupEndpoints(inputs.opRoots, config.includeInternal);
         for (const group of groups) {
             for (const entry of group.endpoints) {
                 const path = resolve(layout.baseDir, layout.apiDir, group.slug, `${entry.slug}.mdx`);
-                ctx.emitFile(path, renderEndpointPage(entry, layout.specPath));
+                ctx.emitFile(path, renderEndpointPage(entry, specPath));
             }
         }
 
@@ -86,7 +113,7 @@ const target: DocsTarget<MintlifyConfig> = {
         for (const group of models) {
             for (const entry of group.models) {
                 const path = resolve(layout.baseDir, layout.modelsDir, group.slug, `${entry.slug}.mdx`);
-                ctx.emitFile(path, renderModelPage(entry, layout.specPath));
+                ctx.emitFile(path, renderModelPage(entry, specPath));
             }
         }
 
@@ -98,7 +125,12 @@ const target: DocsTarget<MintlifyConfig> = {
             resolve(layout.baseDir, 'docs.json'),
             renderDocsJson({ config, apiDir: layout.apiDir, modelsDir: layout.modelsDir, groups, models, hasIndex: true }),
         );
-    },
+    }
+}
+
+const target: DocsTarget<MintlifyConfig> = {
+    name: 'mintlify',
+    generate: generateMintlify,
 };
 
 export default target;

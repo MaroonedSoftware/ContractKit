@@ -226,3 +226,42 @@ describe('openapi spec', () => {
         expect(emitted.get('docs/openapi.yaml')).toContain('securitySchemes:');
     });
 });
+
+describe('shared spec between the openapi and mintlify targets', () => {
+    /** Run with both targets configured. */
+    async function runBoth(mintlifyCfg: Record<string, unknown>, openapiCfg: Record<string, unknown>): Promise<Map<string, string>> {
+        const ctx = makeCtx({ mintlify: mintlifyCfg, openapi: openapiCfg });
+        await plugin.generateTargets!(inputs, ctx);
+        return ctx.emitted;
+    }
+
+    it('emits one spec when the openapi target writes inside the docs folder', async () => {
+        // A distinct filename, so a target that ignored the shared spec would leave two files
+        // rather than colliding on one path and looking correct.
+        const emitted = await runBoth({ baseDir: 'docs' }, { baseDir: 'docs', output: 'reference.yaml' });
+        expect([...emitted.keys()].filter(k => k.endsWith('.yaml'))).toEqual(['docs/reference.yaml']);
+    });
+
+    it('points the pages at the shared spec', async () => {
+        const emitted = await runBoth({ baseDir: 'docs' }, { baseDir: 'docs', output: 'spec/api.yaml' });
+        expect([...emitted.keys()]).toContain('docs/spec/api.yaml');
+        expect(emitted.get('docs/api-reference/endpoints/list-users.mdx')).toContain('openapi: "/spec/api.yaml GET /users"');
+    });
+
+    it('emits its own copy when the openapi target writes outside the docs folder', async () => {
+        const emitted = await runBoth({ baseDir: 'docs' }, { baseDir: 'build', output: 'openapi.yaml' });
+        const specs = [...emitted.keys()].filter(k => k.endsWith('.yaml')).sort();
+        expect(specs).toEqual(['build/openapi.yaml', 'docs/openapi.yaml']);
+        expect(emitted.get('docs/api-reference/endpoints/list-users.mdx')).toContain('openapi: "/openapi.yaml GET /users"');
+    });
+
+    it('uses the openapi target settings for the shared document', async () => {
+        const emitted = await runBoth({ baseDir: 'docs' }, { baseDir: 'docs', info: { title: 'Shared API', version: '3.0.0' } });
+        expect(emitted.get('docs/openapi.yaml')).toContain("title: 'Shared API'");
+    });
+
+    it('still emits its own spec when only the mintlify target is configured', async () => {
+        const emitted = await run(plugin, { baseDir: 'docs' });
+        expect([...emitted.keys()].filter(k => k.endsWith('.yaml'))).toEqual(['docs/openapi.yaml']);
+    });
+});
