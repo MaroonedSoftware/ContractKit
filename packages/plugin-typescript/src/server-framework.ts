@@ -1,10 +1,11 @@
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
+import { FASTIFY_SERVER_FRAMEWORK } from './server-framework-fastify.js';
 
 /**
  * HTTP frameworks the server sub-generator can target. Adding a name here without adding an adapter
  * to {@link SERVER_FRAMEWORKS} fails to compile, which is the point of keeping the two in step.
  */
-export const SERVER_FRAMEWORK_NAMES = ['koa'] as const;
+export const SERVER_FRAMEWORK_NAMES = ['koa', 'fastify'] as const;
 
 /** One of {@link SERVER_FRAMEWORK_NAMES}. */
 export type ServerFrameworkName = (typeof SERVER_FRAMEWORK_NAMES)[number];
@@ -106,6 +107,7 @@ export interface ServerFramework {
  */
 export const SERVER_FRAMEWORKS: Readonly<Record<ServerFrameworkName, ServerFramework>> = {
     koa: KOA_SERVER_FRAMEWORK,
+    fastify: FASTIFY_SERVER_FRAMEWORK,
 };
 
 /**
