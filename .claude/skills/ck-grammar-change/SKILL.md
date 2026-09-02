@@ -38,10 +38,12 @@ A grammar change is never a one-file change. Work through all of these explicitl
 6. `packages/contractkit/tests/parser-ck.test.ts` — a parser test.
 7. **Every codegen plugin that consumes the affected AST shape**, not just the TypeScript
    one. Check each: `plugin-typescript` (server, SDK, Zod, plain types), `plugin-python`,
-   `plugin-openapi`, `plugin-markdown`, `plugin-bruno`, and `openapi-to-ck` (the reverse
-   direction). Update codegen *and* tests for each. `openapi-to-ck` does not print `.ck`
-   itself — it builds core AST nodes and hands them to `printCk` — so what it needs is a
-   *producer* for the new construct, not a serializer.
+   `plugin-docs` (all three targets — `openapi`, `markdown`, `mintlify`), `plugin-bruno`, and
+   `openapi-to-ck` (the reverse direction). Update codegen *and* tests for each. In `plugin-docs`
+   the three targets share `src/naming.ts` for titles, slugs and area grouping, so a change there
+   moves every documentation output at once. `openapi-to-ck` does not print `.ck` itself — it
+   builds core AST nodes and hands them to `printCk` — so what it needs is a *producer* for the
+   new construct, not a serializer.
 8. `apps/cli` — if file discovery, config schema, or cache fingerprinting is affected.
 9. `README.md` — if the surface syntax changed.
 

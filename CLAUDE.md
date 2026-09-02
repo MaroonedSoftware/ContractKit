@@ -28,8 +28,8 @@ Load these rather than rediscovering the semantics from source:
   calls `parseCk` directly and needs the raw AST to round-trip a file, so moving a pass
   inside the parser silently breaks the formatter.
 - **A grammar change touches every plugin.** The TypeScript plugin is not the only consumer
-  of the AST — Python, OpenAPI, Markdown, Bruno, and `openapi-to-ck` each need codegen and
-  tests updated. See the `ck-grammar-change` skill.
+  of the AST — Python, Bruno, `openapi-to-ck`, and all three `plugin-docs` targets (openapi,
+  markdown, mintlify) each need codegen and tests updated. See the `ck-grammar-change` skill.
 - **`op.pluginExtensions`, never `op.plugins`,** at codegen time. `op.plugins` is the raw
   parse tree kept for prettier; `pluginExtensions` is the resolved one.
 - **`ifAbsent` emits are user-owned.** Use for starter files only, never generated code.
