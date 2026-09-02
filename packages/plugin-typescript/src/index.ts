@@ -45,6 +45,16 @@ import {
 } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
 import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
+import { resolveServerFramework, SERVER_FRAMEWORK_NAMES, type ServerFrameworkName } from './server-framework.js';
+export {
+    SERVER_FRAMEWORK_NAMES,
+    DEFAULT_SERVER_FRAMEWORK_NAME,
+    resolveServerFramework,
+    SERVER_FRAMEWORKS,
+    type ServerFramework,
+    type ServerFrameworkName,
+} from './server-framework.js';
+export { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 
 /** Taint set for the SDK's bigint response reviver. */
 const BIGINT_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['bigint']);
@@ -65,14 +75,19 @@ import {
 
 // ─── Sub-config interfaces ─────────────────────────────────────────────────
 
-/** Koa server output: routers, and the type or Zod schema files they import. */
+/** Server output: routers, and the type or Zod schema files they import. */
 export interface ServerConfig {
     /** Directory (relative to rootDir) where server files are written. Default: rootDir. */
     baseDir?: string;
+    /**
+     * HTTP framework the generated routers target. Also selects the flavour of the optional
+     * `mcp.router.ts` the `mcp` sub-config emits. Supported: `'koa'`. Default `'koa'`.
+     */
+    framework?: ServerFrameworkName;
     /** When true, `output.types` emits Zod schema files (via `generateContract`). When false/omitted, emits plain TypeScript. */
     zod?: boolean;
     output?: {
-        /** Path template for Koa router files. Supports {filename}, {dir}, {area}. */
+        /** Path template for router files. Supports {filename}, {dir}, {area}. */
         routes?: string;
         /** Path template for type/schema files. Supports {filename}, {dir}, {area}. */
         types?: string;
@@ -151,7 +166,7 @@ export interface McpConfig {
          */
         types?: string;
     };
-    /** Emit the `mcp.router.ts` route boilerplate. Default true. */
+    /** Emit the `mcp.router.ts` route boilerplate. Its framework follows `server.framework`. Default true. */
     emitRouter?: boolean;
     /** Mount path used in the emitted router. Default `/mcp`. */
     path?: string;
@@ -207,6 +222,14 @@ export function createTypescriptPlugin(config: TypescriptPluginConfig, rootDir: 
 
 /** Reject config combinations that would generate code that cannot compile or cannot run. */
 function assertValidConfig(config: TypescriptPluginConfig): void {
+    // Runtime check, not just a type: config arrives as JSON, so `ServerFrameworkName` constrains
+    // programmatic callers only. Checked before the rest so a typo'd framework is the error reported.
+    const framework = config.server?.framework;
+    if (framework !== undefined && !(SERVER_FRAMEWORK_NAMES as readonly string[]).includes(framework)) {
+        throw new Error(
+            `plugin-typescript: server.framework '${String(framework)}' is not supported — expected one of: ${SERVER_FRAMEWORK_NAMES.join(', ')}.`,
+        );
+    }
     if (config.server?.validateResponses && !config.server.zod) {
         throw new Error(
             'plugin-typescript: server.validateResponses requires server.zod: true — without it output.types emits plain TypeScript interfaces, which are types with no runtime schema value for the router to validate against.',
@@ -367,6 +390,7 @@ function collectServerOutput(
     units: IncrementalUnit[],
 ): void {
     const serverBase = resolve(rootDir, config.baseDir ?? '.');
+    const framework = resolveServerFramework(config.framework);
     const modelsWithInput = inputs.modelsWithInput as Set<string>;
     const modelsWithOutput = inputs.modelsWithOutput as Set<string>;
     // Not `modelsWithOutput`: that set seeds only from `format(output=...)`, because only that case
@@ -418,7 +442,7 @@ function collectServerOutput(
                     currentOutPath: typeOutPath,
                     modelsWithInput,
                     modelsWithOutput,
-                    // These types are consumed by Koa handlers, so `binary` is a Buffer, not a Blob.
+                    // These types are consumed by server handlers, so `binary` is a Buffer, not a Blob.
                     target: 'server' as const,
                 };
                 const content = config.zod ? generateContract(ast, renderCtx) : generatePlainTypes(ast, renderCtx);
@@ -446,6 +470,9 @@ function collectServerOutput(
             // this router's output with no change to `root` or the config.
             modelsWithTransform: sliceModelSet(refs, new Set(), modelsWithTransform),
             validateResponses: config.validateResponses ?? false,
+            // Covered by `sub` already, which is the whole sub-config; explicit for the same reason
+            // `validateResponses` is — the inputs that change a router's text read at a glance.
+            framework: framework.name,
             sub: subConfigKey,
         });
         units.push({
@@ -463,6 +490,7 @@ function collectServerOutput(
                         modelsWithTransform,
                         includeInternal: config.includeInternal,
                         validateResponses: config.validateResponses,
+                        framework,
                     }),
                 },
             ],
@@ -1107,7 +1135,10 @@ function collectMcpOutput(
     // ── Router (global, optional) ──
     if (config.emitRouter !== false) {
         const routerPath = join(mcpBase, config.output?.router ?? 'mcp.router.ts');
-        globalFiles.push({ relativePath: routerPath, content: generateMcpRouter({ path: config.path }) });
+        // The mount is server-side wiring, so it follows the server sub-config's framework. Koa when
+        // there is no `server` sub-config at all, which is the same default the router generator has.
+        const framework = resolveServerFramework(fullConfig.server?.framework);
+        globalFiles.push({ relativePath: routerPath, content: generateMcpRouter({ path: config.path, framework }) });
     }
 }
 

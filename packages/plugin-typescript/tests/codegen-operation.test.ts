@@ -567,6 +567,35 @@ describe('generateOperation', () => {
             expect(output).toContain('z.object({');
         });
 
+        it('renders an inline array header through renderInputType, without the query coercion', () => {
+            // The comma-splitting preprocess belongs to query strings only. Headers and params share
+            // the same inline-param renderer, so the block has to be told which one it is rendering.
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        headers: [opParam('x-tags', arrayType(scalarType('string')))],
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain('ctx.headers');
+            expect(output).not.toContain('z.preprocess');
+            expect(output).not.toContain("v.split(',')");
+        });
+
+        it('declares headers as a whole object rather than destructuring it', () => {
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', {
+                        headers: [opParam('authorization', scalarType('string'))],
+                    }),
+                ]),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain('const headers = await parseAndValidate(');
+            expect(output).not.toContain('const { authorization }');
+        });
+
         it('generates parseAndValidate import when operation has headers', () => {
             const root = opRoot([
                 opRoute('/users', [

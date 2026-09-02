@@ -545,7 +545,7 @@ contract Order: {
 
 ## Operation Declarations
 
-`operation` declares a route with one or more HTTP method handlers. Compiles to a Koa router.
+`operation` declares a route with one or more HTTP method handlers. Compiles to a server router (Koa today; see `server.framework`).
 
 ### Basic Structure
 
@@ -642,7 +642,7 @@ operation /pets/{status}: {
 }
 ```
 
-The compiler validates that every `{param}` in the path has a corresponding entry in the `params` block and warns on mismatches. Path parameters are compiled to Koa `:param` syntax in the generated router.
+The compiler validates that every `{param}` in the path has a corresponding entry in the `params` block and warns on mismatches. Path parameters are compiled to the target framework's placeholder syntax in the generated router (`:param` for Koa).
 
 ---
 
@@ -1058,7 +1058,7 @@ via an `mcp` sub-config:
 ```
 
 For each `.ck` file with at least one flagged op it emits `<filename>.mcp.ts` — one `@Injectable()`
-tool-handler class per operation (mirroring the Koa router split) — plus a `mcp.tools.ts` aggregator
+tool-handler class per operation (mirroring the server router split) — plus a `mcp.tools.ts` aggregator
 exporting `registerMcpTools(container)` (which assembles the DI `McpToolHandlerMap`) and, unless
 `emitRouter: false`, a `mcp.router.ts` with the `POST /mcp` route. Each tool handler:
 
