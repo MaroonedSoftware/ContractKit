@@ -1,5 +1,14 @@
+/**
+ * @deprecated Superseded by `@contractkit/plugin-docs`, which emits this document as its
+ * `markdown` target alongside the OpenAPI and Mintlify ones. This package is now a thin re-export
+ * and will be removed in a future major; move your config to:
+ *
+ * ```json
+ * "@contractkit/plugin-docs": { "markdown": { "baseDir": "docs/", "output": "api-reference.md" } }
+ * ```
+ */
 import { resolve } from 'node:path';
-import { generateMarkdown } from './codegen-markdown.js';
+import { generateMarkdown } from '@contractkit/plugin-docs';
 import type { ContractKitPlugin } from '@contractkit/core';
 
 export interface MarkdownPluginConfig {

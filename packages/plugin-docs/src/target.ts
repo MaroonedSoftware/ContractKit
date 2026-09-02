@@ -2,7 +2,7 @@ import type { ContractKitPlugin, PluginContext } from '@contractkit/core';
 import type { OpenApiConfig, OpenApiSecurityScheme } from './targets/openapi/codegen.js';
 
 /** Documentation platforms this plugin can emit for. */
-export type DocsTargetName = 'mintlify' | 'openapi';
+export type DocsTargetName = 'mintlify' | 'markdown' | 'openapi';
 
 /**
  * An OpenAPI 3.1 YAML document. `securitySchemes` is carried alongside the document settings
@@ -10,6 +10,16 @@ export type DocsTargetName = 'mintlify' | 'openapi';
  */
 export interface OpenApiTargetConfig extends OpenApiConfig {
     securitySchemes?: Record<string, OpenApiSecurityScheme>;
+}
+
+/** A single self-contained Markdown API reference, readable without a build step. */
+export interface MarkdownConfig {
+    /** Directory the document is written under, relative to `rootDir`. Default: `rootDir`. */
+    baseDir?: string;
+    /** Output filename. Default: `api-reference.md`. */
+    output?: string;
+    /** Document operations marked `internal`. Default: `false`. */
+    includeInternal?: boolean;
 }
 
 /** A Mintlify documentation site: MDX pages, `docs.json` navigation, and the spec they render from. */
@@ -52,6 +62,7 @@ export interface MintlifyConfig {
  */
 export interface DocsPluginConfig {
     mintlify?: MintlifyConfig;
+    markdown?: MarkdownConfig;
     openapi?: OpenApiTargetConfig;
 }
 

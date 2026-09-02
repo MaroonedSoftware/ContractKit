@@ -1,16 +1,19 @@
 import mintlify from './targets/mintlify/index.js';
+import markdown from './targets/markdown/index.js';
 import openapi from './targets/openapi/index.js';
 import type { ContractKitPlugin, PluginContext } from '@contractkit/core';
 import type { DocsPluginConfig, GenerateInputs } from './target.js';
 
-export type { DocsPluginConfig, DocsTarget, DocsTargetName, MintlifyConfig, OpenApiTargetConfig } from './target.js';
+export type { DocsPluginConfig, DocsTarget, DocsTargetName, MarkdownConfig, MintlifyConfig, OpenApiTargetConfig } from './target.js';
 export { generateOpenApi, buildOpenApiDocument, toYaml, scalarToSchema } from './targets/openapi/codegen.js';
+export { generateMarkdown, renderTsScalar } from './targets/markdown/codegen.js';
+export type { MarkdownCodegenContext } from './targets/markdown/codegen.js';
 export type { OpenApiConfig, OpenApiServerEntry, OpenApiSecurityScheme, OpenApiCodegenContext } from './targets/openapi/codegen.js';
 export { slugify, titleCase, humanize, deriveTitle, derivePageSlug, groupEndpoints, groupModels } from './naming.js';
 export type { EndpointEntry, EndpointGroup, ModelEntry, ModelGroup } from './naming.js';
 
 /** Config keys that name a target, for the "nothing configured" error message. */
-const TARGET_NAMES = ['mintlify', 'openapi'] as const;
+const TARGET_NAMES = ['mintlify', 'markdown', 'openapi'] as const;
 
 /**
  * Run every target the config turns on.
@@ -24,6 +27,11 @@ async function run(inputs: GenerateInputs, ctx: PluginContext, config: DocsPlugi
 
     if (config.mintlify) {
         await mintlify.generate(inputs, ctx, config.mintlify, rootDir);
+        ran = true;
+    }
+
+    if (config.markdown) {
+        await markdown.generate(inputs, ctx, config.markdown, rootDir);
         ran = true;
     }
 

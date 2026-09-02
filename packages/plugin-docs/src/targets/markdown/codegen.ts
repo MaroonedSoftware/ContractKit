@@ -98,7 +98,7 @@ export function renderTsScalar(name: ScalarTypeNode['name']): string {
             return 'JsonValue';
         default: {
             const _exhaustive: never = name;
-            throw new Error(`plugin-markdown: unmapped scalar '${String(_exhaustive)}' — add a case`);
+            throw new Error(`plugin-docs (markdown): unmapped scalar '${String(_exhaustive)}' — add a case`);
         }
     }
 }
