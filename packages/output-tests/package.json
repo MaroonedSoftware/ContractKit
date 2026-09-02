@@ -12,8 +12,7 @@
     "devDependencies": {
         "@contractkit/core": "workspace:*",
         "@contractkit/plugin-bruno": "workspace:*",
-        "@contractkit/plugin-markdown": "workspace:*",
-        "@contractkit/plugin-openapi": "workspace:*",
+        "@contractkit/plugin-docs": "workspace:*",
         "@contractkit/plugin-python": "workspace:*",
         "@contractkit/plugin-typescript": "workspace:*",
         "@types/node": "^25.6.0",

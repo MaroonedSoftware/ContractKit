@@ -68,11 +68,11 @@ artefact comes from a plugin.
 
 ## Documentation
 
-| Guide | Covers |
-| --- | --- |
-| [Language reference](docs/language.md) | Every `.ck` construct: contracts, fields, types, operations, responses, security, MCP, plugin extensions |
-| [Configuration](docs/config.md) | `contractkit.config.json`, the built-in plugins and their options, writing your own plugin |
-| [Tooling](docs/tooling.md) | SDK generation, docs generation, incremental compilation, cross-file validation, Prettier, the VS Code extension |
+| Guide                                  | Covers                                                                                                           |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| [Language reference](docs/language.md) | Every `.ck` construct: contracts, fields, types, operations, responses, security, MCP, plugin extensions         |
+| [Configuration](docs/config.md)        | `contractkit.config.json`, the built-in plugins and their options, writing your own plugin                       |
+| [Tooling](docs/tooling.md)             | SDK generation, docs generation, incremental compilation, cross-file validation, Prettier, the VS Code extension |
 
 Per-package READMEs live under [`packages/`](packages) and [`apps/`](apps). Working contracts to
 copy from are in [`contracts/`](contracts).
@@ -170,19 +170,20 @@ operation(internal) /pets/{id}: {        # internal | deprecated | public
 
 All packages publish under the `@contractkit` npm scope.
 
-| Package | Purpose |
-| --- | --- |
-| [`@contractkit/cli`](apps/cli) | The `contractkit` binary — discovery, config, plugin orchestration |
-| [`@contractkit/core`](packages/contractkit) | Grammar, parser, AST, semantics, validation, plugin interface |
-| [`@contractkit/plugin-typescript`](packages/plugin-typescript) | Koa routers, TypeScript SDK, Zod schemas, plain types, MCP tools |
-| [`@contractkit/plugin-python`](packages/plugin-python) | Python SDK (Pydantic v2 + httpx) |
-| [`@contractkit/plugin-openapi`](packages/plugin-openapi) | OpenAPI 3.1 YAML |
-| [`@contractkit/plugin-markdown`](packages/plugin-markdown) | Markdown API reference |
-| [`@contractkit/plugin-bruno`](packages/plugin-bruno) | Bruno REST collection |
-| [`@contractkit/openapi-to-ck`](packages/openapi-to-ck) | OpenAPI YAML → `.ck`, for adopting an existing API |
-| [`@contractkit/explorer-ui`](packages/explorer-ui) | HTML renderer behind the VS Code API explorer |
-| [`@contractkit/prettier-plugin`](apps/prettier-plugin) | Prettier plugin for `.ck` files |
-| `contractkit-vscode-extension` | VS Code / Cursor language support — LSP plus syntax highlighting. Built from source, not published ([source](apps/vscode-extension)) |
+| Package                                                        | Purpose                                                                                                                              |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| [`@contractkit/cli`](apps/cli)                                 | The `contractkit` binary — discovery, config, plugin orchestration                                                                   |
+| [`@contractkit/core`](packages/contractkit)                    | Grammar, parser, AST, semantics, validation, plugin interface                                                                        |
+| [`@contractkit/plugin-typescript`](packages/plugin-typescript) | Koa routers, TypeScript SDK, Zod schemas, plain types, MCP tools                                                                     |
+| [`@contractkit/plugin-python`](packages/plugin-python)         | Python SDK (Pydantic v2 + httpx)                                                                                                     |
+| [`@contractkit/plugin-openapi`](packages/plugin-openapi)       | Deprecated — re-exports the docs plugin's `openapi` target                                                                           |
+| [`@contractkit/plugin-markdown`](packages/plugin-markdown)     | Deprecated — re-exports the docs plugin's `markdown` target                                                                          |
+| [`@contractkit/plugin-docs`](packages/plugin-docs)             | Documentation outputs: OpenAPI 3.1 YAML, a Markdown reference, and a Mintlify site                                                   |
+| [`@contractkit/plugin-bruno`](packages/plugin-bruno)           | Bruno REST collection                                                                                                                |
+| [`@contractkit/openapi-to-ck`](packages/openapi-to-ck)         | OpenAPI YAML → `.ck`, for adopting an existing API                                                                                   |
+| [`@contractkit/explorer-ui`](packages/explorer-ui)             | HTML renderer behind the VS Code API explorer                                                                                        |
+| [`@contractkit/prettier-plugin`](apps/prettier-plugin)         | Prettier plugin for `.ck` files                                                                                                      |
+| `contractkit-vscode-extension`                                 | VS Code / Cursor language support — LSP plus syntax highlighting. Built from source, not published ([source](apps/vscode-extension)) |
 
 ## Contributing
 

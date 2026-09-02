@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseDocument, type Scalar, type YAMLMap } from 'yaml';
 import { parseCk, decomposeCk, applyOptionsDefaults, DiagnosticCollector } from '@contractkit/core';
-import { generateOpenApi, toYaml, scalarToSchema } from '../src/codegen-openapi.js';
+import { generateOpenApi, buildOpenApiDocument, toYaml, scalarToSchema } from '../../../src/targets/openapi/codegen.js';
 import {
     scalarType,
     arrayType,
@@ -22,7 +22,7 @@ import {
     opOperation,
     opRoute,
     opRoot,
-} from './helpers.js';
+} from '../../helpers.js';
 
 // ─── scalarToSchema ───────────────────────────────────────────────────────
 
@@ -120,6 +120,40 @@ describe('toYaml', () => {
 });
 
 // ─── generateOpenApi ──────────────────────────────────────────────────────
+
+// ─── buildOpenApiDocument ─────────────────────────────────────────────────
+
+describe('buildOpenApiDocument', () => {
+    const models = [model('User', [field('id', scalarType('string')), field('name', scalarType('string'))])];
+    const roots = {
+        contractRoots: [contractRoot(models)],
+        opRoots: [opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, refType('User'))] })])])],
+        config: { info: { title: 'My API', version: '2.0.0' } },
+    };
+
+    it('returns the document as an object rather than YAML', () => {
+        const doc = buildOpenApiDocument(roots);
+        expect(doc.openapi).toBe('3.1.0');
+        expect(doc.info).toEqual({ title: 'My API', version: '2.0.0' });
+    });
+
+    it('exposes paths keyed by route and method', () => {
+        const doc = buildOpenApiDocument(roots);
+        const paths = doc.paths as Record<string, Record<string, unknown>>;
+        expect(Object.keys(paths)).toEqual(['/users']);
+        expect(paths['/users']).toHaveProperty('get');
+    });
+
+    it('exposes component schemas reachable from operations', () => {
+        const doc = buildOpenApiDocument(roots);
+        const components = doc.components as { schemas: Record<string, unknown> };
+        expect(Object.keys(components.schemas)).toContain('User');
+    });
+
+    it('is what generateOpenApi serializes', () => {
+        expect(generateOpenApi(roots)).toBe(toYaml(buildOpenApiDocument(roots)));
+    });
+});
 
 describe('generateOpenApi', () => {
     // ─── Basic structure ─────────────────────────────────────────

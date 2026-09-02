@@ -8,13 +8,11 @@ import {
     FieldNode,
     ModelNode,
     ParamSource,
-    HttpMethod,
     resolveModifiers,
     resolveSecurity,
     SECURITY_NONE,
-    collectPublicTypeNames,
-    collectTypeRefs,
 } from '@contractkit/core';
+import { computePubliclyReachableModels, deriveTitle, groupEndpoints, groupModels, humanize } from '../../naming.js';
 
 // ─── Local TypeScript type rendering ─────────────────────────────────────
 
@@ -98,7 +96,7 @@ export function renderTsScalar(name: ScalarTypeNode['name']): string {
             return 'JsonValue';
         default: {
             const _exhaustive: never = name;
-            throw new Error(`plugin-markdown: unmapped scalar '${String(_exhaustive)}' — add a case`);
+            throw new Error(`plugin-docs (markdown): unmapped scalar '${String(_exhaustive)}' — add a case`);
         }
     }
 }
@@ -158,11 +156,11 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
             for (const group of endpointGroups) {
                 if (group.area) {
                     lines.push('<details>');
-                    lines.push(`<summary><strong>${titleCase(group.area)}</strong> (${group.endpoints.length})</summary>`);
+                    lines.push(`<summary><strong>${humanize(group.area)}</strong> (${group.endpoints.length})</summary>`);
                     lines.push('');
                 }
                 for (const ep of group.endpoints) {
-                    const title = deriveTitle(ep.op, ep.route);
+                    const title = ep.title;
                     lines.push(`- [${title}](#${anchor(title)})`);
                 }
                 if (group.area) {
@@ -179,10 +177,10 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
             for (const group of modelGroups) {
                 if (group.area) {
                     lines.push('<details>');
-                    lines.push(`<summary><strong>${titleCase(group.area)}</strong> (${group.models.length})</summary>`);
+                    lines.push(`<summary><strong>${humanize(group.area)}</strong> (${group.models.length})</summary>`);
                     lines.push('');
                 }
-                for (const model of group.models) {
+                for (const { model } of group.models) {
                     lines.push(`- [${model.name}](#${anchor(model.name)})`);
                 }
                 if (group.area) {
@@ -204,7 +202,7 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
 
         for (const group of endpointGroups) {
             if (group.area) {
-                lines.push(`### ${titleCase(group.area)}`);
+                lines.push(`### ${humanize(group.area)}`);
                 lines.push('');
             }
 
@@ -228,11 +226,11 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
 
         for (const group of modelGroups) {
             if (group.area) {
-                lines.push(`### ${titleCase(group.area)}`);
+                lines.push(`### ${humanize(group.area)}`);
                 lines.push('');
             }
 
-            for (const model of group.models) {
+            for (const { model } of group.models) {
                 lines.push(...renderModel(model, group.area !== undefined));
                 lines.push('');
             }
@@ -276,130 +274,6 @@ function resolveModelFields(name: string, modelIndex: Map<string, ModelNode>): F
 
 // ─── Grouping ──────────────────────────────────────────────────────────────
 
-interface EndpointEntry {
-    route: OpRouteNode;
-    op: OpOperationNode;
-}
-
-interface EndpointGroup {
-    area: string | undefined;
-    endpoints: EndpointEntry[];
-}
-
-interface ModelGroup {
-    area: string | undefined;
-    models: ModelNode[];
-}
-
-function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): EndpointGroup[] {
-    const grouped = new Map<string, EndpointEntry[]>();
-    const ungrouped: EndpointEntry[] = [];
-
-    for (const opRoot of opRoots) {
-        const area = opRoot.meta?.area;
-        for (const route of opRoot.routes) {
-            for (const op of route.operations) {
-                const mods = resolveModifiers(route, op);
-                if (!includeInternal && mods.includes('internal')) continue;
-                const entry: EndpointEntry = { route, op };
-                if (area) {
-                    const list = grouped.get(area) ?? [];
-                    list.push(entry);
-                    grouped.set(area, list);
-                } else {
-                    ungrouped.push(entry);
-                }
-            }
-        }
-    }
-
-    const result: EndpointGroup[] = [];
-
-    if (ungrouped.length > 0) {
-        result.push({ area: undefined, endpoints: ungrouped });
-    }
-
-    for (const [area, endpoints] of grouped) {
-        result.push({ area, endpoints });
-    }
-
-    return result;
-}
-
-/**
- * Returns the set of contract model names reachable from public (non-internal) operations,
- * transitively through model dependencies. Returns null when there are no .op files,
- * meaning all models should be shown.
- */
-function computePubliclyReachableModels(opRoots: OpRootNode[], contractRoots: ContractRootNode[]): Set<string> | null {
-    if (opRoots.length === 0) return null;
-
-    // Seed with type names directly referenced by public ops
-    const reachable = new Set<string>();
-    for (const opRoot of opRoots) {
-        for (const name of collectPublicTypeNames(opRoot)) {
-            reachable.add(name);
-        }
-    }
-
-    // Build model → dependency map
-    const modelDeps = new Map<string, Set<string>>();
-    for (const contractRoot of contractRoots) {
-        for (const model of contractRoot.models) {
-            const deps = new Set<string>();
-            if (model.bases) for (const b of model.bases) deps.add(b);
-            if (model.type) collectTypeRefs(model.type, deps);
-            for (const field of model.fields) collectTypeRefs(field.type, deps);
-            modelDeps.set(model.name, deps);
-        }
-    }
-
-    // BFS expand through dependencies
-    const frontier = [...reachable];
-    while (frontier.length > 0) {
-        const name = frontier.pop()!;
-        for (const dep of modelDeps.get(name) ?? []) {
-            if (!reachable.has(dep)) {
-                reachable.add(dep);
-                frontier.push(dep);
-            }
-        }
-    }
-
-    return reachable;
-}
-
-function groupModels(contractRoots: ContractRootNode[], publicModels: Set<string> | null): ModelGroup[] {
-    const grouped = new Map<string, ModelNode[]>();
-    const ungrouped: ModelNode[] = [];
-
-    for (const contractRoot of contractRoots) {
-        const area = contractRoot.meta?.area;
-        for (const model of contractRoot.models) {
-            if (publicModels !== null && !publicModels.has(model.name)) continue;
-            if (area) {
-                const list = grouped.get(area) ?? [];
-                list.push(model);
-                grouped.set(area, list);
-            } else {
-                ungrouped.push(model);
-            }
-        }
-    }
-
-    const result: ModelGroup[] = [];
-
-    if (ungrouped.length > 0) {
-        result.push({ area: undefined, models: ungrouped });
-    }
-
-    for (const [area, models] of grouped) {
-        result.push({ area, models });
-    }
-
-    return result;
-}
-
 // ─── Title derivation ─────────────────────────────────────────────────────
 
 /**
@@ -411,58 +285,6 @@ function groupModels(contractRoots: ContractRootNode[], publicModels: Set<string
  *
  * Leaves words ending in 'ss' alone (e.g. "Process").
  */
-function normalizeVerbTitle(title: string): string {
-    const spaceIdx = title.indexOf(' ');
-    if (spaceIdx === -1) return title;
-
-    const firstWord = title.slice(0, spaceIdx);
-    const rest = title.slice(spaceIdx);
-
-    // Strip third-person 's' from verbs (but not from words ending in 'ss' like "Process")
-    if (firstWord.length > 3 && firstWord.endsWith('s') && !firstWord.endsWith('ss')) {
-        return firstWord.slice(0, -1) + rest;
-    }
-
-    return title;
-}
-
-/**
- * Derive a human-readable verb-based title for an endpoint.
- *
- * Priority:
- * 1. op.description (title-cased, normalized to imperative mood)
- * 2. Service method name (e.g. "LedgerService.createAccount" → "Create account")
- * 3. Fallback: method + path segments (e.g. "Get ledger accounts")
- */
-function deriveTitle(op: OpOperationNode, route: OpRouteNode): string {
-    // 1. Use explicit description
-    if (op.description) {
-        return normalizeVerbTitle(titleCase(op.description.trim()));
-    }
-
-    // 2. Derive from service method name
-    if (op.service) {
-        const methodPart = op.service.split('.').pop()!;
-        // camelCase → space-separated, title-cased first word
-        const words = methodPart.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
-        return titleCase(words);
-    }
-
-    // 3. Fallback: method + path segments
-    const segments = route.path.split('/').filter(s => s.length > 0 && !s.startsWith('{'));
-    const pathWords = segments.join(' ').replace(/[.-]/g, ' ');
-    const verb = METHOD_VERBS[op.method] ?? op.method.toUpperCase();
-    return `${verb} ${pathWords}`;
-}
-
-const METHOD_VERBS: Record<HttpMethod, string> = {
-    get: 'List',
-    post: 'Create',
-    put: 'Update',
-    patch: 'Update',
-    delete: 'Delete',
-};
-
 // ─── Endpoint rendering ────────────────────────────────────────────────────
 
 const STATUS_TEXT: Record<number, string> = {
@@ -871,11 +693,6 @@ function anchor(name: string): string {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
 
-function titleCase(s: string): string {
-    return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/** Derive SDK method name — mirrors codegen-sdk.ts logic. */
 function deriveMethodName(op: OpOperationNode, route: OpRouteNode): string {
     if (op.sdk) return op.sdk;
     const segments = route.path.split('/').filter(s => s.length > 0);

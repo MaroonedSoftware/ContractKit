@@ -1,8 +1,19 @@
+/**
+ * @deprecated Superseded by `@contractkit/plugin-docs`, which emits this spec as its `openapi`
+ * target alongside the Markdown and Mintlify ones. This package is now a thin re-export and will
+ * be removed in a future major; move your config to:
+ *
+ * ```json
+ * "@contractkit/plugin-docs": { "openapi": { "output": "openapi.yaml" } }
+ * ```
+ */
 import { resolve } from 'node:path';
-import { generateOpenApi } from './codegen-openapi.js';
+import { generateOpenApi } from '@contractkit/plugin-docs';
 import type { ContractKitPlugin } from '@contractkit/core';
-import type { OpenApiConfig, OpenApiSecurityScheme } from './codegen-openapi.js';
-export type { OpenApiServerEntry, OpenApiConfig, OpenApiSecurityScheme } from './codegen-openapi.js';
+import type { OpenApiConfig, OpenApiSecurityScheme } from '@contractkit/plugin-docs';
+
+export type { OpenApiServerEntry, OpenApiConfig, OpenApiSecurityScheme, OpenApiCodegenContext } from '@contractkit/plugin-docs';
+export { generateOpenApi, buildOpenApiDocument, toYaml } from '@contractkit/plugin-docs';
 
 export interface OpenApiPluginOptions extends OpenApiConfig {
     securitySchemes?: Record<string, OpenApiSecurityScheme>;
@@ -36,8 +47,7 @@ export function createOpenApiPlugin(
         async generateTargets({ contractRoots, opRoots }, ctx) {
             const base = openapiConfig.baseDir ? resolve(rootDir, openapiConfig.baseDir) : rootDir;
             const outPath = resolve(base, openapiConfig.output ?? 'openapi.yaml');
-            const content = generateOpenApi({ contractRoots, opRoots, config: openapiConfig, securitySchemes });
-            ctx.emitFile(outPath, content);
+            ctx.emitFile(outPath, generateOpenApi({ contractRoots, opRoots, config: openapiConfig, securitySchemes }));
         },
     };
 }

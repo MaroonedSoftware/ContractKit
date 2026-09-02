@@ -1,0 +1,123 @@
+# @contractkit/plugin-docs
+
+> ContractKit's documentation site generator. Emits a deployable Mintlify docs folder from `.ck`
+> contract and operation files: an OpenAPI spec, one MDX page per endpoint and per model, a
+> `docs.json` navigation file, and a starter landing page.
+
+Loaded by `@contractkit/cli` through `contractkit.config.json`. It consumes the AST produced by
+`@contractkit/core` and builds its OpenAPI document with `@contractkit/plugin-openapi`.
+
+## Install
+
+```bash
+pnpm add -D @contractkit/cli @contractkit/plugin-docs
+```
+
+## Configure
+
+`plugins` is an **object** keyed by package name, not an array.
+
+```json
+{
+    "rootDir": ".",
+    "patterns": ["contracts/**/*.ck"],
+    "plugins": {
+        "@contractkit/plugin-docs": {
+            "mintlify": {
+                "baseDir": "docs/",
+                "openapi": { "info": { "title": "Acme API", "version": "1.0.0" } },
+                "docs": { "theme": "mint", "colors": { "primary": "#0D9373" } }
+            }
+        }
+    }
+}
+```
+
+Each key under the plugin is one target, enabled by being present. `mintlify` is the only target
+today. The options below are the contents of the `mintlify` block.
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `baseDir` | `string` | `"docs"` | Docs root, relative to `rootDir` |
+| `apiDir` | `string` | `"api-reference"` | Endpoint page directory under `baseDir` |
+| `modelsDir` | `string` | `"<apiDir>/models"` | Model page directory under `baseDir` |
+| `openapi` | `object` | `{}` | Spec settings: `output`, `info`, `servers`, `security`, `securitySchemes` |
+| `tab` | `string \| false` | `"API Reference"` | Generated tab title. `false` puts the groups under `navigation.groups` |
+| `modelPages` | `boolean` | `true` | Emit a page per documented model |
+| `includeInternal` | `boolean` | `false` | Document operations marked `internal` |
+| `docs` | `object` | `{}` | Merged over the generated `docs.json` |
+
+## Output
+
+```
+docs/
+├── docs.json                      site config + navigation (regenerated every build)
+├── openapi.yaml                   the spec every page renders from
+├── index.mdx                      starter landing page (write-once, user-owned)
+└── api-reference/
+    ├── <area>/<endpoint>.mdx      one per documented operation
+    └── models/[<area>/]<model>.mdx one per documented model, nested by area
+```
+
+An endpoint page is frontmatter only:
+
+```mdx
+---
+title: "Create a payment"
+sidebarTitle: "Create a payment"
+openapi: "/openapi.yaml POST /payments"
+---
+```
+
+A model page uses `openapi-schema: "/openapi.yaml Payment"` instead.
+
+## Naming
+
+- **Groups** come from the source file's `area`, for models as well as endpoints. Area-less
+  endpoints land in one `Endpoints` group, listed first; areas follow in first-seen order.
+- **Models are nested by area** inside the `Models` group and written to `<modelsDir>/<area>/`.
+  Models from files with no area stay directly in `Models`, so a project without areas keeps the
+  flat list. A schema name only has to be unique within its own area.
+- **Titles**: `name:` → description → service method → HTTP verb plus path.
+- **Slugs**: `sdk:` → `name:` → service method → HTTP method plus path. Collisions within a group
+  get a numeric suffix.
+
+## Programmatic use
+
+```typescript
+import { createDocsPlugin } from '@contractkit/plugin-docs';
+
+const plugin = createDocsPlugin({ mintlify: { baseDir: 'docs' } }, process.cwd());
+```
+
+Prefer the default export when loading through `contractkit.config.json`; the factory is for
+building the plugin in code.
+
+## Gotchas
+
+- **Pages carry no body text.** The contract's description is already the operation's `description`
+  in the spec, and Mintlify renders it from there — writing it into the MDX too would print it
+  twice.
+- **`docs.json` is regenerated every build.** Do not hand-edit it; put site settings and
+  hand-written navigation in the `docs` option instead. Its keys override the generated defaults,
+  your `navigation.tabs` (or `groups`) are kept with the generated API reference appended after
+  them, and other `navigation` keys such as `global` pass through untouched.
+- **`index.mdx` is the only user-owned file**, emitted write-once. Every other file is generated and
+  will be overwritten; write prose in `#` comments and descriptions inside the `.ck` files.
+- **`baseDir` and `output` inside the `openapi` option are ignored.** The plugin owns where the spec
+  lands, because every page's frontmatter points at it. Use `openapi.output` only to rename it
+  within the docs folder.
+- **Only models an operation can reach get a page**, matching the schemas the spec contains.
+- **Keep the `markdown` output out of the Mintlify docs folder.** Mintlify parses every markdown
+  file under its `baseDir` as MDX, and the Markdown reference is GitHub-flavored: a description
+  containing something like `/documents/<id>/content` is valid there and a parse error in MDX. Give
+  the `markdown` target its own `baseDir`.
+- `includeInternal` is `false` by default, so `internal` operations are kept out of both the spec
+  and the pages.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-docs/README.md
+- Configuration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/config.md
+- Writing descriptions and comments in `.ck`: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt

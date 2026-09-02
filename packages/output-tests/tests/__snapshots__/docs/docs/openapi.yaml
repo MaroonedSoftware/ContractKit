@@ -1,0 +1,343 @@
+openapi: '3.1.0'
+info:
+  title: 'Kitchen Sink'
+  version: '1.0.0'
+paths:
+  '/payments':
+    post:
+      operationId: createPayment
+      description: 'create a payment'
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Payment'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Payment'
+          headers:
+            x-request-id:
+              schema:
+                type: string
+              required: true
+            x-ratelimit-remaining:
+              schema:
+                type: integer
+              required: true
+            x-cache-hit:
+              schema:
+                type: boolean
+            x-expires-after:
+              schema:
+                type: string
+                format: date-time
+        '400':
+          description: 'Bad request'
+    get:
+      operationId: listPayments
+      description: 'list payments'
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: cursor
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: api-key
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: x-tenant
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                type: array
+                items:
+                  '$ref': '#/components/schemas/Payment'
+  '/payments/{paymentId}':
+    get:
+      operationId: getPayment
+      description: 'fetch one payment'
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Payment'
+        '404':
+          description: 'Not found'
+    post:
+      operationId: updatePaymentWithForm
+      description: 'update a payment with form data'
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          'application/x-www-form-urlencoded':
+            schema:
+              '$ref': '#/components/schemas/UpdatePaymentForm'
+      responses:
+        '204':
+          description: 'No content'
+    delete:
+      operationId: deletePayment
+      description: 'delete a payment — declares only a documented error status'
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '400':
+          description: 'Bad request'
+  '/payments/{paymentId}/receipt':
+    post:
+      operationId: uploadReceipt
+      description: 'upload a receipt image'
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          'multipart/form-data':
+            schema:
+              '$ref': '#/components/schemas/UploadReceiptForm'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Payment'
+  '/refunds/{paymentId}':
+    get:
+      operationId: getRefund
+      description: 'look up a refund by its originating payment'
+      parameters:
+        - name: PaymentRef
+          in: path
+          required: true
+          schema:
+            '$ref': '#/components/schemas/PaymentRef'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Payment'
+        '404':
+          description: 'Not found'
+      deprecated: true
+  '/credentials':
+    post:
+      operationId: createCredential
+      description: 'store a credential'
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/AdminCredential'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Credential'
+  '/sessions':
+    post:
+      operationId: createSession
+      description: 'open a session'
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Session'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Session'
+  '/invoices/{invoice-id}':
+    get:
+      operationId: getInvoice
+      description: 'fetch an invoice'
+      parameters:
+        - name: invoice-id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Invoice'
+        '404':
+          description: 'Not found'
+  '/status':
+    get:
+      operationId: getStatus
+      description: 'current service status'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Heartbeat'
+components:
+  schemas:
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        amount:
+          type: number
+          minimum: 0
+        unitPrice:
+          type: string
+          format: decimal
+          pattern: '^-?\d+(\.\d{1,2})?$'
+          x-contractkit-scale: 2
+        quantity:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        processingTime:
+          type: string
+          format: duration
+        status:
+          type: string
+          enum: [pending, completed, failed]
+          default: pending
+      required: [id, amount, unitPrice, quantity, createdAt, status]
+      description: 'A customer payment'
+    Credential:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        secret:
+          type: string
+          writeOnly: true
+      required: [id, secret]
+      description: 'A stored credential — has a writeonly child, so its Base schema is read'
+    AdminCredential:
+      allOf:
+        - '$ref': '#/components/schemas/Credential'
+        - type: object
+          properties:
+            scope:
+              type: string
+            token:
+              type: string
+              writeOnly: true
+          required: [scope, token]
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+        refreshToken:
+          type: string
+          writeOnly: true
+      required: [id, refreshToken]
+      description: 'A writeonly model nothing extends — its Base schema has no reader'
+    PaymentRef:
+      type: object
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+      required: [paymentId]
+      description: 'Path params declared as a model, referenced via `params: PaymentRef`'
+    UpdatePaymentForm:
+      type: object
+      properties:
+        note:
+          type: string
+    UploadReceiptForm:
+      type: object
+      properties:
+        caption:
+          type: string
+        file:
+          type: string
+          format: binary
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        total:
+          type: string
+          format: decimal
+          pattern: '^-?\d+(\.\d{1,2})?$'
+          x-contractkit-scale: 2
+      required: [id, total]
+    Heartbeat:
+      type: object
+      properties:
+        status:
+          type: string
+        checkedAt:
+          type: string
+          format: date-time
+      required: [status, checkedAt]
+      description: 'A service heartbeat — deliberately no bigint field and no `area` key'

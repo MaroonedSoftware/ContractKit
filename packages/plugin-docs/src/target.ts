@@ -1,0 +1,80 @@
+import type { ContractKitPlugin, PluginContext } from '@contractkit/core';
+import type { OpenApiConfig, OpenApiSecurityScheme } from './targets/openapi/codegen.js';
+
+/** Documentation platforms this plugin can emit for. */
+export type DocsTargetName = 'mintlify' | 'markdown' | 'openapi';
+
+/**
+ * An OpenAPI 3.1 YAML document. `securitySchemes` is carried alongside the document settings
+ * because it lands under `components`, not at the top level.
+ */
+export interface OpenApiTargetConfig extends OpenApiConfig {
+    securitySchemes?: Record<string, OpenApiSecurityScheme>;
+}
+
+/** A single self-contained Markdown API reference, readable without a build step. */
+export interface MarkdownConfig {
+    /** Directory the document is written under, relative to `rootDir`. Default: `rootDir`. */
+    baseDir?: string;
+    /** Output filename. Default: `api-reference.md`. */
+    output?: string;
+    /** Document operations marked `internal`. Default: `false`. */
+    includeInternal?: boolean;
+}
+
+/** A Mintlify documentation site: MDX pages, `docs.json` navigation, and the spec they render from. */
+export interface MintlifyConfig {
+    /** Docs root, relative to `rootDir`. Default: `docs`. */
+    baseDir?: string;
+    /** Directory under `baseDir` holding endpoint pages. Default: `api-reference`. */
+    apiDir?: string;
+    /** Directory under `baseDir` holding model pages. Default: `<apiDir>/models`. */
+    modelsDir?: string;
+    /**
+     * OpenAPI spec settings. Takes the same `output`, `info`, `servers`, `security` and
+     * `securitySchemes` options as `@contractkit/plugin-openapi`; the spec is emitted inside
+     * `baseDir` and referenced by every generated page. Default output: `openapi.yaml`.
+     */
+    openapi?: OpenApiTargetConfig;
+    /**
+     * Title of the generated navigation tab. `false` puts the generated groups directly under
+     * `navigation.groups` instead, for a docs site with no tab bar. Default: `API Reference`.
+     */
+    tab?: string | false;
+    /** Emit a page per documented model. Default: `true`. */
+    modelPages?: boolean;
+    /** Document operations marked `internal`. Default: `false`. */
+    includeInternal?: boolean;
+    /**
+     * Merged over the generated site config (`name`, `theme`, `colors`, `logo`, `favicon`, extra
+     * navigation tabs or groups, global anchors, …).
+     */
+    docs?: Record<string, unknown>;
+}
+
+/**
+ * Config accepted under `"@contractkit/plugin-docs"` in `contractkit.config.json`.
+ *
+ * Each key is one target, enabled by being present, mirroring how `@contractkit/plugin-typescript`
+ * turns on `server` / `sdk` / `zod` / `types` / `mcp`. The CLI keys its `plugins` block by package
+ * name, so this package can be listed only once; a single `target` field would therefore have
+ * allowed just one documentation format per build.
+ */
+export interface DocsPluginConfig {
+    mintlify?: MintlifyConfig;
+    markdown?: MarkdownConfig;
+    openapi?: OpenApiTargetConfig;
+}
+
+/** The inputs `generateTargets` hands a plugin. */
+export type GenerateInputs = Parameters<NonNullable<ContractKitPlugin['generateTargets']>>[0];
+
+/**
+ * One documentation platform's generator.
+ *
+ * `generate` is async to match `generateTargets`, even where a target has no awaiting to do.
+ */
+export interface DocsTarget<TConfig> {
+    name: DocsTargetName;
+    generate(inputs: GenerateInputs, ctx: PluginContext, config: TConfig, rootDir: string): Promise<void>;
+}

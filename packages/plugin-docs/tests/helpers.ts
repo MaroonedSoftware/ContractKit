@@ -9,8 +9,8 @@ import type {
     RecordTypeNode,
     EnumTypeNode,
     LiteralTypeNode,
-    UnionTypeNode,
     DiscriminatedUnionTypeNode,
+    UnionTypeNode,
     ModelRefTypeNode,
     InlineObjectTypeNode,
     LazyTypeNode,
@@ -98,8 +98,8 @@ export function model(name: string, fields: FieldNode[], overrides?: Partial<Mod
     };
 }
 
-export function contractRoot(models: ModelNode[], file = 'test.ck'): ContractRootNode {
-    return { kind: 'contractRoot', meta: {}, models, file };
+export function contractRoot(models: ModelNode[], file = 'test.ck', meta: Record<string, string> = {}): ContractRootNode {
+    return { kind: 'contractRoot', meta, models, file };
 }
 
 /**

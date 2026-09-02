@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateMarkdown, renderTsScalar } from '../src/codegen-markdown.js';
+import { generateMarkdown, renderTsScalar } from '../../../src/targets/markdown/codegen.js';
 import {
     scalarType,
     arrayType,
@@ -18,7 +18,7 @@ import {
     opOperation,
     opRoute,
     opRoot,
-} from './helpers.js';
+} from '../../helpers.js';
 import type { IntersectionTypeNode, ContractTypeNode } from '@contractkit/core';
 
 function intersectionType(...members: ContractTypeNode[]): IntersectionTypeNode {
@@ -1021,9 +1021,7 @@ describe('model filtering by public reachability', () => {
 
     describe('table cell escaping', () => {
         it('collapses embedded newlines in a field description into <br> without breaking the row', () => {
-            const dto = contractRoot([
-                model('User', [field('name', scalarType('string'), { description: 'First line\nSecond line' })]),
-            ]);
+            const dto = contractRoot([model('User', [field('name', scalarType('string'), { description: 'First line\nSecond line' })])]);
             const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
             const row = output.split('\n').find(l => l.startsWith('| `name`'));
             expect(row).toBeDefined();
@@ -1034,9 +1032,7 @@ describe('model filtering by public reachability', () => {
         });
 
         it('escapes pipe characters in a field description', () => {
-            const dto = contractRoot([
-                model('User', [field('name', scalarType('string'), { description: 'a | b' })]),
-            ]);
+            const dto = contractRoot([model('User', [field('name', scalarType('string'), { description: 'a | b' })])]);
             const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
             const row = output.split('\n').find(l => l.startsWith('| `name`'));
             expect(row).toBeDefined();
@@ -1048,9 +1044,7 @@ describe('model filtering by public reachability', () => {
 
     describe('scalar type rendering', () => {
         it('documents an interval field as string, not unknown', () => {
-            const dto = contractRoot([
-                model('Booking', [field('window', scalarType('interval'))]),
-            ]);
+            const dto = contractRoot([model('Booking', [field('window', scalarType('interval'))])]);
             const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
             const row = output.split('\n').find(l => l.startsWith('| `window`'));
             expect(row).toBeDefined();

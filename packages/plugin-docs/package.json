@@ -1,0 +1,48 @@
+{
+    "name": "@contractkit/plugin-docs",
+    "version": "0.1.0",
+    "description": "ContractKit built-in plugin: documentation site generation (Mintlify)",
+    "license": "MIT",
+    "author": {
+        "name": "Marooned Software",
+        "url": "https://github.com/MaroonedSoftware/contractkit"
+    },
+    "bugs": {
+        "url": "https://github.com/MaroonedSoftware/contractkit/issues"
+    },
+    "homepage": "https://github.com/MaroonedSoftware/contractkit/packages/plugin-docs#readme",
+    "keywords": [
+        "contractkit",
+        "docs",
+        "mintlify",
+        "mdx"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/MaroonedSoftware/contractkit.git"
+    },
+    "type": "module",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": "./dist/index.js"
+    },
+    "scripts": {
+        "build": "tsup src/index.ts --format esm --sourcemap --dts && tsc --emitDeclarationOnly --declaration",
+        "build:ci": "eslint --max-warnings=0 && pnpm run build",
+        "lint": "eslint --fix",
+        "format": "prettier --write .",
+        "test": "vitest run",
+        "test:ci": "vitest run --coverage"
+    },
+    "dependencies": {
+        "@contractkit/core": "workspace:*"
+    },
+    "devDependencies": {
+        "@contractkit/openapi-to-ck": "workspace:*",
+        "@repo/config-eslint": "workspace:*",
+        "@repo/config-typescript": "workspace:*",
+        "yaml": "^2.8.3"
+    }
+}

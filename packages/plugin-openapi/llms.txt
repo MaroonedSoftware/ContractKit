@@ -1,83 +1,24 @@
 # @contractkit/plugin-openapi
 
-> ContractKit's OpenAPI generator. Emits a single OpenAPI **3.1** YAML document from `.ck` contract
-> and operation files.
+> **Deprecated.** Superseded by `@contractkit/plugin-docs` and its `openapi` target. This package
+> is now a thin re-export and will be removed in a future major.
 
-Loaded by `@contractkit/cli` through `contractkit.config.json`. It consumes the AST produced by
-`@contractkit/core`. To go the other direction — an existing spec into `.ck` files — use
-`contractkit import-openapi` from `@contractkit/openapi-to-ck`.
-
-## Install
-
-```bash
-pnpm add -D @contractkit/cli @contractkit/plugin-openapi
-```
-
-## Configure
-
-`plugins` is an **object** keyed by package name, not an array.
+## Migrating
 
 ```json
 {
-    "rootDir": ".",
-    "patterns": ["contracts/**/*.ck"],
     "plugins": {
-        "@contractkit/plugin-openapi": {
-            "baseDir": "docs/api/",
-            "output": "openapi.yaml",
-            "info": { "title": "Acme API", "version": "1.0.0" },
-            "servers": [
-                { "url": "https://api.acme.com", "description": "Production" },
-                { "url": "http://localhost:3000", "description": "Local" }
-            ],
-            "security": [{ "bearerAuth": [] }],
-            "securitySchemes": {
-                "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
-            }
+        "@contractkit/plugin-docs": {
+            "openapi": { "baseDir": "docs/" }
         }
     }
 }
 ```
 
-| Option | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `baseDir` | `string` | `rootDir` | Directory the output is written under |
-| `output` | `string` | `"openapi.yaml"` | Output filename |
-| `info` | `object` | — | The document's `info` block (`title`, `version`, `description`) |
-| `servers` | `array` | — | Entries for the `servers` array |
-| `security` | `array` | — | Global security *requirements*, e.g. `[{ "bearerAuth": [] }]` |
-| `securitySchemes` | `object` | — | Named scheme *definitions* for `components.securitySchemes` |
-| `includeInternal` | `boolean` | `false` | Document operations marked `internal` |
-
-`security` and `securitySchemes` are different things and both are usually needed: the first says
-which scheme applies, the second defines what that scheme is. A requirement naming a scheme you
-never defined produces a spec that validators reject.
-
-## Programmatic use
-
-```typescript
-import { createOpenApiPlugin } from '@contractkit/plugin-openapi';
-
-const plugin = createOpenApiPlugin(
-    { baseDir: 'docs/api/', output: 'openapi.yaml', info: { title: 'Acme API', version: '1.0.0' } },
-    process.cwd(),
-    { bearerAuth: { type: 'http', scheme: 'bearer' } },
-);
-```
-
-Note that `securitySchemes` is a separate third argument to the factory, while in
-`contractkit.config.json` it sits alongside the other options.
-
-## Gotchas
-
-- Output is OpenAPI **3.1**, not 3.0. Nullability is expressed with JSON Schema type arrays, not the
-  3.0 `nullable` keyword, so tooling pinned to 3.0 may reject it.
-- One document per build, not one per `.ck` file.
-- `includeInternal` is `false` by default, so a published spec omits `internal` operations.
+Every option keeps its name and meaning; the output is unchanged. See
+`packages/plugin-docs/llms.txt` for the full option table and the other targets.
 
 ## More
 
-- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-openapi/README.md
-- Configuration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/config.md
-- Reverse direction: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/openapi-to-ck/README.md
-- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt
+- Migration notes: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-openapi/README.md
+- Replacement: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-docs/llms.txt

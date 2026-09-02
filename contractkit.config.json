@@ -25,26 +25,51 @@
                 }
             }
         },
-        "@contractkit/plugin-openapi": {
-            "baseDir": "docs/api/",
-            "output": "openapi.yaml",
-            "info": {
-                "title": "Homegrown API",
-                "version": "1.0.0",
-                "description": "Homegrown API"
+        "@contractkit/plugin-docs": {
+            "openapi": {
+                "baseDir": "docs/api/",
+                "output": "openapi.yaml",
+                "info": {
+                    "title": "Homegrown API",
+                    "version": "1.0.0",
+                    "description": "Homegrown API"
+                },
+                "servers": [
+                    {
+                        "url": "https://api.joinhomegrown.com",
+                        "description": "Production"
+                    },
+                    {
+                        "url": "https://localhost:3000",
+                        "description": "Local"
+                    }
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "securitySchemes": {
+                    "bearerAuth": {
+                        "type": "http",
+                        "scheme": "bearer",
+                        "bearerFormat": "JWT"
+                    }
+                }
             },
-            "servers": [
-                { "url": "https://api.joinhomegrown.com", "description": "Production" },
-                { "url": "https://localhost:3000", "description": "Local" }
-            ],
-            "security": [{ "bearerAuth": [] }],
-            "securitySchemes": {
-                "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+            "markdown": {
+                "baseDir": "docs/",
+                "output": "api-reference.md"
+            },
+            "mintlify": {
+                "baseDir": "docs/mintlify/",
+                "docs": {
+                    "theme": "mint",
+                    "colors": {
+                        "primary": "#0D9373"
+                    }
+                }
             }
-        },
-        "@contractkit/plugin-markdown": {
-            "baseDir": "docs/",
-            "output": "api-reference.md"
         }
     }
 }

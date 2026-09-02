@@ -1,46 +1,32 @@
 # @contractkit/plugin-markdown
 
-ContractKit plugin that generates a Markdown API reference from `.ck` contract and operation files.
+> **Deprecated.** Use [`@contractkit/plugin-docs`](../plugin-docs) and its `markdown` target instead.
+> This package is now a thin re-export of that target and will be removed in a future major.
 
-## Installation
+## Migrating
 
-```bash
-pnpm add @contractkit/plugin-markdown
-```
-
-## Configuration
+Replace the plugin entry in `contractkit.config.json`:
 
 ```json
 {
-  "plugins": {
-    "@contractkit/plugin-markdown": {
-      "output": "docs/api-reference.md"
+    "plugins": {
+        "@contractkit/plugin-docs": {
+            "markdown": { "baseDir": "docs/", "output": "api-reference.md" }
+        }
     }
-  }
 }
 ```
 
-## Options
+Every option keeps its name and meaning, and the rendered document is unchanged.
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `baseDir` | `string` | `rootDir` | Base directory for the output file |
-| `output` | `string` | `"api-reference.md"` | Output file path |
+Moving also lets you add the `openapi` and `mintlify` targets in the same block.
 
-## Output
+## Why
 
-The plugin writes a single Markdown file documenting all contracts and operations discovered across all `.ck` source files.
+The OpenAPI, Markdown and Mintlify generators all read the same AST and had drifted apart in how
+they titled and grouped the same endpoint. They now share one implementation in `plugin-docs`,
+which also means one package to install and one block to configure.
 
-**Contracts** are documented as data model references: field names, types, modifiers (`readonly`, `writeonly`, `optional`, `deprecated`), and default values.
+## License
 
-**Operations** are documented as endpoint references: HTTP method, path, path/query parameters, request body, and response codes with their content types and schemas.
-
-## Programmatic use
-
-```typescript
-import { createMarkdownPlugin } from '@contractkit/plugin-markdown';
-
-const plugin = createMarkdownPlugin({
-  output: 'docs/api-reference.md',
-});
-```
+MIT

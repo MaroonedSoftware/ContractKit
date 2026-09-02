@@ -21,12 +21,11 @@ import {
 } from '@contractkit/core';
 import { createTypescriptPlugin } from '@contractkit/plugin-typescript';
 import { createPythonSdkPlugin } from '@contractkit/plugin-python';
-import { createOpenApiPlugin } from '@contractkit/plugin-openapi';
-import { createMarkdownPlugin } from '@contractkit/plugin-markdown';
 import { createBrunoPlugin } from '@contractkit/plugin-bruno';
+import { createDocsPlugin } from '@contractkit/plugin-docs';
 
 /**
- * The five plugins are run against a fixed pair of fixtures and every emitted file is
+ * Every plugin is run against a fixed set of fixtures and every emitted file is
  * snapshotted, so a change to any generator shows up as a reviewable diff rather than as a
  * `toContain` assertion that happens to still pass. The per-plugin `_files.txt` listing is what
  * makes a *lost* or *added* file visible; the content snapshots cover everything else.
@@ -47,7 +46,7 @@ export interface BuildResult {
     diagnostics: Diagnostic[];
 }
 
-export type PluginName = 'typescript' | 'python' | 'openapi' | 'markdown' | 'bruno';
+export type PluginName = 'typescript' | 'python' | 'openapi' | 'markdown' | 'bruno' | 'docs';
 
 /**
  * Fake `PluginContext` capturing `emitFile` in memory, mirroring `makeCtx` in
@@ -99,14 +98,24 @@ function parseFixtures(diag: DiagnosticCollector): { contractRoots: ContractRoot
     return { contractRoots, opRoots };
 }
 
-/** The five plugins, configured to turn every sub-generator this batch touches on. */
+/**
+ * Every generator, configured to turn on each sub-generator this batch touches.
+ *
+ * The three documentation outputs are separate entries rather than one plugin with three targets
+ * on, because the snapshot directory is keyed by the name here. Keeping them apart preserves one
+ * reviewable tree per output format.
+ */
 function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
     return [
         {
             name: 'typescript',
             plugin: createTypescriptPlugin(
                 {
-                    server: { baseDir: 'server', zod: true, output: { routes: 'routes/{filename}.router.ts', types: 'schemas/{filename}.schema.ts' } },
+                    server: {
+                        baseDir: 'server',
+                        zod: true,
+                        output: { routes: 'routes/{filename}.router.ts', types: 'schemas/{filename}.schema.ts' },
+                    },
                     sdk: {
                         baseDir: 'sdk',
                         zod: true,
@@ -119,9 +128,16 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
             ),
         },
         { name: 'python', plugin: createPythonSdkPlugin({ baseDir: 'pysdk' }, ROOT_DIR) },
-        { name: 'openapi', plugin: createOpenApiPlugin({ output: 'openapi.yaml', info: { title: 'Kitchen Sink', version: '1.0.0' } }, ROOT_DIR) },
-        { name: 'markdown', plugin: createMarkdownPlugin({ output: 'api-reference.md' }, ROOT_DIR) },
+        {
+            name: 'openapi',
+            plugin: createDocsPlugin({ openapi: { output: 'openapi.yaml', info: { title: 'Kitchen Sink', version: '1.0.0' } } }, ROOT_DIR),
+        },
+        { name: 'markdown', plugin: createDocsPlugin({ markdown: { output: 'api-reference.md' } }, ROOT_DIR) },
         { name: 'bruno', plugin: createBrunoPlugin({ output: 'bruno', randomExamples: false }, ROOT_DIR) },
+        {
+            name: 'docs',
+            plugin: createDocsPlugin({ mintlify: { baseDir: 'docs', openapi: { info: { title: 'Kitchen Sink', version: '1.0.0' } } } }, ROOT_DIR),
+        },
     ];
 }
 
@@ -158,6 +174,11 @@ export async function buildFixtures(): Promise<BuildResult> {
     }
 
     return { files, diagnostics: diag.getAll() };
+}
+
+/** The parsed fixtures, for tests that need the AST rather than the emitted files. */
+export function parsedFixtures(): { contractRoots: ContractRootNode[]; opRoots: OpRootNode[] } {
+    return parseFixtures(new DiagnosticCollector());
 }
 
 let cached: Promise<BuildResult> | undefined;
