@@ -286,6 +286,18 @@ describe('generateMcpRouter', () => {
         expect(out).not.toContain('ctx.request.body');
     });
 
+        it('delegates the whole file to the framework adapter', () => {
+            const stub = { mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}` };
+            // Only `mcpRouter` is reachable from here, so the rest of the adapter is left off the stub.
+            const out = generateMcpRouter({ framework: stub as never });
+            expect(out).toBe('// stub mount at /mcp');
+        });
+
+        it('passes a configured path through to the adapter', () => {
+            const stub = { mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}` };
+            expect(generateMcpRouter({ path: '/tools', framework: stub as never })).toBe('// stub mount at /tools');
+        });
+
     it('defaults the mount path to /mcp', () => {
         expect(generateMcpRouter()).toContain("router.post('/mcp'");
     });
