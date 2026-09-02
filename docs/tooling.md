@@ -15,11 +15,11 @@ const users = await sdk.users.list({ query: { page: 1 } });
 
 `keys.area` and `keys.subarea` (set in a file's `options { keys: { ... } }` block) drive how operations cluster on the generated SDK:
 
-| File metadata | Generated layout |
-| --- | --- |
-| `area: identity, subarea: invitations` | `IdentityInvitationsClient` emitted as a leaf file; exposed as `sdk.identity.invitations.<method>` |
-| `area: identity` (no subarea) | methods inlined directly on `IdentityClient` (no standalone `*.client.ts`); exposed as `sdk.identity.<method>` |
-| neither | flat top-level property — `sdk.<filename>.<method>` (legacy behavior) |
+| File metadata                          | Generated layout                                                                                               |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `area: identity, subarea: invitations` | `IdentityInvitationsClient` emitted as a leaf file; exposed as `sdk.identity.invitations.<method>`             |
+| `area: identity` (no subarea)          | methods inlined directly on `IdentityClient` (no standalone `*.client.ts`); exposed as `sdk.identity.<method>` |
+| neither                                | flat top-level property — `sdk.<filename>.<method>` (legacy behavior)                                          |
 
 Multiple files mapping to the same `(area, subarea)` are merged into one client. Multiple area-level files contributing methods that collide on name fail at codegen time with a clear error — disambiguate with `sdk:` or move one into a subarea.
 
@@ -31,7 +31,7 @@ A Python SDK with the same operation coverage is available via `@contractkit/plu
 
 ## Documentation Generation
 
-OpenAPI 3.1 YAML and a Markdown reference are produced by the `@contractkit/plugin-openapi` and `@contractkit/plugin-markdown` plugins respectively. In both, operations marked `internal` and any types unreachable from public operations are excluded.
+OpenAPI 3.1 YAML and a Markdown reference are produced by the `openapi` and `markdown` targets of `@contractkit/plugin-docs`. In both, operations marked `internal` and any types unreachable from public operations are excluded.
 
 A Bruno REST collection can be generated via `@contractkit/plugin-bruno`.
 

@@ -80,7 +80,7 @@ export interface NormalizedSchema {
     externalDocs?: unknown;
     not?: unknown;
     /**
-     * `decimal` bounds and scale, as emitted by plugin-openapi. JSON Schema's numeric
+     * `decimal` bounds and scale, as emitted by plugin-docs' `openapi` target. JSON Schema's numeric
      * `minimum`/`maximum` are ignored on a string type and would round-trip the value through a
      * float, so the exact values ride in extensions instead.
      */
@@ -152,7 +152,7 @@ export interface NormalizedRequestBody {
 export interface NormalizedResponse {
     description?: string;
     /**
-     * Set by `@contractkit/plugin-openapi` to carry the emitted-vs-documented distinction, which
+     * Set by plugin-docs' `openapi` target to carry the emitted-vs-documented distinction, which
      * OpenAPI itself cannot express. Honoured ahead of the status-code heuristic on import.
      */
     'x-contractkit-emit'?: 'documented';

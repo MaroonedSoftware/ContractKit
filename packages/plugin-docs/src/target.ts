@@ -32,7 +32,7 @@ export interface MintlifyConfig {
     modelsDir?: string;
     /**
      * OpenAPI spec settings. Takes the same `output`, `info`, `servers`, `security` and
-     * `securitySchemes` options as `@contractkit/plugin-openapi`; the spec is emitted inside
+     * `securitySchemes` options as the `openapi` target; the spec is emitted inside
      * `baseDir` and referenced by every generated page. Default output: `openapi.yaml`.
      */
     openapi?: OpenApiTargetConfig;

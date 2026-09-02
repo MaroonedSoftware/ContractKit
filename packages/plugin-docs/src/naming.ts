@@ -47,8 +47,8 @@ export interface ModelGroup {
 }
 
 /**
- * Verb used when an operation has no name to derive a title from. Mirrors the mapping
- * plugin-markdown uses so the two generators title the same endpoint the same way.
+ * Verb used when an operation has no name to derive a title from. Shared by every target, so the
+ * same endpoint is titled the same way whichever output it appears in.
  */
 const METHOD_VERBS: Record<HttpMethod, string> = {
     get: 'List',
@@ -110,7 +110,7 @@ function splitCamel(value: string): string {
 /**
  * Turn a third-person description into an imperative heading: "Creates a payment" reads as
  * "Create a payment" once it is a title. Words ending in a double `s` ("Process") are left
- * alone. Mirrors plugin-markdown so the same endpoint gets the same heading in both outputs.
+ * alone.
  */
 function normalizeVerbTitle(title: string): string {
     const spaceIdx = title.indexOf(' ');
@@ -180,9 +180,8 @@ function uniqueSlug(base: string, taken: Set<string>): string {
 /**
  * Group documentable operations by their source file's `area` meta.
  *
- * Files with no `area` come first as a single group, then each area in first-seen order —
- * the same ordering plugin-markdown produces, so the two outputs stay comparable. Operations
- * marked `internal` are dropped unless `includeInternal` is set.
+ * Files with no `area` come first as a single group, then each area in first-seen order, so the
+ * targets stay comparable. Operations marked `internal` are dropped unless `includeInternal` is set.
  */
 export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): EndpointGroup[] {
     const grouped = new Map<string, EndpointEntry[]>();

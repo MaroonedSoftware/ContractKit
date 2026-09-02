@@ -46,10 +46,12 @@ Create `contractkit.config.json` at your project root:
                 "servicePathTemplate": "#modules/{module}/{module}.service.js"
             }
         },
-        "@contractkit/plugin-openapi": {
-            "baseDir": "docs/api/",
-            "output": "openapi.yaml",
-            "info": { "title": "My API", "version": "1.0.0" }
+        "@contractkit/plugin-docs": {
+            "openapi": {
+                "baseDir": "docs/api/",
+                "output": "openapi.yaml",
+                "info": { "title": "My API", "version": "1.0.0" }
+            }
         }
     }
 }
@@ -57,13 +59,13 @@ Create `contractkit.config.json` at your project root:
 
 ### Top-level fields
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `rootDir` | `string` | Base directory for resolving relative paths. Supports `~` for `$HOME`. Default: `.` |
-| `cache` | `boolean \| string` | Enable incremental compilation cache. Pass a string to use a custom cache filename. Default: `false`. |
-| `prettier` | `boolean` | Format generated TypeScript files with the project's local prettier. Default: `false`. |
-| `patterns` | `string[]` | Glob patterns for `.ck` files to compile, relative to `rootDir`. |
-| `plugins` | `object` | Map of plugin package name → options. The CLI loads each key as a plugin and passes its value to the plugin as `ctx.options`. Any `keys: { ... }` entries inside a plugin's options are also merged into a workspace-wide fallback map for `{{var}}` substitution in `.ck` files (file-local `options.keys` still wins). The values themselves can reference the built-ins `{{rootDir}}` and `{{configDir}}` for the resolved config paths. |
+| Field      | Type                | Description                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rootDir`  | `string`            | Base directory for resolving relative paths. Supports `~` for `$HOME`. Default: `.`                                                                                                                                                                                                                                                                                                                                                         |
+| `cache`    | `boolean \| string` | Enable incremental compilation cache. Pass a string to use a custom cache filename. Default: `false`.                                                                                                                                                                                                                                                                                                                                       |
+| `prettier` | `boolean`           | Format generated TypeScript files with the project's local prettier. Default: `false`.                                                                                                                                                                                                                                                                                                                                                      |
+| `patterns` | `string[]`          | Glob patterns for `.ck` files to compile, relative to `rootDir`.                                                                                                                                                                                                                                                                                                                                                                            |
+| `plugins`  | `object`            | Map of plugin package name → options. The CLI loads each key as a plugin and passes its value to the plugin as `ctx.options`. Any `keys: { ... }` entries inside a plugin's options are also merged into a workspace-wide fallback map for `{{var}}` substitution in `.ck` files (file-local `options.keys` still wins). The values themselves can reference the built-ins `{{rootDir}}` and `{{configDir}}` for the resolved config paths. |
 
 ## Incremental cache
 
@@ -77,13 +79,12 @@ At the end of each run, the CLI also deletes any generated file that a previous 
 
 Each plugin is its own npm package, listed under `"plugins"`:
 
-| Package | Generates |
-| --- | --- |
+| Package                                                              | Generates                                                        |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | [`@contractkit/plugin-typescript`](../../packages/plugin-typescript) | Koa routers, TypeScript SDK clients, Zod schemas, plain TS types |
-| [`@contractkit/plugin-openapi`](../../packages/plugin-openapi) | OpenAPI 3.0 YAML |
-| [`@contractkit/plugin-markdown`](../../packages/plugin-markdown) | Markdown API reference |
-| [`@contractkit/plugin-bruno`](../../packages/plugin-bruno) | Bruno REST collection |
-| [`@contractkit/plugin-python`](../../packages/plugin-python) | Python SDK client (Pydantic v2 + httpx) |
+| [`@contractkit/plugin-docs`](../../packages/plugin-docs)             | OpenAPI 3.1 YAML, a Markdown reference, and a Mintlify site      |
+| [`@contractkit/plugin-bruno`](../../packages/plugin-bruno)           | Bruno REST collection                                            |
+| [`@contractkit/plugin-python`](../../packages/plugin-python)         | Python SDK client (Pydantic v2 + httpx)                          |
 
 For writing your own plugin, see [@contractkit/core](../../packages/contractkit#plugin-api).
 

@@ -29,19 +29,21 @@ Create `contractkit.config.json` in your project root. The CLI itself only handl
                 }
             }
         },
-        "@contractkit/plugin-openapi": {
-            "baseDir": "docs/api/",
-            "output": "openapi.yaml",
-            "info": { "title": "My API", "version": "1.0.0" },
-            "servers": [{ "url": "https://api.example.com" }],
-            "security": [{ "bearerAuth": [] }],
-            "securitySchemes": {
-                "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+        "@contractkit/plugin-docs": {
+            "openapi": {
+                "baseDir": "docs/api/",
+                "output": "openapi.yaml",
+                "info": { "title": "My API", "version": "1.0.0" },
+                "servers": [{ "url": "https://api.example.com" }],
+                "security": [{ "bearerAuth": [] }],
+                "securitySchemes": {
+                    "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+                }
+            },
+            "markdown": {
+                "baseDir": "docs/",
+                "output": "api-reference.md"
             }
-        },
-        "@contractkit/plugin-markdown": {
-            "baseDir": "docs/",
-            "output": "api-reference.md"
         }
     }
 }
@@ -64,8 +66,6 @@ Each plugin is its own npm package and is loaded by listing it under `"plugins"`
 | Package                          | Generates                                                        |
 | -------------------------------- | ---------------------------------------------------------------- |
 | `@contractkit/plugin-typescript` | Koa routers, TypeScript SDK clients, Zod schemas, plain TS types |
-| `@contractkit/plugin-openapi`    | Deprecated — re-exports the docs plugin's `openapi` target       |
-| `@contractkit/plugin-markdown`   | Deprecated — re-exports the docs plugin's `markdown` target      |
 | `@contractkit/plugin-docs`       | OpenAPI 3.1 YAML, a Markdown reference, and a Mintlify site      |
 | `@contractkit/plugin-bruno`      | Bruno REST collection                                            |
 | `@contractkit/plugin-python`     | Python SDK client (Pydantic v2 + httpx)                          |
@@ -158,7 +158,23 @@ Standalone generators that emit one Zod (or plain TS) file per `.ck` source file
 
 All path templates support `{filename}`, `{dir}`, `{area}`, and (for `output.sdk`) `{name}`. `{area}` resolves to the `area` value declared in the source file's `options { keys: { area: ... } }` block.
 
-### `@contractkit/plugin-openapi`
+### `@contractkit/plugin-docs`
+
+Every documentation output. Each key is one target, enabled by being present, the same way
+plugin-typescript turns on `server` / `sdk` / `mcp`. Include only the ones you need.
+
+```json
+"@contractkit/plugin-docs": {
+    "openapi":  { "baseDir": "docs/", "output": "openapi.yaml", "info": { "title": "Acme API" } },
+    "markdown": { "baseDir": "reference/", "output": "api-reference.md" },
+    "mintlify": { "baseDir": "docs/", "docs": { "theme": "mint" } }
+}
+```
+
+#### `openapi`
+
+One OpenAPI 3.1 YAML document. This is the interchange artifact gateways, contract tests and client
+generators consume, so it is worth turning on by itself.
 
 | Field             | Type      | Description                                                            |
 | ----------------- | --------- | ---------------------------------------------------------------------- |
@@ -172,7 +188,10 @@ All path templates support `{filename}`, `{dir}`, `{area}`, and (for `output.sdk
 
 Only types referenced by emitted operations are included.
 
-### `@contractkit/plugin-markdown`
+#### `markdown`
+
+One self-contained API reference document. Unlike the Mintlify pages, this is meant to be read raw:
+it renders on GitHub, greps, and diffs in a pull request with no build step.
 
 | Field             | Type      | Description                                                |
 | ----------------- | --------- | ---------------------------------------------------------- |
@@ -182,22 +201,25 @@ Only types referenced by emitted operations are included.
 
 Unreachable types are excluded.
 
-### `@contractkit/plugin-docs`
+#### `mintlify`
 
-Generates a documentation site from the contracts. The `mintlify` target emits an OpenAPI spec, one
-MDX page per endpoint and per documented model, a `docs.json`, and a starter `index.mdx`. Mintlify renders parameters, schemas and the interactive playground from the spec, so
-the pages themselves are frontmatter only.
+A Mintlify site: an OpenAPI spec, one MDX page per endpoint and per documented model, a `docs.json`,
+and a starter `index.mdx`. Mintlify renders parameters, schemas and the interactive playground from
+the spec, so the pages themselves are frontmatter only.
 
-| Field             | Type              | Description                                                                                                                                |
-| ----------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `baseDir`         | `string`          | Docs root, relative to `rootDir`. Default: `docs`                                                                                          |
-| `apiDir`          | `string`          | Endpoint page directory under `baseDir`. Default: `api-reference`                                                                          |
-| `modelsDir`       | `string`          | Model page directory under `baseDir`. Default: `<apiDir>/models`                                                                           |
-| `openapi`         | `object`          | Spec settings — takes `output`, `info`, `servers`, `security` and `securitySchemes` as plugin-openapi does. Default output: `openapi.yaml` |
-| `tab`             | `string \| false` | Generated tab title. `false` puts the groups under `navigation.groups` instead. Default: `API Reference`                                   |
-| `modelPages`      | `boolean`         | Emit a page per documented model. Default: `true`                                                                                          |
-| `includeInternal` | `boolean`         | Whether to document `internal` operations. Default: `false`                                                                                |
-| `docs`            | `object`          | Merged over the generated `docs.json` — `name`, `theme`, `colors`, `logo`, extra navigation tabs or groups                                 |
+| Field             | Type              | Description                                                                                                |
+| ----------------- | ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| `baseDir`         | `string`          | Docs root, relative to `rootDir`. Default: `docs`                                                          |
+| `apiDir`          | `string`          | Endpoint page directory under `baseDir`. Default: `api-reference`                                          |
+| `modelsDir`       | `string`          | Model page directory under `baseDir`. Default: `<apiDir>/models`                                           |
+| `openapi`         | `object`          | Spec settings, taking the same fields as the `openapi` target. Default output: `openapi.yaml`              |
+| `tab`             | `string \| false` | Generated tab title. `false` puts the groups under `navigation.groups` instead. Default: `API Reference`   |
+| `modelPages`      | `boolean`         | Emit a page per documented model. Default: `true`                                                          |
+| `includeInternal` | `boolean`         | Whether to document `internal` operations. Default: `false`                                                |
+| `docs`            | `object`          | Merged over the generated `docs.json` — `name`, `theme`, `colors`, `logo`, extra navigation tabs or groups |
+
+With the `openapi` target also configured and its spec landing inside this `baseDir`, one spec is
+emitted and the pages reference it rather than a second copy being written.
 
 `docs.json` is regenerated on every build so navigation cannot drift from the contracts. Anything
 you want to keep goes in `docs`: its keys override the generated defaults, and under `navigation`
@@ -213,9 +235,9 @@ a nested subgroup inside `Models` and live under `<modelsDir>/<area>/`; models f
 declare no area stay directly in `Models`. A project with no areas therefore gets the flat list it
 would have had anyway.
 
-Endpoint pages are grouped by the source file's `area`, and page titles follow `name:`, then the
-description, then the service method, then the HTTP verb and path. `index.mdx` is written only when
-absent, so it is yours to edit; every other file is regenerated.
+Page titles follow `name:`, then the description, then the service method, then the HTTP verb and
+path. `index.mdx` is written only when absent, so it is yours to edit; every other file is
+regenerated.
 
 ### `@contractkit/plugin-bruno`
 

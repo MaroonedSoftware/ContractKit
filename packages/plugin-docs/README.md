@@ -5,7 +5,7 @@
 > endpoint and per model, and the `docs.json` that navigates them.
 
 Loaded by `@contractkit/cli` through `contractkit.config.json`. It consumes the AST produced by
-`@contractkit/core` and builds its OpenAPI document with `@contractkit/plugin-openapi`.
+`@contractkit/core`.
 
 ## Install
 
@@ -45,16 +45,16 @@ today.
 
 ## Options
 
-| Field             | Type              | Description                                                                                                                                     |
-| ----------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `baseDir`         | `string`          | Docs root, relative to `rootDir`. Default: `docs`                                                                                               |
-| `apiDir`          | `string`          | Endpoint page directory under `baseDir`. Default: `api-reference`                                                                               |
-| `modelsDir`       | `string`          | Model page directory under `baseDir`. Default: `<apiDir>/models`                                                                                |
-| `openapi`         | `object`          | Spec settings: `output`, `info`, `servers`, `security`, `securitySchemes`, as `@contractkit/plugin-openapi` takes them. Default: `openapi.yaml` |
-| `tab`             | `string \| false` | Generated tab title. `false` puts the groups under `navigation.groups` instead. Default: `API Reference`                                        |
-| `modelPages`      | `boolean`         | Emit a page per documented model. Default: `true`                                                                                               |
-| `includeInternal` | `boolean`         | Whether to document `internal` operations. Default: `false`                                                                                     |
-| `docs`            | `object`          | Merged over the generated `docs.json`: `name`, `theme`, `colors`, `logo`, extra navigation tabs or groups                                       |
+| Field             | Type              | Description                                                                                                                            |
+| ----------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `baseDir`         | `string`          | Docs root, relative to `rootDir`. Default: `docs`                                                                                      |
+| `apiDir`          | `string`          | Endpoint page directory under `baseDir`. Default: `api-reference`                                                                      |
+| `modelsDir`       | `string`          | Model page directory under `baseDir`. Default: `<apiDir>/models`                                                                       |
+| `openapi`         | `object`          | Spec settings: `output`, `info`, `servers`, `security`, `securitySchemes`, as the `openapi` target takes them. Default: `openapi.yaml` |
+| `tab`             | `string \| false` | Generated tab title. `false` puts the groups under `navigation.groups` instead. Default: `API Reference`                               |
+| `modelPages`      | `boolean`         | Emit a page per documented model. Default: `true`                                                                                      |
+| `includeInternal` | `boolean`         | Whether to document `internal` operations. Default: `false`                                                                            |
+| `docs`            | `object`          | Merged over the generated `docs.json`: `name`, `theme`, `colors`, `logo`, extra navigation tabs or groups                              |
 
 ## Output
 
