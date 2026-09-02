@@ -7,7 +7,7 @@ import { default as importOpenApiPlugin } from '@contractkit/openapi-to-ck/plugi
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
-import { glob } from 'glob';
+import { resolveFiles } from './resolve-files.js';
 import {
     DiagnosticCollector,
     parseCk,
@@ -124,17 +124,6 @@ function collectFallbackKeys(entries: PluginEntry[], builtins: Record<string, st
         }
     }
     return merged;
-}
-
-// ─── File resolution ───────────────────────────────────────────────────────
-
-async function resolveFiles(patterns: string[], rootDir: string): Promise<string[]> {
-    const files: string[] = [];
-    for (const pattern of patterns) {
-        const matches = await glob(pattern, { absolute: true, cwd: resolve(rootDir) });
-        files.push(...matches);
-    }
-    return [...new Set(files)];
 }
 
 // ─── Prettier formatting ──────────────────────────────────────────────────
