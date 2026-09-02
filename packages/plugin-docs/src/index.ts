@@ -3,7 +3,7 @@ import type { ContractKitPlugin, PluginContext } from '@contractkit/core';
 import type { DocsPluginConfig, DocsTarget, DocsTargetName, GenerateInputs } from './target.js';
 
 export type { DocsPluginConfig, DocsTarget, DocsTargetName } from './target.js';
-export { slugify, titleCase, deriveTitle, derivePageSlug, groupEndpoints, collectModels } from './naming.js';
+export { slugify, titleCase, humanize, deriveTitle, derivePageSlug, groupEndpoints, collectModels } from './naming.js';
 export type { EndpointEntry, EndpointGroup, ModelEntry } from './naming.js';
 
 /** Every documentation platform this plugin can emit for, keyed by config value. */

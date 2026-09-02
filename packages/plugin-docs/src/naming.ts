@@ -62,6 +62,19 @@ export function titleCase(value: string): string {
     return value.replace(/\b[a-z]/g, c => c.toUpperCase());
 }
 
+/**
+ * Turn an identifier into a display label: `bankConnections` and `bank-connections` both become
+ * "Bank Connections". Area names are written in whatever style the contract author prefers, so
+ * splitting on the case boundary as well as on separators is what keeps a sidebar readable.
+ */
+export function humanize(value: string): string {
+    return titleCase(
+        splitCamel(value)
+            .replace(/[._-]+/g, ' ')
+            .trim(),
+    );
+}
+
 /** `listActiveUsers` → `list active users`. */
 function splitCamel(value: string): string {
     return value.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
@@ -185,7 +198,7 @@ export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): 
         result.push({ area: undefined, title: 'Endpoints', slug: 'endpoints', endpoints: ungrouped });
     }
     for (const [area, endpoints] of grouped) {
-        result.push({ area, title: titleCase(area.replace(/[._-]/g, ' ')), slug: slugify(area), endpoints });
+        result.push({ area, title: humanize(area), slug: slugify(area), endpoints });
     }
     return result;
 }

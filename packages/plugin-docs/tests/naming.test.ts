@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { slugify, titleCase, deriveTitle, derivePageSlug, groupEndpoints, collectModels } from '../src/naming.js';
+import { slugify, titleCase, humanize, deriveTitle, derivePageSlug, groupEndpoints, collectModels } from '../src/naming.js';
 import { contractRoot, field, model, opOperation, opRoute, opRoot, scalarType } from './helpers.js';
 
 describe('slugify', () => {
@@ -27,6 +27,22 @@ describe('slugify', () => {
 describe('titleCase', () => {
     it('capitalizes each word', () => {
         expect(titleCase('list active users')).toBe('List Active Users');
+    });
+});
+
+describe('humanize', () => {
+    it('splits camelCase, as real area names are written', () => {
+        expect(humanize('bankConnections')).toBe('Bank Connections');
+        expect(humanize('cardAuth')).toBe('Card Auth');
+    });
+
+    it('splits on separators', () => {
+        expect(humanize('user-management')).toBe('User Management');
+        expect(humanize('user_management')).toBe('User Management');
+    });
+
+    it('leaves a single lowercase word alone but capitalized', () => {
+        expect(humanize('billpay')).toBe('Billpay');
     });
 });
 
@@ -114,6 +130,13 @@ describe('groupEndpoints', () => {
     it('titles a multi-word area', () => {
         const root = opRoot([opRoute('/x', [opOperation('get', {})])], 'x.op', { area: 'user-management' });
         expect(groupEndpoints([root])[0]!.title).toBe('User Management');
+    });
+
+    it('titles a camelCase area, the style real contracts use', () => {
+        const root = opRoot([opRoute('/x', [opOperation('get', {})])], 'x.op', { area: 'bankConnections' });
+        const group = groupEndpoints([root])[0]!;
+        expect(group.title).toBe('Bank Connections');
+        expect(group.slug).toBe('bank-connections');
     });
 
     it('omits internal operations by default', () => {
