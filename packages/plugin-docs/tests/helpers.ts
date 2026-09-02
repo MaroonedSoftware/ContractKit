@@ -9,6 +9,7 @@ import type {
     RecordTypeNode,
     EnumTypeNode,
     LiteralTypeNode,
+    DiscriminatedUnionTypeNode,
     UnionTypeNode,
     ModelRefTypeNode,
     InlineObjectTypeNode,
@@ -59,6 +60,10 @@ export function unionType(...members: ContractTypeNode[]): UnionTypeNode {
     return { kind: 'union', members };
 }
 
+export function discriminatedUnionType(discriminator: string, ...members: ContractTypeNode[]): DiscriminatedUnionTypeNode {
+    return { kind: 'discriminatedUnion', discriminator, members };
+}
+
 export function refType(name: string): ModelRefTypeNode {
     return { kind: 'ref', name };
 }
@@ -97,9 +102,12 @@ export function contractRoot(models: ModelNode[], file = 'test.ck', meta: Record
     return { kind: 'contractRoot', meta, models, file };
 }
 
+/**
+ * `optional` and `nullable` default to `false` rather than being omitted. Once codegen reads
+ * them, an omitted `undefined` is falsy and so silently means "required" — which would make a
+ * fixture that meant to say nothing accidentally assert something.
+ */
 export function opParam(name: string, type: ContractTypeNode, overrides?: Partial<OpParamNode>): OpParamNode {
-    // `optional` and `nullable` are required on OpParamNode; omitting them leaves them `undefined`,
-    // which reads as "required" only by accident. Set them explicitly.
     return { name, type, optional: false, nullable: false, loc: loc(1, 'test.op'), ...overrides };
 }
 

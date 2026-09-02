@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseDocument, type Scalar, type YAMLMap } from 'yaml';
 import { parseCk, decomposeCk, applyOptionsDefaults, DiagnosticCollector } from '@contractkit/core';
-import { generateOpenApi, buildOpenApiDocument, toYaml, scalarToSchema } from '../src/codegen-openapi.js';
+import { generateOpenApi, buildOpenApiDocument, toYaml, scalarToSchema } from '../../../src/targets/openapi/codegen.js';
 import {
     scalarType,
     arrayType,
@@ -22,7 +22,7 @@ import {
     opOperation,
     opRoute,
     opRoot,
-} from './helpers.js';
+} from '../../helpers.js';
 
 // ─── scalarToSchema ───────────────────────────────────────────────────────
 

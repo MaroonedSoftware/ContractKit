@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseCk, decomposeCk, applyOptionsDefaults, DiagnosticCollector, emittedResponses, thrownResponses } from '@contractkit/core';
 import { convertOpenApiToCk } from '@contractkit/openapi-to-ck';
 import { parse as parseYaml } from 'yaml';
-import { generateOpenApi } from '../src/codegen-openapi.js';
+import { generateOpenApi } from '../../../src/targets/openapi/codegen.js';
 
 /**
  * `.ck` → OpenAPI → `.ck`.

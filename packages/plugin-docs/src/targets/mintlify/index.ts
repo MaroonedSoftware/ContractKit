@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { buildOpenApiDocument, toYaml } from '@contractkit/plugin-openapi';
+import { buildOpenApiDocument, toYaml } from '../openapi/codegen.js';
 import { groupModels, groupEndpoints } from '../../naming.js';
 import { renderEndpointPage, renderIndexPage, renderModelPage } from './pages.js';
 import { renderDocsJson, resolveSiteName } from './docs-json.js';

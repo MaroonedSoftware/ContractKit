@@ -1,8 +1,16 @@
 import type { ContractKitPlugin, PluginContext } from '@contractkit/core';
-import type { OpenApiPluginOptions } from '@contractkit/plugin-openapi';
+import type { OpenApiConfig, OpenApiSecurityScheme } from './targets/openapi/codegen.js';
 
 /** Documentation platforms this plugin can emit for. */
-export type DocsTargetName = 'mintlify';
+export type DocsTargetName = 'mintlify' | 'openapi';
+
+/**
+ * An OpenAPI 3.1 YAML document. `securitySchemes` is carried alongside the document settings
+ * because it lands under `components`, not at the top level.
+ */
+export interface OpenApiTargetConfig extends OpenApiConfig {
+    securitySchemes?: Record<string, OpenApiSecurityScheme>;
+}
 
 /** A Mintlify documentation site: MDX pages, `docs.json` navigation, and the spec they render from. */
 export interface MintlifyConfig {
@@ -17,7 +25,7 @@ export interface MintlifyConfig {
      * `securitySchemes` options as `@contractkit/plugin-openapi`; the spec is emitted inside
      * `baseDir` and referenced by every generated page. Default output: `openapi.yaml`.
      */
-    openapi?: OpenApiPluginOptions;
+    openapi?: OpenApiTargetConfig;
     /**
      * Title of the generated navigation tab. `false` puts the generated groups directly under
      * `navigation.groups` instead, for a docs site with no tab bar. Default: `API Reference`.
@@ -44,6 +52,7 @@ export interface MintlifyConfig {
  */
 export interface DocsPluginConfig {
     mintlify?: MintlifyConfig;
+    openapi?: OpenApiTargetConfig;
 }
 
 /** The inputs `generateTargets` hands a plugin. */

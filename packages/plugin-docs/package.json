@@ -37,11 +37,12 @@
         "test:ci": "vitest run --coverage"
     },
     "dependencies": {
-        "@contractkit/core": "workspace:*",
-        "@contractkit/plugin-openapi": "workspace:*"
+        "@contractkit/core": "workspace:*"
     },
     "devDependencies": {
+        "@contractkit/openapi-to-ck": "workspace:*",
         "@repo/config-eslint": "workspace:*",
-        "@repo/config-typescript": "workspace:*"
+        "@repo/config-typescript": "workspace:*",
+        "yaml": "^2.8.3"
     }
 }
