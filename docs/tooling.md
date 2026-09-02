@@ -31,7 +31,7 @@ A Python SDK with the same operation coverage is available via `@contractkit/plu
 
 ## Documentation Generation
 
-OpenAPI 3.1 YAML and a Markdown reference are produced by the `openapi` and `markdown` targets of `@contractkit/plugin-docs`. In both, operations marked `internal` and any types unreachable from public operations are excluded.
+OpenAPI 3.1 YAML and a Markdown reference are produced by the `openapi` and `markdown` targets of `@contractkit/plugin-docs`. The `mintlify` and `docusaurus` targets of the same plugin emit a whole docs site instead of one file. In all four, operations marked `internal` and any types unreachable from public operations are excluded.
 
 A Bruno REST collection can be generated via `@contractkit/plugin-bruno`.
 

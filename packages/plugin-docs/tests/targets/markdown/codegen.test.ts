@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { generateMarkdown, renderTsScalar } from '../../../src/targets/markdown/codegen.js';
+import {
+    buildModelIndex,
+    generateMarkdown,
+    githubDialect,
+    renderEndpointBody,
+    renderModelBody,
+    renderTsScalar,
+} from '../../../src/targets/markdown/codegen.js';
+import type { MarkdownDialect } from '../../../src/targets/markdown/codegen.js';
 import {
     scalarType,
     arrayType,
@@ -1050,6 +1058,133 @@ describe('model filtering by public reachability', () => {
             expect(row).toBeDefined();
             expect(row).toContain('| `string` |');
             expect(row).not.toContain('unknown');
+        });
+    });
+});
+
+// ─── The dialect seam ───────────────────────────────────────
+
+describe('rendering dialect', () => {
+    /** A dialect that renders callouts as fenced blocks and knows about one model page. */
+    const stub: MarkdownDialect = {
+        admonition: block => [`:::${block.kind}${block.title ? `[${block.title}]` : ''}`, ...block.lines, ':::'],
+        modelLink: name => (name === 'User' ? './user.md' : undefined),
+    };
+
+    describe('githubDialect', () => {
+        it('folds a title into the first line, continuing the sentence from it', () => {
+            expect(githubDialect.admonition({ kind: 'warning', title: 'Deprecated', lines: ['This is going away.'] })).toEqual([
+                '> [!WARNING]',
+                '> **Deprecated** — this is going away.',
+            ]);
+        });
+
+        it('keeps an untitled callout as one soft-wrapped paragraph', () => {
+            expect(githubDialect.admonition({ kind: 'note', lines: ['One', 'Two'] })).toEqual(['> [!NOTE]', '> One', '> Two']);
+        });
+
+        it('links every model to its in-document anchor, resolvable or not', () => {
+            expect(githubDialect.modelLink('CreateUser')).toBe('#createuser');
+            expect(githubDialect.modelLink('Unknown')).toBe('#unknown');
+        });
+    });
+
+    describe('renderEndpointBody', () => {
+        const route = opRoute('/users', [opOperation('get', { responses: [opResponse(200, refType('User'))] })]);
+
+        it('leaves the title to the caller', () => {
+            const body = renderEndpointBody(route, route.operations[0]!, {
+                subHeadingLevel: 2,
+                dialect: stub,
+                modelIndex: new Map(),
+            });
+            expect(body[0]).toBe('**`GET`** `/users`');
+        });
+
+        it('renders subsections at the requested heading level', () => {
+            const body = renderEndpointBody(route, route.operations[0]!, {
+                subHeadingLevel: 2,
+                dialect: stub,
+                modelIndex: new Map(),
+            });
+            expect(body).toContain('## Response');
+        });
+
+        it('routes the SDK note through the dialect', () => {
+            const body = renderEndpointBody(route, route.operations[0]!, {
+                subHeadingLevel: 2,
+                dialect: stub,
+                modelIndex: new Map(),
+            });
+            expect(body).toContain(':::note');
+            expect(body).toContain('SDK method: `getUsers`');
+        });
+
+        it('titles the deprecation callout through the dialect', () => {
+            const deprecated = opRoute('/users', [opOperation('get', { modifiers: ['deprecated'], responses: [opResponse(200)] })]);
+            const body = renderEndpointBody(deprecated, deprecated.operations[0]!, {
+                subHeadingLevel: 2,
+                dialect: stub,
+                modelIndex: new Map(),
+            });
+            expect(body[0]).toBe(':::warning[Deprecated]');
+            expect(body[1]).toBe('This endpoint is deprecated and may be removed in a future version.');
+        });
+
+        it("links a response model to the dialect's target", () => {
+            const body = renderEndpointBody(route, route.operations[0]!, {
+                subHeadingLevel: 2,
+                dialect: stub,
+                modelIndex: new Map(),
+            });
+            expect(body.join('\n')).toContain('Returns a [User](./user.md) object.');
+        });
+
+        it('renders a model the dialect has no page for as plain code', () => {
+            const unknown = opRoute('/things', [opOperation('get', { responses: [opResponse(200, refType('Thing'))] })]);
+            const body = renderEndpointBody(unknown, unknown.operations[0]!, {
+                subHeadingLevel: 2,
+                dialect: stub,
+                modelIndex: new Map(),
+            });
+            expect(body.join('\n')).toContain('Returns a `Thing` object.');
+        });
+    });
+
+    describe('renderModelBody', () => {
+        it('leaves the name to the caller', () => {
+            const body = renderModelBody(model('User', [field('id', scalarType('uuid'))]), stub);
+            expect(body.join('\n')).not.toContain('User\n');
+            expect(body).toContain('| Attribute | Type | Required | Description |');
+        });
+
+        it('renders a deprecated model as a warning callout', () => {
+            const body = renderModelBody(model('User', [field('id', scalarType('uuid'))], { deprecated: true }), githubDialect);
+            expect(body[0]).toBe('> [!WARNING]');
+            expect(body[1]).toBe('> **Deprecated** — this type is deprecated and may be removed in a future version.');
+        });
+
+        it('quotes every line of a multi-line description, so the block quote does not end early', () => {
+            const body = renderModelBody(model('User', [], { description: 'A person.\nWith a second line.' }), githubDialect);
+            expect(body).toContain('> A person.');
+            expect(body).toContain('> With a second line.');
+        });
+
+        it('links a base model through the dialect', () => {
+            const body = renderModelBody(model('Admin', [field('role', scalarType('string'))], { bases: ['User'] }), stub);
+            expect(body).toContain('Extends [`User`](./user.md)');
+        });
+
+        it('renders a base with no page as plain code', () => {
+            const body = renderModelBody(model('Admin', [field('role', scalarType('string'))], { bases: ['Ghost'] }), stub);
+            expect(body).toContain('Extends `Ghost`');
+        });
+    });
+
+    describe('buildModelIndex', () => {
+        it('indexes every model by name across contract roots', () => {
+            const index = buildModelIndex([contractRoot([model('User', [])]), contractRoot([model('Order', [])], 'orders.ck')]);
+            expect([...index.keys()].sort()).toEqual(['Order', 'User']);
         });
     });
 });

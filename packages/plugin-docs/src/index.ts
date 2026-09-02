@@ -2,19 +2,29 @@ import { isAbsolute, relative, sep } from 'node:path';
 import { generateMintlify, resolveLayout as resolveMintlifyLayout, type SharedSpec } from './targets/mintlify/index.js';
 import markdown from './targets/markdown/index.js';
 import openapi, { buildSpec as buildOpenApiSpec, resolveLayout as resolveOpenApiLayout } from './targets/openapi/index.js';
+import docusaurus from './targets/docusaurus/index.js';
 import type { ContractKitPlugin, PluginContext } from '@contractkit/core';
 import type { DocsPluginConfig, GenerateInputs } from './target.js';
 
-export type { DocsPluginConfig, DocsTarget, DocsTargetName, MarkdownConfig, MintlifyConfig, OpenApiTargetConfig } from './target.js';
+export type {
+    DocsPluginConfig,
+    DocsTarget,
+    DocsTargetName,
+    DocusaurusConfig,
+    MarkdownConfig,
+    MintlifyConfig,
+    OpenApiTargetConfig,
+} from './target.js';
 export { generateOpenApi, buildOpenApiDocument, toYaml, scalarToSchema } from './targets/openapi/codegen.js';
-export { generateMarkdown, renderTsScalar } from './targets/markdown/codegen.js';
-export type { MarkdownCodegenContext } from './targets/markdown/codegen.js';
+export { generateMarkdown, renderTsScalar, githubDialect, renderEndpointBody, renderModelBody, buildModelIndex } from './targets/markdown/codegen.js';
+export type { MarkdownCodegenContext, MarkdownDialect, Admonition, EndpointBodyOptions } from './targets/markdown/codegen.js';
+export { generateDocusaurus } from './targets/docusaurus/index.js';
 export type { OpenApiConfig, OpenApiServerEntry, OpenApiSecurityScheme, OpenApiCodegenContext } from './targets/openapi/codegen.js';
 export { slugify, titleCase, humanize, deriveTitle, derivePageSlug, groupEndpoints, groupModels, computePubliclyReachableModels } from './naming.js';
 export type { EndpointEntry, EndpointGroup, ModelEntry, ModelGroup } from './naming.js';
 
 /** Config keys that name a target, for the "nothing configured" error message. */
-const TARGET_NAMES = ['mintlify', 'markdown', 'openapi'] as const;
+const TARGET_NAMES = ['mintlify', 'markdown', 'openapi', 'docusaurus'] as const;
 
 /**
  * Run every target the config turns on.
@@ -38,6 +48,11 @@ async function run(inputs: GenerateInputs, ctx: PluginContext, config: DocsPlugi
 
     if (config.markdown) {
         await markdown.generate(inputs, ctx, config.markdown, rootDir);
+        ran = true;
+    }
+
+    if (config.docusaurus) {
+        await docusaurus.generate(inputs, ctx, config.docusaurus, rootDir);
         ran = true;
     }
 

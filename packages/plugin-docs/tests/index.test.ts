@@ -47,9 +47,14 @@ const opRoots = [
 
 const inputs = { contractRoots, opRoots, modelsWithInput: new Set<string>(), modelsWithOutput: new Set<string>() };
 
-/** Run a plugin over the shared fixtures and return what it emitted. */
+/** Run a plugin over the shared fixtures with the mintlify target on, and return what it emitted. */
 async function run(p: ContractKitPlugin, mintlifyOptions: Record<string, unknown> = {}): Promise<Map<string, string>> {
-    const ctx = makeCtx({ mintlify: mintlifyOptions });
+    return runWith(p, { mintlify: mintlifyOptions });
+}
+
+/** Run a plugin over the shared fixtures with a whole plugin config. */
+async function runWith(p: ContractKitPlugin, options: Record<string, unknown>): Promise<Map<string, string>> {
+    const ctx = makeCtx(options);
     await p.generateTargets!(inputs, ctx);
     return ctx.emitted;
 }
@@ -73,7 +78,7 @@ describe('plugin shell', () => {
 
     it('fails when no target is configured rather than emitting nothing', async () => {
         const ctx = makeCtx({});
-        await expect(plugin.generateTargets!(inputs, ctx)).rejects.toThrow(/no target configured.*mintlify/);
+        await expect(plugin.generateTargets!(inputs, ctx)).rejects.toThrow(/no target configured.*mintlify.*docusaurus/);
     });
 
     it('reads config from ctx.options for the default export', async () => {
@@ -263,5 +268,129 @@ describe('shared spec between the openapi and mintlify targets', () => {
     it('still emits its own spec when only the mintlify target is configured', async () => {
         const emitted = await run(plugin, { baseDir: 'docs' });
         expect([...emitted.keys()].filter(k => k.endsWith('.yaml'))).toEqual(['docs/openapi.yaml']);
+    });
+});
+
+describe('docusaurus target', () => {
+    /** Run the docusaurus target alone and return what it emitted. */
+    async function runDocs(options: Record<string, unknown> = {}): Promise<Map<string, string>> {
+        return runWith(plugin, { docusaurus: options });
+    }
+
+    it('emits a page per public endpoint and reachable model, plus its categories', async () => {
+        expect([...(await runDocs()).keys()].sort()).toEqual([
+            'docs/api-reference/_category_.json',
+            'docs/api-reference/endpoints/_category_.json',
+            'docs/api-reference/endpoints/create-user.md',
+            'docs/api-reference/endpoints/list-users.md',
+            'docs/api-reference/index.md',
+            'docs/api-reference/models/_category_.json',
+            'docs/api-reference/models/user.md',
+        ]);
+    });
+
+    it('emits no OpenAPI spec — the pages carry their own content', async () => {
+        expect([...(await runDocs()).keys()].some(k => k.endsWith('.yaml'))).toBe(false);
+    });
+
+    it('honours a custom docs root', async () => {
+        expect([...(await runDocs({ baseDir: 'site/docs' })).keys()]).toContain('site/docs/api-reference/index.md');
+    });
+
+    it('honours custom api and model directories', async () => {
+        const emitted = await runDocs({ apiDir: 'reference', modelsDir: 'schemas' });
+        expect([...emitted.keys()]).toContain('docs/reference/endpoints/list-users.md');
+        expect([...emitted.keys()]).toContain('docs/schemas/user.md');
+    });
+
+    it('groups endpoint pages under the area directory', async () => {
+        const areaRoots = [opRoot([opRoute('/invoices', [opOperation('get', { name: 'listInvoices' })])], 'invoices.op', { area: 'billing' })];
+        const ctx = makeCtx({ docusaurus: {} });
+        await plugin.generateTargets!({ ...inputs, opRoots: areaRoots }, ctx);
+        expect([...ctx.emitted.keys()]).toContain('docs/api-reference/billing/list-invoices.md');
+        expect(JSON.parse(ctx.emitted.get('docs/api-reference/billing/_category_.json')!).label).toBe('Billing');
+    });
+
+    it('nests model pages by area and links across areas', async () => {
+        const areaContracts = [contractRoot([model('User', [field('id', scalarType('string'))])], 'identity.ck', { area: 'identity' })];
+        const ctx = makeCtx({ docusaurus: {} });
+        await plugin.generateTargets!({ ...inputs, contractRoots: areaContracts }, ctx);
+        expect([...ctx.emitted.keys()]).toContain('docs/api-reference/models/identity/user.md');
+        expect(ctx.emitted.get('docs/api-reference/endpoints/list-users.md')).toContain('../models/identity/user.md');
+    });
+
+    it('omits internal endpoints', async () => {
+        expect([...(await runDocs()).keys()].some(k => k.includes('stats'))).toBe(false);
+    });
+
+    it('includes internal endpoints when asked', async () => {
+        expect([...(await runDocs({ includeInternal: true })).keys()]).toContain('docs/api-reference/endpoints/get-internal-stats.md');
+    });
+
+    it('omits models no endpoint can reach', async () => {
+        expect([...(await runDocs()).keys()].some(k => k.includes('unused'))).toBe(false);
+    });
+
+    it('skips model pages, and their category, when modelPages is false', async () => {
+        const emitted = await runDocs({ modelPages: false });
+        expect([...emitted.keys()].some(k => k.includes('/models'))).toBe(false);
+    });
+
+    it('renders an unlinkable model as plain code when model pages are off', async () => {
+        const emitted = await runDocs({ modelPages: false });
+        expect(emitted.get('docs/api-reference/endpoints/list-users.md')).toContain('Returns a `User` object.');
+    });
+
+    it('labels and positions the generated section', async () => {
+        const emitted = await runDocs({ label: 'Acme API', position: 3 });
+        expect(JSON.parse(emitted.get('docs/api-reference/_category_.json')!)).toEqual({ label: 'Acme API', position: 3 });
+        expect(emitted.get('docs/api-reference/index.md')).toContain('title: "Acme API"');
+    });
+
+    it('leaves the section unpositioned by default', async () => {
+        expect(JSON.parse((await runDocs()).get('docs/api-reference/_category_.json')!)).toEqual({ label: 'API Reference' });
+    });
+
+    it('sorts the Models category after every endpoint group', async () => {
+        const areaRoots = [
+            opRoot([opRoute('/invoices', [opOperation('get', { name: 'listInvoices', responses: [opResponse(200, refType('User'))] })])], 'a.op', {
+                area: 'billing',
+            }),
+            opRoot([opRoute('/orgs', [opOperation('get', { name: 'listOrgs' })])], 'b.op', { area: 'identity' }),
+        ];
+        const ctx = makeCtx({ docusaurus: {} });
+        await plugin.generateTargets!({ ...inputs, opRoots: areaRoots }, ctx);
+        const positionOf = (path: string): number => JSON.parse(ctx.emitted.get(path)!).position as number;
+        expect(positionOf('docs/api-reference/billing/_category_.json')).toBe(1);
+        expect(positionOf('docs/api-reference/identity/_category_.json')).toBe(2);
+        expect(positionOf('docs/api-reference/models/_category_.json')).toBe(3);
+    });
+
+    it('gives every generated category an explicit index link, so no page is swallowed as its landing doc', async () => {
+        const emitted = await runDocs();
+        expect(JSON.parse(emitted.get('docs/api-reference/endpoints/_category_.json')!).link.type).toBe('generated-index');
+        expect(JSON.parse(emitted.get('docs/api-reference/models/_category_.json')!).link.type).toBe('generated-index');
+    });
+
+    it('leaves the section category without a link, so index.md becomes its landing page', async () => {
+        expect(JSON.parse((await runDocs()).get('docs/api-reference/_category_.json')!).link).toBeUndefined();
+    });
+
+    it('numbers endpoint pages in contract order', async () => {
+        const emitted = await runDocs();
+        expect(emitted.get('docs/api-reference/endpoints/list-users.md')).toContain('sidebar_position: 1');
+        expect(emitted.get('docs/api-reference/endpoints/create-user.md')).toContain('sidebar_position: 2');
+    });
+
+    it('owns nothing but the starter index page', async () => {
+        const ctx = makeCtx({ docusaurus: {} });
+        await plugin.generateTargets!(inputs, ctx);
+        expect([...ctx.ifAbsent]).toEqual(['docs/api-reference/index.md']);
+    });
+
+    it('runs alongside another target', async () => {
+        const emitted = await runWith(plugin, { docusaurus: { baseDir: 'site' }, markdown: { output: 'api.md' } });
+        expect([...emitted.keys()]).toContain('site/api-reference/index.md');
+        expect([...emitted.keys()]).toContain('api.md');
     });
 });

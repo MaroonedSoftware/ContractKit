@@ -1,7 +1,7 @@
 {
     "name": "@contractkit/plugin-docs",
     "version": "0.2.1",
-    "description": "ContractKit built-in plugin: documentation site generation (Mintlify)",
+    "description": "ContractKit built-in plugin: documentation generation (OpenAPI, Markdown, Mintlify, Docusaurus)",
     "license": "MIT",
     "author": {
         "name": "Marooned Software",
@@ -14,7 +14,9 @@
     "keywords": [
         "contractkit",
         "docs",
+        "openapi",
         "mintlify",
+        "docusaurus",
         "mdx"
     ],
     "repository": {

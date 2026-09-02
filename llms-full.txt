@@ -174,7 +174,7 @@ the artefacts meant for consumers do not.
 | `@contractkit/plugin-python` | Pydantic v2 models + async httpx client | `false` |
 | `@contractkit/plugin-openapi` | One OpenAPI **3.1** YAML document | `false` |
 | `@contractkit/plugin-markdown` | One Markdown API reference | `false` |
-| `@contractkit/plugin-docs` | A Mintlify docs folder: MDX pages, `docs.json`, OpenAPI spec | `false` |
+| `@contractkit/plugin-docs` | An OpenAPI spec, a Markdown reference, a Mintlify docs folder, or a Docusaurus docs folder | `false` |
 | `@contractkit/plugin-bruno` | A Bruno REST collection | `true` |
 
 ### TypeScript
@@ -371,7 +371,7 @@ language server use.
 | `@contractkit/plugin-python` | Python SDK (Pydantic v2 + httpx) |
 | `@contractkit/plugin-openapi` | OpenAPI 3.1 YAML |
 | `@contractkit/plugin-markdown` | Markdown API reference |
-| `@contractkit/plugin-docs` | Mintlify documentation site |
+| `@contractkit/plugin-docs` | Documentation: OpenAPI, Markdown, Mintlify, Docusaurus |
 | `@contractkit/plugin-bruno` | Bruno REST collection |
 | `@contractkit/openapi-to-ck` | OpenAPI → `.ck`, for adopting an existing API |
 | `@contractkit/explorer-ui` | HTML renderer behind the VS Code API explorer |

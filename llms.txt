@@ -27,7 +27,7 @@ grammar and the editor's completion provider consume the same syntax.
 - [@contractkit/core](packages/contractkit/README.md): Grammar, parser, AST types, semantics, validation passes, plugin interface. Start here to understand the AST any plugin receives.
 - [@contractkit/plugin-typescript](packages/plugin-typescript/README.md): Koa routers, TypeScript SDK, Zod schemas, plain types, MCP tool handlers.
 - [@contractkit/plugin-python](packages/plugin-python/README.md): Python SDK built on Pydantic v2 and httpx.
-- [@contractkit/plugin-docs](packages/plugin-docs/README.md): Every documentation output — an OpenAPI 3.1 spec, a Markdown reference, and a Mintlify site — as targets you enable individually.
+- [@contractkit/plugin-docs](packages/plugin-docs/README.md): Every documentation output — an OpenAPI 3.1 spec, a Markdown reference, a Mintlify site, and a Docusaurus docs folder — as targets you enable individually.
 - [@contractkit/plugin-bruno](packages/plugin-bruno/README.md): Bruno REST collection.
 - [@contractkit/openapi-to-ck](packages/openapi-to-ck/README.md): Converts an existing OpenAPI spec into `.ck` files.
 - [@contractkit/cli](apps/cli/README.md): The `contractkit` binary — file discovery, config resolution, caching, plugin orchestration.

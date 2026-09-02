@@ -79,12 +79,12 @@ At the end of each run, the CLI also deletes any generated file that a previous 
 
 Each plugin is its own npm package, listed under `"plugins"`:
 
-| Package                                                              | Generates                                                        |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| [`@contractkit/plugin-typescript`](../../packages/plugin-typescript) | Koa routers, TypeScript SDK clients, Zod schemas, plain TS types |
-| [`@contractkit/plugin-docs`](../../packages/plugin-docs)             | OpenAPI 3.1 YAML, a Markdown reference, and a Mintlify site      |
-| [`@contractkit/plugin-bruno`](../../packages/plugin-bruno)           | Bruno REST collection                                            |
-| [`@contractkit/plugin-python`](../../packages/plugin-python)         | Python SDK client (Pydantic v2 + httpx)                          |
+| Package                                                              | Generates                                                                         |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [`@contractkit/plugin-typescript`](../../packages/plugin-typescript) | Koa routers, TypeScript SDK clients, Zod schemas, plain TS types                  |
+| [`@contractkit/plugin-docs`](../../packages/plugin-docs)             | OpenAPI 3.1 YAML, a Markdown reference, a Mintlify site, a Docusaurus docs folder |
+| [`@contractkit/plugin-bruno`](../../packages/plugin-bruno)           | Bruno REST collection                                                             |
+| [`@contractkit/plugin-python`](../../packages/plugin-python)         | Python SDK client (Pydantic v2 + httpx)                                           |
 
 For writing your own plugin, see [@contractkit/core](../../packages/contractkit#plugin-api).
 
