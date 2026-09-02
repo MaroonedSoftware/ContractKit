@@ -15,6 +15,7 @@ const STUB: ServerFramework = {
     imports: uses => (uses('StubRouter') ? ["import { StubRouter } from '@stub/http';"] : []),
     routerDeclaration: routerName => `export const ${routerName} = StubRouter();`,
     pathParam: identifier => `<${identifier}>`,
+    handlerLocals: ['rq', 'rs'],
     routeOpen: (routerName, method, path, middlewares) => `${routerName}.route('${method}', '${path}', [${middlewares.join(', ')}], async (rq, rs) => {`,
     routeClose: () => ['}, END);'],
     middleware: {

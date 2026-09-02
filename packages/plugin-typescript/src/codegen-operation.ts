@@ -27,6 +27,34 @@ import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 /** Which request-side object a validation block reads from. Names the variable the block declares. */
 export type ParamKind = 'params' | 'query' | 'headers';
 
+/**
+ * Identifiers the generated handler body binds for itself. A path parameter destructured under one
+ * of these names would redeclare it, so those bindings are renamed the same way a collision with a
+ * handler parameter is.
+ */
+const GENERATOR_HANDLER_LOCALS = ['service', 'result', 'body', 'multipartBody', 'params', 'query', 'headers'] as const;
+
+/**
+ * Local identifier for each inline path parameter, keyed by its declared name.
+ *
+ * The declared name is what the framework keys its params object by, so it stays the schema key and
+ * the route placeholder; only the local binding moves, and a `_` is appended until it collides with
+ * neither a reserved identifier nor another parameter's binding. Path parameters are spread
+ * positionally into the service call, so a rename is invisible to the service.
+ */
+function bindPathParams(nodes: readonly { name: string }[], handlerLocals: readonly string[]): Map<string, string> {
+    const reserved = new Set<string>([...handlerLocals, ...GENERATOR_HANDLER_LOCALS]);
+    const taken = new Set<string>();
+    const bindings = new Map<string, string>();
+    for (const node of nodes) {
+        let local = toIdentifier(node.name);
+        while (reserved.has(local) || taken.has(local)) local += '_';
+        taken.add(local);
+        bindings.set(node.name, local);
+    }
+    return bindings;
+}
+
 // ─── Content-type helpers ──────────────────────────────────────────────────
 
 /**
@@ -362,7 +390,10 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     lines.push(framework.routeOpen(deriveRouterName(file), method, path, middlewares));
 
     // Params / query / headers validation (request-side — use Input variants)
-    lines.push(...generateParamValidation(route.params, 'params', framework.request.params, route.paramsMode ?? 'strict', '', modelsWithInput));
+    const pathBindings =
+        route.params?.kind === 'params' ? bindPathParams(route.params.nodes, framework.handlerLocals) : undefined;
+
+    lines.push(...generateParamValidation(route.params, 'params', framework.request.params, route.paramsMode ?? 'strict', '', modelsWithInput, pathBindings));
     lines.push(...generateParamValidation(op.query, 'query', framework.request.query, op.queryMode ?? 'strict', '', modelsWithInput));
     lines.push(...generateParamValidation(op.headers, 'headers', framework.request.headers, op.headersMode ?? 'strip', '', modelsWithInput));
 
@@ -405,7 +436,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     // responsible for producing; the rest are documentation, or the thrown-error path.
     const emitted = emittedResponses(op);
     const serviceParts = inferService(op, route, file);
-    const call = `await service.${serviceParts.methodName}(${buildArgs(route, op)})`;
+    const call = `await service.${serviceParts.methodName}(${buildArgs(route, op, pathBindings)})`;
 
     if (emitted.length > 1) {
         lines.push(...generateMultiStatusResult(emitted, serviceParts.className, call, options));
@@ -654,12 +685,14 @@ function inferMethodName(method: string, path: string): string {
  *
  * @returns The rendered argument list, or an empty string when the method takes no arguments.
  */
-export function buildArgs(route: OpRouteNode, op: OpOperationNode): string {
+export function buildArgs(route: OpRouteNode, op: OpOperationNode, bindings?: Map<string, string>): string {
     const args: string[] = [];
     // Path params: spread individually (inline) or pass 'params' object (type-ref/ContractTypeNode)
     if (route.params) {
         if (route.params.kind === 'params') {
-            args.push(...route.params.nodes.map(p => toIdentifier(p.name)));
+            // `bindings` carries any rename the handler needed; the MCP generator passes none, since
+            // its handlers bind different locals than a router's.
+            args.push(...route.params.nodes.map(p => bindings?.get(p.name) ?? toIdentifier(p.name)));
         } else {
             args.push('params');
         }
@@ -821,6 +854,7 @@ function generateParamValidation(
     mode: ObjectMode,
     suffix = '',
     modelsWithInput?: Set<string>,
+    bindings?: Map<string, string>,
 ): string[] {
     if (!source) return [];
     const lines: string[] = [];
@@ -837,7 +871,17 @@ function generateParamValidation(
         // Inline param declarations — wrap with the appropriate z.*Object constructor
         if (source.nodes.length > 0) {
             const bind = (name: string) => (isPathParams ? toIdentifier(name) : name);
-            const lhs = isPathParams ? `{ ${source.nodes.map(p => bind(p.name)).join(', ')} }` : kind;
+            // A path param whose binding was renamed is destructured under an alias, so the key the
+            // framework supplies stays the declared one while the local is collision-free.
+            const lhs = isPathParams
+                ? `{ ${source.nodes
+                      .map(p => {
+                          const wire = bind(p.name);
+                          const local = bindings?.get(p.name) ?? wire;
+                          return wire === local ? wire : `${wire}: ${local}`;
+                      })
+                      .join(', ')} }`
+                : kind;
             lines.push(`    const ${lhs} = await parseAndValidate(`);
             lines.push(`        ${sourceExpr},`);
             lines.push(`        ${modeToWrapper(mode)}({`);
