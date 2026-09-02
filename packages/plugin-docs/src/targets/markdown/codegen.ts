@@ -12,7 +12,7 @@ import {
     resolveSecurity,
     SECURITY_NONE,
 } from '@contractkit/core';
-import { computePubliclyReachableModels, deriveTitle, groupEndpoints, groupModels, humanize } from '../../naming.js';
+import { computePubliclyReachableModels, groupEndpoints, groupModels, humanize } from '../../naming.js';
 
 // ─── Local TypeScript type rendering ─────────────────────────────────────
 
@@ -107,6 +107,73 @@ function renderTsInlineObject(fields: FieldNode[]): string {
         return `${f.name}${opt}: ${renderTsType(f.type)}`;
     });
     return `{ ${entries.join('; ')} }`;
+}
+
+// ─── Rendering dialect ─────────────────────────────────────────────────────
+
+/**
+ * A callout block: a short bolded lead-in plus one paragraph of soft-wrapped lines.
+ *
+ * `lines` are the lines of a single paragraph, not separate paragraphs — a dialect is free to
+ * join them or to keep the soft breaks.
+ */
+export interface Admonition {
+    kind: 'note' | 'warning';
+    /** Bolded lead-in, e.g. `Deprecated`. Omitted for an untitled callout. */
+    title?: string;
+    lines: string[];
+}
+
+/**
+ * The parts of Markdown that differ between the platforms rendering it.
+ *
+ * Everything else — tables, code fences, `<details>` — is the same everywhere, so only callouts
+ * and cross-references are behind this seam. A target supplies one dialect and reuses the whole
+ * renderer; see {@link githubDialect} for the flavour {@link generateMarkdown} emits.
+ */
+export interface MarkdownDialect {
+    admonition(block: Admonition): string[];
+    /**
+     * Link target for a model reference, or `undefined` when the model has no page to link to,
+     * in which case the name renders as plain code.
+     */
+    modelLink(name: string): string | undefined;
+}
+
+/** Lower-case the first letter, so a title folded into a sentence reads as its opening. */
+function lowerFirst(value: string): string {
+    return value.charAt(0).toLowerCase() + value.slice(1);
+}
+
+/**
+ * GitHub-flavored Markdown: alert blockquotes, and cross-references as in-document anchors
+ * because the whole reference is one file.
+ *
+ * A title is folded into the first line as `**Title** — …` rather than given its own line, which
+ * is how GitHub's alerts are conventionally written; the sentence continues from the title, so
+ * its first letter is lower-cased on the way in.
+ */
+export const githubDialect: MarkdownDialect = {
+    admonition(block) {
+        const [first = '', ...rest] = block.lines;
+        const lead = block.title ? `**${block.title}** — ${lowerFirst(first)}` : first;
+        return [`> [!${block.kind.toUpperCase()}]`, ...[lead, ...rest].map(line => `> ${line}`)];
+    },
+    modelLink(name) {
+        return `#${anchor(name)}`;
+    },
+};
+
+/** Render a model reference: a link when the dialect has one, plain code when it does not. */
+function modelRef(name: string, dialect: MarkdownDialect, code: boolean): string {
+    const label = code ? `\`${name}\`` : name;
+    const link = dialect.modelLink(name);
+    return link ? `[${label}](${link})` : `\`${name}\``;
+}
+
+/** `##`, `###`, … for a heading level. */
+function hashes(level: number): string {
+    return '#'.repeat(level);
 }
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -213,7 +280,16 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
                     lines.push('');
                 }
                 first = false;
-                lines.push(...renderEndpoint(ep.route, ep.op, group.area !== undefined, modelIndex));
+                const nested = group.area !== undefined;
+                lines.push(`${nested ? '####' : '###'} ${ep.title}`);
+                lines.push('');
+                lines.push(
+                    ...renderEndpointBody(ep.route, ep.op, {
+                        subHeadingLevel: nested ? 5 : 4,
+                        dialect: githubDialect,
+                        modelIndex,
+                    }),
+                );
                 lines.push('');
             }
         }
@@ -231,7 +307,9 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
             }
 
             for (const { model } of group.models) {
-                lines.push(...renderModel(model, group.area !== undefined));
+                lines.push(`${group.area !== undefined ? '####' : '###'} ${model.name}`);
+                lines.push('');
+                lines.push(...renderModelBody(model, githubDialect));
                 lines.push('');
             }
         }
@@ -242,7 +320,8 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
 
 // ─── Model index ──────────────────────────────────────────────────────────
 
-function buildModelIndex(contractRoots: ContractRootNode[]): Map<string, ModelNode> {
+/** Every model by name, for resolving a reference to the fields it stands for. */
+export function buildModelIndex(contractRoots: ContractRootNode[]): Map<string, ModelNode> {
     const index = new Map<string, ModelNode>();
     for (const root of contractRoots) {
         for (const model of root.models) {
@@ -300,24 +379,40 @@ const STATUS_TEXT: Record<number, string> = {
     500: 'Internal Server Error',
 };
 
-function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean, modelIndex: Map<string, ModelNode>): string[] {
+/** What a target needs to supply to render one endpoint's body. */
+export interface EndpointBodyOptions {
+    /** Heading level for the endpoint's own subsections (Attributes, Request body, Response). */
+    subHeadingLevel: number;
+    dialect: MarkdownDialect;
+    /** Models by name, for resolving a `params:`/`query:`/`headers:` reference to its fields. */
+    modelIndex: Map<string, ModelNode>;
+}
+
+/**
+ * Everything an endpoint's page holds below its title: the deprecation callout, the method and
+ * path, the SDK and security note, the attributes table, the request bodies and the responses.
+ *
+ * The title itself is the caller's, because a single-document target writes it as a heading while
+ * a page-per-endpoint target writes it as frontmatter.
+ */
+export function renderEndpointBody(route: OpRouteNode, op: OpOperationNode, opts: EndpointBodyOptions): string[] {
+    const { dialect, modelIndex } = opts;
     const lines: string[] = [];
     const method = op.method.toUpperCase();
     const path = route.path;
-    const title = deriveTitle(op, route);
     const methodName = deriveMethodName(op, route);
-    const h = nested ? '####' : '###';
-    const subH = nested ? '#####' : '####';
-
-    // Title
-    lines.push(`${h} ${title}`);
-    lines.push('');
+    const subH = hashes(opts.subHeadingLevel);
 
     // Deprecation notice
     const mods = resolveModifiers(route, op);
     if (mods.includes('deprecated')) {
-        lines.push('> [!WARNING]');
-        lines.push('> **Deprecated** — this endpoint is deprecated and may be removed in a future version.');
+        lines.push(
+            ...dialect.admonition({
+                kind: 'warning',
+                title: 'Deprecated',
+                lines: ['This endpoint is deprecated and may be removed in a future version.'],
+            }),
+        );
         lines.push('');
     }
 
@@ -325,12 +420,11 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
     lines.push(`**\`${method}\`** \`${path}\``);
     lines.push('');
 
-    // SDK method + security (GitHub admonition)
-    lines.push('> [!NOTE]');
-    lines.push(`> SDK method: \`${methodName}\``);
+    // SDK method + security
+    const note = [`SDK method: \`${methodName}\``];
     const effectiveSecurity = resolveSecurity(route, op);
     if (effectiveSecurity === SECURITY_NONE) {
-        lines.push('> Security: public');
+        note.push('Security: public');
     } else if (effectiveSecurity !== undefined) {
         const parts: string[] = [];
         if (effectiveSecurity.policy !== undefined) {
@@ -339,8 +433,9 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
         if (op.signature) {
             parts.push(`signature: ${op.signature}${op.signaturePolicy ? ` (policy: ${op.signaturePolicy})` : ''}`);
         }
-        lines.push(`> Security: authenticated${parts.length > 0 ? ` (${parts.join('; ')})` : ''}`);
+        note.push(`Security: authenticated${parts.length > 0 ? ` (${parts.join('; ')})` : ''}`);
     }
+    lines.push(...dialect.admonition({ kind: 'note', lines: note }));
     lines.push('');
 
     // Unified attributes table (path + query + headers merged)
@@ -348,7 +443,7 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
     if (attrs.length > 0) {
         lines.push(`${subH} Attributes`);
         lines.push('');
-        lines.push(...wrapCollapsible(`Attributes (${attrs.length})`, renderAttributesTable(attrs)));
+        lines.push(...wrapCollapsible(`Attributes (${attrs.length})`, renderAttributesTable(attrs, dialect)));
         lines.push('');
     }
 
@@ -362,12 +457,15 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
                 const writableFields = body.bodyType.fields.filter(f => f.visibility !== 'readonly');
                 if (writableFields.length > 0) {
                     lines.push(
-                        ...wrapCollapsible(`Attributes (${writableFields.length})`, renderFieldsTable(writableFields, { excludeReadonly: true })),
+                        ...wrapCollapsible(
+                            `Attributes (${writableFields.length})`,
+                            renderFieldsTable(writableFields, { excludeReadonly: true }, dialect),
+                        ),
                     );
                     lines.push('');
                 }
             } else {
-                lines.push(typeProseLink(body.bodyType, 'Accepts'));
+                lines.push(typeProseLink(body.bodyType, 'Accepts', dialect));
                 lines.push('');
             }
         }
@@ -401,14 +499,14 @@ function renderEndpoint(route: OpRouteNode, op: OpOperationNode, nested: boolean
                         lines.push(
                             ...wrapCollapsible(
                                 `Attributes (${body.bodyType.fields.length})`,
-                                renderFieldsTable(body.bodyType.fields, { excludeReadonly: false }),
+                                renderFieldsTable(body.bodyType.fields, { excludeReadonly: false }, dialect),
                             ),
                         );
                         lines.push('');
                     }
                 } else {
-                    // Named type — reference it; the Models section has the full definition
-                    lines.push(`${label}${mime} — ${typeProseLink(body.bodyType, 'Returns')}`);
+                    // Named type — reference it; the model's own page or section has the definition
+                    lines.push(`${label}${mime} — ${typeProseLink(body.bodyType, 'Returns', dialect)}`);
                     lines.push('');
                 }
             }
@@ -499,7 +597,7 @@ function collectAttributes(route: OpRouteNode, op: OpOperationNode, modelIndex: 
     return attrs;
 }
 
-function renderAttributesTable(attrs: AttributeEntry[]): string[] {
+function renderAttributesTable(attrs: AttributeEntry[], _dialect: MarkdownDialect): string[] {
     const lines: string[] = [];
     lines.push('| Attribute | Type | Required | Description |');
     lines.push('| --- | --- | --- | --- |');
@@ -517,7 +615,7 @@ interface FieldsTableOpts {
     excludeReadonly: boolean;
 }
 
-function renderFieldsTable(fields: FieldNode[], opts: FieldsTableOpts): string[] {
+function renderFieldsTable(fields: FieldNode[], opts: FieldsTableOpts, _dialect: MarkdownDialect): string[] {
     const lines: string[] = [];
     lines.push('| Attribute | Type | Required | Description |');
     lines.push('| --- | --- | --- | --- |');
@@ -543,18 +641,20 @@ function renderFieldsTable(fields: FieldNode[], opts: FieldsTableOpts): string[]
  * Generate prose-style reference text for a body type.
  * E.g. "Accepts a [CreateUser](#createuser) object."
  *      "Returns a list of [User](#user) objects."
+ *
+ * A model the dialect has no link for renders as plain code instead.
  */
-function typeProseLink(type: ContractTypeNode, verb: 'Accepts' | 'Returns'): string {
+function typeProseLink(type: ContractTypeNode, verb: 'Accepts' | 'Returns', dialect: MarkdownDialect): string {
     if (type.kind === 'ref') {
-        return `${verb} a [${type.name}](#${anchor(type.name)}) object.`;
+        return `${verb} a ${modelRef(type.name, dialect, false)} object.`;
     }
     if (type.kind === 'array' && type.item.kind === 'ref') {
-        return `${verb} a list of [${type.item.name}](#${anchor(type.item.name)}) objects.`;
+        return `${verb} a list of ${modelRef(type.item.name, dialect, false)} objects.`;
     }
     if (type.kind === 'union') {
         const allRefs = type.members.every(m => m.kind === 'ref');
         if (allRefs && type.members.length > 0) {
-            const links = type.members.map(m => (m.kind === 'ref' ? `[${m.name}](#${anchor(m.name)})` : renderTsType(m)));
+            const links = type.members.map(m => (m.kind === 'ref' ? modelRef(m.name, dialect, false) : renderTsType(m)));
             return `${verb} a ${links.join(' or ')} object.`;
         }
     }
@@ -563,25 +663,34 @@ function typeProseLink(type: ContractTypeNode, verb: 'Accepts' | 'Returns'): str
 
 // ─── Model rendering ──────────────────────────────────────────────────────
 
-function renderModel(model: ModelNode, nested: boolean): string[] {
+/**
+ * Everything a model's page holds below its name: the deprecation callout, the description, the
+ * bases it extends, and either its type alias or its field table. The name itself is the caller's,
+ * for the same reason {@link renderEndpointBody} leaves out the endpoint title.
+ */
+export function renderModelBody(model: ModelNode, dialect: MarkdownDialect): string[] {
     const lines: string[] = [];
-    const heading = nested ? '####' : '###';
-
-    lines.push(`${heading} ${model.name}`);
-    lines.push('');
 
     if (model.deprecated) {
-        lines.push('> **Deprecated** — this type is deprecated and may be removed in a future version.');
+        lines.push(
+            ...dialect.admonition({
+                kind: 'warning',
+                title: 'Deprecated',
+                lines: ['This type is deprecated and may be removed in a future version.'],
+            }),
+        );
         lines.push('');
     }
 
     if (model.description) {
-        lines.push(`> ${model.description}`);
+        // A description spans as many lines as the doc comment did, and every one of them needs
+        // the marker or the block quote ends at the first line break.
+        for (const line of model.description.split('\n')) lines.push(`> ${line}`);
         lines.push('');
     }
 
     if (model.bases && model.bases.length > 0) {
-        const links = model.bases.map(b => `[\`${b}\`](#${anchor(b)})`).join(', ');
+        const links = model.bases.map(b => modelRef(b, dialect, true)).join(', ');
         lines.push(`Extends ${links}`);
         lines.push('');
     }
