@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { generateOp } from '../src/codegen-operation.js';
 import type { ServerFramework } from '../src/server-framework.js';
+import { FASTIFY_SERVER_FRAMEWORK } from '../src/server-framework-fastify.js';
 import { scalarType, refType, opParam, opRequest, opMultiRequest, opResponse, opResponseMulti, opOperation, opRoute, opRoot } from './helpers.js';
 
 /**
@@ -15,6 +16,7 @@ const STUB: ServerFramework = {
     imports: uses => (uses('StubRouter') ? ["import { StubRouter } from '@stub/http';"] : []),
     routerDeclaration: routerName => `export const ${routerName} = StubRouter();`,
     pathParam: identifier => `<${identifier}>`,
+    handlerLocals: ['rq', 'rs'],
     routeOpen: (routerName, method, path, middlewares) => `${routerName}.route('${method}', '${path}', [${middlewares.join(', ')}], async (rq, rs) => {`,
     routeClose: () => ['}, END);'],
     middleware: {
@@ -133,6 +135,48 @@ describe('generateOp — framework seam', () => {
         expect(output).toContain('rs.setStatus(result.status);');
         // Scoped to the status switch: the multi-MIME request dispatch is the generator's own control
         // flow and keeps its `break;` whatever the framework is.
+        const statusSwitch = output.slice(output.indexOf('switch (result.status) {'));
+        expect(statusSwitch).toContain('case 202:');
+        expect(statusSwitch).not.toContain('break;');
+    });
+});
+
+describe('generateOp — Fastify', () => {
+    const output = generateOp(everyBranchRoot(), { framework: FASTIFY_SERVER_FRAMEWORK });
+
+    it('opens each handler with the Fastify signature', () => {
+        expect(output).toContain("UsersRouter.post('/payments/:paymentId', requirePolicy(), bodyParserMiddleware(['json']), requireSignature('stripe'), async (request, reply) => {");
+        expect(output).not.toMatch(/\bctx\b/);
+    });
+
+    it('imports the runtime helper only because the multi-MIME switch uses it', () => {
+        expect(output).toContain(
+            "import { ServerKitRouter, bodyParserMiddleware, requirePolicy, requireSignature, requestMediaType } from '@maroonedsoftware/fastify';",
+        );
+        expect(output).toContain('switch (requestMediaType(request)) {');
+    });
+
+    it('reads the request through the request object', () => {
+        expect(output).toContain('request.params');
+        expect(output).toContain('request.query');
+        expect(output).toContain('request.headers');
+        expect(output).toContain('await parseAndValidate(request.parsedBody,');
+        expect(output).toContain('request.container.get(UsersService)');
+    });
+
+    it('writes the response through reply, returning the send', () => {
+        expect(output).toContain('reply.status(201);');
+        expect(output).toContain("reply.type('application/json');");
+        expect(output).toContain('return reply.send(result.body);');
+        expect(output).toContain('reply.header(\'etag\', String(result.headers["etag"]));');
+    });
+
+    it('sends explicitly for a bodyless response, where Koa writes nothing', () => {
+        expect(output).toContain('reply.status(204);');
+        expect(output).toContain('return reply.send();');
+    });
+
+    it('leaves no break in the status switch, since every case returns', () => {
         const statusSwitch = output.slice(output.indexOf('switch (result.status) {'));
         expect(statusSwitch).toContain('case 202:');
         expect(statusSwitch).not.toContain('break;');

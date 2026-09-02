@@ -394,6 +394,51 @@ describe('generateOperation', () => {
 
     // ─── Query validation ────────────────────────────────────────
 
+    describe('path params that would shadow a handler local', () => {
+        it('renames the binding but keeps the placeholder and the schema key', () => {
+            // `ctx` is the Koa handler's own parameter. Destructuring one under that name redeclares
+            // it: a tsc error, and a temporal-dead-zone ReferenceError at runtime.
+            const root = opRoot([opRoute('/threads/{ctx}', [opOperation('get')], [opParam('ctx', scalarType('uuid'))])]);
+            const output = generateOp(root);
+            expect(output).toContain("get('/threads/:ctx'");
+            expect(output).toContain('ctx: z.uuid()');
+            expect(output).toContain('const { ctx: ctx_ } = await parseAndValidate(');
+            expect(output).not.toContain('const { ctx } =');
+        });
+
+        it('passes the renamed identifier to the service', () => {
+            const root = opRoot([opRoute('/threads/{ctx}', [opOperation('get')], [opParam('ctx', scalarType('uuid'))])]);
+            expect(generateOp(root)).toContain('await service.getById(ctx_)');
+        });
+
+        it('renames a param that would shadow one of the generator\'s own locals', () => {
+            // `body` is the variable the request-body block declares.
+            const root = opRoot([
+                opRoute('/posts/{body}', [opOperation('post', { request: opRequest('CreatePost') })], [opParam('body', scalarType('uuid'))]),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain('const { body: body_ } = await parseAndValidate(');
+            expect(output).toContain('const body = await parseAndValidate(');
+            expect(output).toContain('await service.create(body_, body)');
+        });
+
+        it('leaves a param alone when nothing collides', () => {
+            const root = opRoot([opRoute('/users/{userId}', [opOperation('get')], [opParam('userId', scalarType('uuid'))])]);
+            const output = generateOp(root);
+            expect(output).toContain('const { userId } = await parseAndValidate(');
+            expect(output).toContain('await service.getById(userId)');
+        });
+
+        it('keeps two params distinct when a rename would collapse them onto one name', () => {
+            const root = opRoot([
+                opRoute('/x/{ctx}/{ctx_}', [opOperation('get')], [opParam('ctx', scalarType('uuid')), opParam('ctx_', scalarType('uuid'))]),
+            ]);
+            const output = generateOp(root);
+            expect(output).toContain('const { ctx: ctx_, ctx_: ctx__ } = await parseAndValidate(');
+            expect(output).toContain('await service.getById(ctx_, ctx__)');
+        });
+    });
+
     describe('query validation', () => {
         it('generates query validation block', () => {
             const root = opRoot([

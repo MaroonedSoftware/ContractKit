@@ -545,7 +545,7 @@ contract Order: {
 
 ## Operation Declarations
 
-`operation` declares a route with one or more HTTP method handlers. Compiles to a server router (Koa today; see `server.framework`).
+`operation` declares a route with one or more HTTP method handlers. Compiles to a server router (Koa or Fastify; see `server.framework`).
 
 ### Basic Structure
 

@@ -1,10 +1,11 @@
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
+import { FASTIFY_SERVER_FRAMEWORK } from './server-framework-fastify.js';
 
 /**
  * HTTP frameworks the server sub-generator can target. Adding a name here without adding an adapter
  * to {@link SERVER_FRAMEWORKS} fails to compile, which is the point of keeping the two in step.
  */
-export const SERVER_FRAMEWORK_NAMES = ['koa'] as const;
+export const SERVER_FRAMEWORK_NAMES = ['koa', 'fastify'] as const;
 
 /** One of {@link SERVER_FRAMEWORK_NAMES}. */
 export type ServerFrameworkName = (typeof SERVER_FRAMEWORK_NAMES)[number];
@@ -37,6 +38,14 @@ export interface ServerFramework {
 
     /** Placeholder syntax for one path parameter, given a name already mapped to a valid identifier. */
     pathParam(identifier: string): string;
+
+    /**
+     * Identifiers the handler signature itself binds — `ctx`, or `request` and `reply`. A path
+     * parameter is destructured into the handler body, so one declared with the same name would
+     * shadow the handler's own parameter: a redeclaration under `tsc`, and a temporal-dead-zone
+     * `ReferenceError` at runtime. Codegen renames the local binding to avoid these.
+     */
+    readonly handlerLocals: readonly string[];
 
     /** Opening line of a handler, including its middleware and the handler function's parameters. */
     routeOpen(routerName: string, method: string, path: string, middlewares: readonly string[]): string;
@@ -98,6 +107,7 @@ export interface ServerFramework {
  */
 export const SERVER_FRAMEWORKS: Readonly<Record<ServerFrameworkName, ServerFramework>> = {
     koa: KOA_SERVER_FRAMEWORK,
+    fastify: FASTIFY_SERVER_FRAMEWORK,
 };
 
 /**

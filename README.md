@@ -1,7 +1,7 @@
 # ContractKit
 
 Define an API once, in a file you can read aloud, and generate the parts you would otherwise
-hand-write and keep in sync: Zod schemas, a Koa router, TypeScript and Python SDK clients, an
+hand-write and keep in sync: Zod schemas, a Koa or Fastify router, TypeScript and Python SDK clients, an
 OpenAPI spec, Markdown docs, and a Bruno collection.
 
 ```
@@ -174,7 +174,7 @@ All packages publish under the `@contractkit` npm scope.
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | [`@contractkit/cli`](apps/cli)                                 | The `contractkit` binary — discovery, config, plugin orchestration                                                                   |
 | [`@contractkit/core`](packages/contractkit)                    | Grammar, parser, AST, semantics, validation, plugin interface                                                                        |
-| [`@contractkit/plugin-typescript`](packages/plugin-typescript) | Koa routers, TypeScript SDK, Zod schemas, plain types, MCP tools                                                                     |
+| [`@contractkit/plugin-typescript`](packages/plugin-typescript) | Koa or Fastify routers, TypeScript SDK, Zod schemas, plain types, MCP tools                                                                     |
 | [`@contractkit/plugin-python`](packages/plugin-python)         | Python SDK (Pydantic v2 + httpx)                                                                                                     |
 | [`@contractkit/plugin-docs`](packages/plugin-docs)             | Documentation outputs: OpenAPI 3.1 YAML, a Markdown reference, a Mintlify site, and a Docusaurus docs folder                         |
 | [`@contractkit/plugin-bruno`](packages/plugin-bruno)           | Bruno REST collection                                                                                                                |

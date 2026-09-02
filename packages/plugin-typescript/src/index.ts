@@ -55,6 +55,7 @@ export {
     type ServerFrameworkName,
 } from './server-framework.js';
 export { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
+export { FASTIFY_SERVER_FRAMEWORK } from './server-framework-fastify.js';
 
 /** Taint set for the SDK's bigint response reviver. */
 const BIGINT_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['bigint']);

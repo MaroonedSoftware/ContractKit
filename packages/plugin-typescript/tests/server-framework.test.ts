@@ -9,6 +9,7 @@ describe('resolveServerFramework', () => {
 
     it('resolves a supported name', () => {
         expect(resolveServerFramework('koa').name).toBe('koa');
+        expect(resolveServerFramework('fastify').name).toBe('fastify');
     });
 
     it('rejects an unsupported name, naming what is supported', () => {

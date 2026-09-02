@@ -29,6 +29,8 @@ export const KOA_SERVER_FRAMEWORK: ServerFramework = {
         return `:${identifier}`;
     },
 
+    handlerLocals: ['ctx'],
+
     routeOpen(routerName, method, path, middlewares) {
         const middlewareStr = middlewares.length > 0 ? `, ${middlewares.join(', ')},` : ',';
         return `${routerName}.${method}('${path}'${middlewareStr} async ctx => {`;
