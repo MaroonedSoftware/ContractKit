@@ -5,7 +5,7 @@
 > `docs.json` navigation file, and a starter landing page.
 
 Loaded by `@contractkit/cli` through `contractkit.config.json`. It consumes the AST produced by
-`@contractkit/core` and builds its OpenAPI document with `@contractkit/plugin-openapi`.
+`@contractkit/core`.
 
 ## Install
 

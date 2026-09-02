@@ -489,7 +489,7 @@ export function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode)
             break;
         default: {
             const _exhaustive: never = type.name;
-            throw new Error(`plugin-openapi: unmapped scalar '${String(_exhaustive)}' — add a case`);
+            throw new Error(`plugin-docs (openapi): unmapped scalar '${String(_exhaustive)}' — add a case`);
         }
     }
 

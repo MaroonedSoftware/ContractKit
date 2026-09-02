@@ -63,7 +63,7 @@ exported too: `astToCk`, `serializeType`, `normalize`, `detectCircularRefs`, `ex
   pointer into the spec so you can go look.
 - Treat the output as a **starting point** to review and commit, not a build step. Do not re-run it
   on every build; once imported, the `.ck` files are the source of truth.
-- For the forward direction (`.ck` → OpenAPI), use `@contractkit/plugin-openapi`.
+- For the forward direction (`.ck` → OpenAPI), use `@contractkit/plugin-docs` with its `openapi` target.
 
 ## More
 
