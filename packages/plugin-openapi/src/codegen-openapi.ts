@@ -155,6 +155,17 @@ export interface OpenApiCodegenContext {
  * @returns The OpenAPI document serialized as a YAML string.
  */
 export function generateOpenApi(ctx: OpenApiCodegenContext): string {
+    return toYaml(buildOpenApiDocument(ctx));
+}
+
+/**
+ * Build the OpenAPI 3.1 document as a plain object, before serialization.
+ *
+ * Exists so other plugins can consume the document structurally — reading `paths` to enumerate
+ * operations, or `components.schemas` to enumerate models — without parsing the YAML back.
+ * {@link generateOpenApi} is this plus {@link toYaml}.
+ */
+export function buildOpenApiDocument(ctx: OpenApiCodegenContext): Record<string, unknown> {
     const { contractRoots, opRoots, config, securitySchemes } = ctx;
     const includeInternal = config.includeInternal ?? false;
 
@@ -237,7 +248,7 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
         doc.components = components;
     }
 
-    return toYaml(doc);
+    return doc;
 }
 
 // ─── Path conversion ──────────────────────────────────────────────────────
