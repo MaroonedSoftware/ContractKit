@@ -21,6 +21,8 @@ import {
 import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'path';
+import type { ServerFramework } from './server-framework.js';
+import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 
 /** Which request-side object a validation block reads from. Names the variable the block declares. */
 export type ParamKind = 'params' | 'query' | 'headers';
@@ -160,7 +162,15 @@ export interface OpCodegenOptions {
      * post-transform shape, which the schema itself cannot re-parse.
      */
     modelsWithTransform?: Set<string>;
+    /**
+     * Which HTTP framework the emitted router targets. Every framework-specific string in the output
+     * comes from here. Defaults to Koa, the only framework shipped today.
+     */
+    framework?: ServerFramework;
 }
+
+/** {@link OpCodegenOptions} after {@link generateOp} has filled in the framework default. */
+type ResolvedOpCodegenOptions = OpCodegenOptions & { framework: ServerFramework };
 
 /**
  * Generate a server router module for every operation in `root`, including the imports, type
@@ -172,6 +182,10 @@ export interface OpCodegenOptions {
  * trips `noUnusedLocals` and lint downstream.
  */
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
+    // Resolved once here rather than defaulted at each use, so every helper below reads a framework
+    // that is definitely present and no branch can quietly fall back to a different one.
+    const resolved: ResolvedOpCodegenOptions = { ...options, framework: options.framework ?? KOA_SERVER_FRAMEWORK };
+    const framework = resolved.framework;
     // Collect all referenced types across all routes
     const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput);
     const services = collectServices(root);
@@ -183,14 +197,14 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     lines.push('/**');
     lines.push(` * generated from ${sourceLink(basename(root.file), options.outPath, root.file)}`);
     lines.push('*/');
-    lines.push(`export const ${routerName} = ServerKitRouter();`);
+    lines.push(framework.routerDeclaration(routerName));
     lines.push('');
 
     const includeInternal = options.includeInternal ?? true;
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
-            lines.push(...generateHandler(route, op, root, options));
+            lines.push(...generateHandler(route, op, root, resolved));
             lines.push('');
         }
     }
@@ -237,10 +251,7 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
     const body: string[] = [];
 
-    const koaImports = ['ServerKitRouter', 'bodyParserMiddleware', 'requirePolicy', 'requireSignature'].filter(uses);
-    if (koaImports.length > 0) {
-        body.push(`import { ${koaImports.join(', ')} } from '@maroonedsoftware/koa';`);
-    }
+    body.push(...framework.imports(uses));
 
     // Services and model names come from the AST, which over-approximates two ways: a model with an
     // Input/Output variant contributes its base name even when only the variant is ever annotated,
@@ -286,11 +297,12 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
 // ─── Handler generation ────────────────────────────────────────────────────
 
-function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNode, options: OpCodegenOptions): string[] {
+function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNode, options: ResolvedOpCodegenOptions): string[] {
     const lines: string[] = [];
     const file = root.file;
     const outPath = options.outPath;
     const modelsWithInput = options.modelsWithInput;
+    const framework = options.framework;
 
     lines.push('/**');
 
@@ -319,7 +331,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     // The framework's placeholder syntax, from `{name}`, mapped to a valid identifier. Unlike a query
     // parameter or a header, a path placeholder's name never reaches the wire — the framework matches
     // by position — so renaming it is free, and it is what lets the params object be destructured.
-    const path = route.path.replace(PATH_PARAM_RE_G, (_m, name: string) => `:${toIdentifier(name)}`);
+    const path = route.path.replace(PATH_PARAM_RE_G, (_m, name: string) => framework.pathParam(toIdentifier(name)));
     const bodies = op.request?.bodies ?? [];
     const hasBody = bodies.length > 0;
     const isSingleMultipart = bodies.length === 1 && bodies[0]!.contentType === 'multipart/form-data';
@@ -334,39 +346,37 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
                 : policy === false
                   ? '{ policy: false }'
                   : `{ policy: '${policy}' }`;
-        middlewares.push(`requirePolicy(${args})`);
+        middlewares.push(framework.middleware.policy(args));
     }
     if (hasBody) {
         const parserTokens = Array.from(new Set(bodies.map(b => bodyParserToken(b.contentType))));
         const tokensExpr = parserTokens.map(t => `'${t}'`).join(', ');
-        middlewares.push(`bodyParserMiddleware([${tokensExpr}])`);
+        middlewares.push(framework.middleware.bodyParser(tokensExpr));
     }
     if (op.signature) {
         const sigArgs = op.signaturePolicy
             ? `'${escapeSingleQuoted(op.signature)}', { policy: '${escapeSingleQuoted(op.signaturePolicy)}' }`
             : `'${escapeSingleQuoted(op.signature)}'`;
-        middlewares.push(`requireSignature(${sigArgs})`);
+        middlewares.push(framework.middleware.signature(sigArgs));
     }
-    const middlewareStr = middlewares.length > 0 ? `, ${middlewares.join(', ')},` : ',';
-
-    lines.push(`${deriveRouterName(file)}.${method}('${path}'${middlewareStr} async ctx => {`);
+    lines.push(framework.routeOpen(deriveRouterName(file), method, path, middlewares));
 
     // Params / query / headers validation (request-side — use Input variants)
-    lines.push(...generateParamValidation(route.params, 'params', 'ctx.params', route.paramsMode ?? 'strict', '', modelsWithInput));
-    lines.push(...generateParamValidation(op.query, 'query', 'ctx.query', op.queryMode ?? 'strict', '', modelsWithInput));
-    lines.push(...generateParamValidation(op.headers, 'headers', 'ctx.headers', op.headersMode ?? 'strip', '', modelsWithInput));
+    lines.push(...generateParamValidation(route.params, 'params', framework.request.params, route.paramsMode ?? 'strict', '', modelsWithInput));
+    lines.push(...generateParamValidation(op.query, 'query', framework.request.query, op.queryMode ?? 'strict', '', modelsWithInput));
+    lines.push(...generateParamValidation(op.headers, 'headers', framework.request.headers, op.headersMode ?? 'strip', '', modelsWithInput));
 
     // Body validation (request-side — use Input variants)
     if (hasBody && op.request) {
         if (isSingleMultipart) {
-            lines.push(`    const multipartBody = ctx.parsedBody as MultipartBody;`);
+            lines.push(`    const multipartBody = ${framework.request.parsedBody} as MultipartBody;`);
             lines.push('');
         } else if (bodies.length === 1) {
-            lines.push(`    const body = await parseAndValidate(ctx.parsedBody, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
+            lines.push(`    const body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
             lines.push('');
         } else if (bodies.every(b => bodyTypesStructurallyEqual(b.bodyType, bodies[0]!.bodyType))) {
             // All declared MIMEs share the same body shape — single validation suffices
-            lines.push(`    const body = await parseAndValidate(ctx.parsedBody, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
+            lines.push(`    const body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
             lines.push('');
         } else {
             // Different body types per MIME — dispatch on Content-Type
@@ -376,13 +386,13 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
                 )
                 .join(' | ');
             lines.push(`    let body!: ${annotation};`);
-            lines.push(`    switch (ctx.request.type) {`);
+            lines.push(`    switch (${framework.request.contentType}) {`);
             for (const b of bodies) {
                 lines.push(`        case '${b.contentType}':`);
                 if (b.contentType === 'multipart/form-data') {
-                    lines.push(`            body = ctx.parsedBody as MultipartBody;`);
+                    lines.push(`            body = ${framework.request.parsedBody} as MultipartBody;`);
                 } else {
-                    lines.push(`            body = await parseAndValidate(ctx.parsedBody, ${renderInputType(b.bodyType, modelsWithInput)});`);
+                    lines.push(`            body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(b.bodyType, modelsWithInput)});`);
                 }
                 lines.push(`            break;`);
             }
@@ -403,25 +413,26 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
         lines.push(...generateSingleStatusResult(emitted[0], op, serviceParts.className, call, options));
     }
 
-    lines.push(`});`);
+    lines.push(...framework.routeClose());
 
     return lines;
 }
 
 /**
  * The service produces exactly one status (or none): the result is the body itself, or
- * `{ body, headers }` when the status declares headers, and `ctx.status` is a constant.
+ * `{ body, headers }` when the status declares headers, and the status code is a constant.
  *
  * A status declaring several mimes also gains a `contentType` the service picks, which is the
- * only thing here that can turn `ctx.type` from a literal into an expression.
+ * only thing here that can turn the response content type from a literal into an expression.
  */
 function generateSingleStatusResult(
     resp: OpResponseNode | undefined,
     op: OpOperationNode,
     className: string,
     call: string,
-    options: OpCodegenOptions,
+    options: ResolvedOpCodegenOptions,
 ): string[] {
+    const framework = options.framework;
     const lines: string[] = [];
     const bodies = resp ? resp.bodies : [];
     const respHeaders = resp?.headers ?? [];
@@ -434,7 +445,7 @@ function generateSingleStatusResult(
         const { annotation, prelude } = formatTypeAnnotation(bodies[0]!.bodyType, options.modelsWithOutput);
         if (prelude) lines.push(`    ${prelude}`);
         bodySchema = responseBodySchema(bodies[0]!.bodyType, options, prelude ? 'resultType' : undefined);
-        lines.push(`    const service = ctx.container.get(${className});`);
+        lines.push(`    const service = ${framework.resolveService(className)};`);
         if (hasRespHeaders) {
             lines.push(`    const result: { body: ${annotation}; headers: ${headersAnnotation} } = ${call};`);
         } else {
@@ -445,10 +456,10 @@ function generateSingleStatusResult(
         const { members, preludes } = rendered;
         bodySchema = rendered.bodySchema;
         for (const prelude of preludes) lines.push(`    ${prelude}`);
-        lines.push(`    const service = ctx.container.get(${className});`);
+        lines.push(`    const service = ${framework.resolveService(className)};`);
         lines.push(`    const result: ${members.join(' | ')} = ${call};`);
     } else {
-        lines.push(`    const service = ctx.container.get(${className});`);
+        lines.push(`    const service = ${framework.resolveService(className)};`);
         if (hasRespHeaders) {
             lines.push(`    const result: { headers: ${headersAnnotation} } = ${call};`);
         } else {
@@ -462,15 +473,18 @@ function generateSingleStatusResult(
     // also what aligns the three generators: `observableResponses` excludes a bare `400:` too, so
     // the SDK already types such a method `Promise<void>` and `thrownResponses` puts the 400 in
     // `@throws`. A bodyless 204 success is exactly what `Promise<void>` means.
-    lines.push(`    ctx.status = ${resp?.statusCode ?? 204};`);
-    lines.push(...headerSetLines(respHeaders, '    '));
+    lines.push(`    ${framework.response.status(String(resp?.statusCode ?? 204))}`);
+    lines.push(...headerSetLines(respHeaders, '    ', framework));
 
     if (bodies.length === 1) {
-        lines.push(`    ctx.type = '${bodies[0]!.contentType}';`);
-        lines.push(`    ctx.body = ${responseBodyExpr(hasRespHeaders ? 'result.body' : 'result', bodySchema)};`);
+        lines.push(`    ${framework.response.type(`'${bodies[0]!.contentType}'`)}`);
+        lines.push(...indent(framework.response.send(responseBodyExpr(hasRespHeaders ? 'result.body' : 'result', bodySchema)), '    '));
     } else if (bodies.length > 1) {
-        lines.push(`    ctx.type = result.contentType;`);
-        lines.push(`    ctx.body = ${responseBodyExpr('result.body', bodySchema)};`);
+        lines.push(`    ${framework.response.type('result.contentType')}`);
+        lines.push(...indent(framework.response.send(responseBodyExpr('result.body', bodySchema)), '    '));
+    } else {
+        // Nothing to write, but a framework that ends a response by returning still needs a statement.
+        lines.push(...indent(framework.response.send(undefined), '    '));
     }
 
     return lines;
@@ -481,7 +495,8 @@ function generateSingleStatusResult(
  * `status`, and the handler switches on it so each status writes only its own headers, mime
  * and body.
  */
-function generateMultiStatusResult(emitted: OpResponseNode[], className: string, call: string, options: OpCodegenOptions): string[] {
+function generateMultiStatusResult(emitted: OpResponseNode[], className: string, call: string, options: ResolvedOpCodegenOptions): string[] {
+    const framework = options.framework;
     const lines: string[] = [];
     const members: string[] = [];
     const preludes: string[] = [];
@@ -496,21 +511,23 @@ function generateMultiStatusResult(emitted: OpResponseNode[], className: string,
     }
 
     for (const prelude of preludes) lines.push(`    ${prelude}`);
-    lines.push(`    const service = ctx.container.get(${className});`);
+    lines.push(`    const service = ${framework.resolveService(className)};`);
     lines.push(`    const result:`);
     for (const member of members) lines.push(`        | ${member}`);
     lines.push(`        = ${call};`);
     lines.push('');
-    lines.push(`    ctx.status = result.status;`);
+    lines.push(`    ${framework.response.status('result.status')}`);
     lines.push(`    switch (result.status) {`);
     for (const resp of emitted) {
         lines.push(`        case ${resp.statusCode}:`);
-        lines.push(...headerSetLines(resp.headers ?? [], '            '));
+        lines.push(...headerSetLines(resp.headers ?? [], '            ', framework));
         if (resp.bodies.length > 0) {
-            lines.push(`            ctx.type = result.contentType;`);
-            lines.push(`            ctx.body = ${responseBodyExpr('result.body', bodySchemas.get(resp.statusCode))};`);
+            lines.push(`            ${framework.response.type('result.contentType')}`);
+            lines.push(...indent(framework.response.send(responseBodyExpr('result.body', bodySchemas.get(resp.statusCode))), '            '));
+        } else {
+            lines.push(...indent(framework.response.send(undefined), '            '));
         }
-        lines.push(`            break;`);
+        lines.push(...indent(framework.response.caseEnd(), '            '));
     }
     lines.push(`    }`);
 
@@ -572,13 +589,17 @@ function renderHeadersAnnotation(headers: OpResponseHeaderNode[], modelsWithOutp
 }
 
 /** Response-header writes for a status's declared headers, guarding the optional ones. */
-function headerSetLines(headers: OpResponseHeaderNode[], indent: string): string[] {
+function headerSetLines(headers: OpResponseHeaderNode[], pad: string, framework: ServerFramework): string[] {
     return headers.map(h => {
         const accessor = `result.headers[${JSON.stringify(headerNameToProperty(h.name))}]`;
-        return h.optional
-            ? `${indent}if (${accessor} !== undefined) ctx.set('${h.name}', String(${accessor}));`
-            : `${indent}ctx.set('${h.name}', String(${accessor}));`;
+        const write = framework.response.header(h.name, `String(${accessor})`);
+        return h.optional ? `${pad}if (${accessor} !== undefined) ${write}` : `${pad}${write}`;
     });
+}
+
+/** Prefix each of a framework's statements with the handler indentation the caller is writing at. */
+function indent(lines: string[], pad: string): string[] {
+    return lines.map(line => `${pad}${line}`);
 }
 
 // ─── Inference helpers ─────────────────────────────────────────────────────

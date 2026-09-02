@@ -45,6 +45,15 @@ import {
 } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
 import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
+export {
+    SERVER_FRAMEWORK_NAMES,
+    DEFAULT_SERVER_FRAMEWORK_NAME,
+    resolveServerFramework,
+    SERVER_FRAMEWORKS,
+    type ServerFramework,
+    type ServerFrameworkName,
+} from './server-framework.js';
+export { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 
 /** Taint set for the SDK's bigint response reviver. */
 const BIGINT_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['bigint']);
