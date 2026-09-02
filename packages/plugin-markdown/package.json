@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-markdown",
-    "version": "0.11.3",
+    "version": "1.0.0",
     "description": "Deprecated: use @contractkit/plugin-docs with its markdown target",
     "license": "MIT",
     "author": {

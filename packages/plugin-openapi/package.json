@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-openapi",
-    "version": "0.11.0",
+    "version": "1.0.0",
     "description": "Deprecated: use @contractkit/plugin-docs with its openapi target",
     "license": "MIT",
     "author": {
