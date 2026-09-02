@@ -29,6 +29,7 @@ grammar and the editor's completion provider consume the same syntax.
 - [@contractkit/plugin-python](packages/plugin-python/README.md): Python SDK built on Pydantic v2 and httpx.
 - [@contractkit/plugin-openapi](packages/plugin-openapi/README.md): OpenAPI 3.1 YAML.
 - [@contractkit/plugin-markdown](packages/plugin-markdown/README.md): Markdown API reference.
+- [@contractkit/plugin-docs](packages/plugin-docs/README.md): Mintlify documentation site — MDX pages, `docs.json` navigation, and the OpenAPI spec they render from.
 - [@contractkit/plugin-bruno](packages/plugin-bruno/README.md): Bruno REST collection.
 - [@contractkit/openapi-to-ck](packages/openapi-to-ck/README.md): Converts an existing OpenAPI spec into `.ck` files.
 - [@contractkit/cli](apps/cli/README.md): The `contractkit` binary — file discovery, config resolution, caching, plugin orchestration.
@@ -47,6 +48,7 @@ names, its full option table, its programmatic API, and the mistakes specific to
 - [@contractkit/plugin-python](packages/plugin-python/llms.txt)
 - [@contractkit/plugin-openapi](packages/plugin-openapi/llms.txt)
 - [@contractkit/plugin-markdown](packages/plugin-markdown/llms.txt)
+- [@contractkit/plugin-docs](packages/plugin-docs/llms.txt)
 - [@contractkit/plugin-bruno](packages/plugin-bruno/llms.txt)
 - [@contractkit/openapi-to-ck](packages/openapi-to-ck/llms.txt)
 - [@contractkit/explorer-ui](packages/explorer-ui/llms.txt)

@@ -1,0 +1,58 @@
+{
+    "$schema": "https://mintlify.com/docs.json",
+    "theme": "mint",
+    "name": "Kitchen Sink",
+    "colors": {
+        "primary": "#0D9373"
+    },
+    "navigation": {
+        "tabs": [
+            {
+                "tab": "API Reference",
+                "groups": [
+                    {
+                        "group": "Overview",
+                        "pages": [
+                            "index"
+                        ]
+                    },
+                    {
+                        "group": "Endpoints",
+                        "pages": [
+                            "api-reference/endpoints/get-invoice",
+                            "api-reference/endpoints/get-status"
+                        ]
+                    },
+                    {
+                        "group": "Billing",
+                        "pages": [
+                            "api-reference/billing/create-payment",
+                            "api-reference/billing/list-payments",
+                            "api-reference/billing/get-payment",
+                            "api-reference/billing/update-payment-with-form",
+                            "api-reference/billing/delete-payment",
+                            "api-reference/billing/upload-receipt",
+                            "api-reference/billing/get-refund",
+                            "api-reference/billing/create-credential",
+                            "api-reference/billing/create-session"
+                        ]
+                    },
+                    {
+                        "group": "Models",
+                        "pages": [
+                            "api-reference/models/payment",
+                            "api-reference/models/credential",
+                            "api-reference/models/admin-credential",
+                            "api-reference/models/session",
+                            "api-reference/models/payment-ref",
+                            "api-reference/models/update-payment-form",
+                            "api-reference/models/upload-receipt-form",
+                            "api-reference/models/invoice",
+                            "api-reference/models/heartbeat"
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+}

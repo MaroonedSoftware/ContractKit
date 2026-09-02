@@ -32,16 +32,11 @@ describe('renderEndpointPage', () => {
         expect(renderEndpointPage(entryFor(route), '/spec/api.yaml')).toContain('openapi: "/spec/api.yaml GET /users"');
     });
 
-    it('puts the description in the body, not the title', () => {
+    it('has no body — the spec already carries the description Mintlify renders', () => {
         const route = opRoute('/users', [opOperation('get', { name: 'listUsers', description: 'Returns every user.' })]);
         const out = renderEndpointPage(entryFor(route), '/openapi.yaml');
-        expect(out).toContain('title: "List Users"');
-        expect(out.split('---\n')[2]).toBe('\nReturns every user.\n');
-    });
-
-    it('omits the body entirely when there is no description', () => {
-        const route = opRoute('/users', [opOperation('get', {})]);
-        expect(renderEndpointPage(entryFor(route), '/openapi.yaml').endsWith('---\n')).toBe(true);
+        expect(out.endsWith('---\n')).toBe(true);
+        expect(out).not.toContain('Returns every user.');
     });
 
     it('flags a deprecated operation', () => {
@@ -78,9 +73,10 @@ describe('renderModelPage', () => {
         expect(out).toBe(['---', 'title: "User"', 'openapi-schema: "/openapi.yaml User"', '---', ''].join('\n'));
     });
 
-    it('includes the model description as the body', () => {
+    it('has no body, for the same reason an endpoint page has none', () => {
         const out = renderModelPage(entry(model('User', [], { description: 'A person.' })), '/openapi.yaml');
-        expect(out).toContain('\nA person.\n');
+        expect(out.endsWith('---\n')).toBe(true);
+        expect(out).not.toContain('A person.');
     });
 
     it('flags a deprecated model', () => {

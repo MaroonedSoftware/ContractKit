@@ -68,14 +68,34 @@ function splitCamel(value: string): string {
 }
 
 /**
- * Page title for an operation, in priority order: explicit `name:`, then the service method
- * name, then the HTTP verb plus the path's literal segments.
+ * Turn a third-person description into an imperative heading: "Creates a payment" reads as
+ * "Create a payment" once it is a title. Words ending in a double `s` ("Process") are left
+ * alone. Mirrors plugin-markdown so the same endpoint gets the same heading in both outputs.
+ */
+function normalizeVerbTitle(title: string): string {
+    const spaceIdx = title.indexOf(' ');
+    if (spaceIdx === -1) return title;
+
+    const firstWord = title.slice(0, spaceIdx);
+    const rest = title.slice(spaceIdx);
+    if (firstWord.length > 3 && firstWord.endsWith('s') && !firstWord.endsWith('ss')) {
+        return firstWord.slice(0, -1) + rest;
+    }
+    return title;
+}
+
+/**
+ * Page title for an operation, in priority order: explicit `name:`, then the description, then
+ * the service method name, then the HTTP verb plus the path's literal segments.
  *
- * Unlike plugin-markdown this never falls back to `description:` — the description becomes the
- * page body, and repeating it as the heading reads badly.
+ * The description ranks above the service method because a method name alone is usually too
+ * thin to title a page — `PaymentService.create` gives "Create", where the description gives
+ * "Create a payment".
  */
 export function deriveTitle(op: OpOperationNode, route: OpRouteNode): string {
     if (op.name) return titleCase(splitCamel(op.name.trim()));
+
+    if (op.description) return normalizeVerbTitle(titleCase(op.description.trim()));
 
     if (op.service) {
         const methodPart = op.service.split('.').pop();

@@ -174,6 +174,7 @@ the artefacts meant for consumers do not.
 | `@contractkit/plugin-python` | Pydantic v2 models + async httpx client | `false` |
 | `@contractkit/plugin-openapi` | One OpenAPI **3.1** YAML document | `false` |
 | `@contractkit/plugin-markdown` | One Markdown API reference | `false` |
+| `@contractkit/plugin-docs` | A Mintlify docs folder: MDX pages, `docs.json`, OpenAPI spec | `false` |
 | `@contractkit/plugin-bruno` | A Bruno REST collection | `true` |
 
 ### TypeScript
@@ -246,17 +247,26 @@ Path templates accept `{filename}`, `{dir}`, `{area}`, and `{name}` in `sdk.outp
 `security` states which scheme applies; `securitySchemes` defines what it is. You almost always need
 both — a requirement naming an undefined scheme produces a spec validators reject.
 
-### Python, Markdown, Bruno
+### Python, Markdown, Bruno, Docs
 
 ```json
 {
   "plugins": {
     "@contractkit/plugin-python": { "baseDir": "clients/python/", "packageName": "acme" },
     "@contractkit/plugin-markdown": { "baseDir": "docs/", "output": "api-reference.md" },
-    "@contractkit/plugin-bruno": { "baseDir": "bruno/", "collectionName": "Acme API" }
+    "@contractkit/plugin-bruno": { "baseDir": "bruno/", "collectionName": "Acme API" },
+    "@contractkit/plugin-docs": {
+      "baseDir": "mintlify/",
+      "openapi": { "info": { "title": "Acme API", "version": "1.0.0" } },
+      "docs": { "theme": "mint", "colors": { "primary": "#0D9373" } }
+    }
   }
 }
 ```
+
+The docs plugin regenerates `docs.json` every build, so navigation never drifts from the contracts.
+Site settings and hand-written tabs go under `docs`, which is merged around the generated API
+reference rather than replacing it. Its `index.mdx` is written once and then owned by you.
 
 For Bruno, supplying `environments` **replaces** the generated default `local.yml` rather than
 extending it — include `baseUrl` and any auth variables yourself. Its per-operation
@@ -361,6 +371,7 @@ language server use.
 | `@contractkit/plugin-python` | Python SDK (Pydantic v2 + httpx) |
 | `@contractkit/plugin-openapi` | OpenAPI 3.1 YAML |
 | `@contractkit/plugin-markdown` | Markdown API reference |
+| `@contractkit/plugin-docs` | Mintlify documentation site |
 | `@contractkit/plugin-bruno` | Bruno REST collection |
 | `@contractkit/openapi-to-ck` | OpenAPI → `.ck`, for adopting an existing API |
 | `@contractkit/explorer-ui` | HTML renderer behind the VS Code API explorer |

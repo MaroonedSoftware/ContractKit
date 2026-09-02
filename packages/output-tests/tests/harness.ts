@@ -24,9 +24,10 @@ import { createPythonSdkPlugin } from '@contractkit/plugin-python';
 import { createOpenApiPlugin } from '@contractkit/plugin-openapi';
 import { createMarkdownPlugin } from '@contractkit/plugin-markdown';
 import { createBrunoPlugin } from '@contractkit/plugin-bruno';
+import { createDocsPlugin } from '@contractkit/plugin-docs';
 
 /**
- * The five plugins are run against a fixed pair of fixtures and every emitted file is
+ * Every plugin is run against a fixed set of fixtures and every emitted file is
  * snapshotted, so a change to any generator shows up as a reviewable diff rather than as a
  * `toContain` assertion that happens to still pass. The per-plugin `_files.txt` listing is what
  * makes a *lost* or *added* file visible; the content snapshots cover everything else.
@@ -47,7 +48,7 @@ export interface BuildResult {
     diagnostics: Diagnostic[];
 }
 
-export type PluginName = 'typescript' | 'python' | 'openapi' | 'markdown' | 'bruno';
+export type PluginName = 'typescript' | 'python' | 'openapi' | 'markdown' | 'bruno' | 'docs';
 
 /**
  * Fake `PluginContext` capturing `emitFile` in memory, mirroring `makeCtx` in
@@ -106,7 +107,11 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
             name: 'typescript',
             plugin: createTypescriptPlugin(
                 {
-                    server: { baseDir: 'server', zod: true, output: { routes: 'routes/{filename}.router.ts', types: 'schemas/{filename}.schema.ts' } },
+                    server: {
+                        baseDir: 'server',
+                        zod: true,
+                        output: { routes: 'routes/{filename}.router.ts', types: 'schemas/{filename}.schema.ts' },
+                    },
                     sdk: {
                         baseDir: 'sdk',
                         zod: true,
@@ -122,6 +127,13 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
         { name: 'openapi', plugin: createOpenApiPlugin({ output: 'openapi.yaml', info: { title: 'Kitchen Sink', version: '1.0.0' } }, ROOT_DIR) },
         { name: 'markdown', plugin: createMarkdownPlugin({ output: 'api-reference.md' }, ROOT_DIR) },
         { name: 'bruno', plugin: createBrunoPlugin({ output: 'bruno', randomExamples: false }, ROOT_DIR) },
+        {
+            name: 'docs',
+            plugin: createDocsPlugin(
+                { target: 'mintlify', baseDir: 'docs', openapi: { info: { title: 'Kitchen Sink', version: '1.0.0' } } },
+                ROOT_DIR,
+            ),
+        },
     ];
 }
 

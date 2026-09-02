@@ -37,28 +37,37 @@ function page(front: string, body?: string): string {
  *
  * `specPath` is the OpenAPI document's docs-root-relative path (e.g. `/openapi.yaml`); Mintlify
  * resolves the `<spec> <METHOD> <path>` triple against it to find the operation to render.
+ *
+ * The page has no body. The contract's description is already the operation's `description` in
+ * the spec, which Mintlify renders on the page — writing it here too would print it twice. The
+ * empty body is where a user's own prose goes if they take the page over.
  */
 export function renderEndpointPage(entry: EndpointEntry, specPath: string): string {
     const { op, route, title } = entry;
     const deprecated = resolveModifiers(route, op).includes('deprecated');
-    const front = frontmatter([
-        ['title', title],
-        ['sidebarTitle', title],
-        ['openapi', `${specPath} ${op.method.toUpperCase()} ${route.path}`],
-        ['deprecated', deprecated],
-    ]);
-    return page(front, op.description);
+    return page(
+        frontmatter([
+            ['title', title],
+            ['sidebarTitle', title],
+            ['openapi', `${specPath} ${op.method.toUpperCase()} ${route.path}`],
+            ['deprecated', deprecated],
+        ]),
+    );
 }
 
-/** One model page, rendered by Mintlify from the named schema in `components.schemas`. */
+/**
+ * One model page, rendered by Mintlify from the named schema in `components.schemas`. Bodyless
+ * for the same reason as an endpoint page: the schema in the spec carries the description.
+ */
 export function renderModelPage(entry: ModelEntry, specPath: string): string {
     const { model, title } = entry;
-    const front = frontmatter([
-        ['title', title],
-        ['openapi-schema', `${specPath} ${model.name}`],
-        ['deprecated', model.deprecated === true],
-    ]);
-    return page(front, model.description);
+    return page(
+        frontmatter([
+            ['title', title],
+            ['openapi-schema', `${specPath} ${model.name}`],
+            ['deprecated', model.deprecated === true],
+        ]),
+    );
 }
 
 /**

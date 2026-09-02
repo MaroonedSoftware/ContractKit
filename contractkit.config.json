@@ -45,6 +45,23 @@
         "@contractkit/plugin-markdown": {
             "baseDir": "docs/",
             "output": "api-reference.md"
+        },
+        "@contractkit/plugin-docs": {
+            "baseDir": "docs/mintlify/",
+            "openapi": {
+                "info": {
+                    "title": "Homegrown API",
+                    "version": "1.0.0"
+                },
+                "servers": [{ "url": "https://api.joinhomegrown.com", "description": "Production" }],
+                "securitySchemes": {
+                    "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+                }
+            },
+            "docs": {
+                "theme": "mint",
+                "colors": { "primary": "#0D9373" }
+            }
         }
     }
 }

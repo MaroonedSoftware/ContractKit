@@ -37,7 +37,19 @@ describe('deriveTitle', () => {
         expect(deriveTitle(opOperation('get', { name: 'listActiveUsers' }), route)).toBe('List Active Users');
     });
 
-    it('falls back to the service method', () => {
+    it('falls back to the description, which titles better than a bare method name', () => {
+        expect(deriveTitle(opOperation('get', { description: 'list every user', service: 'users.findAll' }), route)).toBe('List Every User');
+    });
+
+    it('makes a third-person description imperative', () => {
+        expect(deriveTitle(opOperation('post', { description: 'creates a payment' }), route)).toBe('Create A Payment');
+    });
+
+    it('leaves a double-s verb alone', () => {
+        expect(deriveTitle(opOperation('post', { description: 'process a refund' }), route)).toBe('Process A Refund');
+    });
+
+    it('falls back to the service method when there is no description', () => {
         expect(deriveTitle(opOperation('get', { service: 'users.findAll' }), route)).toBe('Find All');
     });
 
@@ -49,10 +61,6 @@ describe('deriveTitle', () => {
 
     it('ignores path parameter segments in the fallback', () => {
         expect(deriveTitle(opOperation('patch', {}), opRoute('/users/{id}/roles', []))).toBe('Update users roles');
-    });
-
-    it('does not use the description, which becomes the page body', () => {
-        expect(deriveTitle(opOperation('get', { description: 'Returns every user' }), route)).toBe('List users');
     });
 
     it('yields just the verb for a root path', () => {
