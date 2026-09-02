@@ -108,6 +108,10 @@ building the plugin in code.
   lands, because every page's frontmatter points at it. Use `openapi.output` only to rename it
   within the docs folder.
 - **Only models an operation can reach get a page**, matching the schemas the spec contains.
+- **Keep the `markdown` output out of the Mintlify docs folder.** Mintlify parses every markdown
+  file under its `baseDir` as MDX, and the Markdown reference is GitHub-flavored: a description
+  containing something like `/documents/<id>/content` is valid there and a parse error in MDX. Give
+  the `markdown` target its own `baseDir`.
 - `includeInternal` is `false` by default, so `internal` operations are kept out of both the spec
   and the pages.
 

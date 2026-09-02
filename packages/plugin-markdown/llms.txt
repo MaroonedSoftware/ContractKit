@@ -1,62 +1,24 @@
 # @contractkit/plugin-markdown
 
-> ContractKit's Markdown generator. Emits a single human-readable API reference document from `.ck`
-> contract and operation files — models, fields, constraints, operations, and responses.
+> **Deprecated.** Superseded by `@contractkit/plugin-docs` and its `markdown` target. This package
+> is now a thin re-export and will be removed in a future major.
 
-Loaded by `@contractkit/cli` through `contractkit.config.json`. It consumes the AST produced by
-`@contractkit/core`. The smallest of the built-in plugins: one output file, four options.
-
-## Install
-
-```bash
-pnpm add -D @contractkit/cli @contractkit/plugin-markdown
-```
-
-## Configure
-
-`plugins` is an **object** keyed by package name, not an array.
+## Migrating
 
 ```json
 {
-    "rootDir": ".",
-    "patterns": ["contracts/**/*.ck"],
     "plugins": {
-        "@contractkit/plugin-markdown": {
-            "baseDir": "docs/",
-            "output": "api-reference.md"
+        "@contractkit/plugin-docs": {
+            "markdown": { "baseDir": "docs/" }
         }
     }
 }
 ```
 
-| Option | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `baseDir` | `string` | `rootDir` | Directory the output is written under |
-| `output` | `string` | `"api-reference.md"` | Output filename |
-| `includeInternal` | `boolean` | `false` | Document operations marked `internal` |
-
-## Programmatic use
-
-```typescript
-import { createMarkdownPlugin } from '@contractkit/plugin-markdown';
-
-const plugin = createMarkdownPlugin({ baseDir: 'docs/', output: 'api-reference.md' }, process.cwd());
-```
-
-Prefer the default export when loading through `contractkit.config.json`; the factory is for
-building the plugin in code.
-
-## Gotchas
-
-- One document for the whole project, not one per `.ck` file. `output` is a filename, not a template
-  — it does not accept `{filename}` or `{area}` placeholders the way the TypeScript plugin's paths do.
-- The output is generated. Write prose in `#` comments and descriptions inside the `.ck` files, where
-  it survives the next build; edits made directly to the emitted Markdown are overwritten.
-- `includeInternal` is `false` by default, so `internal` operations are omitted from a published doc.
+Every option keeps its name and meaning; the output is unchanged. See
+`packages/plugin-docs/llms.txt` for the full option table and the other targets.
 
 ## More
 
-- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-markdown/README.md
-- Configuration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/config.md
-- Writing descriptions and comments in `.ck`: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
-- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt
+- Migration notes: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-markdown/README.md
+- Replacement: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-docs/llms.txt

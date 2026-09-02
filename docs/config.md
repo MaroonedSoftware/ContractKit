@@ -61,14 +61,14 @@ Create `contractkit.config.json` in your project root. The CLI itself only handl
 
 Each plugin is its own npm package and is loaded by listing it under `"plugins"`. The value of each entry is passed to the plugin as `ctx.options`.
 
-| Package                          | Generates                                                          |
-| -------------------------------- | ------------------------------------------------------------------ |
-| `@contractkit/plugin-typescript` | Koa routers, TypeScript SDK clients, Zod schemas, plain TS types   |
-| `@contractkit/plugin-openapi`    | OpenAPI 3.1 YAML                                                   |
-| `@contractkit/plugin-markdown`   | Markdown API reference                                             |
-| `@contractkit/plugin-docs`       | Mintlify documentation site (MDX pages, `docs.json`, OpenAPI spec) |
-| `@contractkit/plugin-bruno`      | Bruno REST collection                                              |
-| `@contractkit/plugin-python`     | Python SDK client (Pydantic v2 + httpx)                            |
+| Package                          | Generates                                                        |
+| -------------------------------- | ---------------------------------------------------------------- |
+| `@contractkit/plugin-typescript` | Koa routers, TypeScript SDK clients, Zod schemas, plain TS types |
+| `@contractkit/plugin-openapi`    | Deprecated — re-exports the docs plugin's `openapi` target       |
+| `@contractkit/plugin-markdown`   | Deprecated — re-exports the docs plugin's `markdown` target      |
+| `@contractkit/plugin-docs`       | OpenAPI 3.1 YAML, a Markdown reference, and a Mintlify site      |
+| `@contractkit/plugin-bruno`      | Bruno REST collection                                            |
+| `@contractkit/plugin-python`     | Python SDK client (Pydantic v2 + httpx)                          |
 
 ### `@contractkit/plugin-typescript`
 
@@ -203,6 +203,10 @@ the pages themselves are frontmatter only.
 you want to keep goes in `docs`: its keys override the generated defaults, and under `navigation`
 your `tabs` (or `groups`) are kept with the generated API reference appended after them. Other
 `navigation` keys such as `global` pass through untouched.
+
+Keep the `markdown` target's output outside the Mintlify `baseDir`: Mintlify parses every markdown
+file under its docs root as MDX, and the Markdown reference is GitHub-flavored, so a description
+containing something like `/documents/<id>/content` becomes a parse error.
 
 Endpoint and model pages are both grouped by the source file's `area`. Models with an area become
 a nested subgroup inside `Models` and live under `<modelsDir>/<area>/`; models from files that

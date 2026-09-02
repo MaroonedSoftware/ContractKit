@@ -25,42 +25,50 @@
                 }
             }
         },
-        "@contractkit/plugin-openapi": {
-            "baseDir": "docs/api/",
-            "output": "openapi.yaml",
-            "info": {
-                "title": "Homegrown API",
-                "version": "1.0.0",
-                "description": "Homegrown API"
-            },
-            "servers": [
-                { "url": "https://api.joinhomegrown.com", "description": "Production" },
-                { "url": "https://localhost:3000", "description": "Local" }
-            ],
-            "security": [{ "bearerAuth": [] }],
-            "securitySchemes": {
-                "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
-            }
-        },
-        "@contractkit/plugin-markdown": {
-            "baseDir": "docs/",
-            "output": "api-reference.md"
-        },
         "@contractkit/plugin-docs": {
-            "baseDir": "docs/mintlify/",
             "openapi": {
+                "baseDir": "docs/api/",
+                "output": "openapi.yaml",
                 "info": {
                     "title": "Homegrown API",
-                    "version": "1.0.0"
+                    "version": "1.0.0",
+                    "description": "Homegrown API"
                 },
-                "servers": [{ "url": "https://api.joinhomegrown.com", "description": "Production" }],
+                "servers": [
+                    {
+                        "url": "https://api.joinhomegrown.com",
+                        "description": "Production"
+                    },
+                    {
+                        "url": "https://localhost:3000",
+                        "description": "Local"
+                    }
+                ],
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
                 "securitySchemes": {
-                    "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+                    "bearerAuth": {
+                        "type": "http",
+                        "scheme": "bearer",
+                        "bearerFormat": "JWT"
+                    }
                 }
             },
-            "docs": {
-                "theme": "mint",
-                "colors": { "primary": "#0D9373" }
+            "markdown": {
+                "baseDir": "docs/",
+                "output": "api-reference.md"
+            },
+            "mintlify": {
+                "baseDir": "docs/mintlify/",
+                "docs": {
+                    "theme": "mint",
+                    "colors": {
+                        "primary": "#0D9373"
+                    }
+                }
             }
         }
     }

@@ -176,9 +176,9 @@ All packages publish under the `@contractkit` npm scope.
 | [`@contractkit/core`](packages/contractkit)                    | Grammar, parser, AST, semantics, validation, plugin interface                                                                        |
 | [`@contractkit/plugin-typescript`](packages/plugin-typescript) | Koa routers, TypeScript SDK, Zod schemas, plain types, MCP tools                                                                     |
 | [`@contractkit/plugin-python`](packages/plugin-python)         | Python SDK (Pydantic v2 + httpx)                                                                                                     |
-| [`@contractkit/plugin-openapi`](packages/plugin-openapi)       | OpenAPI 3.1 YAML                                                                                                                     |
-| [`@contractkit/plugin-markdown`](packages/plugin-markdown)     | Markdown API reference                                                                                                               |
-| [`@contractkit/plugin-docs`](packages/plugin-docs)             | Mintlify documentation site (MDX pages, `docs.json`, OpenAPI spec)                                                                   |
+| [`@contractkit/plugin-openapi`](packages/plugin-openapi)       | Deprecated — re-exports the docs plugin's `openapi` target                                                                           |
+| [`@contractkit/plugin-markdown`](packages/plugin-markdown)     | Deprecated — re-exports the docs plugin's `markdown` target                                                                          |
+| [`@contractkit/plugin-docs`](packages/plugin-docs)             | Documentation outputs: OpenAPI 3.1 YAML, a Markdown reference, and a Mintlify site                                                   |
 | [`@contractkit/plugin-bruno`](packages/plugin-bruno)           | Bruno REST collection                                                                                                                |
 | [`@contractkit/openapi-to-ck`](packages/openapi-to-ck)         | OpenAPI YAML → `.ck`, for adopting an existing API                                                                                   |
 | [`@contractkit/explorer-ui`](packages/explorer-ui)             | HTML renderer behind the VS Code API explorer                                                                                        |

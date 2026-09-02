@@ -21,8 +21,6 @@ import {
 } from '@contractkit/core';
 import { createTypescriptPlugin } from '@contractkit/plugin-typescript';
 import { createPythonSdkPlugin } from '@contractkit/plugin-python';
-import { createOpenApiPlugin } from '@contractkit/plugin-openapi';
-import { createMarkdownPlugin } from '@contractkit/plugin-markdown';
 import { createBrunoPlugin } from '@contractkit/plugin-bruno';
 import { createDocsPlugin } from '@contractkit/plugin-docs';
 
@@ -100,7 +98,13 @@ function parseFixtures(diag: DiagnosticCollector): { contractRoots: ContractRoot
     return { contractRoots, opRoots };
 }
 
-/** The five plugins, configured to turn every sub-generator this batch touches on. */
+/**
+ * Every generator, configured to turn on each sub-generator this batch touches.
+ *
+ * The three documentation outputs are separate entries rather than one plugin with three targets
+ * on, because the snapshot directory is keyed by the name here. Keeping them apart preserves one
+ * reviewable tree per output format.
+ */
 function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
     return [
         {
@@ -124,8 +128,11 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
             ),
         },
         { name: 'python', plugin: createPythonSdkPlugin({ baseDir: 'pysdk' }, ROOT_DIR) },
-        { name: 'openapi', plugin: createOpenApiPlugin({ output: 'openapi.yaml', info: { title: 'Kitchen Sink', version: '1.0.0' } }, ROOT_DIR) },
-        { name: 'markdown', plugin: createMarkdownPlugin({ output: 'api-reference.md' }, ROOT_DIR) },
+        {
+            name: 'openapi',
+            plugin: createDocsPlugin({ openapi: { output: 'openapi.yaml', info: { title: 'Kitchen Sink', version: '1.0.0' } } }, ROOT_DIR),
+        },
+        { name: 'markdown', plugin: createDocsPlugin({ markdown: { output: 'api-reference.md' } }, ROOT_DIR) },
         { name: 'bruno', plugin: createBrunoPlugin({ output: 'bruno', randomExamples: false }, ROOT_DIR) },
         {
             name: 'docs',

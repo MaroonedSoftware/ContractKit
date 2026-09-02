@@ -106,6 +106,10 @@ is where your own prose goes if you take a page over.
 - **`index.mdx` is the only user-owned file.** It is emitted write-once, so it is never overwritten
   and never removed by orphan cleanup. Everything else is generated and will be rewritten.
 - **Only models an operation can reach get a page**, matching the schemas the spec contains.
+- **Keep the `markdown` output out of the Mintlify docs folder.** Mintlify parses every markdown
+  file under its `baseDir` as MDX, and the Markdown reference is GitHub-flavored: a description
+  containing something like `/documents/<id>/content` is valid there and a parse error in MDX. Give
+  the `markdown` target its own `baseDir`.
 - **A `baseDir` or `output` inside the `openapi` option does not move the spec out of the docs
   folder.** The plugin owns that path, because every page's frontmatter points at it.
 
