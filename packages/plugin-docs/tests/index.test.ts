@@ -7,15 +7,24 @@ import type { DocsPluginConfig } from '../src/target.js';
 const ROOT_DIR = '/project';
 
 /** In-memory `PluginContext`, keyed by rootDir-relative POSIX path. */
-function makeCtx(options: Record<string, unknown> = {}): PluginContext & { emitted: Map<string, string> } {
+function makeCtx(options: Record<string, unknown> = {}): PluginContext & {
+    emitted: Map<string, string>;
+    ifAbsent: Set<string>;
+} {
     const emitted = new Map<string, string>();
+    const ifAbsent = new Set<string>();
     return {
         rootDir: ROOT_DIR,
         options,
         cacheEnabled: false,
         cacheDir: '/tmp/ck-docs-test',
-        emitFile: (outPath, content) => emitted.set(outPath.replace(`${ROOT_DIR}/`, ''), content),
+        emitFile: (outPath, content, opts) => {
+            const rel = outPath.replace(`${ROOT_DIR}/`, '');
+            emitted.set(rel, content);
+            if (opts?.ifAbsent) ifAbsent.add(rel);
+        },
         emitted,
+        ifAbsent,
     };
 }
 
@@ -90,6 +99,8 @@ describe('emitted file set', () => {
             'docs/api-reference/endpoints/create-user.mdx',
             'docs/api-reference/endpoints/list-users.mdx',
             'docs/api-reference/models/user.mdx',
+            'docs/docs.json',
+            'docs/index.mdx',
             'docs/openapi.yaml',
         ]);
     });
@@ -125,6 +136,49 @@ describe('emitted file set', () => {
         const emitted = await run(plugin, { apiDir: 'reference', modelsDir: 'schemas' });
         expect([...emitted.keys()].sort()).toContain('docs/reference/endpoints/list-users.mdx');
         expect([...emitted.keys()].sort()).toContain('docs/schemas/user.mdx');
+    });
+});
+
+describe('docs.json', () => {
+    it('lists every emitted page and nothing else', async () => {
+        const emitted = await run(plugin);
+        const nav = JSON.parse(emitted.get('docs/docs.json')!).navigation as { tabs: { groups: { pages: string[] }[] }[] };
+        const listed = nav.tabs.flatMap(t => t.groups.flatMap(g => g.pages)).sort();
+        const pages = [...emitted.keys()]
+            .filter(k => k.endsWith('.mdx'))
+            .map(k => k.replace(/^docs\//, '').replace(/\.mdx$/, ''))
+            .sort();
+        expect(listed).toEqual(pages);
+    });
+
+    it('names the site from the OpenAPI title', async () => {
+        const emitted = await run(plugin, { openapi: { info: { title: 'Acme API', version: '1.0.0' } } });
+        expect(JSON.parse(emitted.get('docs/docs.json')!).name).toBe('Acme API');
+    });
+
+    it('drops the Models group when model pages are off', async () => {
+        const emitted = await run(plugin, { modelPages: false });
+        const nav = JSON.parse(emitted.get('docs/docs.json')!).navigation as { tabs: { groups: { group: string }[] }[] };
+        expect(nav.tabs[0]!.groups.map(g => g.group)).not.toContain('Models');
+    });
+});
+
+describe('index page', () => {
+    it('is written once and never overwritten', async () => {
+        const ctx = makeCtx();
+        await plugin.generateTargets!(inputs, ctx);
+        expect(ctx.ifAbsent.has('docs/index.mdx')).toBe(true);
+    });
+
+    it('is the only user-owned file — generated pages must stay in sync', async () => {
+        const ctx = makeCtx();
+        await plugin.generateTargets!(inputs, ctx);
+        expect([...ctx.ifAbsent]).toEqual(['docs/index.mdx']);
+    });
+
+    it('is titled with the site name', async () => {
+        const emitted = await run(plugin, { openapi: { info: { title: 'Acme API', version: '1.0.0' } } });
+        expect(emitted.get('docs/index.mdx')).toContain('title: "Acme API"');
     });
 });
 

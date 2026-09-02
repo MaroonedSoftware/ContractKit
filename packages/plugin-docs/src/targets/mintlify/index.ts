@@ -1,7 +1,8 @@
 import { resolve } from 'node:path';
 import { buildOpenApiDocument, toYaml } from '@contractkit/plugin-openapi';
 import { collectModels, groupEndpoints } from '../../naming.js';
-import { renderEndpointPage, renderModelPage } from './pages.js';
+import { renderEndpointPage, renderIndexPage, renderModelPage } from './pages.js';
+import { renderDocsJson, resolveSiteName } from './docs-json.js';
 import type { DocsPluginConfig, DocsTarget, GenerateInputs } from '../../target.js';
 import type { PluginContext } from '@contractkit/core';
 
@@ -71,19 +72,28 @@ const target: DocsTarget = {
 
         ctx.emitFile(resolve(layout.baseDir, layout.specFile), toYaml(spec));
 
-        for (const group of groupEndpoints(inputs.opRoots, config.includeInternal)) {
+        const groups = groupEndpoints(inputs.opRoots, config.includeInternal);
+        for (const group of groups) {
             for (const entry of group.endpoints) {
                 const path = resolve(layout.baseDir, layout.apiDir, group.slug, `${entry.slug}.mdx`);
                 ctx.emitFile(path, renderEndpointPage(entry, layout.specPath));
             }
         }
 
-        if (config.modelPages !== false) {
-            for (const entry of collectModels(inputs.contractRoots, schemaNames(spec))) {
-                const path = resolve(layout.baseDir, layout.modelsDir, `${entry.slug}.mdx`);
-                ctx.emitFile(path, renderModelPage(entry, layout.specPath));
-            }
+        const models = config.modelPages === false ? [] : collectModels(inputs.contractRoots, schemaNames(spec));
+        for (const entry of models) {
+            const path = resolve(layout.baseDir, layout.modelsDir, `${entry.slug}.mdx`);
+            ctx.emitFile(path, renderModelPage(entry, layout.specPath));
         }
+
+        // Written once and then owned by the user. `ifAbsent` keeps it out of the manifest, so
+        // it is never overwritten and never orphan-deleted.
+        ctx.emitFile(resolve(layout.baseDir, 'index.mdx'), renderIndexPage(resolveSiteName(config)), { ifAbsent: true });
+
+        ctx.emitFile(
+            resolve(layout.baseDir, 'docs.json'),
+            renderDocsJson({ config, apiDir: layout.apiDir, modelsDir: layout.modelsDir, groups, models, hasIndex: true }),
+        );
     },
 };
 
