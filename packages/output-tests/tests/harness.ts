@@ -46,7 +46,7 @@ export interface BuildResult {
     diagnostics: Diagnostic[];
 }
 
-export type PluginName = 'typescript' | 'python' | 'openapi' | 'markdown' | 'bruno' | 'docs';
+export type PluginName = 'typescript' | 'python' | 'openapi' | 'markdown' | 'bruno' | 'docs' | 'docusaurus';
 
 /**
  * Fake `PluginContext` capturing `emitFile` in memory, mirroring `makeCtx` in
@@ -101,8 +101,8 @@ function parseFixtures(diag: DiagnosticCollector): { contractRoots: ContractRoot
 /**
  * Every generator, configured to turn on each sub-generator this batch touches.
  *
- * The three documentation outputs are separate entries rather than one plugin with three targets
- * on, because the snapshot directory is keyed by the name here. Keeping them apart preserves one
+ * Each documentation output is a separate entry rather than one plugin with every target on,
+ * because the snapshot directory is keyed by the name here. Keeping them apart preserves one
  * reviewable tree per output format.
  */
 function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
@@ -138,6 +138,7 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
             name: 'docs',
             plugin: createDocsPlugin({ mintlify: { baseDir: 'docs', openapi: { info: { title: 'Kitchen Sink', version: '1.0.0' } } } }, ROOT_DIR),
         },
+        { name: 'docusaurus', plugin: createDocsPlugin({ docusaurus: { baseDir: 'docs' } }, ROOT_DIR) },
     ];
 }
 
