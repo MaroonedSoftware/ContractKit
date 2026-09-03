@@ -83,13 +83,22 @@ null, object, array). Each entry's key maps to a plugin by `name`.
 `server.framework` picks the HTTP framework the routers target: `koa` (the default) or `fastify`,
 with adapters in `src/server-framework-koa.ts` and `src/server-framework-fastify.ts`;
 `assertValidConfig` in `index.ts` rejects anything else by name. Every
-framework-specific string — the router declaration, the import line, path-param syntax, middleware
+framework-specific string — the router declaration, the import line, path-param syntax, guard
 calls, the request accessors, the container lookup, the status/header/type/body writes, and the whole
 `mcp.router.ts` template — comes from a `ServerFramework` (`src/server-framework.ts`, Koa's
 implementation in `src/server-framework-koa.ts`). Codegen keeps ownership of control flow, so a new
 framework is a new adapter rather than a change to `codegen-operation.ts`. The adapter also declares
 `handlerLocals`, the identifiers its handler signature binds, so a path parameter that would shadow
 one is renamed rather than emitted as a redeclaration.
+
+A route's guards and body declaration reach `routeOpen` as a `RouteMiddleware` (`policy`/`signature`
+are pre-rendered guard-call expressions; `bodyContentTypes` is the operation's raw, deduped MIME
+list) rather than a flat middleware array — Koa and Fastify disagree on what a route *does* with a
+declared body (a `bodyParserMiddleware` call vs. a literal `config.body`), so only the adapter that
+needs to render it sees it. A framework whose routes are written inside the router's own function
+body rather than as top-level statements against it — Fastify's `FastifyPluginAsync`, unlike Koa's
+bare `ServerKitRouter()` value — sets `routerWrapsRoutes: true` and returns the closing line(s) from
+`routerClose()`; `generateOp` indents that framework's routes one level and appends the close.
 
 `zod: true` makes `output.types` emit Zod schemas (via `generateContract`) instead of plain
 TypeScript interfaces. Path templates support `{filename}`, `{dir}`, `{area}`, `{subarea}`,
