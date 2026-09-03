@@ -3,8 +3,8 @@ import { FASTIFY_SERVER_FRAMEWORK as fastify } from '../src/server-framework-fas
 
 /**
  * Pinned method by method, the way the Koa adapter is. These strings are the contract with
- * `@maroonedsoftware/fastify`, so a change to any of them should fail here, naming the piece,
- * rather than only as a snapshot diff in another package.
+ * `@maroonedsoftware/fastify`'s native-Fastify API (0.3+), so a change to any of them should fail
+ * here, naming the piece, rather than only as a snapshot diff in another package.
  */
 describe('FASTIFY_SERVER_FRAMEWORK', () => {
     it('is named fastify', () => {
@@ -12,23 +12,36 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
     });
 
     describe('imports', () => {
-        it('emits one line naming every symbol the body uses', () => {
+        it('always imports the FastifyPluginAsync type, and every guard the body uses', () => {
             expect(fastify.imports(() => true)).toEqual([
-                "import { ServerKitRouter, bodyParserMiddleware, requirePolicy, requireSignature, requestMediaType } from '@maroonedsoftware/fastify';",
+                "import type { FastifyPluginAsync } from 'fastify';",
+                "import { requirePolicy, requireSignature } from '@maroonedsoftware/fastify';",
             ]);
         });
 
-        it('narrows to the symbols the body actually references', () => {
-            expect(fastify.imports(s => s === 'requestMediaType')).toEqual(["import { requestMediaType } from '@maroonedsoftware/fastify';"]);
+        it('narrows the runtime import to the guards the body actually references', () => {
+            expect(fastify.imports(s => s === 'requirePolicy')).toEqual([
+                "import type { FastifyPluginAsync } from 'fastify';",
+                "import { requirePolicy } from '@maroonedsoftware/fastify';",
+            ]);
         });
 
-        it('emits nothing when the body references none of them', () => {
-            expect(fastify.imports(() => false)).toEqual([]);
+        it('still imports the type when the body uses no guard at all', () => {
+            expect(fastify.imports(() => false)).toEqual(["import type { FastifyPluginAsync } from 'fastify';"]);
         });
     });
 
-    it('declares the router', () => {
-        expect(fastify.routerDeclaration('UsersRouter')).toBe('export const UsersRouter = ServerKitRouter();');
+    it('names the router with a Routes suffix, matching the plugin idiom', () => {
+        expect(fastify.routerName('Billing')).toBe('BillingRoutes');
+    });
+
+    it('declares the router as a FastifyPluginAsync, opening its body', () => {
+        expect(fastify.routerDeclaration('UsersRoutes')).toBe('export const UsersRoutes: FastifyPluginAsync = async app => {');
+    });
+
+    it('wraps its routes inside the plugin body and closes it', () => {
+        expect(fastify.routerWrapsRoutes).toBe(true);
+        expect(fastify.routerClose()).toEqual(['};']);
     });
 
     it('renders a path parameter with a colon', () => {
@@ -40,13 +53,41 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
     });
 
     describe('routeOpen', () => {
-        it('omits the middleware list when there is none', () => {
-            expect(fastify.routeOpen('UsersRouter', 'get', '/users', [])).toBe("UsersRouter.get('/users', async (request, reply) => {");
+        it('registers on the plugin parameter, ignoring the router name it is given', () => {
+            expect(fastify.routeOpen('UsersRoutes', 'get', '/users', {})).toBe("app.get('/users', async (request, reply) => {");
         });
 
-        it('places the middleware between the path and the handler', () => {
-            expect(fastify.routeOpen('UsersRouter', 'post', '/users', ['requirePolicy()', "bodyParserMiddleware(['json'])"])).toBe(
-                "UsersRouter.post('/users', requirePolicy(), bodyParserMiddleware(['json']), async (request, reply) => {",
+        it('omits the options object entirely when there are no guards and no body', () => {
+            expect(fastify.routeOpen('UsersRoutes', 'delete', '/users/:id', {})).toBe("app.delete('/users/:id', async (request, reply) => {");
+        });
+
+        it('lists policy and signature guards in preHandler, in order, with no config key', () => {
+            expect(fastify.routeOpen('UsersRoutes', 'get', '/users', { policy: 'requirePolicy()', signature: "requireSignature('slack')" })).toBe(
+                "app.get('/users', { preHandler: [requirePolicy(), requireSignature('slack')] }, async (request, reply) => {",
+            );
+        });
+
+        it('declares the body allow-list as config.body, literally, not as a preHandler entry', () => {
+            expect(fastify.routeOpen('UsersRoutes', 'post', '/users', { bodyContentTypes: ['application/json'] })).toBe(
+                "app.post('/users', { config: { body: ['application/json'] } }, async (request, reply) => {",
+            );
+        });
+
+        it('keeps every declared MIME literally, in source order — Fastify gates on the raw Content-Type, not a parser token', () => {
+            expect(fastify.routeOpen('UsersRoutes', 'put', '/users', { bodyContentTypes: ['application/json', 'multipart/form-data'] })).toBe(
+                "app.put('/users', { config: { body: ['application/json', 'multipart/form-data'] } }, async (request, reply) => {",
+            );
+        });
+
+        it('combines config and preHandler in one options object when both apply', () => {
+            expect(
+                fastify.routeOpen('UsersRoutes', 'post', '/users', {
+                    policy: 'requirePolicy()',
+                    bodyContentTypes: ['application/json'],
+                    signature: "requireSignature('slack')",
+                }),
+            ).toBe(
+                "app.post('/users', { config: { body: ['application/json'] }, preHandler: [requirePolicy(), requireSignature('slack')] }, async (request, reply) => {",
             );
         });
     });
@@ -55,10 +96,9 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
         expect(fastify.routeClose()).toEqual(['});']);
     });
 
-    it('renders the route middleware factories, which take the same arguments as Koa\'s', () => {
+    it("renders the route guard factories, which take the same arguments as Koa's", () => {
         expect(fastify.middleware.policy('')).toBe('requirePolicy()');
         expect(fastify.middleware.policy("{ policy: 'admin' }")).toBe("requirePolicy({ policy: 'admin' })");
-        expect(fastify.middleware.bodyParser("'json', 'multipart'")).toBe("bodyParserMiddleware(['json', 'multipart'])");
         expect(fastify.middleware.signature("'slack'")).toBe("requireSignature('slack')");
     });
 
@@ -67,10 +107,12 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
             params: 'request.params',
             query: 'request.query',
             headers: 'request.headers',
-            parsedBody: 'request.parsedBody',
-            // A call rather than a property: the raw header carries `; charset=…`, which matches no
-            // declared MIME literal.
-            contentType: 'requestMediaType(request)',
+            // Fastify's own request.body — bodyParserPlugin replaces the framework's content-type
+            // parsers outright, so there is no separate `parsedBody` side channel any more.
+            parsedBody: 'request.body',
+            // Inlined rather than a runtime call: `requestMediaType` is gone from the package's public
+            // surface. The raw header carries `; charset=…`, which matches no declared MIME literal.
+            contentType: "(request.headers['content-type'] ?? '').split(';', 1)[0]!.trim()",
         });
     });
 
@@ -109,31 +151,37 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
     describe('mcpRouter', () => {
         const out = fastify.mcpRouter({ path: '/mcp' });
 
-        it('mounts the dispatcher at the given path', () => {
-            expect(fastify.mcpRouter({ path: '/tools' })).toContain("router.post('/tools',");
+        it('mounts the dispatcher at the given path as a route plugin, not a function taking a router', () => {
+            expect(fastify.mcpRouter({ path: '/tools' })).toContain("app.post(\n        '/tools',");
             expect(out).toContain("from '@maroonedsoftware/fastify'");
             expect(out).toContain('const dispatcher = request.container.get(McpDispatcher);');
+            expect(out).toContain('export const mountMcp: FastifyPluginAsync = async app => {');
         });
 
-        it('names the exported router type rather than inferring it', () => {
-            expect(out).toContain('export function mountMcp(router: ServerKitRouterType): void {');
-            // And therefore never imports the factory value, which `noUnusedLocals` would reject.
-            expect(out).toContain("import { type ServerKitRouterType, bodyParserMiddleware, requireSignature, requestHeader } from '@maroonedsoftware/fastify';");
+        it('declares the body allow-list and the signature guard the same way a generated route would', () => {
+            expect(out).toContain("config: { body: ['application/json'] }, preHandler: [requireSignature('mcp', { policy: MCP_AUTH_POLICY })] }");
         });
 
-        it('hijacks the reply for a stateful session, which is Fastify\'s ctx.respond = false', () => {
+        it('never references ServerKitRouter or requestHeader — neither exists on the native-Fastify API', () => {
+            expect(out).not.toContain('ServerKitRouter');
+            expect(out).not.toContain('requestHeader');
+        });
+
+        it("hijacks the reply for a stateful session, which is Fastify's ctx.respond = false", () => {
             expect(out).toContain('reply.hijack();');
             expect(out).toContain('req: request.raw,');
             expect(out).toContain('res: reply.raw,');
         });
 
-        it('reads the parsed body, not Fastify\'s own request.body', () => {
-            expect(out).toContain('body: request.parsedBody,');
-            expect(out).not.toContain('request.body,');
+        it("reads Fastify's own request.body, not a parsedBody side channel", () => {
+            expect(out).toContain('body: request.body,');
+            expect(out).not.toContain('request.parsedBody');
         });
 
-        it('passes undefined rather than the empty string for an absent session id', () => {
-            expect(out).toContain("sessionId: requestHeader(request, 'mcp-session-id') || undefined,");
+        it('takes the first value of a possibly-repeated session-id header, undefined when absent', () => {
+            expect(out).toContain("sessionId: firstHeader(request.headers['mcp-session-id']),");
+            expect(out).toContain('function firstHeader(value: string | string[] | undefined): string | undefined {');
+            expect(out).toContain('return Array.isArray(value) ? value[0] : value;');
         });
 
         it('answers a notification with a bodyless 202', () => {
@@ -142,7 +190,7 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
         });
 
         it('escapes the backticks in its own doc comment rather than closing the template', () => {
-            expect(out).toContain('Bind `registerMcpTools` to the `McpToolHandlerMap` token.');
+            expect(out).toContain('bind `registerMcpTools` to the `McpToolHandlerMap` token.');
         });
     });
 });

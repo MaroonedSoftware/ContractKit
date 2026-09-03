@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateOp } from '../src/codegen-operation.js';
-import type { ServerFramework } from '../src/server-framework.js';
+import type { RouteMiddleware, ServerFramework } from '../src/server-framework.js';
 import { FASTIFY_SERVER_FRAMEWORK } from '../src/server-framework-fastify.js';
 import { scalarType, refType, opParam, opRequest, opMultiRequest, opResponse, opResponseMulti, opOperation, opRoute, opRoot } from './helpers.js';
 
@@ -10,18 +10,30 @@ import { scalarType, refType, opParam, opRequest, opMultiRequest, opResponse, op
  * would survive this substitution, and a `toContain` test against the Koa output never notices,
  * because the default adapter puts the very same string there.
  */
+function stubRouteOpen(routerName: string, method: string, path: string, guards: RouteMiddleware): string {
+    const parts: string[] = [];
+    if (guards.policy) parts.push(guards.policy);
+    if (guards.bodyContentTypes && guards.bodyContentTypes.length > 0) {
+        parts.push(`stubBody(${guards.bodyContentTypes.map(t => `'${t}'`).join(', ')})`);
+    }
+    if (guards.signature) parts.push(guards.signature);
+    return `${routerName}.route('${method}', '${path}', [${parts.join(', ')}], async (rq, rs) => {`;
+}
+
 const STUB: ServerFramework = {
     // The registry's key type admits only shipped frameworks; the adapter under test is a fake.
     name: 'koa',
     imports: uses => (uses('StubRouter') ? ["import { StubRouter } from '@stub/http';"] : []),
+    routerName: baseName => `${baseName}Router`,
     routerDeclaration: routerName => `export const ${routerName} = StubRouter();`,
+    routerWrapsRoutes: false,
+    routerClose: () => [],
     pathParam: identifier => `<${identifier}>`,
     handlerLocals: ['rq', 'rs'],
-    routeOpen: (routerName, method, path, middlewares) => `${routerName}.route('${method}', '${path}', [${middlewares.join(', ')}], async (rq, rs) => {`,
+    routeOpen: stubRouteOpen,
     routeClose: () => ['}, END);'],
     middleware: {
         policy: args => `stubPolicy(${args})`,
-        bodyParser: tokens => `stubBody(${tokens})`,
         signature: args => `stubSignature(${args})`,
     },
     request: {
@@ -48,35 +60,35 @@ function everyBranchRoot() {
         opRoute(
             '/payments/{paymentId}',
             [
-            // Path params + query + headers + a single JSON body, with policy and signature middleware.
-            opOperation('post', {
-                request: opRequest('Payment'),
-                query: [opParam('limit', scalarType('int'))],
-                headers: [opParam('x-tenant', scalarType('string'))],
-                signature: 'stripe',
-                responses: [opResponse(201, 'Payment')],
-            }),
-            // Several request MIMEs with different shapes — the content-type switch.
-            opOperation('put', {
-                request: opMultiRequest([
-                    ['application/json', 'Payment'],
-                    ['multipart/form-data', 'Receipt'],
-                ]),
-                responses: [opResponse(200, 'Payment')],
-            }),
-            // No emitted body at all — the bodyless 204 path.
-            opOperation('delete', { responses: [] }),
-            // Several emitted statuses, one carrying response headers — the status switch.
-            opOperation('patch', {
-                responses: [
-                    opResponseMulti(200, [{ contentType: 'application/json', bodyType: 'Payment' }], {
-                        headers: [{ name: 'etag', optional: false, type: scalarType('string') }],
-                    }),
-                    opResponseMulti(202, [{ contentType: 'application/json', bodyType: refType('Payment') }], {
-                        headers: [{ name: 'retry-after', optional: true, type: scalarType('string') }],
-                    }),
-                ],
-            }),
+                // Path params + query + headers + a single JSON body, with policy and signature middleware.
+                opOperation('post', {
+                    request: opRequest('Payment'),
+                    query: [opParam('limit', scalarType('int'))],
+                    headers: [opParam('x-tenant', scalarType('string'))],
+                    signature: 'stripe',
+                    responses: [opResponse(201, 'Payment')],
+                }),
+                // Several request MIMEs with different shapes — the content-type switch.
+                opOperation('put', {
+                    request: opMultiRequest([
+                        ['application/json', 'Payment'],
+                        ['multipart/form-data', 'Receipt'],
+                    ]),
+                    responses: [opResponse(200, 'Payment')],
+                }),
+                // No emitted body at all — the bodyless 204 path.
+                opOperation('delete', { responses: [] }),
+                // Several emitted statuses, one carrying response headers — the status switch.
+                opOperation('patch', {
+                    responses: [
+                        opResponseMulti(200, [{ contentType: 'application/json', bodyType: 'Payment' }], {
+                            headers: [{ name: 'etag', optional: false, type: scalarType('string') }],
+                        }),
+                        opResponseMulti(202, [{ contentType: 'application/json', bodyType: refType('Payment') }], {
+                            headers: [{ name: 'retry-after', optional: true, type: scalarType('string') }],
+                        }),
+                    ],
+                }),
             ],
             [opParam('paymentId', scalarType('uuid'))],
         ),
@@ -102,7 +114,9 @@ describe('generateOp — framework seam', () => {
     });
 
     it('renders the route line, its path params and its middleware through the adapter', () => {
-        expect(output).toContain("UsersRouter.route('post', '/payments/<paymentId>', [stubPolicy(), stubBody('json'), stubSignature('stripe')], async (rq, rs) => {");
+        expect(output).toContain(
+            "UsersRouter.route('post', '/payments/<paymentId>', [stubPolicy(), stubBody('application/json'), stubSignature('stripe')], async (rq, rs) => {",
+        );
     });
 
     it('reads params, query, headers and the body through the adapter', () => {
@@ -122,10 +136,12 @@ describe('generateOp — framework seam', () => {
         expect(output).toContain("rs.setMedia('application/json');");
         expect(output).toContain('return rs.deliver(result);');
         expect(output).toContain('rs.putHeader(\'etag\', String(result.headers["etag"]));');
-        expect(output).toContain('if (result.headers["retryAfter"] !== undefined) rs.putHeader(\'retry-after\', String(result.headers["retryAfter"]));');
+        expect(output).toContain(
+            'if (result.headers["retryAfter"] !== undefined) rs.putHeader(\'retry-after\', String(result.headers["retryAfter"]));',
+        );
     });
 
-    it('gives a bodyless response the adapter\'s terminal statement', () => {
+    it("gives a bodyless response the adapter's terminal statement", () => {
         // Koa needs none, so the generator only emits one because the adapter asked for it.
         expect(output).toContain('rs.setStatus(204);');
         expect(output).toContain('return rs.finish();');
@@ -144,23 +160,35 @@ describe('generateOp — framework seam', () => {
 describe('generateOp — Fastify', () => {
     const output = generateOp(everyBranchRoot(), { framework: FASTIFY_SERVER_FRAMEWORK });
 
-    it('opens each handler with the Fastify signature', () => {
-        expect(output).toContain("UsersRouter.post('/payments/:paymentId', requirePolicy(), bodyParserMiddleware(['json']), requireSignature('stripe'), async (request, reply) => {");
-        expect(output).not.toMatch(/\bctx\b/);
+    it('declares the router as a FastifyPluginAsync named with a Routes suffix, and closes its body', () => {
+        expect(output).toContain('export const UsersRoutes: FastifyPluginAsync = async app => {');
+        expect(output.trimEnd().endsWith('};')).toBe(true);
     });
 
-    it('imports the runtime helper only because the multi-MIME switch uses it', () => {
+    it('opens each handler on the plugin parameter, with guards in preHandler and the body in config', () => {
         expect(output).toContain(
-            "import { ServerKitRouter, bodyParserMiddleware, requirePolicy, requireSignature, requestMediaType } from '@maroonedsoftware/fastify';",
+            "app.post('/payments/:paymentId', { config: { body: ['application/json'] }, preHandler: [requirePolicy(), requireSignature('stripe')] }, async (request, reply) => {",
         );
-        expect(output).toContain('switch (requestMediaType(request)) {');
+        expect(output).not.toMatch(/\bctx\b/);
+        expect(output).not.toContain('UsersRouter');
+        expect(output).not.toContain('ServerKitRouter');
+    });
+
+    it('imports the type unconditionally and the guards only because the body uses them', () => {
+        expect(output).toContain("import type { FastifyPluginAsync } from 'fastify';");
+        expect(output).toContain("import { requirePolicy, requireSignature } from '@maroonedsoftware/fastify';");
+    });
+
+    it('strips the content-type header inline rather than calling a runtime helper', () => {
+        expect(output).toContain("switch ((request.headers['content-type'] ?? '').split(';', 1)[0]!.trim()) {");
+        expect(output).not.toContain('requestMediaType');
     });
 
     it('reads the request through the request object', () => {
         expect(output).toContain('request.params');
         expect(output).toContain('request.query');
         expect(output).toContain('request.headers');
-        expect(output).toContain('await parseAndValidate(request.parsedBody,');
+        expect(output).toContain('await parseAndValidate(request.body,');
         expect(output).toContain('request.container.get(UsersService)');
     });
 
