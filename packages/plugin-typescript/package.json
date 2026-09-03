@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-typescript",
-    "version": "0.36.0",
+    "version": "0.37.0",
     "description": "ContractKit built-in plugin: TypeScript codegen (SDK clients, Koa or Fastify routers, Zod schemas, plain types)",
     "license": "MIT",
     "author": {
