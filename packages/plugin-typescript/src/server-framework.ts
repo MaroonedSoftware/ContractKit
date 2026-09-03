@@ -14,6 +14,26 @@ export type ServerFrameworkName = (typeof SERVER_FRAMEWORK_NAMES)[number];
 export const DEFAULT_SERVER_FRAMEWORK_NAME: ServerFrameworkName = 'koa';
 
 /**
+ * Per-route guards and body declaration, reduced to what {@link ServerFramework.routeOpen} needs.
+ * `policy` and `signature` are already-rendered call expressions, built by the generator through
+ * {@link ServerFramework.middleware}, because both frameworks spell a guard as a call in a list —
+ * only the list's shape differs. `bodyContentTypes` stays raw MIME strings rather than a rendered
+ * call: Koa collapses them into `bodyParserMiddleware` tokens as another guard, while Fastify
+ * declares them literally as `config.body`, data a route reads rather than a hook it runs.
+ */
+export interface RouteMiddleware {
+    /** `requirePolicy(...)` call expression, or undefined when the operation declares no security. */
+    policy?: string;
+    /**
+     * Request body MIME types the operation declares, in source order and deduped by exact string.
+     * Undefined (or empty) when the operation has no body.
+     */
+    bodyContentTypes?: readonly string[];
+    /** `requireSignature(...)` call expression, or undefined when the operation declares no signature. */
+    signature?: string;
+}
+
+/**
  * Every framework-specific string the router and MCP router generators emit.
  *
  * Granularity is one statement (or one fragment) per method, so the shared codegen keeps ownership
@@ -33,8 +53,26 @@ export interface ServerFramework {
      */
     imports(uses: (symbol: string) => boolean): string[];
 
-    /** The module-level router value every handler attaches to. */
+    /** The exported router/plugin constant name for a file's base name, e.g. `Billing` → `BillingRouter` (Koa) or `BillingRoutes` (Fastify). */
+    routerName(baseName: string): string;
+
+    /**
+     * Opening line of the router declaration. For a framework whose routes are written inside a
+     * function body — Fastify's plugin — this ends with the opening brace, paired with
+     * {@link routerClose}; for one whose routes are top-level statements against an exported value —
+     * Koa's router — it is the whole declaration.
+     */
     routerDeclaration(routerName: string): string;
+
+    /**
+     * Whether {@link routerDeclaration} opens a block that every route is written inside, rather than
+     * a bare value routes are called against. When true, the generator indents each route one level
+     * and appends {@link routerClose} after the last one.
+     */
+    readonly routerWrapsRoutes: boolean;
+
+    /** Lines closing the block {@link routerDeclaration} opened. Empty when {@link routerWrapsRoutes} is false. */
+    routerClose(): string[];
 
     /** Placeholder syntax for one path parameter, given a name already mapped to a valid identifier. */
     pathParam(identifier: string): string;
@@ -47,16 +85,26 @@ export interface ServerFramework {
      */
     readonly handlerLocals: readonly string[];
 
-    /** Opening line of a handler, including its middleware and the handler function's parameters. */
-    routeOpen(routerName: string, method: string, path: string, middlewares: readonly string[]): string;
+    /**
+     * Opening line of a handler, including its guards and the handler function's parameters.
+     *
+     * `routerName` is the value in scope for a framework whose routes are top-level statements
+     * against it (Koa); a framework whose routes are written inside the router's own function body
+     * (Fastify) ignores it and calls its own parameter instead.
+     */
+    routeOpen(routerName: string, method: string, path: string, guards: RouteMiddleware): string;
 
     /** Lines that close a handler opened by {@link routeOpen}. */
     routeClose(): string[];
 
-    /** Route middleware factory calls, rendered as expressions for {@link routeOpen}. */
+    /**
+     * Route guard factory calls, rendered as expressions for {@link RouteMiddleware.policy} and
+     * {@link RouteMiddleware.signature}. Body parsing has no entry here: Koa and Fastify disagree on
+     * what a route does with the declared MIME types, so {@link routeOpen} renders
+     * {@link RouteMiddleware.bodyContentTypes} itself instead of going through a shared factory.
+     */
     readonly middleware: {
         policy(args: string): string;
-        bodyParser(tokensExpr: string): string;
         signature(args: string): string;
     };
 
@@ -65,7 +113,7 @@ export interface ServerFramework {
         params: string;
         query: string;
         headers: string;
-        /** The body already parsed by the body-parser middleware. */
+        /** The body already parsed by the body parser. */
         parsedBody: string;
         /**
          * The request's media type with any parameters stripped. It is matched against declared MIME

@@ -69,7 +69,7 @@ declare module '@maroonedsoftware/koa' {
     export function requireSignature(name: string, opts?: any): RouteHandler;
 }
 
-declare module '@maroonedsoftware/fastify' {
+declare module 'fastify' {
     /**
      * Both parameters are typed for the same reason the Koa stub types its one: without a contextual
      * type every emitted `async (request, reply) => …` arrow reports two implicit-any parameters,
@@ -77,20 +77,37 @@ declare module '@maroonedsoftware/fastify' {
      * so `return reply.send(...)` is assignable wherever the generator puts it.
      */
     type RouteHandler = (request: any, reply: any) => any;
-    export interface ServerKitRouterType {
-        get(path: string, ...handlers: RouteHandler[]): this;
-        post(path: string, ...handlers: RouteHandler[]): this;
-        put(path: string, ...handlers: RouteHandler[]): this;
-        patch(path: string, ...handlers: RouteHandler[]): this;
-        delete(path: string, ...handlers: RouteHandler[]): this;
+    /** What a route's `preHandler` entries look like — `requirePolicy()` and `requireSignature(...)`. */
+    type RouteGuard = (request: any, ...rest: any[]) => any;
+    export interface FastifyRouteOptions {
+        config?: { body?: string[] };
+        preHandler?: RouteGuard[];
+        [key: string]: any;
     }
-    export function ServerKitRouter(): ServerKitRouterType;
-    export function bodyParserMiddleware(kinds: string[]): RouteHandler;
-    export function requirePolicy(options?: { policy?: string | false }): RouteHandler;
-    export function requireSignature(optionsKey: string, opts?: any): RouteHandler;
-    /** Declared as returning `string` so the generated `switch` compares like with like. */
-    export function requestMediaType(request: any): string;
-    export function requestHeader(request: any, name: string): string;
+    /**
+     * Two overloads per method — with and without the `{ config, preHandler }` options object —
+     * because a route with neither a body allow-list nor a guard omits it entirely.
+     */
+    export interface FastifyInstance {
+        get(path: string, handler: RouteHandler): this;
+        get(path: string, options: FastifyRouteOptions, handler: RouteHandler): this;
+        post(path: string, handler: RouteHandler): this;
+        post(path: string, options: FastifyRouteOptions, handler: RouteHandler): this;
+        put(path: string, handler: RouteHandler): this;
+        put(path: string, options: FastifyRouteOptions, handler: RouteHandler): this;
+        patch(path: string, handler: RouteHandler): this;
+        patch(path: string, options: FastifyRouteOptions, handler: RouteHandler): this;
+        delete(path: string, handler: RouteHandler): this;
+        delete(path: string, options: FastifyRouteOptions, handler: RouteHandler): this;
+    }
+    export type FastifyPluginAsync = (app: FastifyInstance) => Promise<void>;
+}
+
+declare module '@maroonedsoftware/fastify' {
+    /** What a route's `preHandler` entries look like — matches the `fastify` stub's own `RouteGuard`. */
+    type RouteGuard = (request: any, ...rest: any[]) => any;
+    export function requirePolicy(options?: { policy?: string | false }): RouteGuard;
+    export function requireSignature(optionsKey: string, opts?: any): RouteGuard;
 }
 
 declare module '@maroonedsoftware/zod' {

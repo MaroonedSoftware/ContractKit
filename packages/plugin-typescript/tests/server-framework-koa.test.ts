@@ -27,8 +27,17 @@ describe('KOA_SERVER_FRAMEWORK', () => {
         });
     });
 
+    it('names the router with a Router suffix', () => {
+        expect(koa.routerName('Billing')).toBe('BillingRouter');
+    });
+
     it('declares the router', () => {
         expect(koa.routerDeclaration('UsersRouter')).toBe('export const UsersRouter = ServerKitRouter();');
+    });
+
+    it('does not wrap its routes in a block — they are top-level statements against the router', () => {
+        expect(koa.routerWrapsRoutes).toBe(false);
+        expect(koa.routerClose()).toEqual([]);
     });
 
     it('renders a path parameter with a colon', () => {
@@ -36,13 +45,35 @@ describe('KOA_SERVER_FRAMEWORK', () => {
     });
 
     describe('routeOpen', () => {
-        it('omits the middleware list when there is none', () => {
-            expect(koa.routeOpen('UsersRouter', 'get', '/users', [])).toBe("UsersRouter.get('/users', async ctx => {");
+        it('omits the middleware list when there are no guards', () => {
+            expect(koa.routeOpen('UsersRouter', 'get', '/users', {})).toBe("UsersRouter.get('/users', async ctx => {");
         });
 
-        it('places the middleware between the path and the handler', () => {
-            expect(koa.routeOpen('UsersRouter', 'post', '/users', ['requirePolicy()', "bodyParserMiddleware(['json'])"])).toBe(
-                "UsersRouter.post('/users', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {",
+        it('places policy and signature guards between the path and the handler', () => {
+            expect(koa.routeOpen('UsersRouter', 'post', '/users', { policy: 'requirePolicy()', signature: "requireSignature('slack')" })).toBe(
+                "UsersRouter.post('/users', requirePolicy(), requireSignature('slack'), async ctx => {",
+            );
+        });
+
+        it('renders the body content types as a bodyParserMiddleware call, between policy and signature', () => {
+            expect(
+                koa.routeOpen('UsersRouter', 'post', '/users', {
+                    policy: 'requirePolicy()',
+                    bodyContentTypes: ['application/json'],
+                    signature: "requireSignature('slack')",
+                }),
+            ).toBe("UsersRouter.post('/users', requirePolicy(), bodyParserMiddleware(['json']), requireSignature('slack'), async ctx => {");
+        });
+
+        it('dedupes several MIME types down to their shared parser token', () => {
+            expect(koa.routeOpen('UsersRouter', 'post', '/users', { bodyContentTypes: ['application/json', 'application/vnd.api+json'] })).toBe(
+                "UsersRouter.post('/users', bodyParserMiddleware(['json']), async ctx => {",
+            );
+        });
+
+        it('keeps distinct tokens for MIME types that parse differently', () => {
+            expect(koa.routeOpen('UsersRouter', 'post', '/users', { bodyContentTypes: ['application/json', 'multipart/form-data'] })).toBe(
+                "UsersRouter.post('/users', bodyParserMiddleware(['json', 'multipart']), async ctx => {",
             );
         });
     });
@@ -51,10 +82,9 @@ describe('KOA_SERVER_FRAMEWORK', () => {
         expect(koa.routeClose()).toEqual(['});']);
     });
 
-    it('renders the route middleware factories', () => {
+    it('renders the route guard factories', () => {
         expect(koa.middleware.policy('')).toBe('requirePolicy()');
         expect(koa.middleware.policy("{ policy: 'admin' }")).toBe("requirePolicy({ policy: 'admin' })");
-        expect(koa.middleware.bodyParser("'json', 'multipart'")).toBe("bodyParserMiddleware(['json', 'multipart'])");
         expect(koa.middleware.signature("'slack'")).toBe("requireSignature('slack')");
     });
 

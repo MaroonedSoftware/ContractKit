@@ -9,19 +9,12 @@ import type {
     ParamSource,
     ObjectMode,
 } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, classifyContentType, emittedResponses, PATH_PARAM_RE_G, toIdentifier } from '@contractkit/core';
-import {
-    renderType,
-    renderInputType,
-    renderQueryType,
-    applyFieldModifiers,
-    pascalToDotCase,
-    modeToWrapper,
-} from './codegen-contract.js';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses, PATH_PARAM_RE_G, toIdentifier } from '@contractkit/core';
+import { renderType, renderInputType, renderQueryType, applyFieldModifiers, pascalToDotCase, modeToWrapper } from './codegen-contract.js';
 import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'path';
-import type { ServerFramework } from './server-framework.js';
+import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 
 /** Which request-side object a validation block reads from. Names the variable the block declares. */
@@ -53,30 +46,6 @@ function bindPathParams(nodes: readonly { name: string }[], handlerLocals: reado
         bindings.set(node.name, local);
     }
     return bindings;
-}
-
-// ─── Content-type helpers ──────────────────────────────────────────────────
-
-/**
- * Map a request MIME type to the ServerKit parser token used in middleware. The tokens are the keys
- * of the parser map in `@maroonedsoftware/servercore`, so they are the same whichever HTTP framework
- * the router targets.
- */
-function bodyParserToken(contentType: string): string {
-    switch (classifyContentType(contentType)) {
-        case 'urlencoded':
-            return 'urlencoded';
-        case 'multipart':
-            return 'multipart';
-        case 'text':
-            return 'text';
-        case 'binary':
-            // There is no native binary token; fall back to text so the body is still readable as a
-            // string. Services handling binary uploads should switch to multipart/form-data.
-            return 'text';
-        default:
-            return 'json';
-    }
 }
 
 /**
@@ -192,7 +161,8 @@ export interface OpCodegenOptions {
     modelsWithTransform?: Set<string>;
     /**
      * Which HTTP framework the emitted router targets. Every framework-specific string in the output
-     * comes from here. Defaults to Koa, the only framework shipped today.
+     * comes from here. Defaults to Koa; pass `FASTIFY_SERVER_FRAMEWORK` (or resolve a configured
+     * `server.framework` name via `resolveServerFramework`) to target Fastify instead.
      */
     framework?: ServerFramework;
 }
@@ -217,7 +187,7 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     // Collect all referenced types across all routes
     const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput);
     const services = collectServices(root);
-    const routerName = deriveRouterName(root.file);
+    const routerName = deriveRouterName(root.file, framework);
 
     const lines: string[] = [];
 
@@ -229,12 +199,22 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     lines.push('');
 
     const includeInternal = options.includeInternal ?? true;
+    const routeLines: string[] = [];
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
-            lines.push(...generateHandler(route, op, root, resolved));
-            lines.push('');
+            routeLines.push(...generateHandler(route, op, root, resolved));
+            routeLines.push('');
         }
+    }
+    // A framework whose routes are written inside the router's own function body (Fastify) needs
+    // them indented one level and the block closed; one whose routes are top-level statements
+    // against the exported router (Koa) writes them exactly as generated.
+    if (framework.routerWrapsRoutes) {
+        lines.push(...indentBlock(routeLines, '    '));
+        lines.push(...framework.routerClose());
+    } else {
+        lines.push(...routeLines);
     }
 
     // Helpers and imports are both decided from the code we just generated, not from predicates
@@ -364,36 +344,32 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     const hasBody = bodies.length > 0;
     const isSingleMultipart = bodies.length === 1 && bodies[0]!.contentType === 'multipart/form-data';
 
-    // Middleware list
-    const middlewares: string[] = [];
+    // Guards and body declaration for this route
+    const guards: RouteMiddleware = {};
     if (effectiveSecurity !== SECURITY_NONE) {
         const policy = effectiveSecurity?.policy;
-        const args =
-            policy === undefined
-                ? ''
-                : policy === false
-                  ? '{ policy: false }'
-                  : `{ policy: '${policy}' }`;
-        middlewares.push(framework.middleware.policy(args));
+        const args = policy === undefined ? '' : policy === false ? '{ policy: false }' : `{ policy: '${policy}' }`;
+        guards.policy = framework.middleware.policy(args);
     }
     if (hasBody) {
-        const parserTokens = Array.from(new Set(bodies.map(b => bodyParserToken(b.contentType))));
-        const tokensExpr = parserTokens.map(t => `'${t}'`).join(', ');
-        middlewares.push(framework.middleware.bodyParser(tokensExpr));
+        // Deduped by exact MIME string, not by parser token: only Koa's adapter collapses these to
+        // its own body-parser vocabulary, and it does so itself in `routeOpen`.
+        guards.bodyContentTypes = Array.from(new Set(bodies.map(b => b.contentType)));
     }
     if (op.signature) {
         const sigArgs = op.signaturePolicy
             ? `'${escapeSingleQuoted(op.signature)}', { policy: '${escapeSingleQuoted(op.signaturePolicy)}' }`
             : `'${escapeSingleQuoted(op.signature)}'`;
-        middlewares.push(framework.middleware.signature(sigArgs));
+        guards.signature = framework.middleware.signature(sigArgs);
     }
-    lines.push(framework.routeOpen(deriveRouterName(file), method, path, middlewares));
+    lines.push(framework.routeOpen(deriveRouterName(file, framework), method, path, guards));
 
     // Params / query / headers validation (request-side — use Input variants)
-    const pathBindings =
-        route.params?.kind === 'params' ? bindPathParams(route.params.nodes, framework.handlerLocals) : undefined;
+    const pathBindings = route.params?.kind === 'params' ? bindPathParams(route.params.nodes, framework.handlerLocals) : undefined;
 
-    lines.push(...generateParamValidation(route.params, 'params', framework.request.params, route.paramsMode ?? 'strict', '', modelsWithInput, pathBindings));
+    lines.push(
+        ...generateParamValidation(route.params, 'params', framework.request.params, route.paramsMode ?? 'strict', '', modelsWithInput, pathBindings),
+    );
     lines.push(...generateParamValidation(op.query, 'query', framework.request.query, op.queryMode ?? 'strict', '', modelsWithInput));
     lines.push(...generateParamValidation(op.headers, 'headers', framework.request.headers, op.headersMode ?? 'strip', '', modelsWithInput));
 
@@ -403,11 +379,15 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
             lines.push(`    const multipartBody = ${framework.request.parsedBody} as MultipartBody;`);
             lines.push('');
         } else if (bodies.length === 1) {
-            lines.push(`    const body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
+            lines.push(
+                `    const body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`,
+            );
             lines.push('');
         } else if (bodies.every(b => bodyTypesStructurallyEqual(b.bodyType, bodies[0]!.bodyType))) {
             // All declared MIMEs share the same body shape — single validation suffices
-            lines.push(`    const body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`);
+            lines.push(
+                `    const body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`,
+            );
             lines.push('');
         } else {
             // Different body types per MIME — dispatch on Content-Type
@@ -423,7 +403,9 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
                 if (b.contentType === 'multipart/form-data') {
                     lines.push(`            body = ${framework.request.parsedBody} as MultipartBody;`);
                 } else {
-                    lines.push(`            body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(b.bodyType, modelsWithInput)});`);
+                    lines.push(
+                        `            body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(b.bodyType, modelsWithInput)});`,
+                    );
                 }
                 lines.push(`            break;`);
             }
@@ -633,6 +615,16 @@ function indent(lines: string[], pad: string): string[] {
     return lines.map(line => `${pad}${line}`);
 }
 
+/**
+ * Indent a whole block of route lines by one level, for a framework whose routes are written
+ * inside the router's own function body (Fastify) rather than as top-level statements against it
+ * (Koa). Unlike {@link indent}, a blank separator line is left bare rather than padded, so the
+ * generated file has no trailing whitespace on its blank lines.
+ */
+function indentBlock(lines: string[], pad: string): string[] {
+    return lines.map(line => (line === '' ? line : `${pad}${line}`));
+}
+
 // ─── Inference helpers ─────────────────────────────────────────────────────
 
 /**
@@ -764,7 +756,11 @@ function serverTsScalar(name: ScalarTypeNode['name']): string {
  * @param varName Name for the extracted schema variable. Distinct per status and per mime when
  *   an operation emits several, so two complex bodies in one handler cannot collide.
  */
-function formatTypeAnnotation(bodyType: ContractTypeNode, modelsWithOutput?: Set<string>, varName = 'resultType'): { annotation: string; prelude?: string } {
+function formatTypeAnnotation(
+    bodyType: ContractTypeNode,
+    modelsWithOutput?: Set<string>,
+    varName = 'resultType',
+): { annotation: string; prelude?: string } {
     if (bodyType.kind === 'array') {
         const inner = formatTypeAnnotation(bodyType.item, modelsWithOutput, varName);
         return { annotation: `${inner.annotation}[]`, prelude: inner.prelude };
@@ -1140,11 +1136,6 @@ function collectServices(root: OpRootNode): string[] {
     return [...services].sort();
 }
 
-
-
-
-
-
 function isValidIdentifier(name: string): boolean {
     return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
 }
@@ -1170,8 +1161,8 @@ export function deriveBaseName(file: string): string {
         .join('');
 }
 
-function deriveRouterName(file: string): string {
-    return `${deriveBaseName(file)}Router`;
+function deriveRouterName(file: string, framework: ServerFramework): string {
+    return framework.routerName(deriveBaseName(file));
 }
 
 /**

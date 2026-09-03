@@ -1,3 +1,4 @@
+import { classifyContentType } from '@contractkit/core';
 import type { ServerFramework } from './server-framework.js';
 
 /** Module the Koa flavour of ServerKit publishes its router and route middleware from. */
@@ -8,6 +9,35 @@ const KOA_RUNTIME_MODULE = '@maroonedsoftware/koa';
  * so none can collide with a service class or router name derived from a contract.
  */
 const KOA_RUNTIME_SYMBOLS = ['ServerKitRouter', 'bodyParserMiddleware', 'requirePolicy', 'requireSignature'] as const;
+
+/**
+ * Map a request MIME type to the ServerKit body-parser token `bodyParserMiddleware` accepts. The
+ * tokens are the keys of the parser map in `@maroonedsoftware/servercore`, so they are the same
+ * whichever HTTP framework the router targets — only Koa still runs body parsing as a middleware
+ * call, so only this adapter needs the mapping.
+ */
+function bodyParserToken(contentType: string): string {
+    switch (classifyContentType(contentType)) {
+        case 'urlencoded':
+            return 'urlencoded';
+        case 'multipart':
+            return 'multipart';
+        case 'text':
+            return 'text';
+        case 'binary':
+            // There is no native binary token; fall back to text so the body is still readable as a
+            // string. Services handling binary uploads should switch to multipart/form-data.
+            return 'text';
+        default:
+            return 'json';
+    }
+}
+
+/** Render `bodyParserMiddleware([...])`, deduping the MIME types down to their tokens. */
+function bodyParserCall(contentTypes: readonly string[]): string {
+    const tokens = Array.from(new Set(contentTypes.map(bodyParserToken)));
+    return `bodyParserMiddleware([${tokens.map(t => `'${t}'`).join(', ')}])`;
+}
 
 /**
  * ServerKit on Koa: the router is a `@koa/router` instance, handlers take a single `ctx`, and a
@@ -21,8 +51,18 @@ export const KOA_SERVER_FRAMEWORK: ServerFramework = {
         return symbols.length > 0 ? [`import { ${symbols.join(', ')} } from '${KOA_RUNTIME_MODULE}';`] : [];
     },
 
+    routerName(baseName) {
+        return `${baseName}Router`;
+    },
+
     routerDeclaration(routerName) {
         return `export const ${routerName} = ServerKitRouter();`;
+    },
+
+    routerWrapsRoutes: false,
+
+    routerClose() {
+        return [];
     },
 
     pathParam(identifier) {
@@ -31,7 +71,11 @@ export const KOA_SERVER_FRAMEWORK: ServerFramework = {
 
     handlerLocals: ['ctx'],
 
-    routeOpen(routerName, method, path, middlewares) {
+    routeOpen(routerName, method, path, guards) {
+        const middlewares: string[] = [];
+        if (guards.policy) middlewares.push(guards.policy);
+        if (guards.bodyContentTypes && guards.bodyContentTypes.length > 0) middlewares.push(bodyParserCall(guards.bodyContentTypes));
+        if (guards.signature) middlewares.push(guards.signature);
         const middlewareStr = middlewares.length > 0 ? `, ${middlewares.join(', ')},` : ',';
         return `${routerName}.${method}('${path}'${middlewareStr} async ctx => {`;
     },
@@ -43,9 +87,6 @@ export const KOA_SERVER_FRAMEWORK: ServerFramework = {
     middleware: {
         policy(args) {
             return `requirePolicy(${args})`;
-        },
-        bodyParser(tokensExpr) {
-            return `bodyParserMiddleware([${tokensExpr}])`;
         },
         signature(args) {
             return `requireSignature(${args})`;

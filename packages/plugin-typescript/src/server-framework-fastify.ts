@@ -1,32 +1,66 @@
-import type { ServerFramework } from './server-framework.js';
+import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 
-/** Module the Fastify flavour of ServerKit publishes its router and route middleware from. */
+/** Module the Fastify flavour of ServerKit publishes its route guards from. */
 const FASTIFY_RUNTIME_MODULE = '@maroonedsoftware/fastify';
 
 /**
  * Symbols importable from {@link FASTIFY_RUNTIME_MODULE}. Every one is a name the adapter itself
  * emits, so none can collide with a service class or router name derived from a contract.
  *
- * `requestMediaType` is here because Fastify has no accessor that strips the parameters off
- * `Content-Type`, and it is only referenced when an operation declares several request MIME types.
+ * Just the two route guards, unlike Koa's list: on ServerKit's native-Fastify API (0.3+) body
+ * parsing is no longer a runtime call the generated code makes — it is `config.body`, declared
+ * inline by {@link routeOptionsExpr} — and `ServerKitRouter` and `requestMediaType` are gone from
+ * the package's public surface. Routes are ordinary Fastify plugins, and content-type stripping is
+ * inlined in {@link FASTIFY_SERVER_FRAMEWORK.request.contentType} instead.
  */
-const FASTIFY_RUNTIME_SYMBOLS = ['ServerKitRouter', 'bodyParserMiddleware', 'requirePolicy', 'requireSignature', 'requestMediaType'] as const;
+const FASTIFY_RUNTIME_SYMBOLS = ['requirePolicy', 'requireSignature'] as const;
 
 /**
- * ServerKit on Fastify: `ServerKitRouter()` collects routes the way a Koa app reads and mounts them
- * as a Fastify plugin, handlers take `(request, reply)` where the request *is* the ServerKit
- * context, and a response is sent by returning `reply.send(...)` rather than by assignment.
+ * Render a route's second argument — `{ config, preHandler }` — omitting the whole object when
+ * neither a body allow-list nor a guard applies, and trailing with the separator the call needs
+ * before its handler.
+ */
+function routeOptionsExpr(guards: RouteMiddleware): string {
+    const parts: string[] = [];
+    if (guards.bodyContentTypes && guards.bodyContentTypes.length > 0) {
+        parts.push(`config: { body: [${guards.bodyContentTypes.map(t => `'${t}'`).join(', ')}] }`);
+    }
+    const preHandlers = [guards.policy, guards.signature].filter((g): g is string => g !== undefined);
+    if (preHandlers.length > 0) {
+        parts.push(`preHandler: [${preHandlers.join(', ')}]`);
+    }
+    return parts.length > 0 ? `{ ${parts.join(', ')} }, ` : '';
+}
+
+/**
+ * ServerKit on Fastify: a route file is a `FastifyPluginAsync` registered through
+ * `builder.setupRoutes`, handlers take `(request, reply)` where the request *is* the ServerKit
+ * context, and a response is sent by returning `reply.send(...)` rather than by assignment. Guards
+ * go in a route's `preHandler`; the body allow-list is declared through `config.body` rather than
+ * run as a middleware call, since Fastify's own content-type parser reads it.
  */
 export const FASTIFY_SERVER_FRAMEWORK: ServerFramework = {
     name: 'fastify',
 
     imports(uses) {
+        const lines = [`import type { FastifyPluginAsync } from 'fastify';`];
         const symbols = FASTIFY_RUNTIME_SYMBOLS.filter(uses);
-        return symbols.length > 0 ? [`import { ${symbols.join(', ')} } from '${FASTIFY_RUNTIME_MODULE}';`] : [];
+        if (symbols.length > 0) lines.push(`import { ${symbols.join(', ')} } from '${FASTIFY_RUNTIME_MODULE}';`);
+        return lines;
+    },
+
+    routerName(baseName) {
+        return `${baseName}Routes`;
     },
 
     routerDeclaration(routerName) {
-        return `export const ${routerName} = ServerKitRouter();`;
+        return `export const ${routerName}: FastifyPluginAsync = async app => {`;
+    },
+
+    routerWrapsRoutes: true,
+
+    routerClose() {
+        return ['};'];
     },
 
     pathParam(identifier) {
@@ -35,9 +69,8 @@ export const FASTIFY_SERVER_FRAMEWORK: ServerFramework = {
 
     handlerLocals: ['request', 'reply'],
 
-    routeOpen(routerName, method, path, middlewares) {
-        const middlewareStr = middlewares.length > 0 ? `, ${middlewares.join(', ')},` : ',';
-        return `${routerName}.${method}('${path}'${middlewareStr} async (request, reply) => {`;
+    routeOpen(_routerName, method, path, guards) {
+        return `app.${method}('${path}', ${routeOptionsExpr(guards)}async (request, reply) => {`;
     },
 
     routeClose() {
@@ -48,9 +81,6 @@ export const FASTIFY_SERVER_FRAMEWORK: ServerFramework = {
         policy(args) {
             return `requirePolicy(${args})`;
         },
-        bodyParser(tokensExpr) {
-            return `bodyParserMiddleware([${tokensExpr}])`;
-        },
         signature(args) {
             return `requireSignature(${args})`;
         },
@@ -60,11 +90,15 @@ export const FASTIFY_SERVER_FRAMEWORK: ServerFramework = {
         params: 'request.params',
         query: 'request.query',
         headers: 'request.headers',
-        // ServerKit parses lazily per route, so Fastify's own `request.body` is never populated.
-        parsedBody: 'request.parsedBody',
-        // A call, not a property: the raw header carries `; charset=utf-8`, which would match none of
-        // the declared MIME literals the generated switch compares against.
-        contentType: 'requestMediaType(request)',
+        // The parsed value lands on Fastify's own `request.body`: `bodyParserPlugin` replaces
+        // Fastify's content-type parsers outright, rather than adding a side channel the way the
+        // old `bodyParserMiddleware` + `request.parsedBody` pair did.
+        parsedBody: 'request.body',
+        // Inlined rather than a runtime call: `requestMediaType` existed only to re-create Koa's
+        // request API and isn't part of the package's public surface any more. The raw header
+        // carries `; charset=…`, which would match none of the declared MIME literals, so this
+        // still strips it before the generated `switch` compares against them.
+        contentType: `(request.headers['content-type'] ?? '').split(';', 1)[0]!.trim()`,
     },
 
     resolveService(className) {
@@ -93,36 +127,48 @@ export const FASTIFY_SERVER_FRAMEWORK: ServerFramework = {
     },
 
     mcpRouter({ path }) {
-        return `import { type ServerKitRouterType, bodyParserMiddleware, requireSignature, requestHeader } from '${FASTIFY_RUNTIME_MODULE}';
+        return `import type { FastifyPluginAsync } from 'fastify';
+import { requireSignature } from '${FASTIFY_RUNTIME_MODULE}';
 import { McpDispatcher, createMcpRequestContext, MCP_AUTH_POLICY } from '@maroonedsoftware/mcp';
 
-/** Mount the MCP endpoint onto a ServerKit router. Bind \`registerMcpTools\` to the \`McpToolHandlerMap\` token. */
-export function mountMcp(router: ServerKitRouterType): void {
-    router.post('${path}', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async (request, reply) => {
-        const dispatcher = request.container.get(McpDispatcher);
-        const context = createMcpRequestContext({ requestId: request.requestId, logger: request.logger });
-        if (dispatcher.sessionMode === 'stateful') {
-            // Fastify's equivalent of Koa's \`ctx.respond = false\`: the dispatcher writes the raw
-            // response itself, and the request scope is disposed on the raw socket close instead.
-            reply.hijack();
-            await dispatcher.dispatchStateful(
-                {
-                    req: request.raw,
-                    res: reply.raw,
-                    body: request.parsedBody,
-                    // \`requestHeader\` returns '' for an absent header; the session id is optional.
-                    sessionId: requestHeader(request, 'mcp-session-id') || undefined,
-                },
-                context,
-            );
-            return;
-        }
-        const response = await dispatcher.dispatch(JSON.parse(String(request.rawBody)), context);
-        if (response) return reply.send(response);
-        reply.status(202); // a notification — nothing to return
-        return reply.send();
-    });
+/** First value of a possibly-repeated header, or undefined when absent. */
+function firstHeader(value: string | string[] | undefined): string | undefined {
+    return Array.isArray(value) ? value[0] : value;
 }
+
+/**
+ * Mount the MCP endpoint as a ServerKit route plugin. Register with
+ * \`builder.setupRoutes([mountMcp])\` (or a \`{ plugin: mountMcp, prefix }\` mount), and bind \`registerMcpTools\` to the \`McpToolHandlerMap\` token.
+ */
+export const mountMcp: FastifyPluginAsync = async app => {
+    app.post(
+        '${path}',
+        { config: { body: ['application/json'] }, preHandler: [requireSignature('mcp', { policy: MCP_AUTH_POLICY })] },
+        async (request, reply) => {
+            const dispatcher = request.container.get(McpDispatcher);
+            const context = createMcpRequestContext({ requestId: request.requestId, logger: request.logger });
+            if (dispatcher.sessionMode === 'stateful') {
+                // Fastify's equivalent of Koa's \`ctx.respond = false\`: the dispatcher writes the raw
+                // response itself, and the request scope is disposed on the raw socket close instead.
+                reply.hijack();
+                await dispatcher.dispatchStateful(
+                    {
+                        req: request.raw,
+                        res: reply.raw,
+                        body: request.body,
+                        sessionId: firstHeader(request.headers['mcp-session-id']),
+                    },
+                    context,
+                );
+                return;
+            }
+            const response = await dispatcher.dispatch(JSON.parse(String(request.rawBody)), context);
+            if (response) return reply.send(response);
+            reply.status(202); // a notification — nothing to return
+            return reply.send();
+        },
+    );
+};
 `;
     },
 };
