@@ -185,7 +185,8 @@ operation /payments/{id}: {
         expect(output).toContain("title: 'Get Payment'");
         expect(output).toContain('annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }');
         expect(output).toContain('const GetPaymentsByIdArgs = z.object({ id: z.uuid() });');
-        expect(output).toContain('constructor(private readonly service: PaymentsService) {}');
+        expect(output).toContain('constructor(private readonly service: PaymentsService, private readonly policies: PolicyService) {}');
+        expect(output).toContain('await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });');
         expect(output).toContain('const result = await this.service.getById(id);');
         expect(output).toContain('export function registerPaymentsMcpTools(map: McpToolHandlerMap, container: Container): void {');
         expect(output).toContain("map.set('get_payments_by_id', container.get(GetPaymentsByIdMcpTool));");

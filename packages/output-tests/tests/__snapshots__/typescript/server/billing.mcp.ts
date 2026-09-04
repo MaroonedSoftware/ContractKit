@@ -3,7 +3,9 @@
 import { Injectable, type Container } from 'injectkit';
 import { z } from 'zod';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
-import type { McpToolHandler, McpToolHandlerMap, McpToolContext } from '@maroonedsoftware/mcp';
+import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';
+import { PolicyService } from '@maroonedsoftware/policies';
+import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { PaymentService } from '#src/services/payment.service.js';
 import { Payment, PaymentRef } from './schemas/billing.schema.js';
@@ -22,9 +24,10 @@ export class GetRefundMcpTool implements McpToolHandler {
         outputSchema: z.toJSONSchema(Payment, { unrepresentable: 'any' }) as Tool['outputSchema'],
     };
 
-    constructor(private readonly service: PaymentService) {}
+    constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
 
-    async handle(args: Record<string, unknown>, _context: McpToolContext): Promise<CallToolResult> {
+    async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
+        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
         const { params } = await parseAndValidate(args, GetRefundArgs);
         const result = await this.service.getRefund(params);
         return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };

@@ -65,7 +65,7 @@ declare module '@maroonedsoftware/koa' {
     }
     export function ServerKitRouter(): ServerKitRouterInstance;
     export function bodyParserMiddleware(kinds: string[]): RouteHandler;
-    export function requirePolicy(policy?: string): RouteHandler;
+    export function requirePolicy(options?: { policy?: string | false }): RouteHandler;
     export function requireSignature(name: string, opts?: any): RouteHandler;
 }
 
@@ -140,6 +140,19 @@ declare module '@maroonedsoftware/mcp' {
     }
     export function createMcpRequestContext(opts: any): any;
     export const MCP_AUTH_POLICY: string;
+    /** The per-tool session-plus-policy guard a generated handler opens with. */
+    export function requireMcpPolicy(context: McpToolContext, policies: any, options?: { policy?: string | false }): Promise<any>;
+}
+
+declare module '@maroonedsoftware/policies' {
+    export class PolicyService {
+        assert(policyName: string, context: any, statusCode?: number): Promise<void>;
+    }
+}
+
+declare module '@maroonedsoftware/authentication' {
+    /** `'auth.session.mfa.satisfied'` — the gate `requirePolicy()` applies by default. */
+    export const MFA_SATISFIED_POLICY: string;
 }
 
 declare module '@modelcontextprotocol/sdk/types.js' {
