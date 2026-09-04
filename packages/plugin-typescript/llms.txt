@@ -81,6 +81,12 @@ Options worth knowing:
 - `mcp.output.types` must point at **Zod schema** files, not plain types — tools need a runtime
   schema for argument validation and `z.toJSONSchema`. It falls back to `server.output.types` (when
   `server.zod`) or the `zod` sub-config's output.
+- Every generated tool enforces its operation's `security` with `requireMcpPolicy` before parsing
+  its arguments — a tool is not a way around the gate its HTTP route carries. An operation that
+  declares nothing takes `MFA_SATISFIED_POLICY`; `security: none` emits no check at all.
+- `mcp.security` guards the `POST /mcp` route itself (`"none"` / `{ policy: false }` /
+  `{ policy: name }`). It closes the mount, not the tools, so it defaults to a bare session check
+  and to no guard when any exposed tool is `security: none`.
 
 ## Wiring the MCP tools
 

@@ -72,7 +72,7 @@ Each plugin is its own npm package and is loaded by listing it under `"plugins"`
 
 ### `@contractkit/plugin-typescript`
 
-Has up to four optional sub-configs. Each is independent — include only the ones you need.
+Has up to five optional sub-configs. Each is independent — include only the ones you need.
 
 #### `server`
 
@@ -158,6 +158,54 @@ Standalone generators that emit one Zod (or plain TS) file per `.ck` source file
 | `output`  | `string` | Path template. Default: `{filename}.schema.ts` (zod) or `{filename}.types.ts` (types) alongside source |
 
 All path templates support `{filename}`, `{dir}`, `{area}`, and (for `output.sdk`) `{name}`. `{area}` resolves to the `area` value declared in the source file's `options { keys: { area: ... } }` block.
+
+#### `mcp`
+
+Turns `mcp`-flagged operations into a [`@maroonedsoftware/mcp`](https://github.com/MaroonedSoftware/ServerKit/tree/main/packages/mcp) tool server: one `@Injectable()` tool-handler class per operation, an aggregator that assembles the `McpToolHandlerMap`, and the `POST /mcp` route that mounts the dispatcher.
+
+| Field                 | Type      | Description                                                                                                     |
+| --------------------- | --------- | --------------------------------------------------------------------------------------------------------------- |
+| `baseDir`             | `string`  | Directory (relative to `rootDir`) where MCP files are written                                                   |
+| `output.tools`        | `string`  | Path template for per-file tool handlers. Default: `{filename}.mcp.ts`                                          |
+| `output.index`        | `string`  | Path for the aggregator. Default: `mcp.tools.ts`                                                                |
+| `output.router`       | `string`  | Path for the route file. Default: `mcp.router.ts`                                                               |
+| `output.types`        | `string`  | Path template for the **Zod schema** files tools import. Falls back to `server.output.types` or the `zod` sub-config |
+| `emitRouter`          | `boolean` | Emit `mcp.router.ts`. Its framework follows `server.framework`. Default: `true`                                  |
+| `path`                | `string`  | Mount path used in the emitted router. Default: `/mcp`                                                          |
+| `servicePathTemplate` | `string`  | Import path template for service implementations                                                                |
+| `includeInternal`     | `boolean` | Expose operations marked `internal` as tools. Default: `false`                                                   |
+| `security`            | `object`  | Guard on the emitted route. See below. Default: derived from the exposed tools                                   |
+
+##### Security
+
+An MCP tool is another way to invoke an operation, so it enforces the same `security` the operation's HTTP route does. Each generated handler opens with `requireMcpPolicy`, which validates the caller's session and asserts the policy, before it parses any arguments:
+
+| Operation's effective `security` | Emitted in the tool handler                                                  |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| not declared                     | `requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY })` |
+| `none`                           | nothing — the tool is public                                                 |
+| `{ policy: false }`              | `requireMcpPolicy(context, this.policies)` — a valid session, no policy       |
+| `{ policy: name }`               | `requireMcpPolicy(context, this.policies, { policy: 'name' })`               |
+
+The security cascades operation → route → file, the same way it does for a router. A tool that runs no check injects no `PolicyService` and reads no context.
+
+The guard on the route itself closes the **mount**, not the tools: one `tools/call` reaches every registered tool. So the mount defaults to a bare session check, `requirePolicy({ policy: false })`, and drops to no guard at all when any exposed tool declares `security: none` — a single route cannot be stricter than the most permissive tool behind it without locking that tool out. Set `mcp.security` to override it, using the same vocabulary an operation does:
+
+```json
+"mcp": { "security": { "policy": "auth.session.assurance.level" } }
+```
+
+`"none"`, `{ "policy": false }` and `{ "policy": "name" }` are the three forms. This only decides where an unauthenticated caller is turned away — at the door or inside the tool — so it can never weaken a tool below what its contract declares.
+
+##### Wiring the runtime
+
+The generated code reads the session the authentication stack resolved, so the MCP route has to run behind it. Three things belong in your app, not in generated code:
+
+- **A `bearer` scheme handler that authenticates the MCP caller.** `authenticationMiddleware` / `authenticationPlugin` resolve the `Authorization` header and then delete it, so nothing downstream can re-read the credential. ServerKit's `McpAuthenticationHandler` turns its shared MCP token into a session; chain it with your JWT handler via `ChainedAuthenticationHandler`, since a scheme holds one handler.
+- **A policy override, if static-token callers must reach undeclared tools.** The session `McpAuthenticationHandler` mints carries no factors, so the default `MFA_SATISFIED_POLICY` gate rejects it. Re-register that policy to accept a session whose `claims.mcp` is true.
+- **The tool classes and the aggregator on your `Registry`.** See "Wiring the MCP tools" in the plugin README.
+
+An error thrown inside a tool handler — `requireMcpPolicy`'s 401 or 403 — comes back as a JSON-RPC error in a 200 response, not as an HTTP status. The `WWW-Authenticate` header does not reach the client.
 
 ### `@contractkit/plugin-docs`
 

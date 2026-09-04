@@ -11,7 +11,7 @@ import type {
 } from '@contractkit/core';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses, PATH_PARAM_RE_G, toIdentifier } from '@contractkit/core';
 import { renderType, renderInputType, renderQueryType, applyFieldModifiers, pascalToDotCase, modeToWrapper } from './codegen-contract.js';
-import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted, sourceLink } from './ts-render.js';
+import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'path';
 import type { RouteMiddleware, ServerFramework } from './server-framework.js';
