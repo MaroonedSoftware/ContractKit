@@ -167,6 +167,12 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
             expect(out).toContain("config: { body: ['application/json'] }, preHandler: [requireSignature('mcp', { policy: MCP_AUTH_POLICY })] }");
         });
 
+        it('hands the dispatcher the session the authentication stack resolved', () => {
+            expect(out).toContain(
+                'const context = createMcpRequestContext({ requestId: request.requestId, logger: request.logger, authenticationSession: request.authenticationSession });',
+            );
+        });
+
         it('imports only the guards the mount actually uses', () => {
             const narrowed = fastify.mcpRouter({ path: '/mcp', guards: { policy: 'requirePolicy({ policy: false })' } });
             expect(narrowed).toContain("import { requirePolicy } from '@maroonedsoftware/fastify';");

@@ -135,7 +135,7 @@ export const KOA_SERVER_FRAMEWORK: ServerFramework = {
 export function mountMcp(router: ReturnType<typeof ServerKitRouter>): void {
     ${KOA_SERVER_FRAMEWORK.routeOpen('router', 'post', path, guards)}
         const dispatcher = ctx.container.get(McpDispatcher);
-        const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger });
+        const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger, authenticationSession: ctx.authenticationSession });
         if (dispatcher.sessionMode === 'stateful') {
             ctx.respond = false;
             await dispatcher.dispatchStateful(

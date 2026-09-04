@@ -14,7 +14,7 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
 export const mountMcp: FastifyPluginAsync = async app => {
     app.post('/mcp', { config: { body: ['application/json'] }, preHandler: [requireSignature('mcp', { policy: MCP_AUTH_POLICY })] }, async (request, reply) => {
         const dispatcher = request.container.get(McpDispatcher);
-        const context = createMcpRequestContext({ requestId: request.requestId, logger: request.logger });
+        const context = createMcpRequestContext({ requestId: request.requestId, logger: request.logger, authenticationSession: request.authenticationSession });
         if (dispatcher.sessionMode === 'stateful') {
             // Fastify's equivalent of Koa's `ctx.respond = false`: the dispatcher writes the raw
             // response itself, and the request scope is disposed on the raw socket close instead.

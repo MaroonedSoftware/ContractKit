@@ -5,7 +5,7 @@ import { McpDispatcher, createMcpRequestContext, MCP_AUTH_POLICY } from '@maroon
 export function mountMcp(router: ReturnType<typeof ServerKitRouter>): void {
     router.post('/mcp', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async ctx => {
         const dispatcher = ctx.container.get(McpDispatcher);
-        const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger });
+        const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger, authenticationSession: ctx.authenticationSession });
         if (dispatcher.sessionMode === 'stateful') {
             ctx.respond = false;
             await dispatcher.dispatchStateful(

@@ -143,6 +143,15 @@ describe('KOA_SERVER_FRAMEWORK', () => {
             expect(out).toContain('const dispatcher = ctx.container.get(McpDispatcher);');
         });
 
+        it('hands the dispatcher the session the authentication stack resolved', () => {
+            // The stack deletes the Authorization header once it has resolved it, so the session is
+            // the only identity a tool handler can still read.
+            const out = koa.mcpRouter({ path: '/mcp', guards: mcpGuards });
+            expect(out).toContain(
+                'const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger, authenticationSession: ctx.authenticationSession });',
+            );
+        });
+
         it('renders the guards it is handed through routeOpen, so the mount reads like any other route', () => {
             const out = koa.mcpRouter({ path: '/mcp', guards: mcpGuards });
             expect(out).toContain(
