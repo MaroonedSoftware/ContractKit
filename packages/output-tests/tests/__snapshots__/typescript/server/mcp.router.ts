@@ -3,7 +3,7 @@ import { McpDispatcher, createMcpRequestContext, MCP_AUTH_POLICY } from '@maroon
 
 /** Mount the MCP endpoint onto a ServerKit router. Bind `registerMcpTools` to the `McpToolHandlerMap` token. */
 export function mountMcp(router: ReturnType<typeof ServerKitRouter>): void {
-    router.post('/mcp', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async (ctx) => {
+    router.post('/mcp', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async ctx => {
         const dispatcher = ctx.container.get(McpDispatcher);
         const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger });
         if (dispatcher.sessionMode === 'stateful') {

@@ -5,7 +5,7 @@ import { inferService, deriveModulePath, buildArgs, deriveBaseName } from './cod
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'node:path';
-import type { ServerFramework } from './server-framework.js';
+import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 
 // ─── Options ────────────────────────────────────────────────────────────────
@@ -508,5 +508,9 @@ export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
  */
 export function generateMcpRouter(options: { path?: string; framework?: ServerFramework } = {}): string {
     const framework = options.framework ?? KOA_SERVER_FRAMEWORK;
-    return framework.mcpRouter({ path: options.path ?? '/mcp' });
+    const guards: RouteMiddleware = {
+        bodyContentTypes: ['application/json'],
+        signature: framework.middleware.signature(`'mcp', { policy: MCP_AUTH_POLICY }`),
+    };
+    return framework.mcpRouter({ path: options.path ?? '/mcp', guards });
 }

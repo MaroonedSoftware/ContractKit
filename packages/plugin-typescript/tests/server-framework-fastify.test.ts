@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { FASTIFY_SERVER_FRAMEWORK as fastify } from '../src/server-framework-fastify.js';
 
+const mcpGuards = {
+    bodyContentTypes: ['application/json'],
+    signature: "requireSignature('mcp', { policy: MCP_AUTH_POLICY })",
+};
+
 /**
  * Pinned method by method, the way the Koa adapter is. These strings are the contract with
  * `@maroonedsoftware/fastify`'s native-Fastify API (0.3+), so a change to any of them should fail
@@ -149,10 +154,10 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
     });
 
     describe('mcpRouter', () => {
-        const out = fastify.mcpRouter({ path: '/mcp' });
+        const out = fastify.mcpRouter({ path: '/mcp', guards: mcpGuards });
 
         it('mounts the dispatcher at the given path as a route plugin, not a function taking a router', () => {
-            expect(fastify.mcpRouter({ path: '/tools' })).toContain("app.post(\n        '/tools',");
+            expect(fastify.mcpRouter({ path: '/tools', guards: mcpGuards })).toContain("app.post('/tools',");
             expect(out).toContain("from '@maroonedsoftware/fastify'");
             expect(out).toContain('const dispatcher = request.container.get(McpDispatcher);');
             expect(out).toContain('export const mountMcp: FastifyPluginAsync = async app => {');
@@ -160,6 +165,14 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
 
         it('declares the body allow-list and the signature guard the same way a generated route would', () => {
             expect(out).toContain("config: { body: ['application/json'] }, preHandler: [requireSignature('mcp', { policy: MCP_AUTH_POLICY })] }");
+        });
+
+        it('imports only the guards the mount actually uses', () => {
+            const narrowed = fastify.mcpRouter({ path: '/mcp', guards: { policy: 'requirePolicy({ policy: false })' } });
+            expect(narrowed).toContain("import { requirePolicy } from '@maroonedsoftware/fastify';");
+            expect(narrowed).toContain("import { McpDispatcher, createMcpRequestContext } from '@maroonedsoftware/mcp';");
+            expect(narrowed).not.toContain('requireSignature');
+            expect(narrowed).not.toContain('MCP_AUTH_POLICY');
         });
 
         it('never references ServerKitRouter or requestHeader — neither exists on the native-Fastify API', () => {

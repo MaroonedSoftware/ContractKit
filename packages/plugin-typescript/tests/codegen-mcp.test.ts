@@ -7,6 +7,7 @@ import {
     hasMcpOperations,
     deriveMcpRegisterFnName,
 } from '../src/codegen-mcp.js';
+import type { RouteMiddleware } from '../src/server-framework.js';
 import { opRoot, opRoute, opOperation, opParam, opRequest, opResponse, scalarType, loc } from './helpers.js';
 
 function mcpBlock(over: Partial<McpConfigNode>): McpConfigNode {
@@ -261,7 +262,7 @@ describe('generateMcpRouter', () => {
         // so the parser has to run first. Asserting the whole route line pins the order too.
         expect(out).toContain("import { ServerKitRouter, bodyParserMiddleware, requireSignature } from '@maroonedsoftware/koa';");
         expect(out).toContain(
-            "router.post('/mcp', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async (ctx) => {",
+            "router.post('/mcp', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async ctx => {",
         );
     });
 
@@ -287,15 +288,33 @@ describe('generateMcpRouter', () => {
     });
 
         it('delegates the whole file to the framework adapter', () => {
-            const stub = { mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}` };
-            // Only `mcpRouter` is reachable from here, so the rest of the adapter is left off the stub.
+            const stub = {
+                middleware: { signature: (args: string) => `requireSignature(${args})` },
+                mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}`,
+            };
+            // Only `mcpRouter` and the guard factory it needs are reachable from here, so the rest of
+            // the adapter is left off the stub.
             const out = generateMcpRouter({ framework: stub as never });
             expect(out).toBe('// stub mount at /mcp');
         });
 
         it('passes a configured path through to the adapter', () => {
-            const stub = { mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}` };
+            const stub = {
+                middleware: { signature: (args: string) => `requireSignature(${args})` },
+                mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}`,
+            };
             expect(generateMcpRouter({ path: '/tools', framework: stub as never })).toBe('// stub mount at /tools');
+        });
+
+        it('hands the adapter the guards rather than letting the template spell them', () => {
+            const stub = {
+                middleware: { signature: (args: string) => `requireSignature(${args})` },
+                mcpRouter: ({ guards }: { guards: RouteMiddleware }) => JSON.stringify(guards),
+            };
+            expect(JSON.parse(generateMcpRouter({ framework: stub as never }))).toEqual({
+                bodyContentTypes: ['application/json'],
+                signature: "requireSignature('mcp', { policy: MCP_AUTH_POLICY })",
+            });
         });
 
     it('defaults the mount path to /mcp', () => {
