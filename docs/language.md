@@ -1090,7 +1090,8 @@ and the runtime wiring they expect.
 Tools require the model **Zod schemas** to be generated (via the `server` sub-config with `zod: true`,
 or the `zod` sub-config); set `mcp.output.types` to point at them explicitly if neither is configured.
 `internal` operations are excluded unless `includeInternal: true`. The generated code depends on
-`@maroonedsoftware/mcp`, `@maroonedsoftware/policies`, `@maroonedsoftware/authentication`,
+`@maroonedsoftware/mcp` (>= 0.3.0, for `requireMcpPolicy`), `@maroonedsoftware/policies` (>= 0.6.9),
+`@maroonedsoftware/authentication` (>= 4.31.0, for `MFA_SATISFIED_POLICY`),
 `@modelcontextprotocol/sdk`, `injectkit`, and `zod`; the runtime owns the JSON-RPC lifecycle, session
 management, Streamable HTTP transport, and authentication.
 
