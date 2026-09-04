@@ -7,6 +7,13 @@ import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'node:path';
 import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
+import { policyGuard } from './route-guards.js';
+
+/**
+ * Source location for a `SecurityNode` this generator builds rather than reads off a `.ck` file.
+ * Nothing on the MCP path reports a location for one, but `SecurityFields` requires it.
+ */
+const SYNTHETIC_LOC = { file: '', line: 0 } as const;
 
 // ─── Options ────────────────────────────────────────────────────────────────
 
@@ -559,11 +566,32 @@ export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
  * The whole file is framework-specific boilerplate rather than a per-operation render, so the
  * adapter owns the template. Defaults to Koa, matching the router generator.
  */
-export function generateMcpRouter(options: { path?: string; framework?: ServerFramework } = {}): string {
+export function generateMcpRouter(options: { path?: string; framework?: ServerFramework; security?: SecurityNode } = {}): string {
     const framework = options.framework ?? KOA_SERVER_FRAMEWORK;
-    const guards: RouteMiddleware = {
-        bodyContentTypes: ['application/json'],
-        signature: framework.middleware.signature(`'mcp', { policy: MCP_AUTH_POLICY }`),
-    };
+    const guards: RouteMiddleware = { bodyContentTypes: ['application/json'] };
+
+    // Defaults to a session check with no policy, matching `defaultMcpMountSecurity` for a config
+    // that names none. The tools behind the mount enforce their own declarations either way.
+    const policy = policyGuard(framework, options.security ?? { policy: false, loc: SYNTHETIC_LOC });
+    if (policy) guards.policy = policy;
+
     return framework.mcpRouter({ path: options.path ?? '/mcp', guards });
+}
+
+/**
+ * The mount guard for a config that names no `mcp.security`: open when any exposed tool is declared
+ * `security: none`, and a bare session check otherwise.
+ *
+ * One route serves every tool, so the mount can be no stricter than the most permissive tool behind
+ * it without locking that tool out. It is still never weaker than the contracts, because each
+ * handler asserts its own policy — the mount only decides whether an unauthenticated caller is
+ * turned away at the door or inside the tool.
+ */
+export function defaultMcpMountSecurity(roots: readonly OpRootNode[], includeInternal: boolean): SecurityNode {
+    for (const root of roots) {
+        for (const plan of planTools(root, includeInternal)) {
+            if (plan.security === SECURITY_NONE) return SECURITY_NONE;
+        }
+    }
+    return { policy: false, loc: SYNTHETIC_LOC };
 }

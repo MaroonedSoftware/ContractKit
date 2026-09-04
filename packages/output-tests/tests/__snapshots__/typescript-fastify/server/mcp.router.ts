@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { requireSignature } from '@maroonedsoftware/fastify';
-import { McpDispatcher, createMcpRequestContext, MCP_AUTH_POLICY } from '@maroonedsoftware/mcp';
+import { requirePolicy } from '@maroonedsoftware/fastify';
+import { McpDispatcher, createMcpRequestContext } from '@maroonedsoftware/mcp';
 
 /** First value of a possibly-repeated header, or undefined when absent. */
 function firstHeader(value: string | string[] | undefined): string | undefined {
@@ -12,7 +12,7 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
  * `builder.setupRoutes([mountMcp])` (or a `{ plugin: mountMcp, prefix }` mount), and bind `registerMcpTools` to the `McpToolHandlerMap` token.
  */
 export const mountMcp: FastifyPluginAsync = async app => {
-    app.post('/mcp', { config: { body: ['application/json'] }, preHandler: [requireSignature('mcp', { policy: MCP_AUTH_POLICY })] }, async (request, reply) => {
+    app.post('/mcp', { config: { body: ['application/json'] }, preHandler: [requirePolicy({ policy: false })] }, async (request, reply) => {
         const dispatcher = request.container.get(McpDispatcher);
         const context = createMcpRequestContext({ requestId: request.requestId, logger: request.logger, authenticationSession: request.authenticationSession });
         if (dispatcher.sessionMode === 'stateful') {

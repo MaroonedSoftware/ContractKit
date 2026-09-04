@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createTypescriptPlugin } from '../src/index.js';
 import type { PluginContext } from '@contractkit/core';
+import { SECURITY_NONE } from '@contractkit/core';
 import { opRoot, opRoute, opOperation, opParam, opRequest, opResponse, scalarType, refType, contractRoot, model, field } from './helpers.js';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -277,6 +278,50 @@ describe('createTypescriptPlugin (server)', () => {
             await plugin.generateTargets!(mcpInputs(), ctx);
             const router = [...ctx.emitted.entries()].find(([p]) => p.endsWith('mcp.router.ts'))?.[1];
             expect(router).toContain("from '@maroonedsoftware/koa'");
+        });
+    });
+
+    describe('mcp.security', () => {
+        const renderRouter = async (mcp: Record<string, unknown>, mcpRoots = mcpInputs()) => {
+            const ctx = makeCtx('/project');
+            await createTypescriptPlugin({ mcp }, '/project').generateTargets!(mcpRoots, ctx);
+            return [...ctx.emitted.entries()].find(([p]) => p.endsWith('mcp.router.ts'))?.[1] ?? '';
+        };
+
+        it('guards the mount with a session check when the exposed tools all declare one', async () => {
+            expect(await renderRouter({})).toContain('requirePolicy({ policy: false })');
+        });
+
+        it('leaves the mount open when an exposed tool is public', async () => {
+            const open = inputs([
+                opRoot(
+                    [opRoute('/users', [opOperation('get', { mcp: true, security: SECURITY_NONE, responses: [opResponse(204)] })])],
+                    '/project/contracts/users.ck',
+                ),
+            ]);
+            expect(await renderRouter({}, open)).not.toContain('requirePolicy');
+        });
+
+        it('takes the configured policy over what the tools imply', async () => {
+            expect(await renderRouter({ security: { policy: 'auth.session.assurance.level' } })).toContain(
+                "requirePolicy({ policy: 'auth.session.assurance.level' })",
+            );
+        });
+
+        it('accepts the none sentinel', async () => {
+            expect(await renderRouter({ security: 'none' })).not.toContain('requirePolicy');
+        });
+
+        it('rejects a malformed security value', async () => {
+            const plugin = createTypescriptPlugin({ mcp: { security: { policy: 7 } as never } }, '/project');
+            await expect(plugin.generateTargets!(mcpInputs(), makeCtx('/project'))).rejects.toThrow(
+                /mcp\.security must be 'none', or an object whose 'policy' is a policy name or false/,
+            );
+        });
+
+        it('rejects a bare string that is not the none sentinel', async () => {
+            const plugin = createTypescriptPlugin({ mcp: { security: 'admin' as never } }, '/project');
+            await expect(plugin.generateTargets!(mcpInputs(), makeCtx('/project'))).rejects.toThrow(/mcp\.security must be 'none'/);
         });
     });
 

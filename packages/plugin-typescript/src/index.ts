@@ -12,6 +12,7 @@ import type {
     IncrementalManifest,
     IncrementalUnit,
     IncrementalOutputFile,
+    SecurityNode,
 } from '@contractkit/core';
 import {
     runIncrementalCodegen,
@@ -23,6 +24,7 @@ import {
     collectTypeRefs,
     computeModelsWithCaseTransform,
     computeModelsWithScalar,
+    SECURITY_NONE,
 } from '@contractkit/core';
 import {
     generateSdk,
@@ -59,7 +61,14 @@ export { FASTIFY_SERVER_FRAMEWORK } from './server-framework-fastify.js';
 
 /** Taint set for the SDK's bigint response reviver. */
 const BIGINT_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['bigint']);
-import { generateMcpFile, generateMcpAggregator, generateMcpRouter, hasMcpOperations, deriveMcpRegisterFnName } from './codegen-mcp.js';
+import {
+    generateMcpFile,
+    generateMcpAggregator,
+    generateMcpRouter,
+    hasMcpOperations,
+    deriveMcpRegisterFnName,
+    defaultMcpMountSecurity,
+} from './codegen-mcp.js';
 import {
     TEMPLATE_VAR_RE,
     TEMPLATE_VAR_RE_G,
@@ -175,6 +184,18 @@ export interface McpConfig {
     servicePathTemplate?: string;
     /** Whether to expose operations marked `internal` as MCP tools. Default false. */
     includeInternal?: boolean;
+    /**
+     * Guard on the emitted `POST /mcp` route, in the same vocabulary a `.ck` operation uses:
+     * `"none"` for no guard, `{ policy: false }` for a bare session check, `{ policy: 'name' }` for
+     * a named policy.
+     *
+     * Defaults to a bare session check, or to no guard when any exposed tool declares
+     * `security: none` — one route serves every tool, so the mount can be no stricter than the most
+     * permissive tool behind it. This only decides where an unauthenticated caller is turned away:
+     * each generated tool asserts its own operation's security regardless, so setting this cannot
+     * weaken a tool below what its contract declares.
+     */
+    security?: SecurityNode;
 }
 
 /** Top-level plugin config. Each sub-config that is present enables its sub-generator. */
@@ -230,6 +251,16 @@ function assertValidConfig(config: TypescriptPluginConfig): void {
         throw new Error(
             `plugin-typescript: server.framework '${String(framework)}' is not supported — expected one of: ${SERVER_FRAMEWORK_NAMES.join(', ')}.`,
         );
+    }
+    // Config arrives as JSON, so `SecurityNode` constrains programmatic callers only.
+    const mcpSecurity = config.mcp?.security;
+    if (mcpSecurity !== undefined && mcpSecurity !== SECURITY_NONE) {
+        const policy = (mcpSecurity as { policy?: unknown }).policy;
+        if (typeof mcpSecurity !== 'object' || (policy !== undefined && policy !== false && typeof policy !== 'string')) {
+            throw new Error(
+                `plugin-typescript: mcp.security must be 'none', or an object whose 'policy' is a policy name or false — got ${JSON.stringify(mcpSecurity)}.`,
+            );
+        }
     }
     if (config.server?.validateResponses && !config.server.zod) {
         throw new Error(
@@ -1139,7 +1170,9 @@ function collectMcpOutput(
         // The mount is server-side wiring, so it follows the server sub-config's framework. Koa when
         // there is no `server` sub-config at all, which is the same default the router generator has.
         const framework = resolveServerFramework(fullConfig.server?.framework);
-        globalFiles.push({ relativePath: routerPath, content: generateMcpRouter({ path: config.path, framework }) });
+        // A config that names no security takes the guard the exposed tools imply.
+        const security = config.security ?? defaultMcpMountSecurity(inputs.opRoots, includeInternal);
+        globalFiles.push({ relativePath: routerPath, content: generateMcpRouter({ path: config.path, framework, security }) });
     }
 }
 
