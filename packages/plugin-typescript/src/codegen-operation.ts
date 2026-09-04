@@ -16,6 +16,7 @@ import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'path';
 import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
+import { policyGuard, signatureGuard } from './route-guards.js';
 
 /** Which request-side object a validation block reads from. Names the variable the block declares. */
 export type ParamKind = 'params' | 'query' | 'headers';
@@ -346,21 +347,15 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
 
     // Guards and body declaration for this route
     const guards: RouteMiddleware = {};
-    if (effectiveSecurity !== SECURITY_NONE) {
-        const policy = effectiveSecurity?.policy;
-        const args = policy === undefined ? '' : policy === false ? '{ policy: false }' : `{ policy: '${policy}' }`;
-        guards.policy = framework.middleware.policy(args);
-    }
+    const policy = policyGuard(framework, effectiveSecurity);
+    if (policy) guards.policy = policy;
     if (hasBody) {
         // Deduped by exact MIME string, not by parser token: only Koa's adapter collapses these to
         // its own body-parser vocabulary, and it does so itself in `routeOpen`.
         guards.bodyContentTypes = Array.from(new Set(bodies.map(b => b.contentType)));
     }
     if (op.signature) {
-        const sigArgs = op.signaturePolicy
-            ? `'${escapeSingleQuoted(op.signature)}', { policy: '${escapeSingleQuoted(op.signaturePolicy)}' }`
-            : `'${escapeSingleQuoted(op.signature)}'`;
-        guards.signature = framework.middleware.signature(sigArgs);
+        guards.signature = signatureGuard(framework, op.signature, op.signaturePolicy);
     }
     lines.push(framework.routeOpen(deriveRouterName(file, framework), method, path, guards));
 
