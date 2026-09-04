@@ -1,11 +1,11 @@
-import { ServerKitRouter, bodyParserMiddleware, requireSignature } from '@maroonedsoftware/koa';
-import { McpDispatcher, createMcpRequestContext, MCP_AUTH_POLICY } from '@maroonedsoftware/mcp';
+import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';
+import { McpDispatcher, createMcpRequestContext } from '@maroonedsoftware/mcp';
 
 /** Mount the MCP endpoint onto a ServerKit router. Bind `registerMcpTools` to the `McpToolHandlerMap` token. */
 export function mountMcp(router: ReturnType<typeof ServerKitRouter>): void {
-    router.post('/mcp', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async (ctx) => {
+    router.post('/mcp', requirePolicy({ policy: false }), bodyParserMiddleware(['json']), async ctx => {
         const dispatcher = ctx.container.get(McpDispatcher);
-        const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger });
+        const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger, authenticationSession: ctx.authenticationSession });
         if (dispatcher.sessionMode === 'stateful') {
             ctx.respond = false;
             await dispatcher.dispatchStateful(

@@ -1080,11 +1080,19 @@ registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();
 The tool classes are not registered for you either; register each on the same `Registry` so the
 aggregator can resolve it.
 
+Each tool handler also enforces its operation's `security`, cascaded operation → route → file, before
+it parses any arguments: a tool is another way to invoke the operation, not a way around its gate. An
+operation that declares nothing takes the same MFA policy `requirePolicy()` applies to its HTTP route;
+`security: none` emits no check. The `POST /mcp` route's own guard closes the mount rather than the
+individual tools, and `mcp.security` configures it — see [config.md](./config.md#mcp) for both rules
+and the runtime wiring they expect.
+
 Tools require the model **Zod schemas** to be generated (via the `server` sub-config with `zod: true`,
 or the `zod` sub-config); set `mcp.output.types` to point at them explicitly if neither is configured.
 `internal` operations are excluded unless `includeInternal: true`. The generated code depends on
-`@maroonedsoftware/mcp`, `@modelcontextprotocol/sdk`, `injectkit`, and `zod`; the runtime owns the
-JSON-RPC lifecycle, session management, Streamable HTTP transport, and auth.
+`@maroonedsoftware/mcp`, `@maroonedsoftware/policies`, `@maroonedsoftware/authentication`,
+`@modelcontextprotocol/sdk`, `injectkit`, and `zod`; the runtime owns the JSON-RPC lifecycle, session
+management, Streamable HTTP transport, and authentication.
 
 ---
 

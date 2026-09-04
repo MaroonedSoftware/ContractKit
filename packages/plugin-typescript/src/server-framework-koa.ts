@@ -128,15 +128,14 @@ export const KOA_SERVER_FRAMEWORK: ServerFramework = {
         },
     },
 
-    mcpRouter({ path }) {
-        return `import { ServerKitRouter, bodyParserMiddleware, requireSignature } from '${KOA_RUNTIME_MODULE}';
-import { McpDispatcher, createMcpRequestContext, MCP_AUTH_POLICY } from '@maroonedsoftware/mcp';
-
-/** Mount the MCP endpoint onto a ServerKit router. Bind \`registerMcpTools\` to the \`McpToolHandlerMap\` token. */
+    mcpRouter({ path, guards }) {
+        // The route line goes through `routeOpen`, the same renderer every operation route uses, so
+        // the mount cannot spell a guard differently from the routes beside it.
+        const body = `/** Mount the MCP endpoint onto a ServerKit router. Bind \`registerMcpTools\` to the \`McpToolHandlerMap\` token. */
 export function mountMcp(router: ReturnType<typeof ServerKitRouter>): void {
-    router.post('${path}', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async (ctx) => {
+    ${KOA_SERVER_FRAMEWORK.routeOpen('router', 'post', path, guards)}
         const dispatcher = ctx.container.get(McpDispatcher);
-        const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger });
+        const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger, authenticationSession: ctx.authenticationSession });
         if (dispatcher.sessionMode === 'stateful') {
             ctx.respond = false;
             await dispatcher.dispatchStateful(
@@ -148,8 +147,16 @@ export function mountMcp(router: ReturnType<typeof ServerKitRouter>): void {
             if (response) ctx.body = response;
             else ctx.status = 202; // a notification — nothing to return
         }
-    });
+    ${KOA_SERVER_FRAMEWORK.routeClose().join('\n    ')}
 }
 `;
+
+        // Probed the way `generateOp` probes an operation file, so a guard the mount does not use
+        // brings no import with it.
+        const uses = (symbol: string) => new RegExp(`\\b${symbol}\\b`).test(body);
+        const mcpSymbols = ['McpDispatcher', 'createMcpRequestContext', ...(uses('MCP_AUTH_POLICY') ? ['MCP_AUTH_POLICY'] : [])];
+        const imports = [...KOA_SERVER_FRAMEWORK.imports(uses), `import { ${mcpSymbols.join(', ')} } from '@maroonedsoftware/mcp';`];
+
+        return `${imports.join('\n')}\n\n${body}`;
     },
 };

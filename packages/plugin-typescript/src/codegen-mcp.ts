@@ -1,12 +1,19 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, McpConfigNode, ParamSource, ContractTypeNode } from '@contractkit/core';
-import { resolveModifiers, emittedResponses, toIdentifier } from '@contractkit/core';
+import type { OpRootNode, OpRouteNode, OpOperationNode, McpConfigNode, ParamSource, ContractTypeNode, SecurityNode } from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses, toIdentifier } from '@contractkit/core';
 import { renderType, renderInputType, pascalToDotCase } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { basename, dirname, relative } from 'node:path';
-import type { ServerFramework } from './server-framework.js';
+import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
+import { policyGuard } from './route-guards.js';
+
+/**
+ * Source location for a `SecurityNode` this generator builds rather than reads off a `.ck` file.
+ * Nothing on the MCP path reports a location for one, but `SecurityFields` requires it.
+ */
+const SYNTHETIC_LOC = { file: '', line: 0 } as const;
 
 // ─── Options ────────────────────────────────────────────────────────────────
 
@@ -319,9 +326,11 @@ interface ToolPlan {
     toolName: string;
     className: string;
     argsConstName: string;
+    /** Effective security for the operation, cascaded operation → route → file. */
+    security: SecurityNode | undefined;
 }
 
-function planTools(root: OpRootNode, includeInternal: boolean): ToolPlan[] {
+export function planTools(root: OpRootNode, includeInternal: boolean): ToolPlan[] {
     const plans: ToolPlan[] = [];
     for (const route of root.routes) {
         for (const op of route.operations) {
@@ -329,10 +338,42 @@ function planTools(root: OpRootNode, includeInternal: boolean): ToolPlan[] {
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             const toolName = deriveToolName(op, route);
             const className = deriveToolClassName(toolName);
-            plans.push({ route, op, toolName, className, argsConstName: `${toPascal(toolName)}Args` });
+            plans.push({
+                route,
+                op,
+                toolName,
+                className,
+                argsConstName: `${toPascal(toolName)}Args`,
+                security: resolveSecurity(route, op, root),
+            });
         }
     }
     return plans;
+}
+
+/**
+ * The `requireMcpPolicy` call a tool handler opens with, or undefined when the operation is
+ * declared `security: none` and the tool is deliberately public.
+ *
+ * The guard on `POST /mcp` closes the mount, not the tools behind it: one `tools/call` reaches every
+ * registered tool. So a tool enforces its operation's own declaration, the same one its HTTP route
+ * carries — a tool is another way to invoke the operation, not a way around its security.
+ *
+ * An operation that declares nothing takes {@link MFA_SATISFIED_POLICY}, which is exactly what
+ * `requirePolicy()` applies to its HTTP route. Note this is *not* `requireMcpPolicy`'s own default
+ * of session-only: a caller holding ServerKit's static MCP token carries no factors and fails the
+ * MFA gate, and the fix for that is an app-level policy override recognising `claims.mcp`, not a
+ * generated floor lower than the contract's.
+ */
+function toolPolicyCheck(security: SecurityNode | undefined): string | undefined {
+    if (security === SECURITY_NONE) return undefined;
+
+    const policy = security?.policy;
+    if (policy === undefined) return `await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });`;
+    // `false` is a declaration: validate the session, apply no policy.
+    if (policy === false) return `await requireMcpPolicy(context, this.policies);`;
+
+    return `await requireMcpPolicy(context, this.policies, { policy: '${escapeSingleQuoted(policy)}' });`;
 }
 
 function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOptions): string[] {
@@ -362,9 +403,13 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     lines.push('    };');
     lines.push('');
 
-    // constructor injects the operation's service
+    // constructor injects the operation's service, plus the PolicyService when the tool has a
+    // security check to run — a tool declared `security: none` needs neither.
     const service = inferService(op, route, file);
-    lines.push(`    constructor(private readonly service: ${service.className}) {}`);
+    const policyCheck = toolPolicyCheck(plan.security);
+    const ctorParams = [`private readonly service: ${service.className}`];
+    if (policyCheck) ctorParams.push('private readonly policies: PolicyService');
+    lines.push(`    constructor(${ctorParams.join(', ')}) {}`);
     lines.push('');
 
     // handle
@@ -377,7 +422,11 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     // No args to destructure means the parameter goes unread, which trips no-unused-vars in
     // consumers that lint generated output; the leading underscore opts it out.
     const argsParam = destructure.length > 0 ? 'args' : '_args';
-    lines.push(`    async handle(${argsParam}: Record<string, unknown>, _context: McpToolContext): Promise<CallToolResult> {`);
+    // Same reasoning for the context parameter: only a tool that runs a security check reads it.
+    const contextParam = policyCheck ? 'context' : '_context';
+    lines.push(`    async handle(${argsParam}: Record<string, unknown>, ${contextParam}: McpToolContext): Promise<CallToolResult> {`);
+    // Before the arguments are even parsed: an unauthorized caller learns nothing about the schema.
+    if (policyCheck) lines.push(`        ${policyCheck}`);
     if (destructure.length > 0) {
         lines.push(`        const { ${destructure.join(', ')} } = await parseAndValidate(args, ${argsConstName});`);
     }
@@ -443,7 +492,18 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     if (/\bDecimal\b/.test(bodyWithHelpers)) imports.push(DECIMAL_IMPORT);
 
     imports.push(`import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';`);
-    imports.push(`import type { McpToolHandler, McpToolHandlerMap, McpToolContext } from '@maroonedsoftware/mcp';`);
+
+    // The mcp import turns into a mixed value/type one as soon as a tool guards itself, and the
+    // policy imports follow the same rule: nothing a file does not reference reaches its imports.
+    const guardsItself = /\brequireMcpPolicy\b/.test(bodyWithHelpers);
+    const mcpTypes = `type McpToolHandler, type McpToolHandlerMap, type McpToolContext`;
+    imports.push(
+        guardsItself
+            ? `import { requireMcpPolicy, ${mcpTypes} } from '@maroonedsoftware/mcp';`
+            : `import type { McpToolHandler, McpToolHandlerMap, McpToolContext } from '@maroonedsoftware/mcp';`,
+    );
+    if (guardsItself) imports.push(`import { PolicyService } from '@maroonedsoftware/policies';`);
+    if (/\bMFA_SATISFIED_POLICY\b/.test(bodyWithHelpers)) imports.push(`import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';`);
     if (needsParseAndValidate) imports.push(`import { parseAndValidate } from '@maroonedsoftware/zod';`);
 
     // Service imports (one per distinct service used by the emitted tools).
@@ -506,7 +566,32 @@ export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
  * The whole file is framework-specific boilerplate rather than a per-operation render, so the
  * adapter owns the template. Defaults to Koa, matching the router generator.
  */
-export function generateMcpRouter(options: { path?: string; framework?: ServerFramework } = {}): string {
+export function generateMcpRouter(options: { path?: string; framework?: ServerFramework; security?: SecurityNode } = {}): string {
     const framework = options.framework ?? KOA_SERVER_FRAMEWORK;
-    return framework.mcpRouter({ path: options.path ?? '/mcp' });
+    const guards: RouteMiddleware = { bodyContentTypes: ['application/json'] };
+
+    // Defaults to a session check with no policy, matching `defaultMcpMountSecurity` for a config
+    // that names none. The tools behind the mount enforce their own declarations either way.
+    const policy = policyGuard(framework, options.security ?? { policy: false, loc: SYNTHETIC_LOC });
+    if (policy) guards.policy = policy;
+
+    return framework.mcpRouter({ path: options.path ?? '/mcp', guards });
+}
+
+/**
+ * The mount guard for a config that names no `mcp.security`: open when any exposed tool is declared
+ * `security: none`, and a bare session check otherwise.
+ *
+ * One route serves every tool, so the mount can be no stricter than the most permissive tool behind
+ * it without locking that tool out. It is still never weaker than the contracts, because each
+ * handler asserts its own policy — the mount only decides whether an unauthenticated caller is
+ * turned away at the door or inside the tool.
+ */
+export function defaultMcpMountSecurity(roots: readonly OpRootNode[], includeInternal: boolean): SecurityNode {
+    for (const root of roots) {
+        for (const plan of planTools(root, includeInternal)) {
+            if (plan.security === SECURITY_NONE) return SECURITY_NONE;
+        }
+    }
+    return { policy: false, loc: SYNTHETIC_LOC };
 }

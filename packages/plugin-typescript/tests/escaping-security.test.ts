@@ -3,7 +3,7 @@ import { generatePlainTypes } from '../src/codegen-plain-types.js';
 import { generateOp } from '../src/codegen-operation.js';
 import { renderTsType, escapeJsDocLines, escapeSingleQuoted } from '../src/ts-render.js';
 import { computeOpOutPath, computeSdkOutPath, computeSdkTypeOutPath, computeSdkAreaClientOutPath } from '../src/path-utils.js';
-import { field, model, contractRoot, enumType, scalarType, opRoot, opRoute, opOperation, opResponse } from './helpers.js';
+import { field, model, contractRoot, enumType, scalarType, opRoot, opRoute, opOperation, opResponse, loc } from './helpers.js';
 
 // ─── Fix 1: JSDoc comment injection via descriptions ────────────────────────
 
@@ -96,6 +96,12 @@ describe('signature escaping (server codegen)', () => {
         ]);
         const out = generateOp(root);
         expect(out).toContain("requireSignature('sig\\'v', { policy: 'pol\\'y' })");
+    });
+
+    it('escapes a single quote in a security policy name', () => {
+        const root = opRoot([opRoute('/x', [opOperation('get', { security: { policy: "pol'y", loc: loc() }, responses: [opResponse(200)] })])]);
+        const out = generateOp(root);
+        expect(out).toContain("requirePolicy({ policy: 'pol\\'y' })");
     });
 });
 

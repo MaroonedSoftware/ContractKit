@@ -145,8 +145,14 @@ export interface ServerFramework {
         caseEnd(): string[];
     };
 
-    /** The whole `mcp.router.ts` file, which is boilerplate rather than a per-operation render. */
-    mcpRouter(options: { path: string }): string;
+    /**
+     * The whole `mcp.router.ts` file, which is boilerplate rather than a per-operation render.
+     *
+     * `guards` is rendered through {@link routeOpen}, the same path an operation route takes, so the
+     * mount cannot spell a guard differently from the routes beside it. The adapter still owns the
+     * file, including deriving its import lines from the body it produced.
+     */
+    mcpRouter(options: { path: string; guards: RouteMiddleware }): string;
 }
 
 /**

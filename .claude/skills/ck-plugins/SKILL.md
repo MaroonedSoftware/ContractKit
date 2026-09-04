@@ -100,6 +100,20 @@ body rather than as top-level statements against it — Fastify's `FastifyPlugin
 bare `ServerKitRouter()` value — sets `routerWrapsRoutes: true` and returns the closing line(s) from
 `routerClose()`; `generateOp` indents that framework's routes one level and appends the close.
 
+`policy` and `signature` expressions are rendered by `src/route-guards.ts`, which the operation
+routers and the MCP mount both call — the adapter decides how a guard is *written*, `route-guards.ts`
+decides what its argument *says*, and neither router can spell the same declaration differently. The
+`mcpRouter` seam takes `{ path, guards }` for the same reason: the mount's route line goes through
+the adapter's own `routeOpen`, and the adapter derives its import lines by probing the body it
+produced, the way `generateOp` does.
+
+MCP output enforces contract security in two places. Every generated tool handler opens with
+`requireMcpPolicy` for its operation's effective security (`MFA_SATISFIED_POLICY` when the operation
+declares none, nothing when it declares `security: none`), because one `tools/call` reaches every
+registered tool and the route guard cannot stand in for a per-tool gate. The route guard itself
+defaults to `requirePolicy({ policy: false })`, or to nothing when any exposed tool is public
+(`defaultMcpMountSecurity`), and `mcp.security` overrides it.
+
 `zod: true` makes `output.types` emit Zod schemas (via `generateContract`) instead of plain
 TypeScript interfaces. Path templates support `{filename}`, `{dir}`, `{area}`, `{subarea}`,
 and `{name}`.

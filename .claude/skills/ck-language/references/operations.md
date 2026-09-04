@@ -32,8 +32,16 @@ reused for `parseAndValidate` in `handle`. The handler constructor-injects the o
 `service` and calls it. Output mirrors the Koa router: one `<filename>.mcp.ts` per op-root
 (a cacheable unit) plus a `mcp.tools.ts` aggregator assembling the DI `McpToolHandlerMap`,
 and an optional `mcp.router.ts`. The `@maroonedsoftware/mcp` runtime owns the JSON-RPC
-lifecycle, sessions, Streamable HTTP transport, and auth. Python/OpenAPI/Markdown/Bruno do
-not consume `op.mcp`.
+lifecycle, sessions, Streamable HTTP transport, and authentication.
+
+Each handler also enforces the op's effective `security` with `requireMcpPolicy` before it
+parses its arguments — a tool is another way to invoke the operation, not a way around its
+gate. An op declaring nothing takes `MFA_SATISFIED_POLICY`, the same gate its HTTP route
+gets; `security: none` emits no check. The route guard in `mcp.router.ts` closes the mount
+rather than the individual tools, so it defaults to a session check and drops to nothing
+when any exposed tool is public; `mcp.security` overrides it.
+
+Python/OpenAPI/Markdown/Bruno do not consume `op.mcp`.
 
 ## Which responses the service produces
 

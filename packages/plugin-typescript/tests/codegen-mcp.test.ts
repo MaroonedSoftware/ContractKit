@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import type { McpConfigNode } from '@contractkit/core';
+import { SECURITY_NONE } from '@contractkit/core';
 import {
     generateMcpFile,
     generateMcpAggregator,
     generateMcpRouter,
+    defaultMcpMountSecurity,
     hasMcpOperations,
     deriveMcpRegisterFnName,
 } from '../src/codegen-mcp.js';
+import type { RouteMiddleware } from '../src/server-framework.js';
 import { opRoot, opRoute, opOperation, opParam, opRequest, opResponse, scalarType, loc } from './helpers.js';
 
 function mcpBlock(over: Partial<McpConfigNode>): McpConfigNode {
@@ -147,7 +150,8 @@ describe('generateMcpFile', () => {
             const out = generateMcpFile(root);
             // Nothing destructures `args` here, so an un-prefixed name trips no-unused-vars in
             // consumers that lint generated output.
-            expect(out).toContain('async handle(_args: Record<string, unknown>, _context: McpToolContext)');
+            // The context is read now: an undeclared operation still enforces its MFA gate per tool.
+            expect(out).toContain('async handle(_args: Record<string, unknown>, context: McpToolContext)');
             expect(out).not.toContain('async handle(args:');
             expect(out).not.toContain('parseAndValidate');
         });
@@ -159,7 +163,7 @@ describe('generateMcpFile', () => {
                 opRoute('/payments/{id}', [opOperation('get', { mcp: true, service: 'PaymentsService.getById', responses: [opResponse(200, 'Payment', 'application/json')] })], [opParam('id', scalarType('uuid'))]),
             ]);
             const out = generateMcpFile(root);
-            expect(out).toContain('constructor(private readonly service: PaymentsService) {}');
+            expect(out).toContain('constructor(private readonly service: PaymentsService, private readonly policies: PolicyService) {}');
             expect(out).toContain('const result = await this.service.getById(id);');
             expect(out).toContain('structuredContent: result');
         });
@@ -191,7 +195,9 @@ describe('generateMcpFile', () => {
             );
             const out = generateMcpFile(root);
             expect(out).toContain("import { Injectable, type Container } from 'injectkit';");
-            expect(out).toContain("import type { McpToolHandler, McpToolHandlerMap, McpToolContext } from '@maroonedsoftware/mcp';");
+            expect(out).toContain(
+                "import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';",
+            );
             expect(out).toContain("import { parseAndValidate } from '@maroonedsoftware/zod';");
             expect(out).toContain('export function registerPaymentsMcpTools(map: McpToolHandlerMap, container: Container): void {');
             expect(out).toContain("map.set('get_payments_by_id', container.get(GetPaymentsByIdMcpTool));");
@@ -240,13 +246,103 @@ describe('generateMcpAggregator', () => {
     });
 });
 
+describe('per-tool security enforcement', () => {
+    const toolRoot = (over: Record<string, unknown> = {}, routeOver: Record<string, unknown> = {}, rootOver: Record<string, unknown> = {}) => ({
+        ...opRoot([
+            {
+                ...opRoute('/payments', [opOperation('post', { mcp: true, responses: [opResponse(200, 'Payment', 'application/json')], ...over })]),
+                ...routeOver,
+            },
+        ]),
+        ...rootOver,
+    });
+
+    it('applies the same MFA gate its HTTP route gets when the operation declares nothing', () => {
+        const out = generateMcpFile(toolRoot());
+        expect(out).toContain('await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });');
+        expect(out).toContain("import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';");
+    });
+
+    it('runs no check at all for security: none', () => {
+        const out = generateMcpFile(toolRoot({ security: SECURITY_NONE }));
+        expect(out).not.toContain('requireMcpPolicy');
+        expect(out).not.toContain('PolicyService');
+        // Nothing reads the context, so it keeps the underscore that opts it out of no-unused-vars.
+        expect(out).toContain('_context: McpToolContext');
+    });
+
+    it('validates the session only when the operation declares policy: false', () => {
+        const out = generateMcpFile(toolRoot({ security: { policy: false, loc: loc() } }));
+        expect(out).toContain('await requireMcpPolicy(context, this.policies);');
+        expect(out).not.toContain('MFA_SATISFIED_POLICY');
+    });
+
+    it('asserts the named policy the operation declares', () => {
+        const out = generateMcpFile(toolRoot({ security: { policy: 'payments.write', loc: loc() } }));
+        expect(out).toContain("await requireMcpPolicy(context, this.policies, { policy: 'payments.write' });");
+    });
+
+    it('escapes a quote in the policy name rather than closing the literal', () => {
+        const out = generateMcpFile(toolRoot({ security: { policy: "pol'y", loc: loc() } }));
+        expect(out).toContain("{ policy: 'pol\\'y' }");
+    });
+
+    it('cascades security from the route', () => {
+        const out = generateMcpFile(toolRoot({}, { security: { policy: 'route.level', loc: loc() } }));
+        expect(out).toContain("{ policy: 'route.level' }");
+    });
+
+    it('cascades security from the file, and the operation still wins over it', () => {
+        expect(generateMcpFile(toolRoot({}, {}, { security: { policy: 'file.level', loc: loc() } }))).toContain("{ policy: 'file.level' }");
+        expect(
+            generateMcpFile(toolRoot({ security: { policy: 'op.level', loc: loc() } }, {}, { security: { policy: 'file.level', loc: loc() } })),
+        ).toContain("{ policy: 'op.level' }");
+    });
+
+    it('checks before parsing the arguments, so an unauthorized caller learns nothing about the schema', () => {
+        const out = generateMcpFile(toolRoot({ request: opRequest('Payment', 'application/json') }));
+        const check = out.indexOf('requireMcpPolicy');
+        const parse = out.indexOf('parseAndValidate');
+        expect(check).toBeGreaterThan(-1);
+        expect(parse).toBeGreaterThan(check);
+    });
+
+    it('injects PolicyService only into the tools that check', () => {
+        const root = opRoot([
+            opRoute('/open', [opOperation('get', { mcp: true, security: SECURITY_NONE, responses: [opResponse(204)] })]),
+            opRoute('/gated', [opOperation('get', { mcp: true, security: { policy: 'x', loc: loc() }, responses: [opResponse(204)] })]),
+        ]);
+        const out = generateMcpFile(root);
+        expect(out).toContain('constructor(private readonly service: UsersService, private readonly policies: PolicyService) {}');
+        expect(out).toContain('constructor(private readonly service: UsersService) {}');
+        // One gated tool is enough to pull the runtime imports in for the whole file.
+        expect(out).toContain("import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';");
+        expect(out).toContain("import { PolicyService } from '@maroonedsoftware/policies';");
+    });
+
+    it('leaves the mcp import type-only when no tool checks', () => {
+        const out = generateMcpFile(toolRoot({ security: SECURITY_NONE }));
+        expect(out).toContain("import type { McpToolHandler, McpToolHandlerMap, McpToolContext } from '@maroonedsoftware/mcp';");
+        expect(out).not.toContain("from '@maroonedsoftware/policies'");
+        expect(out).not.toContain("from '@maroonedsoftware/authentication'");
+    });
+});
+
 describe('generateMcpRouter', () => {
     it('emits a ServerKit route wired to the dispatcher at the configured path', () => {
         const out = generateMcpRouter({ path: '/mcp' });
-        expect(out).toContain("import { McpDispatcher, createMcpRequestContext, MCP_AUTH_POLICY } from '@maroonedsoftware/mcp';");
+        expect(out).toContain("import { McpDispatcher, createMcpRequestContext } from '@maroonedsoftware/mcp';");
         expect(out).toContain("router.post('/mcp'");
         expect(out).toContain('ctx.container.get(McpDispatcher)');
         expect(out).toContain("dispatcher.sessionMode === 'stateful'");
+    });
+
+    it('never emits the deprecated header-reading bearer guard', () => {
+        // `requireSignature` + MCP_AUTH_POLICY read the Authorization header, which the
+        // authentication stack deletes before any route guard runs.
+        const out = generateMcpRouter();
+        expect(out).not.toContain('MCP_AUTH_POLICY');
+        expect(out).not.toContain('requireSignature');
     });
 
     it('tells consumers to bind the aggregator rather than call it at startup', () => {
@@ -255,14 +351,23 @@ describe('generateMcpRouter', () => {
         expect(out).not.toContain('Call `registerMcpTools(container)` at startup');
     });
 
-    it('parses the body before verifying the signature', () => {
+    it('guards the mount with a bare session check by default', () => {
         const out = generateMcpRouter({ path: '/mcp' });
-        // `requireSignature` HMACs `ctx.rawBody`, which only `bodyParserMiddleware` populates,
-        // so the parser has to run first. Asserting the whole route line pins the order too.
-        expect(out).toContain("import { ServerKitRouter, bodyParserMiddleware, requireSignature } from '@maroonedsoftware/koa';");
-        expect(out).toContain(
-            "router.post('/mcp', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async (ctx) => {",
-        );
+        expect(out).toContain("import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';");
+        // Asserting the whole route line pins the guard order too: the body parser fills
+        // `ctx.parsedBody` and `ctx.rawBody`, which the handler below reads.
+        expect(out).toContain("router.post('/mcp', requirePolicy({ policy: false }), bodyParserMiddleware(['json']), async ctx => {");
+    });
+
+    it('takes a named policy for the mount', () => {
+        const out = generateMcpRouter({ security: { policy: 'auth.session.assurance.level', loc: loc() } });
+        expect(out).toContain("requirePolicy({ policy: 'auth.session.assurance.level' })");
+    });
+
+    it('leaves the mount unguarded for security: none', () => {
+        const out = generateMcpRouter({ security: SECURITY_NONE });
+        expect(out).toContain("router.post('/mcp', bodyParserMiddleware(['json']), async ctx => {");
+        expect(out).not.toContain('requirePolicy');
     });
 
     it('answers notifications with 202 rather than falling through to a 404', () => {
@@ -287,19 +392,63 @@ describe('generateMcpRouter', () => {
     });
 
         it('delegates the whole file to the framework adapter', () => {
-            const stub = { mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}` };
-            // Only `mcpRouter` is reachable from here, so the rest of the adapter is left off the stub.
+            const stub = {
+                middleware: { policy: (args: string) => `requirePolicy(${args})` },
+                mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}`,
+            };
+            // Only `mcpRouter` and the guard factory it needs are reachable from here, so the rest of
+            // the adapter is left off the stub.
             const out = generateMcpRouter({ framework: stub as never });
             expect(out).toBe('// stub mount at /mcp');
         });
 
         it('passes a configured path through to the adapter', () => {
-            const stub = { mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}` };
+            const stub = {
+                middleware: { policy: (args: string) => `requirePolicy(${args})` },
+                mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}`,
+            };
             expect(generateMcpRouter({ path: '/tools', framework: stub as never })).toBe('// stub mount at /tools');
+        });
+
+        it('hands the adapter the guards rather than letting the template spell them', () => {
+            const stub = {
+                middleware: { policy: (args: string) => `requirePolicy(${args})` },
+                mcpRouter: ({ guards }: { guards: RouteMiddleware }) => JSON.stringify(guards),
+            };
+            expect(JSON.parse(generateMcpRouter({ framework: stub as never }))).toEqual({
+                bodyContentTypes: ['application/json'],
+                policy: 'requirePolicy({ policy: false })',
+            });
         });
 
     it('defaults the mount path to /mcp', () => {
         expect(generateMcpRouter()).toContain("router.post('/mcp'");
+    });
+});
+
+describe('defaultMcpMountSecurity', () => {
+    const tool = (over: Record<string, unknown> = {}) => opOperation('get', { mcp: true, responses: [opResponse(204)], ...over });
+
+    it('is a bare session check when every exposed tool declares a gate', () => {
+        const root = opRoot([opRoute('/a', [tool()]), opRoute('/b', [tool({ security: { policy: 'x', loc: loc() } })])]);
+        expect(defaultMcpMountSecurity([root], false)).toEqual({ policy: false, loc: { file: '', line: 0 } });
+    });
+
+    it('opens the mount as soon as one tool is public — the route serves them all', () => {
+        const root = opRoot([opRoute('/a', [tool()]), opRoute('/b', [tool({ security: SECURITY_NONE })])]);
+        expect(defaultMcpMountSecurity([root], false)).toBe(SECURITY_NONE);
+    });
+
+    it('ignores an internal tool that is not exposed', () => {
+        const root = opRoot([opRoute('/a', [tool()]), opRoute('/b', [tool({ security: SECURITY_NONE, modifiers: ['internal'] })])]);
+        expect(defaultMcpMountSecurity([root], false)).toEqual({ policy: false, loc: { file: '', line: 0 } });
+        expect(defaultMcpMountSecurity([root], true)).toBe(SECURITY_NONE);
+    });
+
+    it('looks across every op root, not just the first', () => {
+        const gated = opRoot([opRoute('/a', [tool()])], 'a.op');
+        const open = opRoot([opRoute('/b', [tool({ security: SECURITY_NONE })])], 'b.op');
+        expect(defaultMcpMountSecurity([gated, open], false)).toBe(SECURITY_NONE);
     });
 });
 

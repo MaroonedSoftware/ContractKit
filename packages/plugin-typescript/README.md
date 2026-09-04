@@ -106,6 +106,30 @@ it has no output transform, so the wire view and the server view agree. That als
 output carries a real `import Decimal from 'decimal.js'`, and the scaffolded `package.json` adds
 `decimal.js` as a dependency whenever a covered model uses the scalar.
 
+### `mcp`
+
+Generates MCP tool handlers from `mcp`-flagged operations, an aggregator, and the `POST /mcp` route.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `baseDir` | `string` | `rootDir` | Base directory for output files |
+| `output.tools` | `string` | `"{filename}.mcp.ts"` | Path template for per-file tool handlers |
+| `output.index` | `string` | `"mcp.tools.ts"` | Path for the aggregator |
+| `output.router` | `string` | `"mcp.router.ts"` | Path for the route file |
+| `output.types` | `string` | — | Path template for the Zod schema files tools import |
+| `emitRouter` | `boolean` | `true` | Emit the route file. Its framework follows `server.framework` |
+| `path` | `string` | `"/mcp"` | Mount path used in the emitted router |
+| `servicePathTemplate` | `string` | — | Import path template for service implementations |
+| `includeInternal` | `boolean` | `false` | Expose operations marked `internal` as tools |
+| `security` | `object` | derived | Guard on the emitted route: `"none"`, `{ policy: false }`, or `{ policy: name }` |
+
+Each generated tool enforces its own operation's `security` with `requireMcpPolicy` before parsing
+its arguments, so a tool is not a way around the gate its HTTP route carries. An operation
+declaring nothing takes `MFA_SATISFIED_POLICY`, the same gate `requirePolicy()` applies. The route
+guard closes the mount rather than the individual tools, so it defaults to a bare session check and
+drops to nothing when any exposed tool is `security: none`. See
+[docs/config.md](../../docs/config.md) for the full rules and the runtime wiring this expects.
+
 ## Path templates
 
 Output paths support the following variables:

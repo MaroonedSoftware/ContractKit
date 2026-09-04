@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { KOA_SERVER_FRAMEWORK as koa } from '../src/server-framework-koa.js';
 
+const mcpGuards = {
+    bodyContentTypes: ['application/json'],
+    signature: "requireSignature('mcp', { policy: MCP_AUTH_POLICY })",
+};
+
 /**
  * The Koa adapter is the reference implementation: every string here is one the generator emitted
  * inline before the seam existed. Pinning them individually means a change to any one of them shows
@@ -132,14 +137,38 @@ describe('KOA_SERVER_FRAMEWORK', () => {
 
     describe('mcpRouter', () => {
         it('mounts the dispatcher at the given path', () => {
-            const out = koa.mcpRouter({ path: '/tools' });
+            const out = koa.mcpRouter({ path: '/tools', guards: mcpGuards });
             expect(out).toContain("router.post('/tools',");
             expect(out).toContain("import { ServerKitRouter, bodyParserMiddleware, requireSignature } from '@maroonedsoftware/koa';");
             expect(out).toContain('const dispatcher = ctx.container.get(McpDispatcher);');
         });
 
+        it('hands the dispatcher the session the authentication stack resolved', () => {
+            // The stack deletes the Authorization header once it has resolved it, so the session is
+            // the only identity a tool handler can still read.
+            const out = koa.mcpRouter({ path: '/mcp', guards: mcpGuards });
+            expect(out).toContain(
+                'const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger, authenticationSession: ctx.authenticationSession });',
+            );
+        });
+
+        it('renders the guards it is handed through routeOpen, so the mount reads like any other route', () => {
+            const out = koa.mcpRouter({ path: '/mcp', guards: mcpGuards });
+            expect(out).toContain(
+                "router.post('/mcp', bodyParserMiddleware(['json']), requireSignature('mcp', { policy: MCP_AUTH_POLICY }), async ctx => {",
+            );
+        });
+
+        it('imports only the guards the mount actually uses', () => {
+            const out = koa.mcpRouter({ path: '/mcp', guards: { policy: 'requirePolicy({ policy: false })' } });
+            expect(out).toContain("import { ServerKitRouter, requirePolicy } from '@maroonedsoftware/koa';");
+            expect(out).toContain("import { McpDispatcher, createMcpRequestContext } from '@maroonedsoftware/mcp';");
+            expect(out).not.toContain('requireSignature');
+            expect(out).not.toContain('MCP_AUTH_POLICY');
+        });
+
         it('escapes the backticks in its own doc comment rather than closing the template', () => {
-            expect(koa.mcpRouter({ path: '/mcp' })).toContain('Bind `registerMcpTools` to the `McpToolHandlerMap` token.');
+            expect(koa.mcpRouter({ path: '/mcp', guards: mcpGuards })).toContain('Bind `registerMcpTools` to the `McpToolHandlerMap` token.');
         });
     });
 });
