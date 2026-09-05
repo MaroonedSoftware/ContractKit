@@ -412,6 +412,18 @@ function renderDefault(value: string | number | boolean, type: ContractTypeNode,
         if (!decl || !inner.values.includes(value)) return undefined;
         return `${decl.name}.${enumEntryNames(inner.values).get(value)}`;
     }
+
+    // The same default written against a NAMED enum contract — `rating: Rating = "neutral"`,
+    // where `contract Rating: enum(...)` — arrives here as a ref rather than as the enum node,
+    // and used to fall all the way through to the string branch at the end. That emitted
+    // `val rating: Rating? = "neutral"`, which does not compile: the field's type is the enum
+    // class and the initializer was its wire spelling.
+    if (inner.kind === 'ref') {
+        const target = ctx.modelIndex.get(inner.name);
+        const targetType = target?.type?.kind === 'lazy' ? target.type.inner : target?.type;
+        if (targetType?.kind !== 'enum' || !targetType.values.includes(value)) return undefined;
+        return `${inner.name}.${enumEntryNames(targetType.values).get(value)}`;
+    }
     if (inner.kind === 'scalar') {
         switch (inner.name) {
             case 'decimal':

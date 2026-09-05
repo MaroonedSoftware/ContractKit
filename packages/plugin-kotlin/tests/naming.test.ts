@@ -80,4 +80,15 @@ describe('kdocLines', () => {
     it('breaks up a comment terminator that would close the block early', () => {
         expect(kdocLines('ends with */ here', '').join('\n')).not.toContain('*/ here');
     });
+
+    it('breaks up a comment OPENER, which nests in Kotlin and would swallow the rest of the file', () => {
+        // Kotlin block comments nest, so `/*` inside a KDoc opens a second comment that the
+        // KDoc's own terminator then closes — leaving the outer one open. A contract describing
+        // a route as `/auth/factors/*` did exactly this, and the compiler reported it at the next
+        // declaration rather than anywhere near the text.
+        const rendered = kdocLines('the only /auth/factors/* route', '').join('\n');
+
+        expect(rendered).not.toContain('/* route');
+        expect(rendered).toContain('/\\* route');
+    });
 });

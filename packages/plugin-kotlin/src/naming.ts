@@ -127,11 +127,17 @@ export function deriveKotlinFileBase(file: string): string {
 
 /**
  * Render `text` as a KDoc block indented by `indent`. Returns `[]` for empty text so callers can
- * splat unconditionally. A comment terminator inside the text would close the block early, so it
- * is broken up.
+ * splat unconditionally. Both comment delimiters inside the text are broken up, because Kotlin
+ * block comments nest: a terminator would close the block early and an OPENER would leave it
+ * open.
  */
 export function kdocLines(text: string, indent: string): string[] {
-    const safe = text.replace(/\*\//g, '*\\/');
+    // Both delimiters, because Kotlin block comments NEST. A stray `*/` closes the KDoc early,
+    // and a stray `/*` opens a nested comment that the KDoc's own `*/` then closes — leaving the
+    // comment itself open and swallowing the rest of the file. A contract describing a route as
+    // `/auth/factors/*` is enough to do it, and the error is reported at the NEXT declaration,
+    // which is nowhere near the text that caused it.
+    const safe = text.replace(/\*\//g, '*\\/').replace(/\/\*/g, '/\\*');
     const sourceLines = safe.split('\n');
     if (sourceLines.length === 1) return [`${indent}/** ${sourceLines[0]} */`];
     return [`${indent}/**`, ...sourceLines.map(line => `${indent} * ${line}`.trimEnd()), `${indent} */`];

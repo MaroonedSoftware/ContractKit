@@ -171,6 +171,30 @@ describe('fields', () => {
         expect(out).toContain('val on: Boolean? = true,');
     });
 
+    it('renders a default against a NAMED enum contract as the member, not its wire spelling', () => {
+        // `contract Rating: enum(...)` reaches the default renderer as a ref rather than as the
+        // enum node, so this used to fall through to the string branch and emit
+        // `val rating: Rating? = "neutral"` — a field typed as the enum class initialized with a
+        // String, which does not compile.
+        const out = gen([
+            model('Rating', [], { type: enumType('liked', 'neutral', 'disliked') }),
+            model('M', [field('rating', refType('Rating'), { optional: true, default: 'neutral' })]),
+        ]);
+
+        expect(out).toContain('val rating: Rating? = Rating.NEUTRAL');
+        expect(out).not.toContain('= "neutral"');
+    });
+
+    it('leaves a field required when the default names no member of the enum it refers to', () => {
+        // Better than an initializer that will not compile: the caller is asked for the value.
+        const out = gen([
+            model('Rating', [], { type: enumType('liked', 'neutral', 'disliked') }),
+            model('M', [field('rating', refType('Rating'), { optional: true, default: 'adored' })]),
+        ]);
+
+        expect(out).toContain('val rating: Rating? = null');
+    });
+
     it('escapes a dollar sign in a string default, which would otherwise start a template', () => {
         const out = gen([model('M', [field('label', scalarType('string'), { default: 'cost: $5' })])]);
         expect(out).toContain('"cost: \\$5"');

@@ -3,7 +3,8 @@
 ContractKit's Kotlin Multiplatform SDK generator. Emits `kotlinx.serialization` data classes and a
 Ktor-based client from `.ck` contract and operation files.
 
-> The generated Kotlin has not yet been compiled against a real toolchain. See **Status** below.
+> The emitted Kotlin now compiles, but nothing in this package's test suite checks that. See
+> **Status** below.
 
 ## Install
 
@@ -194,9 +195,16 @@ Pinned versions live in one object in `src/scaffold.ts`, so a bump is one edit.
 
 ## Status and known limitations
 
-The generator is complete and unit-tested, but **the Kotlin it emits has not been compiled**: no
-Kotlin toolchain was available where it was written. Run a build against the scaffold before
-depending on it, and expect to fix import or API-shape details.
+The generator is complete and unit-tested, and the Kotlin it emits **has** now been compiled
+against a real toolchain. That first build is what turned up the two bugs fixed in the patch after
+`0.1.0`: a `/*` in contract text escaped into a KDoc and swallowed the rest of the file, and a
+default written against a named `enum` contract came out as its wire spelling rather than the enum
+member.
+
+The compile is not automated. This package's tests assert over the generated _strings_, so
+`pnpm test` will not catch the next construct that parses here and fails there. Build the scaffold
+after a generator change, and expect the corners that build has not reached to still hold import or
+API-shape details that need fixing.
 
 Behavioural limitations, all deliberate:
 
