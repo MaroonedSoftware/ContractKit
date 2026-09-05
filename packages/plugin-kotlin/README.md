@@ -3,8 +3,8 @@
 ContractKit's Kotlin Multiplatform SDK generator. Emits `kotlinx.serialization` data classes and a
 Ktor-based client from `.ck` contract and operation files.
 
-> Work in progress: model generation only. The client generator, response shapes, and the Gradle
-> scaffold land in later phases.
+> Work in progress: models and clients generate. Typed response headers, multi-status responses,
+> and the Gradle scaffold land in later phases.
 
 ## Install
 
@@ -123,3 +123,31 @@ build time. Those degrade to a raw `JsonElement` with a warning.
 An inline object, an intersection, or an enum used inside a field is given a name from the model and
 field that hold it: `contract M { status: enum(a, b) }` produces `enum class MStatus`. Names are
 unique across the whole project, and a collision with a real contract name gets a numeric suffix.
+
+## Using the client
+
+```kotlin
+val sdk = AcmeSdk(
+    SdkConfig(
+        baseUrl = "https://api.acme.com",
+        headers = { mapOf("Authorization" to "Bearer ${tokenStore.current()}") },
+    ),
+)
+
+val payment = sdk.billing.getPayment(paymentId)
+sdk.close()
+```
+
+Every method is a `suspend fun`. `SdkConfig.headers` is called once per request, so a token can be
+refreshed without rebuilding the SDK. Pass your own `httpClient` to bring an engine or Ktor plugins
+such as `Auth`, `Logging`, or `HttpRequestRetry`; the SDK then never closes it.
+
+All clients share one `SdkHttp`, and therefore one Ktor `HttpClient` and one connection pool.
+
+A status the contract declares but does not produce a body for raises `SdkError`, which extends
+Ktor's own `ResponseException`. A non-2xx status the contract _does_ give a meaning to comes back as
+a value instead.
+
+Path, query, header, and form values are turned into text by the same serializer that would put
+them in a JSON body, so a `Uuid`, an `Instant`, a `Duration`, or an enum is spelled identically
+wherever it appears in a request.

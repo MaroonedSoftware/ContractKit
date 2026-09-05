@@ -4,7 +4,7 @@ import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { PluginContext } from '@contractkit/core';
 import { assertValidConfig, createKotlinSdkPlugin } from '../src/index.js';
-import { contractRoot, field, model, scalarType } from './helpers.js';
+import { contractRoot, field, model, opOperation, opResponse, opRoot, opRoute, scalarType } from './helpers.js';
 
 const ROOT_DIR = '/project';
 
@@ -50,7 +50,12 @@ describe('assertValidConfig', () => {
 describe('generateTargets', () => {
     const inputs = {
         contractRoots: [contractRoot([model('Payment', [field('id', scalarType('uuid'))])], 'contracts/billing.ck')],
-        opRoots: [],
+        opRoots: [
+            opRoot(
+                [opRoute('/payments', [opOperation('get', { sdk: 'listPayments', responses: [opResponse(200, 'Payment')] })])],
+                'contracts/billing.ck',
+            ),
+        ],
         modelsWithInput: new Set<string>(),
         modelsWithOutput: new Set<string>(),
     };
@@ -62,17 +67,30 @@ describe('generateTargets', () => {
 
         expect([...ctx.emitted.keys()].sort()).toEqual([
             'ktsdk/src/commonMain/kotlin/com/acme/sdk/AcmeSdk.kt',
+            'ktsdk/src/commonMain/kotlin/com/acme/sdk/clients/BillingClient.kt',
             'ktsdk/src/commonMain/kotlin/com/acme/sdk/models/BillingModels.kt',
+            'ktsdk/src/commonMain/kotlin/com/acme/sdk/runtime/SdkRuntime.kt',
             'ktsdk/src/commonMain/kotlin/com/acme/sdk/runtime/Serializers.kt',
         ]);
         expect(ctx.emitted.get('ktsdk/src/commonMain/kotlin/com/acme/sdk/models/BillingModels.kt')).toContain('data class Payment(');
         expect(ctx.emitted.get('ktsdk/src/commonMain/kotlin/com/acme/sdk/runtime/Serializers.kt')).toContain('value class Decimal');
+        expect(ctx.emitted.get('ktsdk/src/commonMain/kotlin/com/acme/sdk/AcmeSdk.kt')).toContain('val billing: BillingClient = BillingClient(http)');
     });
 
     it('defaults the output directory, package, and aggregator name', async () => {
         const ctx = makeCtx();
         await createKotlinSdkPlugin({}, ROOT_DIR).generateTargets!(inputs, ctx);
         expect(ctx.emitted.has('kotlin-sdk/src/commonMain/kotlin/contractkit/sdk/Sdk.kt')).toBe(true);
+    });
+
+    it('skips a client file whose operations are all internal, rather than emitting an empty class', async () => {
+        const ctx = makeCtx();
+        const internalOnly = {
+            ...inputs,
+            opRoots: [opRoot([opRoute('/x', [opOperation('get', { sdk: 'x' })], undefined, ['internal'])], 'contracts/admin.ck')],
+        };
+        await createKotlinSdkPlugin({ baseDir: 'ktsdk', packageName: 'com.acme.sdk' }, ROOT_DIR).generateTargets!(internalOnly, ctx);
+        expect([...ctx.emitted.keys()].some(k => k.includes('AdminClient'))).toBe(false);
     });
 
     it('surfaces an invalid package name as a build error rather than emitting broken Kotlin', async () => {

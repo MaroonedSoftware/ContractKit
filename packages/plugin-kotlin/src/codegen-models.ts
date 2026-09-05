@@ -17,6 +17,12 @@ export interface KotlinModelCodegenOptions {
     modelIndex?: ReadonlyMap<string, ModelNode>;
     /** Names assigned to anonymous types by {@link collectHoistedTypes}, across the whole project. */
     hoisted?: HoistResult;
+    /**
+     * Package holding the generated models. Set only when rendering a file outside that package —
+     * a client — so referencing a model registers an import. The models file leaves it unset,
+     * since every model is its own neighbour.
+     */
+    modelsPackage?: string;
     warn?: (message: string) => void;
 }
 
@@ -74,8 +80,22 @@ interface RenderContext {
     modelsWithInput: ReadonlySet<string>;
     modelIndex: ReadonlyMap<string, ModelNode>;
     hoisted?: HoistResult;
+    modelsPackage?: string;
     imports: ImportTracker;
     warn?: (message: string) => void;
+}
+
+/** Build a rendering context for a file outside the models package, such as a client. */
+export function createRenderContext(opts: KotlinModelCodegenOptions & { modelsWithInput: ReadonlySet<string> }): RenderContext {
+    return {
+        packageName: opts.packageName,
+        modelsWithInput: opts.modelsWithInput,
+        modelIndex: opts.modelIndex ?? new Map(),
+        hoisted: opts.hoisted,
+        modelsPackage: opts.modelsPackage,
+        imports: new ImportTracker(),
+        warn: opts.warn,
+    };
 }
 
 /**
@@ -135,7 +155,11 @@ export function renderFile(packageName: string, imports: ImportTracker, bodies: 
  */
 export function renderKotlinType(type: ContractTypeNode, ctx: RenderContext, forInput = false): string {
     const decl = ctx.hoisted?.byNode.get(type);
-    if (decl) return hoistedTypeName(decl, forInput);
+    if (decl) {
+        const name = hoistedTypeName(decl, forInput);
+        registerModelImport(name, ctx);
+        return name;
+    }
 
     switch (type.kind) {
         case 'scalar':
@@ -157,8 +181,11 @@ export function renderKotlinType(type: ContractTypeNode, ctx: RenderContext, for
         }
         case 'tuple':
             return renderTuple(type.items, ctx, forInput);
-        case 'ref':
-            return forInput && ctx.modelsWithInput.has(type.name) ? `${type.name}Input` : type.name;
+        case 'ref': {
+            const name = forInput && ctx.modelsWithInput.has(type.name) ? `${type.name}Input` : type.name;
+            registerModelImport(name, ctx);
+            return name;
+        }
         case 'lazy':
             return renderKotlinType(type.inner, ctx, forInput);
         case 'union': {
@@ -188,6 +215,12 @@ export function renderKotlinType(type: ContractTypeNode, ctx: RenderContext, for
 function hoistedTypeName(decl: HoistedDecl, forInput: boolean): string {
     const name = forInput && decl.needsInput ? `${decl.name}Input` : decl.name;
     return decl.nullable ? `${name}?` : name;
+}
+
+/** Import a model into a file that is not itself in the models package. */
+function registerModelImport(typeName: string, ctx: RenderContext): void {
+    if (!ctx.modelsPackage) return;
+    ctx.imports.add(`${ctx.modelsPackage}.${typeName.replace(/\?$/, '')}`);
 }
 
 function isNullScalar(type: ContractTypeNode): boolean {
