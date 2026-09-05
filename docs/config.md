@@ -69,6 +69,7 @@ Each plugin is its own npm package and is loaded by listing it under `"plugins"`
 | `@contractkit/plugin-docs`       | OpenAPI 3.1 YAML, a Markdown reference, and a Mintlify site      |
 | `@contractkit/plugin-bruno`      | Bruno REST collection                                            |
 | `@contractkit/plugin-python`     | Python SDK client (Pydantic v2 + httpx)                          |
+| `@contractkit/plugin-kotlin`     | Kotlin Multiplatform SDK client (Ktor + kotlinx.serialization)   |
 
 ### `@contractkit/plugin-typescript`
 
@@ -81,7 +82,7 @@ Generates server router files from `operation` declarations, targeting Koa or Fa
 | Field                 | Type      | Description                                                                                                                |
 | --------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `baseDir`             | `string`  | Directory (relative to `rootDir`) where server files are written                                                           |
-| `framework`           | `string`  | HTTP framework the routers target: `koa` (default) or `fastify`. Also selects the `mcp.router.ts` flavour.                  |
+| `framework`           | `string`  | HTTP framework the routers target: `koa` (default) or `fastify`. Also selects the `mcp.router.ts` flavour.                 |
 | `zod`                 | `boolean` | When true, `output.types` emits Zod schemas. When false/omitted, emits plain TypeScript interfaces.                        |
 | `output.routes`       | `string`  | Path template for router files. Default: `{filename}.router.ts`                                                            |
 | `output.types`        | `string`  | Path template for type/schema files                                                                                        |
@@ -163,18 +164,18 @@ All path templates support `{filename}`, `{dir}`, `{area}`, and (for `output.sdk
 
 Turns `mcp`-flagged operations into a [`@maroonedsoftware/mcp`](https://github.com/MaroonedSoftware/ServerKit/tree/main/packages/mcp) tool server: one `@Injectable()` tool-handler class per operation, an aggregator that assembles the `McpToolHandlerMap`, and the `POST /mcp` route that mounts the dispatcher.
 
-| Field                 | Type      | Description                                                                                                     |
-| --------------------- | --------- | --------------------------------------------------------------------------------------------------------------- |
-| `baseDir`             | `string`  | Directory (relative to `rootDir`) where MCP files are written                                                   |
-| `output.tools`        | `string`  | Path template for per-file tool handlers. Default: `{filename}.mcp.ts`                                          |
-| `output.index`        | `string`  | Path for the aggregator. Default: `mcp.tools.ts`                                                                |
-| `output.router`       | `string`  | Path for the route file. Default: `mcp.router.ts`                                                               |
+| Field                 | Type      | Description                                                                                                          |
+| --------------------- | --------- | -------------------------------------------------------------------------------------------------------------------- |
+| `baseDir`             | `string`  | Directory (relative to `rootDir`) where MCP files are written                                                        |
+| `output.tools`        | `string`  | Path template for per-file tool handlers. Default: `{filename}.mcp.ts`                                               |
+| `output.index`        | `string`  | Path for the aggregator. Default: `mcp.tools.ts`                                                                     |
+| `output.router`       | `string`  | Path for the route file. Default: `mcp.router.ts`                                                                    |
 | `output.types`        | `string`  | Path template for the **Zod schema** files tools import. Falls back to `server.output.types` or the `zod` sub-config |
-| `emitRouter`          | `boolean` | Emit `mcp.router.ts`. Its framework follows `server.framework`. Default: `true`                                  |
-| `path`                | `string`  | Mount path used in the emitted router. Default: `/mcp`                                                          |
-| `servicePathTemplate` | `string`  | Import path template for service implementations                                                                |
-| `includeInternal`     | `boolean` | Expose operations marked `internal` as tools. Default: `false`                                                   |
-| `security`            | `object`  | Guard on the emitted route. See below. Default: derived from the exposed tools                                   |
+| `emitRouter`          | `boolean` | Emit `mcp.router.ts`. Its framework follows `server.framework`. Default: `true`                                      |
+| `path`                | `string`  | Mount path used in the emitted router. Default: `/mcp`                                                               |
+| `servicePathTemplate` | `string`  | Import path template for service implementations                                                                     |
+| `includeInternal`     | `boolean` | Expose operations marked `internal` as tools. Default: `false`                                                       |
+| `security`            | `object`  | Guard on the emitted route. See below. Default: derived from the exposed tools                                       |
 
 ##### Security
 
@@ -184,7 +185,7 @@ An MCP tool is another way to invoke an operation, so it enforces the same `secu
 | -------------------------------- | ---------------------------------------------------------------------------- |
 | not declared                     | `requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY })` |
 | `none`                           | nothing — the tool is public                                                 |
-| `{ policy: false }`              | `requireMcpPolicy(context, this.policies)` — a valid session, no policy       |
+| `{ policy: false }`              | `requireMcpPolicy(context, this.policies)` — a valid session, no policy      |
 | `{ policy: name }`               | `requireMcpPolicy(context, this.policies, { policy: 'name' })`               |
 
 The security cascades operation → route → file, the same way it does for a router. A tool that runs no check injects no `PolicyService` and reads no context.
@@ -341,6 +342,20 @@ Regenerates the output directory cleanly on each run.
 | `includeInternal` | `boolean` | Whether to emit client methods for `internal` operations. Default: `false`. |
 
 Emits one Pydantic v2 module per contract file and one httpx client per operation file. Method names follow the same priority as the TS SDK (`sdk:` → `name:` → derived from HTTP verb + path), converted to `snake_case`.
+
+### `@contractkit/plugin-kotlin`
+
+| Field             | Type      | Description                                                                                    |
+| ----------------- | --------- | ---------------------------------------------------------------------------------------------- |
+| `baseDir`         | `string`  | Output directory relative to `rootDir`. Default: `kotlin-sdk`                                  |
+| `packageName`     | `string`  | Kotlin package for the generated sources. Default: `contractkit.sdk`                           |
+| `sdkName`         | `string`  | Aggregator class name, and the Gradle project name when scaffolding. Default: `Sdk`            |
+| `includeInternal` | `boolean` | Whether to emit client methods for `internal` operations. Default: `false`.                    |
+| `scaffold`        | `boolean` | Emit `build.gradle.kts`, `settings.gradle.kts` and `gradle.properties` once. Default: `false`. |
+
+Emits one `kotlinx.serialization` models file per contract file and one Ktor client per operation file, into a `commonMain` source set. Method names follow the same priority as the TS SDK (`sdk:` → `name:` → derived from HTTP verb + path), kept in `camelCase` and backtick-escaped when they land on a Kotlin keyword.
+
+Kotlin data classes cannot extend one another, so a contract's bases are flattened into the generated class. Unions become sealed interfaces with generated serializers. The scaffold files are written once and never overwritten — they are yours to edit.
 
 ## Writing your own plugin
 

@@ -37,7 +37,7 @@ A grammar change is never a one-file change. Work through all of these explicitl
    `printRegex` in `print-type.ts` rather than interpolating a raw value into the output.
 6. `packages/contractkit/tests/parser-ck.test.ts` — a parser test.
 7. **Every codegen plugin that consumes the affected AST shape**, not just the TypeScript
-   one. Check each: `plugin-typescript` (server, SDK, Zod, plain types), `plugin-python`,
+   one. Check each: `plugin-typescript` (server, SDK, Zod, plain types), `plugin-python`, `plugin-kotlin`,
    `plugin-docs` (all four targets — `openapi`, `markdown`, `mintlify`, `docusaurus`),
    `plugin-bruno`, and `openapi-to-ck` (the reverse direction). Update codegen *and* tests for
    each. In `plugin-docs` the four targets share `src/naming.ts` for titles, slugs and area

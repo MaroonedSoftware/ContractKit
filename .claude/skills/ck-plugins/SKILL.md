@@ -129,6 +129,7 @@ Note the first check needs `computeModelsWithCaseTransform`, **not** `modelsWith
 seeds only from `outputCase`, so a `format(input=snake)`-only model would slip through it.
 
 SDK method names resolve in priority order: `sdk:` field → `name:` field (camelCased) →
-inferred from HTTP method + path. The Python SDK uses the same priority but `snake_case`.
+inferred from HTTP method + path. The Python SDK uses the same priority but `snake_case`; the
+Kotlin SDK keeps `camelCase` and backtick-escapes a name that lands on a Kotlin hard keyword.
 
 For SDK client grouping and the `scaffold` option, read `references/ts-sdk.md`.

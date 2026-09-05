@@ -1,8 +1,8 @@
 # ContractKit
 
 Define an API once, in a file you can read aloud, and generate the parts you would otherwise
-hand-write and keep in sync: Zod schemas, a Koa or Fastify router, TypeScript and Python SDK clients, an
-OpenAPI spec, Markdown docs, and a Bruno collection.
+hand-write and keep in sync: Zod schemas, a Koa or Fastify router, TypeScript, Python and Kotlin
+SDK clients, an OpenAPI spec, Markdown docs, and a Bruno collection.
 
 ```
 contract Pet: {
@@ -174,8 +174,9 @@ All packages publish under the `@contractkit` npm scope.
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | [`@contractkit/cli`](apps/cli)                                 | The `contractkit` binary — discovery, config, plugin orchestration                                                                   |
 | [`@contractkit/core`](packages/contractkit)                    | Grammar, parser, AST, semantics, validation, plugin interface                                                                        |
-| [`@contractkit/plugin-typescript`](packages/plugin-typescript) | Koa or Fastify routers, TypeScript SDK, Zod schemas, plain types, MCP tools                                                                     |
+| [`@contractkit/plugin-typescript`](packages/plugin-typescript) | Koa or Fastify routers, TypeScript SDK, Zod schemas, plain types, MCP tools                                                          |
 | [`@contractkit/plugin-python`](packages/plugin-python)         | Python SDK (Pydantic v2 + httpx)                                                                                                     |
+| [`@contractkit/plugin-kotlin`](packages/plugin-kotlin)         | Kotlin Multiplatform SDK (Ktor client + kotlinx.serialization)                                                                       |
 | [`@contractkit/plugin-docs`](packages/plugin-docs)             | Documentation outputs: OpenAPI 3.1 YAML, a Markdown reference, a Mintlify site, and a Docusaurus docs folder                         |
 | [`@contractkit/plugin-bruno`](packages/plugin-bruno)           | Bruno REST collection                                                                                                                |
 | [`@contractkit/openapi-to-ck`](packages/openapi-to-ck)         | OpenAPI YAML → `.ck`, for adopting an existing API                                                                                   |
