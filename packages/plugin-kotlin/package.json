@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-kotlin",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "ContractKit built-in plugin: Kotlin Multiplatform SDK client generation (Ktor client + kotlinx.serialization)",
     "license": "MIT",
     "author": {
