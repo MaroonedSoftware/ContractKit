@@ -205,6 +205,9 @@ importers:
       '@contractkit/plugin-docs':
         specifier: workspace:*
         version: link:../plugin-docs
+      '@contractkit/plugin-kotlin':
+        specifier: workspace:*
+        version: link:../plugin-kotlin
       '@contractkit/plugin-python':
         specifier: workspace:*
         version: link:../plugin-python

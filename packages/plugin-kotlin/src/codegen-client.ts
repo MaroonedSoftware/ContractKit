@@ -107,7 +107,9 @@ export function generateKotlinClient(root: OpRootNode, opts: KotlinClientCodegen
 
     const body: string[] = [];
     body.push('');
-    body.push(...kdocLines(`Operations declared in \`${root.file}\`.`, ''));
+    // The basename, not `root.file`: that is an absolute path on whoever ran the build, and
+    // embedding it would make the generated source differ between machines.
+    body.push(...kdocLines(`Operations declared in \`${root.file.split('/').pop()}\`.`, ''));
     body.push(`class ${className}(private val http: SdkHttp) {`);
     // `methodLines` opens with a blank separator between methods; the first one sits against the
     // class header, so it is dropped rather than left as a gap.

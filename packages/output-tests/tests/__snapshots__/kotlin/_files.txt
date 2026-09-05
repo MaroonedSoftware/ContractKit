@@ -1,0 +1,12 @@
+ktsdk/build.gradle.kts
+ktsdk/gradle.properties
+ktsdk/settings.gradle.kts
+ktsdk/src/commonMain/kotlin/com/example/sdk/KitchenSink.kt
+ktsdk/src/commonMain/kotlin/com/example/sdk/clients/BillingClient.kt
+ktsdk/src/commonMain/kotlin/com/example/sdk/clients/HyphenatedClient.kt
+ktsdk/src/commonMain/kotlin/com/example/sdk/clients/SimpleClient.kt
+ktsdk/src/commonMain/kotlin/com/example/sdk/models/BillingModels.kt
+ktsdk/src/commonMain/kotlin/com/example/sdk/models/HyphenatedModels.kt
+ktsdk/src/commonMain/kotlin/com/example/sdk/models/SimpleModels.kt
+ktsdk/src/commonMain/kotlin/com/example/sdk/runtime/SdkRuntime.kt
+ktsdk/src/commonMain/kotlin/com/example/sdk/runtime/Serializers.kt
