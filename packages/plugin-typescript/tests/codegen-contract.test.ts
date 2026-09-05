@@ -439,6 +439,34 @@ describe('generateContract', () => {
             expect(out).not.toContain('reviveMoneyOutput');
         });
 
+        it('revives the fields a model inherits, so a child of a revivable base defines the reviver its callers import', () => {
+            const root = contractRoot([
+                model('Summary', [field('enabledAt', scalarType('datetime'), { optional: true })]),
+                // Detail adds no revivable field of its own; the only one it carries is inherited.
+                model('Detail', [field('config', scalarType('string'))], { bases: ['Summary'] }),
+                // Priced has one of its own as well, and the base still comes first.
+                model('Priced', [field('amount', scalarType('decimal'))], { bases: ['Summary'] }),
+            ]);
+            // Core's `computeModelsWithScalar` follows `bases`, so both children are in the set and
+            // every client returning one wraps the response in `reviveDetail` / `revivePriced`.
+            const out = generateContract(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/out/t.ts',
+                modelsWithDecimal: new Set(['Summary', 'Detail', 'Priced']),
+                emitRevivers: true,
+            });
+
+            const detail = out.slice(out.indexOf('export function reviveDetail('), out.indexOf('export function revivePriced('));
+            expect(detail).toContain('export function reviveDetail(raw: Detail): Detail {');
+            expect(detail).toContain('reviveSummary(raw as never);');
+            // Nothing of its own to walk, so no object local to leave unused under `noUnusedLocals`.
+            expect(detail).not.toContain('const __o0');
+
+            const priced = out.slice(out.indexOf('export function revivePriced('));
+            expect(priced).toContain('const __o0 = raw as unknown as Record<string, unknown>;');
+            expect(priced.indexOf('reviveSummary(raw as never);')).toBeLessThan(priced.indexOf(`__o0["amount"]`));
+        });
+
         it('recurses through a self-referential model without looping', () => {
             const root = contractRoot([
                 model('Category', [field('subtotal', scalarType('decimal')), field('children', arrayType(refType('Category')))]),

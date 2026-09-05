@@ -408,15 +408,26 @@ function renderOne(model: ModelNode, opts: ReviveCodegenOptions, variant: 'base'
     }
 
     const obj = scope.next('o');
-    const body = model.fields.flatMap(f =>
+    // The fields a model inherits arrive on the same wire object as its own, so every base that
+    // carries a revivable scalar is revived in place first, through its own reviver. Core's taint
+    // set follows `bases`, so a child whose only revivable field is inherited is in
+    // `modelsWithDecimal` and its callers import a `reviveChild` on that basis — which walking
+    // `model.fields` alone never emitted, leaving the client importing a name the types file did
+    // not define. The reviver is reached by name for the same reason a `ref` field's is: a
+    // cross-file base is imported alongside its type, so the call resolves either way.
+    const inherited = (model.bases ?? []).filter(b => opts.modelsWithDecimal.has(b)).map(b => `${reviveRefName(b, opts, variant)}(raw as never);`);
+    const own = model.fields.flatMap(f =>
         typeReachesDecimal(f.type, opts) ? fieldStatements(obj, f, model.name, opts, scope, variant, model.outputCase) : [],
     );
+    const body = [...inherited, ...own];
     if (body.length === 0) return [];
 
+    // The object local is read only by the model's own field statements; a model with nothing but
+    // inherited work would otherwise declare it unused, which `noUnusedLocals` rejects.
     return [
         `/** Rehydrates every wire-encoded scalar in a ${typeName} into its runtime type. Mutates and returns \`raw\`. */`,
         `export function ${fnName}(raw: ${typeName}): ${typeName} {`,
-        `    const ${obj} = raw as unknown as Record<string, unknown>;`,
+        ...(own.length > 0 ? [`    const ${obj} = raw as unknown as Record<string, unknown>;`] : []),
         ...body.map(l => `    ${l}`),
         `    return raw;`,
         `}`,

@@ -85,6 +85,7 @@ Each plugin is its own npm package, listed under `"plugins"`:
 | [`@contractkit/plugin-docs`](../../packages/plugin-docs)             | OpenAPI 3.1 YAML, a Markdown reference, a Mintlify site, a Docusaurus docs folder |
 | [`@contractkit/plugin-bruno`](../../packages/plugin-bruno)           | Bruno REST collection                                                             |
 | [`@contractkit/plugin-python`](../../packages/plugin-python)         | Python SDK client (Pydantic v2 + httpx)                                           |
+| [`@contractkit/plugin-kotlin`](../../packages/plugin-kotlin)         | Kotlin Multiplatform SDK client (Ktor + kotlinx.serialization)                    |
 
 For writing your own plugin, see [@contractkit/core](../../packages/contractkit#plugin-api).
 

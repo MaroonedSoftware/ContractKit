@@ -205,6 +205,9 @@ importers:
       '@contractkit/plugin-docs':
         specifier: workspace:*
         version: link:../plugin-docs
+      '@contractkit/plugin-kotlin':
+        specifier: workspace:*
+        version: link:../plugin-kotlin
       '@contractkit/plugin-python':
         specifier: workspace:*
         version: link:../plugin-python
@@ -259,14 +262,11 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
 
-  packages/plugin-markdown:
+  packages/plugin-kotlin:
     dependencies:
       '@contractkit/core':
         specifier: workspace:*
         version: link:../contractkit
-      '@contractkit/plugin-docs':
-        specifier: workspace:*
-        version: link:../plugin-docs
     devDependencies:
       '@repo/config-eslint':
         specifier: workspace:*
@@ -274,22 +274,12 @@ importers:
       '@repo/config-typescript':
         specifier: workspace:*
         version: link:../config-typescript
-
-  packages/plugin-openapi:
-    dependencies:
-      '@contractkit/core':
-        specifier: workspace:*
-        version: link:../contractkit
-      '@contractkit/plugin-docs':
-        specifier: workspace:*
-        version: link:../plugin-docs
-    devDependencies:
-      '@repo/config-eslint':
-        specifier: workspace:*
-        version: link:../config-eslint
-      '@repo/config-typescript':
-        specifier: workspace:*
-        version: link:../config-typescript
+      unplugin-swc:
+        specifier: ^1.5.9
+        version: 1.5.9(@swc/core@1.15.11)(rollup@4.60.2)
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@25.6.0)(@vitest/coverage-v8@4.1.5)(vite@7.3.1(@types/node@25.6.0)(yaml@2.8.3))
 
   packages/plugin-python:
     dependencies:

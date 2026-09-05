@@ -21,6 +21,7 @@ import {
 } from '@contractkit/core';
 import { createTypescriptPlugin } from '@contractkit/plugin-typescript';
 import { createPythonSdkPlugin } from '@contractkit/plugin-python';
+import { createKotlinSdkPlugin } from '@contractkit/plugin-kotlin';
 import { createBrunoPlugin } from '@contractkit/plugin-bruno';
 import { createDocsPlugin } from '@contractkit/plugin-docs';
 
@@ -46,7 +47,16 @@ export interface BuildResult {
     diagnostics: Diagnostic[];
 }
 
-export type PluginName = 'typescript' | 'typescript-fastify' | 'python' | 'openapi' | 'markdown' | 'bruno' | 'docs' | 'docusaurus';
+export type PluginName =
+    | 'typescript'
+    | 'typescript-fastify'
+    | 'python'
+    | 'kotlin'
+    | 'openapi'
+    | 'markdown'
+    | 'bruno'
+    | 'docs'
+    | 'docusaurus';
 
 /**
  * Fake `PluginContext` capturing `emitFile` in memory, mirroring `makeCtx` in
@@ -146,6 +156,13 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
             ),
         },
         { name: 'python', plugin: createPythonSdkPlugin({ baseDir: 'pysdk' }, ROOT_DIR) },
+        {
+            name: 'kotlin',
+            plugin: createKotlinSdkPlugin(
+                { baseDir: 'ktsdk', packageName: 'com.example.sdk', sdkName: 'KitchenSink', scaffold: true },
+                ROOT_DIR,
+            ),
+        },
         {
             name: 'openapi',
             plugin: createDocsPlugin({ openapi: { output: 'openapi.yaml', info: { title: 'Kitchen Sink', version: '1.0.0' } } }, ROOT_DIR),
