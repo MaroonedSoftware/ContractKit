@@ -3,8 +3,8 @@
 ContractKit's Kotlin Multiplatform SDK generator. Emits `kotlinx.serialization` data classes and a
 Ktor-based client from `.ck` contract and operation files.
 
-> Work in progress: models and clients generate. Typed response headers, multi-status responses,
-> and the Gradle scaffold land in later phases.
+> Work in progress: models and clients generate, with typed response headers and multi-status
+> responses. The Gradle scaffold lands in the next phase.
 
 ## Install
 
@@ -151,3 +151,32 @@ a value instead.
 Path, query, header, and form values are turned into text by the same serializer that would put
 them in a JSON body, so a `Uuid`, an `Instant`, a `Duration`, or an enum is spelled identically
 wherever it appears in a request.
+
+## Response shapes
+
+Most operations declare one status with one body, and the method returns that body. Two contract
+shapes change it.
+
+**Declared response headers** pair the body with a typed class. Values arrive as text and are
+converted to the type the contract declares. A required header the service omits raises `SdkError`,
+because the caller was promised a value.
+
+```kotlin
+val result = sdk.billing.createPayment(payment)
+result.data          // Payment
+result.headers.xRequestId
+```
+
+**Several statuses, or several content types**, become a flat sealed interface, so a caller's `when`
+is exhaustive in one level:
+
+```kotlin
+when (val result = sdk.billing.getPayment(id)) {
+    is GetPaymentResponse.Status200 -> render(result.data)
+    GetPaymentResponse.Status304 -> useCache()
+}
+```
+
+Which statuses come back as a value and which raise is decided by the contract, using the same rule
+the router and the other SDKs use: a status with a block, or any 2xx, is one the service produces;
+a bare `404:` is the error contract.

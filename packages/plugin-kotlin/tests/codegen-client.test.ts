@@ -255,3 +255,123 @@ describe('generateSdkKt', () => {
         expect(out).toContain('class Sdk(config: SdkConfig) : AutoCloseable {');
     });
 });
+
+// ─── Response headers ──────────────────────────────────────────────────────
+
+function header(name: string, scalar: Parameters<typeof scalarType>[0], optional = false) {
+    return { name, optional, type: scalarType(scalar) };
+}
+
+function withResponses(responses: unknown[], sdk = 'op'): string {
+    return client([opRoute('/a', [opOperation('get', { sdk, responses: responses as never })])]);
+}
+
+describe('response headers', () => {
+    it('returns a result pairing the body with a typed headers class', () => {
+        const out = withResponses([{ ...opResponse(200, 'Payment'), headers: [header('x-request-id', 'string')] }]);
+        expect(out).toContain('suspend fun op(): OpResult {');
+        expect(out).toContain('data class OpHeaders(');
+        expect(out).toContain('    val xRequestId: String,');
+        expect(out).toContain('data class OpResult(');
+        expect(out).toContain('    val data: Payment,');
+        expect(out).toContain('return OpResult(http.decodeJson(response), headers)');
+    });
+
+    it('returns the headers alone when the status carries no body', () => {
+        const out = withResponses([{ statusCode: 204, bodies: [], headers: [header('x-request-id', 'string')] }]);
+        expect(out).toContain('suspend fun op(): OpHeaders {');
+        expect(out).toContain('    return headers');
+    });
+
+    it('demands a required header and lets an optional one stay absent', () => {
+        const out = withResponses([
+            { ...opResponse(200, 'Payment'), headers: [header('x-required', 'string'), header('x-optional', 'string', true)] },
+        ]);
+        expect(out).toContain('http.requireHeader(response, "x-required")');
+        expect(out).toContain('response.headers["x-optional"]?.let { it }');
+        expect(out).toContain('    val xOptional: String?,');
+    });
+
+    it('converts each header to its declared type', () => {
+        const cases: [Parameters<typeof scalarType>[0], string, string][] = [
+            ['int', 'Long', '.toLong()'],
+            ['number', 'Double', '.toDouble()'],
+            ['boolean', 'Boolean', '== "true"'],
+            ['uuid', 'Uuid', 'Uuid.parse('],
+            ['datetime', 'Instant', 'Instant.parse('],
+            ['date', 'LocalDate', 'LocalDate.parse('],
+            ['duration', 'Duration', 'Duration.parseIsoString('],
+            ['bigint', 'BigInt', 'BigInt('],
+        ];
+        for (const [scalar, type, read] of cases) {
+            const out = withResponses([{ ...opResponse(200, 'Payment'), headers: [header('x-value', scalar)] }]);
+            expect(out).toContain(`    val xValue: ${type},`);
+            expect(out).toContain(read);
+        }
+    });
+
+    it('rejects a header type that cannot be read from a header, rather than guessing', () => {
+        expect(() =>
+            withResponses([{ ...opResponse(200, 'Payment'), headers: [{ name: 'x-bad', optional: false, type: refType('Payment') }] }]),
+        ).toThrow(/cannot be read from an HTTP header/);
+    });
+});
+
+// ─── Several statuses and mimes ────────────────────────────────────────────
+
+describe('multi-status responses', () => {
+    const responses = [opResponse(200, 'Payment'), { statusCode: 304, bodies: [], hasBlock: true }];
+
+    it('returns a flat sealed interface so a caller can when over it exhaustively', () => {
+        const out = withResponses(responses);
+        expect(out).toContain('suspend fun op(): OpResponse {');
+        expect(out).toContain('sealed interface OpResponse {');
+        expect(out).toContain('    data class Status200(');
+        expect(out).toContain('    data object Status304 : OpResponse');
+    });
+
+    it('dispatches on the status with the first declared one as the fall-through', () => {
+        const out = withResponses(responses);
+        expect(out).toContain('return when (response.status.value) {');
+        expect(out).toContain('        304 -> {');
+        expect(out).toContain('            OpResponse.Status200(http.decodeJson(response))');
+        expect(out).toContain('        else -> {');
+    });
+
+    it('gives each status its own headers class, since they may declare different ones', () => {
+        const out = withResponses([
+            { ...opResponse(200, 'Payment'), headers: [header('x-a', 'string')] },
+            { statusCode: 304, bodies: [], hasBlock: true, headers: [header('x-b', 'int')] },
+        ]);
+        expect(out).toContain('data class Op200Headers(');
+        expect(out).toContain('data class Op304Headers(');
+        expect(out).toContain('val headers: Op200Headers,');
+    });
+});
+
+describe('multi-mime responses', () => {
+    const multiMime = {
+        statusCode: 200,
+        hasBlock: true,
+        bodies: [
+            { contentType: 'application/json', bodyType: refType('Payment') },
+            { contentType: 'text/csv', bodyType: scalarType('string') },
+        ],
+    };
+
+    it('gives each content type its own leaf, keeping the mime and the body type correlated', () => {
+        const out = withResponses([multiMime]);
+        expect(out).toContain('sealed interface OpResponse {');
+        expect(out).toContain('    data class ApplicationJson(');
+        expect(out).toContain('        val data: Payment,');
+        expect(out).toContain('    data class TextCsv(');
+        expect(out).toContain('        val data: String,');
+    });
+
+    it('dispatches on the content type with the first declared mime as the fall-through', () => {
+        const out = withResponses([multiMime]);
+        expect(out).toContain('return when (response.contentType) {');
+        expect(out).toContain('        "text/csv" -> OpResponse.TextCsv(response.text)');
+        expect(out).toContain('        else -> OpResponse.ApplicationJson(http.decodeJson(response))');
+    });
+});

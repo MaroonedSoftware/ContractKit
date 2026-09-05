@@ -1,4 +1,13 @@
-import type { ModelNode, OpOperationNode, OpResponseNode, OpRootNode, OpRouteNode, ParamSource } from '@contractkit/core';
+import type {
+    ModelNode,
+    OpOperationNode,
+    OpResponseBodyNode,
+    OpResponseHeaderNode,
+    OpResponseNode,
+    OpRootNode,
+    OpRouteNode,
+    ParamSource,
+} from '@contractkit/core';
 import { classifyContentType, observableResponses, resolveModifiers } from '@contractkit/core';
 import type { HoistResult } from './hoist.js';
 import { createRenderContext, quoteKotlinString, renderFile, renderKotlinType, type RenderContext } from './codegen-models.js';
@@ -76,6 +85,7 @@ export function generateKotlinClient(root: OpRootNode, opts: KotlinClientCodegen
             }
             shapeLines.push(')');
         }
+        shapeLines.push(...responseDeclarations(route, op, ctx, deriveMethodName(op, route)));
     }
 
     const methodLines: string[] = [];
@@ -108,6 +118,34 @@ export function generateKotlinClient(root: OpRootNode, opts: KotlinClientCodegen
     return renderFile(`${opts.packageName}.clients`, ctx.imports, body);
 }
 
+// ─── Response shape ────────────────────────────────────────────────────────
+
+/**
+ * How a method reports what came back, mirroring the TypeScript and Python SDKs.
+ *
+ * `simple` is the overwhelmingly common case and returns the body itself. The other two exist
+ * because the caller cannot otherwise tell which status, or which mime, it received.
+ */
+type ResponseShape =
+    | { kind: 'simple'; response?: OpResponseNode }
+    | { kind: 'multiMime'; response: OpResponseNode }
+    | { kind: 'multiStatus'; responses: OpResponseNode[] };
+
+function responseShape(op: OpOperationNode): ResponseShape {
+    // `observableResponses` is shared with the router and the other SDKs, so all of them agree on
+    // which statuses are values and which are failures.
+    const observable = observableResponses(op);
+    if (observable.length > 1) return { kind: 'multiStatus', responses: observable };
+    const response = observable[0];
+    if (response && response.bodies.length > 1) return { kind: 'multiMime', response };
+    return { kind: 'simple', response };
+}
+
+function observableOf(shape: ResponseShape): OpResponseNode[] {
+    if (shape.kind === 'multiStatus') return shape.responses;
+    return shape.response ? [shape.response] : [];
+}
+
 // ─── Method generation ─────────────────────────────────────────────────────
 
 function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderContext, methodName: string): string[] {
@@ -116,11 +154,11 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderCont
     const params = buildMethodParams(route, op, ctx);
     const signature = params.map(p => `${p.name}: ${p.type}${p.optional ? ' = null' : ''}`).join(', ');
 
-    // `observableResponses` is shared with the router and the other SDKs, so all of them agree on
-    // which statuses are values and which are failures.
-    const observable = observableResponses(op);
-    const primary = observable[0];
-    const ret = returnShape(primary, ctx);
+    const shape = responseShape(op);
+    const base = toKotlinTypeName(methodName.replace(/`/g, ''));
+    const where = `${op.method.toUpperCase()} ${route.path}`;
+    const returnType = returnTypeFor(shape, base, ctx);
+    const observable = observableOf(shape);
     const expectStatuses = observable.filter(r => r.statusCode < 200 || r.statusCode >= 300).map(r => r.statusCode);
 
     const lines: string[] = [];
@@ -128,41 +166,142 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderCont
     const mods = resolveModifiers(route, op);
     if (mods.includes('deprecated')) lines.push('@Deprecated("Deprecated in the contract")');
 
-    const returnSuffix = ret.type === 'Unit' ? '' : `: ${ret.type}`;
+    const returnSuffix = returnType === 'Unit' ? '' : `: ${returnType}`;
     lines.push(`suspend fun ${methodName}(${signature})${returnSuffix} {`);
 
     const executeArgs = [`HttpMethod.${httpMethodConstant(op.method)}`];
     if (expectStatuses.length > 0) executeArgs.push(`expectStatuses = setOf(${expectStatuses.join(', ')})`);
 
-    const assignment = ret.type === 'Unit' ? '' : 'val response = ';
+    const assignment = returnType === 'Unit' ? '' : 'val response = ';
     lines.push(`    ${assignment}http.execute(${executeArgs.join(', ')}) {`);
     lines.push(`        ${buildPathCall(route.path, route.params)}`);
     if (op.query) lines.push('        params(query)');
     if (op.headers) lines.push('        headers(customHeaders)');
     lines.push(...bodyCall(op, ctx));
     lines.push('    }');
-    if (ret.type !== 'Unit') lines.push(`    return ${ret.read}`);
+    lines.push(...returnStatements(shape, base, ctx, where));
     lines.push('}');
     return lines;
 }
 
-interface ReturnShape {
-    type: string;
-    read: string;
+/** What a method hands back. Declared before the body so the two cannot drift apart. */
+function returnTypeFor(shape: ResponseShape, base: string, ctx: RenderContext): string {
+    if (shape.kind !== 'simple') return `${base}Response`;
+    const response = shape.response;
+    const body = response?.bodies[0];
+    const headers = response?.headers ?? [];
+    if (!body) return headers.length > 0 ? `${base}Headers` : 'Unit';
+    const dataType = bodyKotlinType(body, ctx);
+    // A declared response header changes the return shape: the body alone cannot carry it.
+    return headers.length > 0 ? `${base}Result` : dataType;
 }
 
-/** What a method hands back, and the expression that produces it from the response. */
-function returnShape(response: OpResponseNode | undefined, ctx: RenderContext): ReturnShape {
-    const body = response?.bodies[0];
-    if (!body) return { type: 'Unit', read: '' };
+/** The Kotlin type of one response body. A non-JSON mime ignores the schema, as in every SDK. */
+function bodyKotlinType(body: OpResponseBodyNode, ctx: RenderContext): string {
     switch (classifyContentType(body.contentType)) {
         case 'text':
-            return { type: 'String', read: 'response.text' };
+            return 'String';
         case 'binary':
-            return { type: 'ByteArray', read: 'response.bytes' };
+            return 'ByteArray';
         default:
-            return { type: renderKotlinType(body.bodyType, ctx, false), read: 'http.decodeJson(response)' };
+            return renderKotlinType(body.bodyType, ctx, false);
     }
+}
+
+/** The expression that reads one body out of the response. */
+function bodyReadExpr(body: OpResponseBodyNode): string {
+    switch (classifyContentType(body.contentType)) {
+        case 'text':
+            return 'response.text';
+        case 'binary':
+            return 'response.bytes';
+        default:
+            return 'http.decodeJson(response)';
+    }
+}
+
+/** The statements after `execute`, which turn the response into the declared return type. */
+function returnStatements(shape: ResponseShape, base: string, ctx: RenderContext, where: string): string[] {
+    if (shape.kind === 'simple') {
+        const response = shape.response;
+        const body = response?.bodies[0];
+        const headers = response?.headers ?? [];
+        if (headers.length === 0) return body ? [`    return ${bodyReadExpr(body)}`] : [];
+        const lines = readHeaderLines(headers, `${base}Headers`, ctx, where, '    ');
+        return body ? [...lines, `    return ${base}Result(${bodyReadExpr(body)}, headers)`] : [...lines, '    return headers'];
+    }
+
+    const lines: string[] = [];
+    if (shape.kind === 'multiMime') {
+        lines.push(...mimeBranches(shape.response, base, undefined, ctx, where, '    '));
+        return lines;
+    }
+
+    // The first declared status is the fall-through, so the `when` is exhaustive without a branch
+    // for a status the service cannot return.
+    const [fallback, ...rest] = shape.responses;
+    lines.push('    return when (response.status.value) {');
+    for (const response of rest) {
+        lines.push(`        ${response.statusCode} -> {`);
+        lines.push(...statusBranch(response, base, response.statusCode, ctx, where, '            '));
+        lines.push('        }');
+    }
+    lines.push('        else -> {');
+    lines.push(...statusBranch(fallback!, base, fallback!.statusCode, ctx, where, '            '));
+    lines.push('        }');
+    lines.push('    }');
+    return lines;
+}
+
+/** One `when` branch: read this status's headers, then dispatch over its mimes. */
+function statusBranch(response: OpResponseNode, base: string, statusCode: number, ctx: RenderContext, where: string, indent: string): string[] {
+    const lines: string[] = [];
+    const headers = response.headers ?? [];
+    if (headers.length > 0) lines.push(...readHeaderLines(headers, headersClassName(base, statusCode), ctx, where, indent));
+    lines.push(...mimeBranches(response, base, statusCode, ctx, where, indent, headers.length > 0));
+    return lines;
+}
+
+/**
+ * Construct the response case, dispatching on the content type when a status declares several
+ * mimes. The first declared mime is the fall-through, for the same reason the first status is.
+ */
+function mimeBranches(
+    response: OpResponseNode,
+    base: string,
+    statusCode: number | undefined,
+    ctx: RenderContext,
+    where: string,
+    indent: string,
+    hasHeaders = (response.headers?.length ?? 0) > 0,
+): string[] {
+    const bodies = response.bodies;
+    const construct = (body: OpResponseBodyNode | undefined): string => {
+        const args: string[] = [];
+        if (body) args.push(bodyReadExpr(body));
+        if (hasHeaders) args.push('headers');
+        const leafName = `${base}Response.${leafClassName(response, body, statusCode)}`;
+        return args.length > 0 ? `${leafName}(${args.join(', ')})` : leafName;
+    };
+
+    const prefix = statusCode === undefined ? 'return ' : '';
+    if (bodies.length <= 1) {
+        if (statusCode !== undefined && (response.headers?.length ?? 0) === 0) {
+            // A bodiless, headerless status is a `data object`, which needs no construction.
+            return [`${indent}${construct(bodies[0])}`];
+        }
+        return [`${indent}${prefix}${construct(bodies[0])}`];
+    }
+
+    const lines: string[] = [];
+    const [fallback, ...rest] = bodies;
+    lines.push(`${indent}${prefix}when (response.contentType) {`);
+    for (const body of rest) {
+        lines.push(`${indent}    ${quoteKotlinString(body.contentType)} -> ${construct(body)}`);
+    }
+    lines.push(`${indent}    else -> ${construct(fallback!)}`);
+    lines.push(`${indent}}`);
+    return lines;
 }
 
 /** The lines that set the request body, if the operation declares one. */
@@ -185,6 +324,179 @@ function bodyCall(op: OpOperationNode, ctx: RenderContext): string[] {
         default:
             return [`        jsonBody(body, ${mime})`];
     }
+}
+
+// ─── Response declarations ─────────────────────────────────────────────────
+
+function headersClassName(base: string, statusCode?: number): string {
+    return statusCode === undefined ? `${base}Headers` : `${base}${statusCode}Headers`;
+}
+
+/**
+ * The name of one leaf of a method's sealed response.
+ *
+ * Leaves are flat rather than nested per status, so a caller's `when` stays exhaustive in one
+ * level. A status with several mimes gets one leaf per mime, keeping the mime and the body type
+ * it decodes to correlated.
+ */
+function leafClassName(response: OpResponseNode, body: OpResponseBodyNode | undefined, statusCode: number | undefined): string {
+    const statusPart = statusCode === undefined ? '' : `Status${statusCode}`;
+    if (response.bodies.length <= 1 || !body) return statusPart || 'Body';
+    return `${statusPart}${toKotlinTypeName(body.contentType.replace(/[+/.]/g, ' '))}`;
+}
+
+/**
+ * The `<Method>Headers`, `<Method>Result`, and `<Method>Response` declarations a method's return
+ * type names. Emitted alongside the client class, since they belong to one method each.
+ */
+function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: RenderContext, methodName: string): string[] {
+    const shape = responseShape(op);
+    const base = toKotlinTypeName(methodName.replace(/`/g, ''));
+    const where = `${op.method.toUpperCase()} ${route.path}`;
+    const lines: string[] = [];
+
+    const headerClass = (headers: OpResponseHeaderNode[], name: string): void => {
+        lines.push('');
+        lines.push(...kdocLines(`Response headers declared on ${where}.`, ''));
+        lines.push(`data class ${name}(`);
+        for (const header of headers) {
+            const reader = headerReader(header, ctx, where);
+            const type = header.optional ? `${reader.type}?` : reader.type;
+            lines.push(`    val ${toKotlinPropertyName(header.name)}: ${type},`);
+        }
+        lines.push(')');
+    };
+
+    if (shape.kind === 'simple') {
+        const response = shape.response;
+        const headers = response?.headers ?? [];
+        if (headers.length === 0) return lines;
+        headerClass(headers, headersClassName(base));
+        const body = response?.bodies[0];
+        if (body) {
+            lines.push('');
+            lines.push(...kdocLines(`The body of ${where}, with the response headers the contract declares.`, ''));
+            lines.push(`data class ${base}Result(`);
+            lines.push(`    val data: ${bodyKotlinType(body, ctx)},`);
+            lines.push(`    val headers: ${headersClassName(base)},`);
+            lines.push(')');
+        }
+        return lines;
+    }
+
+    const responses = observableOf(shape);
+    const withStatus = shape.kind === 'multiStatus';
+    for (const response of responses) {
+        const headers = response.headers ?? [];
+        if (headers.length > 0) headerClass(headers, headersClassName(base, withStatus ? response.statusCode : undefined));
+    }
+
+    lines.push('');
+    lines.push(
+        ...kdocLines(
+            `What ${where} returned.\n\n` +
+                (withStatus
+                    ? 'The operation declares several statuses the service produces, so the status is part of the value.'
+                    : 'The status declares several content types, so which one arrived is part of the value.'),
+            '',
+        ),
+    );
+    lines.push(`sealed interface ${base}Response {`);
+    for (const response of responses) {
+        const statusCode = withStatus ? response.statusCode : undefined;
+        const headers = response.headers ?? [];
+        const headerProp = headers.length > 0 ? `    val headers: ${headersClassName(base, statusCode)},` : undefined;
+        const bodies = response.bodies.length > 0 ? response.bodies : [undefined];
+        for (const body of bodies) {
+            const name = leafClassName(response, body, statusCode);
+            if (!body && !headerProp) {
+                lines.push(`    data object ${name} : ${base}Response`);
+                continue;
+            }
+            lines.push(`    data class ${name}(`);
+            if (body) lines.push(`        val data: ${bodyKotlinType(body, ctx)},`);
+            if (headerProp) lines.push(`    ${headerProp.trim()}`);
+            lines.push(`    ) : ${base}Response`);
+        }
+    }
+    lines.push('}');
+    return lines;
+}
+
+/**
+ * The Kotlin type of a response header, and how to turn the raw string into it.
+ *
+ * Header values arrive as text, so the declared type is what the caller gets and the conversion
+ * happens here. The accepted set mirrors the TypeScript and Python SDKs; anything else is rejected
+ * at build time rather than silently handed back as a string.
+ *
+ * @throws {Error} When the header's declared type cannot be read from an HTTP header.
+ */
+function headerReader(header: OpResponseHeaderNode, ctx: RenderContext, where: string): { type: string; read: (raw: string) => string } {
+    const scalar = header.type.kind === 'scalar' ? header.type.name : undefined;
+    switch (scalar) {
+        case 'string':
+        case 'email':
+        case 'url':
+        case 'interval':
+        case 'unknown':
+            return { type: 'String', read: raw => raw };
+        case 'number':
+            return { type: 'Double', read: raw => `${raw}.toDouble()` };
+        case 'int':
+            return { type: 'Long', read: raw => `${raw}.toLong()` };
+        case 'bigint':
+            ctx.imports.add(`${ctx.packageName}.runtime.BigInt`);
+            return { type: 'BigInt', read: raw => `BigInt(${raw})` };
+        case 'boolean':
+            return { type: 'Boolean', read: raw => `${raw} == "true"` };
+        case 'uuid':
+            ctx.imports.addOptIn('ExperimentalUuidApi', 'kotlin.uuid.ExperimentalUuidApi');
+            ctx.imports.add('kotlin.uuid.Uuid');
+            return { type: 'Uuid', read: raw => `Uuid.parse(${raw})` };
+        case 'date':
+            ctx.imports.add('kotlinx.datetime.LocalDate');
+            return { type: 'LocalDate', read: raw => `LocalDate.parse(${raw})` };
+        case 'time':
+            ctx.imports.add('kotlinx.datetime.LocalTime');
+            return { type: 'LocalTime', read: raw => `LocalTime.parse(${raw})` };
+        case 'datetime':
+            ctx.imports.add('kotlin.time.Instant');
+            return { type: 'Instant', read: raw => `Instant.parse(${raw})` };
+        case 'duration':
+            ctx.imports.add('kotlin.time.Duration');
+            return { type: 'Duration', read: raw => `Duration.parseIsoString(${raw})` };
+        default:
+            throw new Error(
+                `plugin-kotlin: response header '${header.name}' on ${where} is declared as ${describeHeaderType(header.type)}, ` +
+                    `which cannot be read from an HTTP header. Header values arrive as strings — declare it as string, email, url, uuid, ` +
+                    `date, time, datetime, duration, interval, int, number, boolean or bigint.`,
+            );
+    }
+}
+
+/** A short, contract-facing description of a header type, for the rejection above. */
+function describeHeaderType(type: { kind: string; name?: string }): string {
+    if (type.kind === 'scalar') return `the '${type.name}' scalar`;
+    if (type.kind === 'ref') return `the contract '${type.name}'`;
+    return `${type.kind === 'array' || type.kind === 'inlineObject' ? 'an' : 'a'} ${type.kind}`;
+}
+
+/** The lines that build one response-headers value out of the response. */
+function readHeaderLines(headers: OpResponseHeaderNode[], typeName: string, ctx: RenderContext, where: string, indent: string): string[] {
+    const lines: string[] = [`${indent}val headers = ${typeName}(`];
+    for (const header of headers) {
+        const reader = headerReader(header, ctx, where);
+        const name = quoteKotlinString(header.name);
+        // A required header the service omitted is a broken contract, not a null the caller has to
+        // handle; an optional one simply stays absent.
+        const expr = header.optional
+            ? `response.headers[${name}]?.let { ${reader.read('it')} }`
+            : reader.read(`http.requireHeader(response, ${name})`);
+        lines.push(`${indent}    ${expr},`);
+    }
+    lines.push(`${indent})`);
+    return lines;
 }
 
 function methodDoc(route: OpRouteNode, op: OpOperationNode, observable: OpResponseNode[]): string[] {
