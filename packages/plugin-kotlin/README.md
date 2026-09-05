@@ -3,8 +3,7 @@
 ContractKit's Kotlin Multiplatform SDK generator. Emits `kotlinx.serialization` data classes and a
 Ktor-based client from `.ck` contract and operation files.
 
-> Work in progress: models and clients generate, with typed response headers and multi-status
-> responses. The Gradle scaffold lands in the next phase.
+> The generated Kotlin has not yet been compiled against a real toolchain. See **Status** below.
 
 ## Install
 
@@ -180,3 +179,37 @@ when (val result = sdk.billing.getPayment(id)) {
 Which statuses come back as a value and which raise is decided by the contract, using the same rule
 the router and the other SDKs use: a status with a block, or any 2xx, is one the service produces;
 a bare `404:` is the error contract.
+
+## Scaffolding a standalone SDK
+
+`scaffold: true` writes `build.gradle.kts`, `settings.gradle.kts`, and `gradle.properties` once.
+They are **user-owned**: created if absent, never overwritten, and never removed when the generated
+tree changes around them. Generated Kotlin sources are rewritten every run; these are yours.
+
+The scaffold ships a JVM target with the CIO engine. Add the targets you actually ship, and give
+each one a Ktor engine of its own — `ktor-client-darwin`, `ktor-client-js`, and so on. Without an
+engine on the classpath, `HttpClient()` has none to find at runtime.
+
+Pinned versions live in one object in `src/scaffold.ts`, so a bump is one edit.
+
+## Status and known limitations
+
+The generator is complete and unit-tested, but **the Kotlin it emits has not been compiled**: no
+Kotlin toolchain was available where it was written. Run a build against the scaffold before
+depending on it, and expect to fix import or API-shape details.
+
+Behavioural limitations, all deliberate:
+
+1. `explicitNulls = false` lets an optional field be omitted, which is what the service's schema
+   wants. The same setting omits a _required nullable_ field whose value is null; a strict service
+   would reject that. A per-field wrapper is the real fix. The Python SDK has the mirror bug.
+2. A `literal()` field is not validated when its class is decoded on its own. Only the union
+   serializer checks the tag.
+3. A discriminated union whose discriminator is an `enum`, and any union declared inline in an
+   operation's request or response rather than in a contract, degrade to `JsonElement`.
+4. Only the first declared request content type is used. A multi-mime request collapses to one
+   method signature, as it does in the Python SDK.
+5. Clients are grouped per `.ck` file. The TypeScript SDK's `area`/`subarea` nesting is not
+   implemented.
+6. A tuple nested inside a collection falls back to `JsonArray`: the serializer annotation that
+   makes `Pair` and `Triple` travel as JSON arrays applies to a property's own type only.

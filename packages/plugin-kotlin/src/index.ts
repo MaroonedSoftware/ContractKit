@@ -27,6 +27,7 @@ import { deriveClientClassName, deriveClientPropertyName, generateKotlinClient, 
 import { generateSdkKt, type SdkAggregatorClient } from './codegen-sdk.js';
 import { collectHoistedTypes } from './hoist.js';
 import { generateRuntimeKt } from './runtime.js';
+import { generateBuildGradleKts, generateGradleProperties, generateSettingsGradleKts } from './scaffold.js';
 import { generateSerializersKt } from './runtime-serializers.js';
 import { KOTLIN_HARD_KEYWORDS, deriveKotlinFileBase } from './naming.js';
 
@@ -259,6 +260,16 @@ async function runKotlinCodegen(
         { relativePath: `${srcRoot}/runtime/SdkRuntime.kt`, content: generateRuntimeKt(packageName) },
         { relativePath: `${srcRoot}/${sdkName}.kt`, content: generateSdkKt(packageName, sdkName, clients) },
     ];
+
+    // `ifAbsent` marks these user-owned: written once, never overwritten, and never removed as
+    // orphans when the generated tree changes around them.
+    if (config.scaffold) {
+        globalFiles.push(
+            { relativePath: 'build.gradle.kts', content: generateBuildGradleKts(), ifAbsent: true },
+            { relativePath: 'settings.gradle.kts', content: generateSettingsGradleKts(sdkName), ifAbsent: true },
+            { relativePath: 'gradle.properties', content: generateGradleProperties(), ifAbsent: true },
+        );
+    }
 
     const result = runIncrementalCodegen({
         codegenVersion: KOTLIN_CODEGEN_VERSION,

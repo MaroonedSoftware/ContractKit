@@ -20,6 +20,7 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
+import io.ktor.client.request.url
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
@@ -159,7 +160,7 @@ class RequestScope(val json: Json, val builder: HttpRequestBuilder) {
         forEachEntry(element) { key, text -> append(key, text) }
     }
 
-    private inline fun forEachEntry(element: JsonElement, add: (String, String) -> Unit) {
+    private fun forEachEntry(element: JsonElement, add: (String, String) -> Unit) {
         val obj = element as? JsonObject ?: return
         for ((key, value) in obj) {
             if (value is JsonArray) {

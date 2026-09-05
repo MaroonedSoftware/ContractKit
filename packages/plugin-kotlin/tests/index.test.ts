@@ -9,15 +9,21 @@ import { contractRoot, field, model, opOperation, opResponse, opRoot, opRoute, s
 const ROOT_DIR = '/project';
 
 /** A `PluginContext` that captures `emitFile` in memory, keyed by rootDir-relative POSIX path. */
-function makeCtx(): PluginContext & { emitted: Map<string, string> } {
+function makeCtx(): PluginContext & { emitted: Map<string, string>; ifAbsent: string[] } {
     const emitted = new Map<string, string>();
+    const ifAbsent: string[] = [];
     return {
         rootDir: ROOT_DIR,
         options: {},
         cacheEnabled: false,
         cacheDir: mkdtempSync(join(tmpdir(), 'ck-kotlin-')),
-        emitFile: (outPath, content) => emitted.set(relative(ROOT_DIR, outPath).split(sep).join('/'), content),
+        emitFile: (outPath, content, opts) => {
+            const key = relative(ROOT_DIR, outPath).split(sep).join('/');
+            emitted.set(key, content);
+            if (opts?.ifAbsent) ifAbsent.push(key);
+        },
         emitted,
+        ifAbsent,
     };
 }
 
@@ -91,6 +97,21 @@ describe('generateTargets', () => {
         };
         await createKotlinSdkPlugin({ baseDir: 'ktsdk', packageName: 'com.acme.sdk' }, ROOT_DIR).generateTargets!(internalOnly, ctx);
         expect([...ctx.emitted.keys()].some(k => k.includes('AdminClient'))).toBe(false);
+    });
+
+    it('emits the Gradle files as user-owned only when scaffolding is asked for', async () => {
+        const off = makeCtx();
+        await createKotlinSdkPlugin({ baseDir: 'ktsdk' }, ROOT_DIR).generateTargets!(inputs, off);
+        expect(off.emitted.has('ktsdk/build.gradle.kts')).toBe(false);
+
+        const on = makeCtx();
+        await createKotlinSdkPlugin({ baseDir: 'ktsdk', sdkName: 'AcmeSdk', scaffold: true }, ROOT_DIR).generateTargets!(inputs, on);
+        expect([...on.emitted.keys()]).toEqual(
+            expect.arrayContaining(['ktsdk/build.gradle.kts', 'ktsdk/settings.gradle.kts', 'ktsdk/gradle.properties']),
+        );
+        expect(on.emitted.get('ktsdk/settings.gradle.kts')).toContain('rootProject.name = "acme-sdk"');
+        // Write-once: the CLI must be told not to overwrite a file the user has since edited.
+        expect([...on.ifAbsent].sort()).toEqual(['ktsdk/build.gradle.kts', 'ktsdk/gradle.properties', 'ktsdk/settings.gradle.kts']);
     });
 
     it('surfaces an invalid package name as a build error rather than emitting broken Kotlin', async () => {
