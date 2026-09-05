@@ -86,6 +86,20 @@ export function toKotlinTypeName(name: string): string {
 }
 
 /**
+ * Make an already-composed name safe to use as a Kotlin type name, without re-casing it.
+ *
+ * Distinct from {@link toKotlinTypeName}, which splits a source name into words and rebuilds it:
+ * running that over a name already assembled from PascalCase parts would fold `MV` back to `Mv`.
+ */
+export function sanitizeKotlinTypeName(name: string): string {
+    let result = name.replace(/[^a-zA-Z0-9]/g, '');
+    if (result.length === 0) return '_';
+    result = result.charAt(0).toUpperCase() + result.slice(1);
+    if (/^\d/.test(result)) result = `_${result}`;
+    return result;
+}
+
+/**
  * Convert an enum member value to a Kotlin enum entry name in SCREAMING_SNAKE_CASE.
  * The value itself always travels via `@SerialName`, so this only has to be a stable identifier.
  */

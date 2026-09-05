@@ -1,5 +1,6 @@
 import type { ContractRootNode, ContractTypeNode, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
 import { buildModelIndex, computeModelsWithInput, resolveEffectiveFields, topoSortModels } from '@contractkit/core';
+import type { HoistedDecl, HoistResult } from './hoist.js';
 import { kdocLines, toKotlinEnumEntryName, toKotlinPropertyName } from './naming.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -14,37 +15,56 @@ export interface KotlinModelCodegenOptions {
      * this root's own models, which is enough for a single-file project and for unit tests.
      */
     modelIndex?: ReadonlyMap<string, ModelNode>;
+    /** Names assigned to anonymous types by {@link collectHoistedTypes}, across the whole project. */
+    hoisted?: HoistResult;
     warn?: (message: string) => void;
 }
 
 /**
  * Generate the Kotlin models file for one contract root: a `@Serializable data class` per model,
- * plus `<Name>Input` variants, enum classes, and type aliases.
+ * plus `<Name>Input` variants, enum classes, type aliases, and the sealed interfaces standing in
+ * for the unions and anonymous shapes this file owns.
  *
  * Every model in the project shares the single `<packageName>.models` package, so a reference to a
- * model declared in another `.ck` file needs no import and resolves by name alone.
+ * model declared in another `.ck` file needs no import and resolves by name alone. That is also
+ * what lets a sealed interface declared in one file be implemented by a class generated in another.
  */
 export function generateKotlinModels(root: ContractRootNode, opts: KotlinModelCodegenOptions): string {
-    const externalModelsWithInput = new Set(opts.modelsWithInput ?? []);
-    const localModelsWithInput = computeModelsWithInput(root.models, externalModelsWithInput);
-    const modelsWithInput = new Set([...localModelsWithInput, ...externalModelsWithInput]);
+    const modelsWithInput = resolveModelsWithInput(root.models, opts.modelsWithInput);
     const modelIndex = opts.modelIndex ?? buildModelIndex(root.models);
 
     const ctx: RenderContext = {
         packageName: opts.packageName,
         modelsWithInput,
         modelIndex,
+        hoisted: opts.hoisted,
         imports: new ImportTracker(),
         warn: opts.warn,
     };
 
     const bodies: string[] = [];
-    for (const model of topoSortModels(root.models)) {
-        bodies.push('');
-        bodies.push(...generateModel(model, ctx));
-    }
+    const append = (lines: string[]): void => {
+        // A model whose type is a union emits nothing here — the hoisting pass owns its sealed
+        // interface — so the blank separator has to be conditional or it leaves a gap behind.
+        if (lines.length === 0) return;
+        bodies.push('', ...lines);
+    };
+    for (const model of topoSortModels(root.models)) append(generateModel(model, ctx));
+    for (const decl of opts.hoisted?.byFile.get(root.file) ?? []) append(generateHoisted(decl, ctx));
 
     return renderFile(`${opts.packageName}.models`, ctx.imports, bodies);
+}
+
+/**
+ * The complete set of model names that need a distinct `Input` variant: the ones passed in, plus
+ * the transitive closure over `models`.
+ *
+ * The hoisting pass and the renderer both have to agree on this — a hoisted shape whose Input twin
+ * one of them thinks is unnecessary would leave the other referring to a class nobody emitted.
+ */
+export function resolveModelsWithInput(models: readonly ModelNode[], external: ReadonlySet<string> = new Set()): Set<string> {
+    const seed = new Set(external);
+    return new Set([...seed, ...computeModelsWithInput([...models], seed)]);
 }
 
 // ─── Render context and imports ────────────────────────────────────────────
@@ -53,6 +73,7 @@ interface RenderContext {
     packageName: string;
     modelsWithInput: ReadonlySet<string>;
     modelIndex: ReadonlyMap<string, ModelNode>;
+    hoisted?: HoistResult;
     imports: ImportTracker;
     warn?: (message: string) => void;
 }
@@ -105,13 +126,17 @@ export function renderFile(packageName: string, imports: ImportTracker, bodies: 
 // ─── Type rendering ────────────────────────────────────────────────────────
 
 /**
- * Render a ContractKit type as its Kotlin type expression. Never returns a nullable type — the
- * caller appends `?` from the field's own `optional`/`nullable` flags.
+ * Render a ContractKit type as its Kotlin type expression. Never returns a nullable type unless the
+ * type itself is one — the caller appends `?` from the field's own `optional`/`nullable` flags.
  *
- * @param forInput - When true, a `ref` to a model with an Input variant renders as `<Name>Input`.
+ * @param forInput - When true, a reference to a model or hoisted shape with an Input variant
+ *   renders as `<Name>Input`.
  * @throws {Error} Via the scalar renderer, if a scalar has no Kotlin mapping.
  */
 export function renderKotlinType(type: ContractTypeNode, ctx: RenderContext, forInput = false): string {
+    const decl = ctx.hoisted?.byNode.get(type);
+    if (decl) return hoistedTypeName(decl, forInput);
+
     switch (type.kind) {
         case 'scalar':
             return renderScalar(type.name, ctx);
@@ -127,7 +152,6 @@ export function renderKotlinType(type: ContractTypeNode, ctx: RenderContext, for
                     `A record key of type '${key}' is not representable as a JSON object key; emitting Map<String, ${value}>. ` +
                         `Parse the key yourself, or declare the key as a string.`,
                 );
-                return `Map<String, ${value}>`;
             }
             return `Map<String, ${value}>`;
         }
@@ -137,25 +161,44 @@ export function renderKotlinType(type: ContractTypeNode, ctx: RenderContext, for
             return forInput && ctx.modelsWithInput.has(type.name) ? `${type.name}Input` : type.name;
         case 'lazy':
             return renderKotlinType(type.inner, ctx, forInput);
-        // Phase 1 fallbacks. Each becomes a named declaration once hoisting lands.
+        case 'union': {
+            // A union with at most one non-null member never gets a sealed interface: it is either
+            // Kotlin's own nullable type or nothing at all.
+            const nonNull = type.members.filter(m => !isNullScalar(m));
+            const nullable = nonNull.length !== type.members.length;
+            if (nonNull.length === 0) return 'Nothing?';
+            if (nonNull.length === 1) {
+                const inner = renderKotlinType(nonNull[0]!, ctx, forInput);
+                return nullable && !inner.endsWith('?') ? `${inner}?` : inner;
+            }
+            ctx.imports.add('kotlinx.serialization.json.JsonElement');
+            return 'JsonElement';
+        }
         case 'enum':
-            return renderScalar('string', ctx);
         case 'inlineObject':
         case 'intersection':
-            ctx.imports.add('kotlinx.serialization.json.JsonObject');
-            return 'JsonObject';
-        case 'union':
         case 'discriminatedUnion':
+            // Reached only when the shape could not be given a name — a discriminated union whose
+            // tag is not statically known, or a caller that skipped the hoisting pass.
             ctx.imports.add('kotlinx.serialization.json.JsonElement');
             return 'JsonElement';
     }
 }
 
+function hoistedTypeName(decl: HoistedDecl, forInput: boolean): string {
+    const name = forInput && decl.needsInput ? `${decl.name}Input` : decl.name;
+    return decl.nullable ? `${name}?` : name;
+}
+
+function isNullScalar(type: ContractTypeNode): boolean {
+    return type.kind === 'scalar' && type.name === 'null';
+}
+
 /**
  * A 2- or 3-tuple maps onto Kotlin's own `Pair`/`Triple`, serialized as a JSON array by a runtime
- * serializer the field carries as an annotation. Any other arity, and any tuple nested inside a
- * collection, falls back to `JsonArray`: a property-level `@Serializable(with = ...)` applies to the
- * property's own type, so it cannot reach a tuple inside a `List`.
+ * serializer the field carries as an annotation. Any other arity becomes a hoisted class, because a
+ * property-level `@Serializable(with = ...)` applies to the property's own type and so cannot reach
+ * a tuple nested inside a collection.
  */
 function renderTuple(items: ContractTypeNode[], ctx: RenderContext, forInput: boolean): string {
     if (items.length === 2 || items.length === 3) {
@@ -168,11 +211,12 @@ function renderTuple(items: ContractTypeNode[], ctx: RenderContext, forInput: bo
 
 /**
  * The `@Serializable(with = ...)` annotation a field needs for its own type, or `undefined`.
- * Only tuples need one: `Pair`/`Triple` would otherwise serialize as `{"first":…,"second":…}`.
+ * Only `Pair`/`Triple` need one: kotlinx would otherwise write `{"first":…,"second":…}` rather than
+ * the JSON array a contract tuple travels as.
  */
 function typeSerializerAnnotation(type: ContractTypeNode, ctx: RenderContext): string | undefined {
     const inner = type.kind === 'lazy' ? type.inner : type;
-    if (inner.kind !== 'tuple') return undefined;
+    if (inner.kind !== 'tuple' || ctx.hoisted?.byNode.has(inner)) return undefined;
     if (inner.items.length === 2) {
         ctx.imports.add(`${ctx.packageName}.runtime.PairAsArraySerializer`);
         ctx.imports.add('kotlinx.serialization.Serializable');
@@ -250,12 +294,60 @@ function literalKotlinType(value: string | number | boolean): string {
     return Number.isInteger(value) ? 'Long' : 'Double';
 }
 
+// ─── Serializer expressions ────────────────────────────────────────────────
+
+/**
+ * A Kotlin expression for the `KSerializer` of `type`, used by the generated union serializers.
+ * Unions dispatch by trying members in order, so each member needs its serializer named explicitly
+ * rather than resolved from a reified type parameter.
+ */
+function serializerExpression(type: ContractTypeNode, ctx: RenderContext, forInput: boolean): string {
+    const decl = ctx.hoisted?.byNode.get(type);
+    if (decl) return `${forInput && decl.needsInput ? `${decl.name}Input` : decl.name}.serializer()`;
+
+    switch (type.kind) {
+        case 'lazy':
+            return serializerExpression(type.inner, ctx, forInput);
+        case 'ref':
+            return `${renderKotlinType(type, ctx, forInput)}.serializer()`;
+        case 'array':
+            ctx.imports.add('kotlinx.serialization.builtins.ListSerializer');
+            return `ListSerializer(${serializerExpression(type.item, ctx, forInput)})`;
+        case 'record':
+            ctx.imports.add('kotlinx.serialization.builtins.MapSerializer');
+            ctx.imports.add('kotlinx.serialization.builtins.serializer');
+            return `MapSerializer(String.serializer(), ${serializerExpression(type.value, ctx, forInput)})`;
+        case 'tuple': {
+            const inner = type.items.map(t => serializerExpression(t, ctx, forInput)).join(', ');
+            if (type.items.length === 2) {
+                ctx.imports.add(`${ctx.packageName}.runtime.PairAsArraySerializer`);
+                return `PairAsArraySerializer(${inner})`;
+            }
+            ctx.imports.add(`${ctx.packageName}.runtime.TripleAsArraySerializer`);
+            return `TripleAsArraySerializer(${inner})`;
+        }
+        case 'literal':
+        case 'scalar':
+        default: {
+            const kotlinType = renderKotlinType(type, ctx, forInput);
+            if (kotlinType === 'ByteArray') {
+                ctx.imports.add('kotlinx.serialization.builtins.ByteArraySerializer');
+                return 'ByteArraySerializer()';
+            }
+            if (['String', 'Long', 'Double', 'Boolean'].includes(kotlinType)) {
+                ctx.imports.add('kotlinx.serialization.builtins.serializer');
+            }
+            return `${kotlinType}.serializer()`;
+        }
+    }
+}
+
 // ─── Default values ────────────────────────────────────────────────────────
 
 /**
  * Render a contract default as a Kotlin expression of the field's own type. Returns `undefined`
- * when the value cannot be expressed (an identifier default naming something we cannot resolve),
- * so the field is emitted without an initializer rather than with one that will not compile.
+ * when the value cannot be expressed, so the field is emitted without an initializer rather than
+ * with one that will not compile.
  */
 function renderDefault(value: string | number | boolean, type: ContractTypeNode, ctx: RenderContext): string | undefined {
     const inner = type.kind === 'lazy' ? type.inner : type;
@@ -280,8 +372,13 @@ function renderDefault(value: string | number | boolean, type: ContractTypeNode,
         return Number.isInteger(value) ? `${value}L` : String(value);
     }
 
-    // A string default against an enum names one of its members, not a string literal.
-    if (inner.kind === 'enum') return undefined;
+    // A string default against an enum names one of its members. When the enum was hoisted into a
+    // real Kotlin enum class, that is expressible; a bare inline enum has no class to qualify.
+    if (inner.kind === 'enum') {
+        const decl = ctx.hoisted?.byNode.get(inner);
+        if (!decl || !inner.values.includes(value)) return undefined;
+        return `${decl.name}.${enumEntryNames(inner.values).get(value)}`;
+    }
     if (inner.kind === 'scalar') {
         switch (inner.name) {
             case 'decimal':
@@ -353,11 +450,13 @@ function generateAliasModel(model: ModelNode, ctx: RenderContext): string[] {
     const type = model.type!;
     const inner = type.kind === 'lazy' ? type.inner : type;
 
-    if (inner.kind === 'enum') {
-        return generateEnumClass(model.name, inner.values, ctx, model);
-    }
+    // A union alias is emitted by the hoisting pass, which owns the sealed interface named after it.
+    if (ctx.hoisted?.byNode.has(inner)) return [];
+
+    if (inner.kind === 'enum') return generateEnumClass(model.name, inner.values, ctx, model.description, model.deprecated);
+
     // An intersection or inline object at model level names a real shape, so it becomes a class
-    // rather than an alias to `JsonObject`.
+    // rather than an alias to an opaque JSON object.
     if (inner.kind === 'intersection' || inner.kind === 'inlineObject') {
         const { fields, unresolved } = resolveEffectiveFields(inner, ctx.modelIndex);
         for (const name of unresolved) {
@@ -393,44 +492,73 @@ function generateAliasModel(model: ModelNode, ctx: RenderContext): string[] {
     return lines;
 }
 
-function generateEnumClass(name: string, values: string[], ctx: RenderContext, model?: ModelNode): string[] {
+function enumEntryNames(values: string[]): Map<string, string> {
+    const out = new Map<string, string>();
+    const used = new Set<string>();
+    for (const value of values) out.set(value, uniqueName(toKotlinEnumEntryName(value), used));
+    return out;
+}
+
+function generateEnumClass(name: string, values: string[], ctx: RenderContext, description?: string, deprecated?: boolean): string[] {
     ctx.imports.add('kotlinx.serialization.SerialName');
     ctx.imports.add('kotlinx.serialization.Serializable');
 
+    const entries = enumEntryNames(values);
     const lines: string[] = [];
-    lines.push(...docLines(model?.description, model?.deprecated, ''));
+    lines.push(...docLines(description, deprecated, ''));
     lines.push('@Serializable');
     lines.push(`enum class ${name} {`);
-    const used = new Set<string>();
     for (const value of values) {
         lines.push(`    @SerialName(${quoteKotlinString(value)})`);
-        lines.push(`    ${uniqueName(toKotlinEnumEntryName(value), used)},`);
+        lines.push(`    ${entries.get(value)},`);
     }
     lines.push('}');
-    // An enum needs no Input variant: it has no fields, so no visibility can differ.
+    // An enum has no fields, so no visibility can differ between reading and writing it.
     if (ctx.modelsWithInput.has(name)) lines.push(`typealias ${name}Input = ${name}`);
     return lines;
 }
 
+/** The sealed interfaces a generated class has to declare it implements. */
+function supertypesFor(readName: string, ctx: RenderContext, forInput: boolean): string[] {
+    const unions = ctx.hoisted?.memberships.get(readName) ?? [];
+    return unions.map(union => {
+        const decl = ctx.hoisted?.byName.get(union);
+        return forInput && decl?.needsInput ? `${union}Input` : union;
+    });
+}
+
 function generateDataClass(name: string, fields: FieldNode[], ctx: RenderContext, forInput: boolean, model: ModelNode): string[] {
+    const readName = forInput && name.endsWith('Input') ? name.slice(0, -'Input'.length) : name;
+    return renderDataClass(name, fields, ctx, forInput, supertypesFor(readName, ctx, forInput), model.description, model.deprecated);
+}
+
+function renderDataClass(
+    name: string,
+    fields: FieldNode[],
+    ctx: RenderContext,
+    forInput: boolean,
+    supertypes: string[],
+    description?: string,
+    deprecated?: boolean,
+    serializerName?: string,
+): string[] {
     ctx.imports.add('kotlinx.serialization.Serializable');
 
     const lines: string[] = [];
-    lines.push(...docLines(model.description, model.deprecated, ''));
-    lines.push('@Serializable');
+    lines.push(...docLines(description, deprecated, ''));
+    lines.push(serializerName ? `@Serializable(with = ${serializerName}::class)` : '@Serializable');
+    const implementsClause = supertypes.length > 0 ? ` : ${supertypes.join(', ')}` : '';
 
     // A `data class` needs at least one constructor property; a contract with no visible fields
     // still has to produce a serializable type.
     if (fields.length === 0) {
-        lines.push(`class ${name}`);
+        lines.push(`class ${name}${implementsClause}`);
         return lines;
     }
 
     lines.push(`data class ${name}(`);
-    for (const field of fields) {
-        lines.push(...renderField(field, ctx, forInput));
-    }
-    lines.push(')');
+    for (const field of fields) lines.push(...renderField(field, ctx, forInput));
+    lines.push(`)${implementsClause}`);
     return lines;
 }
 
@@ -447,7 +575,7 @@ function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean): s
     let initializer: string | undefined = explicitDefault;
     if (initializer === undefined && field.optional) initializer = 'null';
     // A `literal()` field carries exactly one value, so it defaults to it rather than being asked
-    // for at every call site. The value is put on the wire by `encodeDefaults` in the runtime Json.
+    // for at every call site. `encodeDefaults` in the runtime Json is what puts it on the wire.
     if (initializer === undefined && !field.optional && !field.nullable) {
         const inner = field.type.kind === 'lazy' ? field.type.inner : field.type;
         if (inner.kind === 'literal') {
@@ -469,6 +597,223 @@ function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean): s
     lines.push(`    ${prefix}val ${propName}: ${typeStr}${suffix},`);
     return lines;
 }
+
+// ─── Hoisted declarations ──────────────────────────────────────────────────
+
+/** Emit the declaration standing in for one anonymous type, plus its Input twin when it needs one. */
+function generateHoisted(decl: HoistedDecl, ctx: RenderContext): string[] {
+    const read = generateHoistedVariant(decl, ctx, false);
+    if (!decl.needsInput) return read;
+    return [...read, '', ...generateHoistedVariant(decl, ctx, true)];
+}
+
+function generateHoistedVariant(decl: HoistedDecl, ctx: RenderContext, forInput: boolean): string[] {
+    const name = forInput ? `${decl.name}Input` : decl.name;
+    switch (decl.kind) {
+        case 'enum':
+            return generateEnumClass(name, decl.values ?? [], ctx, decl.description);
+        case 'dataClass':
+            return renderDataClass(
+                name,
+                (decl.fields ?? []).filter(f => (forInput ? f.visibility !== 'readonly' : f.visibility !== 'writeonly')),
+                ctx,
+                forInput,
+                supertypesFor(decl.name, ctx, forInput),
+                decl.description,
+            );
+        case 'tuple':
+            return generateTupleClass(decl, name, ctx, forInput);
+        case 'plainUnion':
+            return generatePlainUnion(decl, name, ctx, forInput);
+        case 'discriminatedUnion':
+            return generateDiscriminatedUnion(decl, name, ctx, forInput);
+    }
+}
+
+/** Shared preamble every generated serializer needs. */
+function addSerializerImports(ctx: RenderContext): void {
+    ctx.imports.add('kotlinx.serialization.KSerializer');
+    ctx.imports.add('kotlinx.serialization.SerializationException');
+    ctx.imports.add('kotlinx.serialization.Serializable');
+    ctx.imports.add('kotlinx.serialization.descriptors.SerialDescriptor');
+    ctx.imports.add('kotlinx.serialization.descriptors.buildClassSerialDescriptor');
+    ctx.imports.add('kotlinx.serialization.encoding.Decoder');
+    ctx.imports.add('kotlinx.serialization.encoding.Encoder');
+    ctx.imports.add('kotlinx.serialization.json.JsonDecoder');
+    ctx.imports.add('kotlinx.serialization.json.JsonEncoder');
+    ctx.imports.add('kotlinx.serialization.json.decodeFromJsonElement');
+    ctx.imports.add('kotlinx.serialization.json.encodeToJsonElement');
+}
+
+/**
+ * A contract tuple of an arity Kotlin has no built-in type for. It travels as a JSON array, so the
+ * class carries a generated serializer rather than the field-level annotation `Pair` and `Triple`
+ * use.
+ */
+function generateTupleClass(decl: HoistedDecl, name: string, ctx: RenderContext, forInput: boolean): string[] {
+    addSerializerImports(ctx);
+    ctx.imports.add('kotlinx.serialization.json.JsonArray');
+
+    const items = decl.items ?? [];
+    const serializerName = `${name}Serializer`;
+    const fields: string[] = items.map((item, i) => `    val item${i}: ${renderKotlinType(item, ctx, forInput)},`);
+
+    const lines: string[] = [];
+    lines.push(...docLines(decl.description, undefined, ''));
+    lines.push(`@Serializable(with = ${serializerName}::class)`);
+    lines.push(`data class ${name}(`);
+    lines.push(...fields);
+    lines.push(')');
+    lines.push('');
+    lines.push(`object ${serializerName} : KSerializer<${name}> {`);
+    lines.push(`    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("${name}")`);
+    lines.push('');
+    lines.push(`    override fun serialize(encoder: Encoder, value: ${name}) {`);
+    lines.push(`        val output = encoder as? JsonEncoder ?: throw SerializationException("${name} can only be encoded as JSON")`);
+    lines.push('        output.encodeJsonElement(');
+    lines.push('            JsonArray(');
+    lines.push('                listOf(');
+    items.forEach((item, i) => {
+        lines.push(`                    output.json.encodeToJsonElement(${serializerExpression(item, ctx, forInput)}, value.item${i}),`);
+    });
+    lines.push('                ),');
+    lines.push('            ),');
+    lines.push('        )');
+    lines.push('    }');
+    lines.push('');
+    lines.push(`    override fun deserialize(decoder: Decoder): ${name} {`);
+    lines.push(`        val input = decoder as? JsonDecoder ?: throw SerializationException("${name} can only be decoded from JSON")`);
+    lines.push(`        val array = input.decodeJsonElement() as? JsonArray ?: throw SerializationException("Expected a JSON array for ${name}")`);
+    lines.push(
+        `        if (array.size != ${items.length}) throw SerializationException("Expected ${items.length} elements for ${name}, got \${array.size}")`,
+    );
+    lines.push(`        return ${name}(`);
+    items.forEach((item, i) => {
+        lines.push(`            input.json.decodeFromJsonElement(${serializerExpression(item, ctx, forInput)}, array[${i}]),`);
+    });
+    lines.push('        )');
+    lines.push('    }');
+    lines.push('}');
+    return lines;
+}
+
+/**
+ * A plain `union(A | B)` becomes a sealed interface with one wrapper case per member, so callers
+ * get an exhaustive `when` instead of an untyped JSON value.
+ *
+ * Decoding tries each member in declaration order and takes the first that parses, which is exactly
+ * what Zod's `z.union` does on the server. Anything else would let the client and the service
+ * disagree about a payload both of them accept.
+ */
+function generatePlainUnion(decl: HoistedDecl, name: string, ctx: RenderContext, forInput: boolean): string[] {
+    addSerializerImports(ctx);
+    const serializerName = `${name}Serializer`;
+    const members = decl.members ?? [];
+
+    const lines: string[] = [];
+    lines.push(...docLines(decl.description, undefined, ''));
+    lines.push(`@Serializable(with = ${serializerName}::class)`);
+    lines.push(`sealed interface ${name} {`);
+    for (const member of members) {
+        const memberType = renderKotlinType(member.type, ctx, forInput);
+        lines.push(`    data class ${member.wrapperName}(val value: ${memberType}) : ${name}`);
+    }
+    lines.push('}');
+    lines.push('');
+    lines.push(`object ${serializerName} : KSerializer<${name}> {`);
+    lines.push(`    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("${name}")`);
+    lines.push('');
+    lines.push(`    override fun serialize(encoder: Encoder, value: ${name}) {`);
+    lines.push(`        val output = encoder as? JsonEncoder ?: throw SerializationException("${name} can only be encoded as JSON")`);
+    lines.push('        val element = when (value) {');
+    for (const member of members) {
+        lines.push(
+            `            is ${name}.${member.wrapperName} -> output.json.encodeToJsonElement(${serializerExpression(member.type, ctx, forInput)}, value.value)`,
+        );
+    }
+    lines.push('        }');
+    lines.push('        output.encodeJsonElement(element)');
+    lines.push('    }');
+    lines.push('');
+    lines.push(`    override fun deserialize(decoder: Decoder): ${name} {`);
+    lines.push(`        val input = decoder as? JsonDecoder ?: throw SerializationException("${name} can only be decoded from JSON")`);
+    lines.push('        val element = input.decodeJsonElement()');
+    for (const member of members) {
+        lines.push(
+            `        runCatching { ${name}.${member.wrapperName}(input.json.decodeFromJsonElement(${serializerExpression(member.type, ctx, forInput)}, element)) }` +
+                '.getOrNull()?.let { return it }',
+        );
+    }
+    lines.push(`        throw SerializationException("No ${name} member matched the payload")`);
+    lines.push('    }');
+    lines.push('}');
+    return lines;
+}
+
+/**
+ * A `discriminated(by=tag, A | B)` becomes a sealed interface its member classes implement, with a
+ * serializer that dispatches on the tag value.
+ *
+ * `serialize` writes an explicit `when` rather than delegating to kotlinx's
+ * `JsonContentPolymorphicSerializer`, whose subclass lookup falls back to runtime reflection —
+ * dependable on the JVM, not on the other Kotlin Multiplatform targets this SDK compiles for.
+ */
+function generateDiscriminatedUnion(decl: HoistedDecl, name: string, ctx: RenderContext, forInput: boolean): string[] {
+    addSerializerImports(ctx);
+    ctx.imports.add('kotlinx.serialization.json.contentOrNull');
+    ctx.imports.add('kotlinx.serialization.json.jsonObject');
+    ctx.imports.add('kotlinx.serialization.json.jsonPrimitive');
+
+    const serializerName = `${name}Serializer`;
+    const members = (decl.members ?? []).map(member => ({
+        ...member,
+        className: memberClassName(member.typeName, ctx, forInput),
+    }));
+    const discriminator = decl.discriminator ?? '';
+
+    const lines: string[] = [];
+    lines.push(...docLines(decl.description, undefined, ''));
+    lines.push(`@Serializable(with = ${serializerName}::class)`);
+    lines.push(`sealed interface ${name}`);
+    lines.push('');
+    lines.push(`object ${serializerName} : KSerializer<${name}> {`);
+    lines.push(`    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("${name}")`);
+    lines.push('');
+    lines.push(`    override fun serialize(encoder: Encoder, value: ${name}) {`);
+    lines.push(`        val output = encoder as? JsonEncoder ?: throw SerializationException("${name} can only be encoded as JSON")`);
+    lines.push('        val element = when (value) {');
+    for (const member of members) {
+        lines.push(`            is ${member.className} -> output.json.encodeToJsonElement(${member.className}.serializer(), value)`);
+    }
+    lines.push('        }');
+    lines.push('        output.encodeJsonElement(element)');
+    lines.push('    }');
+    lines.push('');
+    lines.push(`    override fun deserialize(decoder: Decoder): ${name} {`);
+    lines.push(`        val input = decoder as? JsonDecoder ?: throw SerializationException("${name} can only be decoded from JSON")`);
+    lines.push('        val element = input.decodeJsonElement()');
+    lines.push(`        return when (val tag = element.jsonObject[${quoteKotlinString(discriminator)}]?.jsonPrimitive?.contentOrNull) {`);
+    for (const member of members) {
+        lines.push(
+            `            ${quoteKotlinString(member.tag ?? '')} -> input.json.decodeFromJsonElement(${member.className}.serializer(), element)`,
+        );
+    }
+    lines.push(`            else -> throw SerializationException("Unknown ${name} ${discriminator}: $tag")`);
+    lines.push('        }');
+    lines.push('    }');
+    lines.push('}');
+    return lines;
+}
+
+/** The concrete class name of a union member, in the read or input variant. */
+function memberClassName(typeName: string, ctx: RenderContext, forInput: boolean): string {
+    if (!forInput) return typeName;
+    const decl = ctx.hoisted?.byName.get(typeName);
+    if (decl) return decl.needsInput ? `${typeName}Input` : typeName;
+    return ctx.modelsWithInput.has(typeName) ? `${typeName}Input` : typeName;
+}
+
+// ─── Shared helpers ────────────────────────────────────────────────────────
 
 /**
  * KDoc for a declaration, with a `@deprecated` tag rather than the `@Deprecated` annotation for

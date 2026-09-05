@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildModelIndex } from '@contractkit/core';
-import { generateKotlinModels } from '../src/codegen-models.js';
+import { generateKotlinModels, resolveModelsWithInput } from '../src/codegen-models.js';
+import { collectHoistedTypes } from '../src/hoist.js';
 import {
     arrayType,
     contractRoot,
@@ -18,9 +19,16 @@ import {
 
 const PKG = 'com.example.sdk';
 
-function gen(models: Parameters<typeof contractRoot>[0], opts: Parameters<typeof generateKotlinModels>[1] | undefined = undefined): string {
+/**
+ * Run the same two passes the plugin runs: name the anonymous types, then render the file.
+ * Tests that skip hoisting would assert a fallback nothing in the real pipeline produces.
+ */
+function gen(models: Parameters<typeof contractRoot>[0], opts: Partial<Parameters<typeof generateKotlinModels>[1]> = {}): string {
     const root = contractRoot(models);
-    return generateKotlinModels(root, { packageName: PKG, modelIndex: buildModelIndex(models), ...opts });
+    const modelIndex = buildModelIndex(models);
+    const modelsWithInput = resolveModelsWithInput(models, opts.modelsWithInput);
+    const hoisted = collectHoistedTypes([root], { modelIndex, modelsWithInput, warn: opts.warn ? m => opts.warn!(m) : undefined });
+    return generateKotlinModels(root, { packageName: PKG, modelIndex, hoisted, ...opts });
 }
 
 // ─── Scalars ───────────────────────────────────────────────────────────────
@@ -127,11 +135,6 @@ describe('composite types', () => {
         expect(out).toContain('@Serializable(with = PairAsArraySerializer::class) val range: Pair<Long, Long>,');
         expect(out).toContain('@Serializable(with = TripleAsArraySerializer::class) val point: Triple<Double, Double, Double>,');
         expect(out).toContain('import com.example.sdk.runtime.PairAsArraySerializer');
-    });
-
-    it('falls back to JsonArray for a tuple arity Kotlin has no type for', () => {
-        const out = gen([model('M', [field('quad', tupleType(scalarType('int'), scalarType('int'), scalarType('int'), scalarType('int')))])]);
-        expect(out).toContain('val quad: JsonArray,');
     });
 
     it('renders a model ref by name, since every model shares one package', () => {
@@ -314,16 +317,161 @@ describe('read and input variants', () => {
     });
 });
 
-// ─── Phase 1 fallbacks ─────────────────────────────────────────────────────
+// ─── Unions ────────────────────────────────────────────────────────────────
 
-describe('types without a named Kotlin form yet', () => {
-    it('renders a union as JsonElement', () => {
-        const out = gen([model('M', [field('v', unionType(scalarType('string'), scalarType('int')))])]);
-        expect(out).toContain('val v: JsonElement,');
+describe('plain unions', () => {
+    it('emits a sealed interface with one wrapper case per member', () => {
+        const out = gen([model('M', [field('v', unionType(refType('A'), scalarType('string')))]), model('A', [field('a', scalarType('string'))])]);
+        expect(out).toContain('sealed interface MV {');
+        expect(out).toContain('    data class OfA(val value: A) : MV');
+        expect(out).toContain('    data class OfString(val value: String) : MV');
+        expect(out).toContain('val v: MV,');
     });
 
-    it('renders an inline object as JsonObject', () => {
-        const out = gen([model('M', [field('v', inlineObjectType([field('a', scalarType('string'))]))])]);
-        expect(out).toContain('val v: JsonObject,');
+    it('decodes members in declaration order, matching how the server union parses', () => {
+        const out = gen([
+            model('M', [field('v', unionType(refType('A'), refType('B')))]),
+            model('A', [field('a', scalarType('string'))]),
+            model('B', [field('b', scalarType('string'))]),
+        ]);
+        const body = out.slice(out.indexOf('override fun deserialize'));
+        expect(body.indexOf('MV.OfA(')).toBeLessThan(body.indexOf('MV.OfB('));
+        expect(body).toContain('throw SerializationException("No MV member matched the payload")');
+    });
+
+    it('collapses a union of one member and null to Kotlin’s own nullable type', () => {
+        const out = gen([model('M', [field('v', unionType(scalarType('string'), scalarType('null')))])]);
+        expect(out).toContain('val v: String?,');
+        expect(out).not.toContain('sealed interface');
+    });
+
+    it('renders a union of string literals as an enum class', () => {
+        const out = gen([model('M', [field('kind', unionType(literalType('card'), literalType('bank')))])]);
+        expect(out).toContain('enum class MKind {');
+        expect(out).toContain('    @SerialName("card")');
+        expect(out).toContain('    CARD,');
+        expect(out).toContain('val kind: MKind,');
+    });
+
+    it('marks the reference nullable when the union carries a null member alongside others', () => {
+        const out = gen([model('M', [field('v', unionType(refType('A'), refType('B'), scalarType('null')))]), model('A', []), model('B', [])]);
+        expect(out).toContain('val v: MV?,');
+    });
+});
+
+describe('discriminated unions', () => {
+    const members = () => [
+        model('Card', [field('kind', literalType('card')), field('last4', scalarType('string'))]),
+        model('Bank', [field('kind', literalType('bank')), field('accountId', scalarType('string'))]),
+    ];
+
+    it('emits a sealed interface the member classes implement', () => {
+        const out = gen([
+            ...members(),
+            model('PaymentMethod', [], { type: { kind: 'discriminatedUnion', discriminator: 'kind', members: [refType('Card'), refType('Bank')] } }),
+        ]);
+        expect(out).toContain('sealed interface PaymentMethod');
+        expect(out).toContain('data class Card(');
+        expect(out).toContain(') : PaymentMethod');
+        expect(out).not.toContain('typealias PaymentMethod');
+    });
+
+    it('keeps the discriminator as a real field defaulted to its literal, so a member posts standalone', () => {
+        const out = gen([
+            ...members(),
+            model('PaymentMethod', [], { type: { kind: 'discriminatedUnion', discriminator: 'kind', members: [refType('Card'), refType('Bank')] } }),
+        ]);
+        expect(out).toContain('val kind: String = "card",');
+    });
+
+    it('dispatches on the tag when decoding and writes an explicit branch when encoding', () => {
+        const out = gen([
+            ...members(),
+            model('PaymentMethod', [], { type: { kind: 'discriminatedUnion', discriminator: 'kind', members: [refType('Card'), refType('Bank')] } }),
+        ]);
+        expect(out).toContain('return when (val tag = element.jsonObject["kind"]?.jsonPrimitive?.contentOrNull) {');
+        expect(out).toContain('            "card" -> input.json.decodeFromJsonElement(Card.serializer(), element)');
+        expect(out).toContain('            is Card -> output.json.encodeToJsonElement(Card.serializer(), value)');
+    });
+
+    it('falls back to a raw JSON value when a member tag is an enum rather than a literal', () => {
+        const warnings: string[] = [];
+        const out = gen(
+            [
+                model('Card', [field('kind', enumType('card')), field('last4', scalarType('string'))]),
+                model('Bank', [field('kind', enumType('bank'))]),
+                model('PaymentMethod', [], {
+                    type: { kind: 'discriminatedUnion', discriminator: 'kind', members: [refType('Card'), refType('Bank')] },
+                }),
+            ],
+            { warn: m => warnings.push(m) },
+        );
+        expect(warnings.join('\n')).toMatch(/not a literal, so its tag is not known at build time/);
+        expect(out).toContain('typealias PaymentMethod = JsonElement');
+    });
+});
+
+// ─── Hoisted anonymous shapes ──────────────────────────────────────────────
+
+describe('hoisted shapes', () => {
+    it('names an inline object after the model and field that hold it', () => {
+        const out = gen([model('M', [field('address', inlineObjectType([field('city', scalarType('string'))]))])]);
+        expect(out).toContain('data class MAddress(');
+        expect(out).toContain('    val city: String,');
+        expect(out).toContain('val address: MAddress,');
+    });
+
+    it('names an inline object inside an array after the field, not the element', () => {
+        const out = gen([model('M', [field('lines', arrayType(inlineObjectType([field('sku', scalarType('string'))])))])]);
+        expect(out).toContain('data class MLines(');
+        expect(out).toContain('val lines: List<MLines>,');
+    });
+
+    it('hoists a field-level enum into a real enum class', () => {
+        const out = gen([model('M', [field('status', enumType('pending', 'done'))])]);
+        expect(out).toContain('enum class MStatus {');
+        expect(out).toContain('val status: MStatus,');
+    });
+
+    it('resolves an enum default to the generated entry rather than a bare string', () => {
+        const out = gen([model('M', [field('status', enumType('pending', 'done'), { default: 'pending' })])]);
+        expect(out).toContain('val status: MStatus? = MStatus.PENDING,');
+    });
+
+    it('flattens a field-level intersection into a data class', () => {
+        const out = gen([
+            model('A', [field('a', scalarType('string'))]),
+            model('B', [field('b', scalarType('int'))]),
+            model('M', [field('both', { kind: 'intersection', members: [refType('A'), refType('B')] })]),
+        ]);
+        expect(out).toContain('data class MBoth(');
+        const section = out.slice(out.indexOf('data class MBoth('));
+        expect(section).toContain('val a: String,');
+        expect(section).toContain('val b: Long,');
+    });
+
+    it('gives a tuple Kotlin has no type for its own class and array serializer', () => {
+        const out = gen([model('M', [field('quad', tupleType(scalarType('int'), scalarType('int'), scalarType('int'), scalarType('int')))])]);
+        expect(out).toContain('data class MQuad(');
+        expect(out).toContain('    val item0: Long,');
+        expect(out).toContain('    val item3: Long,');
+        expect(out).toContain('object MQuadSerializer : KSerializer<MQuad> {');
+        expect(out).toContain('if (array.size != 4)');
+    });
+
+    it('suffixes a hoisted name that would collide with a real contract', () => {
+        const out = gen([model('MStatus', [field('x', scalarType('string'))]), model('M', [field('status', enumType('a', 'b'))])]);
+        expect(out).toContain('enum class MStatus2 {');
+        expect(out).toContain('val status: MStatus2,');
+    });
+
+    it('gives a hoisted shape an Input twin only when its rendering differs', () => {
+        const out = gen([
+            model('Credential', [field('secret', scalarType('string'), { visibility: 'writeonly' })]),
+            model('M', [field('wrapper', inlineObjectType([field('credential', refType('Credential'))])), field('tag', enumType('a', 'b'))]),
+        ]);
+        expect(out).toContain('data class MWrapperInput(');
+        expect(out.slice(out.indexOf('data class MWrapperInput('))).toContain('val credential: CredentialInput,');
+        expect(out).not.toContain('enum class MTagInput');
     });
 });

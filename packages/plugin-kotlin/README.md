@@ -80,3 +80,46 @@ const plugin = createKotlinSdkPlugin({ baseDir: 'clients/kotlin/' }, process.cwd
 
 Prefer the default export when loading through `contractkit.config.json`; the factory is for
 building the plugin in code.
+
+## Unions
+
+A union has no anonymous form in Kotlin, so each one becomes a named `sealed interface` with a
+generated serializer. Two shapes are recognised first, because Kotlin already expresses them:
+`union(T, null)` is just `T?`, and a union of string literals is an `enum class`.
+
+**Plain unions** wrap each member in a case, so callers get an exhaustive `when`:
+
+```kotlin
+@Serializable(with = MVSerializer::class)
+sealed interface MV {
+    data class OfPayment(val value: Payment) : MV
+    data class OfString(val value: String) : MV
+}
+```
+
+Decoding tries members in declaration order and takes the first that parses. That is what Zod's
+`z.union` does on the server, so the client and the service cannot disagree about a payload both
+would accept.
+
+**Discriminated unions** are implemented by the member classes directly and dispatch on the tag:
+
+```kotlin
+@Serializable(with = PaymentMethodSerializer::class)
+sealed interface PaymentMethod
+
+@Serializable
+data class Card(val kind: String = "card", val last4: String) : PaymentMethod
+```
+
+The discriminator stays a real property defaulted to its literal, rather than being folded into a
+kotlinx class discriminator. That keeps the tag on the wire when a member is posted on its own, and
+lets one contract belong to several unions. `encodeDefaults` in the SDK's `Json` is what writes it.
+
+A discriminated union whose discriminator is an `enum` rather than a `literal` has no tag known at
+build time. Those degrade to a raw `JsonElement` with a warning.
+
+## Anonymous shapes
+
+An inline object, an intersection, or an enum used inside a field is given a name from the model and
+field that hold it: `contract M { status: enum(a, b) }` produces `enum class MStatus`. Names are
+unique across the whole project, and a collision with a real contract name gets a numeric suffix.

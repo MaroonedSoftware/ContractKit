@@ -18,7 +18,8 @@ import {
     runIncrementalCodegen,
     serializeIncrementalManifest,
 } from '@contractkit/core';
-import { generateKotlinModels } from './codegen-models.js';
+import { generateKotlinModels, resolveModelsWithInput } from './codegen-models.js';
+import { collectHoistedTypes } from './hoist.js';
 import { generateSerializersKt } from './runtime-serializers.js';
 import { KOTLIN_HARD_KEYWORDS, deriveKotlinFileBase } from './naming.js';
 
@@ -119,7 +120,6 @@ async function runKotlinCodegen(
     assertValidConfig(config);
 
     const { contractRoots } = inputs;
-    const modelsWithInput = inputs.modelsWithInput as Set<string>;
     const packageName = config.packageName ?? DEFAULT_PACKAGE_NAME;
     const sdkName = config.sdkName ?? DEFAULT_SDK_NAME;
     const outDir = resolve(rootDir, config.baseDir ?? DEFAULT_BASE_DIR);
@@ -130,15 +130,27 @@ async function runKotlinCodegen(
     // only cross-file input a models unit has is which names carry an Input variant.
     const allModels: ModelNode[] = contractRoots.flatMap(root => root.models);
     const modelIndex = buildModelIndex(allModels);
+    // Resolved once over every model, so the hoisting pass and each file's renderer agree on which
+    // names carry an `Input` variant.
+    const modelsWithInput = resolveModelsWithInput(allModels, inputs.modelsWithInput);
     const modelsWithInputArray = [...modelsWithInput].sort();
+
+    // Names for the anonymous shapes — unions, inline objects, field-level enums — that Kotlin
+    // needs a declaration for. Computed across every file at once: a discriminated union declared
+    // in one file makes member classes generated in other files implement its sealed interface.
+    const hoisted = collectHoistedTypes(contractRoots, {
+        modelIndex,
+        modelsWithInput,
+        warn: (message, file) => ctx.warn?.(message, file),
+    });
 
     const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(manifestPath) : emptyIncrementalManifest(KOTLIN_CODEGEN_VERSION);
     const units: IncrementalUnit[] = [];
 
     for (const root of contractRoots) {
         const relPath = `${srcRoot}/models/${deriveKotlinFileBase(root.file)}Models.kt`;
-        const referenced = referencedModelNames(root);
         const ownNames = new Set(root.models.map(m => m.name));
+        const referenced = referencedModelNames(root);
         const relevantInputModels = modelsWithInputArray.filter(name => ownNames.has(name) || referenced.has(name));
         // A base declared in another file contributes its fields to a class generated here, so the
         // fingerprint has to move when that base does.
@@ -148,6 +160,14 @@ async function runKotlinCodegen(
             .map(name => modelIndex.get(name))
             .filter((m): m is ModelNode => m !== undefined);
 
+        // Declarations this file owns, and the interfaces its classes implement, are both
+        // decided by the whole project, so they belong in the fingerprint alongside the file.
+        const ownedDeclarations = (hoisted.byFile.get(root.file) ?? []).map(d => ({ kind: d.kind, name: d.name, needsInput: d.needsInput }));
+        const declaredMemberships = [...ownNames]
+            .sort()
+            .map(name => [name, hoisted.memberships.get(name) ?? []] as const)
+            .filter(([, unions]) => unions.length > 0);
+
         const fingerprint = hashFingerprint({
             kind: 'models',
             v: KOTLIN_CODEGEN_VERSION,
@@ -156,6 +176,8 @@ async function runKotlinCodegen(
             root,
             externalBases,
             modelsWithInput: relevantInputModels,
+            ownedDeclarations,
+            declaredMemberships,
         });
 
         units.push({
@@ -168,6 +190,7 @@ async function runKotlinCodegen(
                         packageName,
                         modelsWithInput,
                         modelIndex,
+                        hoisted,
                         warn: message => ctx.warn?.(message, root.file),
                     }),
                 },
