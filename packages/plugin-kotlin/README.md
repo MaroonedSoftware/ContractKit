@@ -70,6 +70,22 @@ A contract with `readonly` or `writeonly` fields generates two classes: `Name` o
 fields, `NameInput` omits `readonly` ones. A model that only references such a contract gets the
 pair too, so a request body never asks for a field the server will reject.
 
+## Key casing
+
+A contract's `format(input=)` / `format(output=)` renames the keys **on the wire** without changing
+the field names the contract declares. kotlinx.serialization has no per-class key transform, so
+each renamed field carries a `@SerialName`: `contract format(output=snake) Token { accessToken:
+string }` generates `@SerialName("access_token") val accessToken: String`.
+
+The two directions are read separately. A class that decodes a response follows `output`, and an
+`Input` twin that encodes a request follows `input`. A model with **no** Input twin is one class
+used both ways and can only spell one set of keys; if such a contract sets both directions to
+different cases, the generator warns and follows `output`.
+
+An anonymous object nested inside a renamed contract is hoisted into a class of its own, which
+keeps its declared key names — the hoisting pass records no owner to take the casing from. The
+generator warns when it meets one. Name the shape as its own contract to fix it.
+
 ## Programmatic use
 
 ```typescript
@@ -199,7 +215,8 @@ The generator is complete and unit-tested, and the Kotlin it emits **has** now b
 against a real toolchain. That first build is what turned up the two bugs fixed in the patch after
 `0.1.0`: a `/*` in contract text escaped into a KDoc and swallowed the rest of the file, and a
 default written against a named `enum` contract came out as its wire spelling rather than the enum
-member.
+member. The patch after that is the same story a layer down: the output compiled and then failed to
+_decode_, because `format(output=snake)` never reached a `@SerialName`.
 
 The compile is not automated. This package's tests assert over the generated _strings_, so
 `pnpm test` will not catch the next construct that parses here and fails there. Build the scaffold
@@ -221,3 +238,6 @@ Behavioural limitations, all deliberate:
    implemented.
 6. A tuple nested inside a collection falls back to `JsonArray`: the serializer annotation that
    makes `Pair` and `Triple` travel as JSON arrays applies to a property's own type only.
+7. A key transform does not reach an anonymous object nested inside the renamed contract, and a
+   model used in both directions can carry only one casing. Both are warned about; see
+   **Key casing**.

@@ -457,6 +457,92 @@ export function quoteKotlinString(value: string): string {
     return `"${escaped}"`;
 }
 
+// ─── Wire key casing ───────────────────────────────────────────────────────
+
+/** The key casing a contract's `format(input=)` / `format(output=)` names. */
+type WireCase = NonNullable<ModelNode['outputCase']>;
+
+/**
+ * A field name as it travels, which is not always the name the contract declares it under.
+ *
+ * The two transforms are spelled exactly as `plugin-typescript` spells them, deliberately: the
+ * server parses and emits through that plugin's schemas, so a Kotlin client that disagreed with it
+ * about where an underscore goes would be wrong in a way no test in either package could see.
+ */
+function applyWireCase(name: string, wireCase: WireCase | undefined): string {
+    if (!wireCase || wireCase === 'camel') return name;
+    if (wireCase === 'snake') return name.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`);
+    return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** A case that actually renames something. `camel` is the identity and is treated as absent. */
+function renamingCase(wireCase: WireCase | undefined): WireCase | undefined {
+    return wireCase && wireCase !== 'camel' ? wireCase : undefined;
+}
+
+/**
+ * Which casing one generated class's keys travel in.
+ *
+ * A response is decoded through `format(output=)` and a request is encoded through
+ * `format(input=)`, so a model split into a read class and an `Input` twin takes one each. A model
+ * that is NOT split is one class used in both directions, and kotlinx.serialization has no way to
+ * spell two different key sets on it — so a contract asking for two is reported rather than
+ * silently resolved in whichever direction happens to be rendered.
+ */
+function wireCaseFor(model: ModelNode, forInput: boolean, split: boolean, ctx: RenderContext): WireCase | undefined {
+    const input = renamingCase(model.inputCase);
+    const output = renamingCase(model.outputCase);
+    if (split) return forInput ? input : output;
+    if (input && output && input !== output) {
+        ctx.warn?.(
+            `Contract '${model.name}' sets format(input=${input}) and format(output=${output}), but nothing about it splits into an Input variant, ` +
+                `so one Kotlin class carries both directions and can only spell one set of keys. The generated keys follow the output casing; ` +
+                `a request built from this class will send the wrong ones.`,
+        );
+        return output;
+    }
+    return output ?? input;
+}
+
+/**
+ * Whether a type puts an anonymous object under a renamed model.
+ *
+ * Such an object is hoisted into a class of its own, which is rendered without the owning model's
+ * casing — the hoisting pass records no owner to take it from. That is a real gap rather than a
+ * decision, so it is reported at the one place the owner is still known.
+ */
+function containsInlineObject(type: ContractTypeNode | undefined): boolean {
+    if (!type) return false;
+    switch (type.kind) {
+        case 'inlineObject':
+            return true;
+        case 'lazy':
+            return containsInlineObject(type.inner);
+        case 'array':
+            return containsInlineObject(type.item);
+        case 'record':
+            return containsInlineObject(type.value);
+        case 'tuple':
+            return type.items.some(containsInlineObject);
+        case 'union':
+        case 'discriminatedUnion':
+        case 'intersection':
+            return (type.members ?? []).some(containsInlineObject);
+        default:
+            return false;
+    }
+}
+
+/** Report the gap above, once per model rather than once per field. */
+function warnUncasedNesting(model: ModelNode, fields: readonly FieldNode[], wireCase: WireCase | undefined, ctx: RenderContext): void {
+    if (!wireCase) return;
+    if (!fields.some(f => containsInlineObject(f.type)) && !containsInlineObject(model.type)) return;
+    ctx.warn?.(
+        `Contract '${model.name}' is declared format(${model.outputCase ? 'output' : 'input'}=${wireCase}) and holds an anonymous object. ` +
+            `The class hoisted out of that object keeps its declared key names, so its keys will not be ${wireCase}-cased. Name the shape as its own contract to fix it.`,
+    );
+}
+
 // ─── Model generation ──────────────────────────────────────────────────────
 
 function generateModel(model: ModelNode, ctx: RenderContext): string[] {
@@ -465,14 +551,14 @@ function generateModel(model: ModelNode, ctx: RenderContext): string[] {
     const effective = effectiveFieldsFor(model, ctx);
     const needsSplit = ctx.modelsWithInput.has(model.name) || effective.some(f => f.visibility !== 'normal');
 
-    if (!needsSplit) return generateDataClass(model.name, effective, ctx, false, model);
+    if (!needsSplit) return generateDataClass(model.name, effective, ctx, false, model, false);
 
     const readFields = effective.filter(f => f.visibility !== 'writeonly');
     const inputFields = effective.filter(f => f.visibility !== 'readonly');
     return [
-        ...generateDataClass(model.name, readFields, ctx, false, model),
+        ...generateDataClass(model.name, readFields, ctx, false, model, true),
         '',
-        ...generateDataClass(`${model.name}Input`, inputFields, ctx, true, model),
+        ...generateDataClass(`${model.name}Input`, inputFields, ctx, true, model, true),
     ];
 }
 
@@ -508,7 +594,7 @@ function generateAliasModel(model: ModelNode, ctx: RenderContext): string[] {
             ctx.warn?.(`Contract '${model.name}' references '${name}', which is not defined; its fields are missing from the generated class.`);
         }
         const needsSplit = ctx.modelsWithInput.has(model.name) || fields.some(f => f.visibility !== 'normal');
-        if (!needsSplit) return generateDataClass(model.name, fields, ctx, false, model);
+        if (!needsSplit) return generateDataClass(model.name, fields, ctx, false, model, false);
         return [
             ...generateDataClass(
                 model.name,
@@ -516,6 +602,7 @@ function generateAliasModel(model: ModelNode, ctx: RenderContext): string[] {
                 ctx,
                 false,
                 model,
+                true,
             ),
             '',
             ...generateDataClass(
@@ -524,6 +611,7 @@ function generateAliasModel(model: ModelNode, ctx: RenderContext): string[] {
                 ctx,
                 true,
                 model,
+                true,
             ),
         ];
     }
@@ -572,9 +660,22 @@ function supertypesFor(readName: string, ctx: RenderContext, forInput: boolean):
     });
 }
 
-function generateDataClass(name: string, fields: FieldNode[], ctx: RenderContext, forInput: boolean, model: ModelNode): string[] {
+function generateDataClass(name: string, fields: FieldNode[], ctx: RenderContext, forInput: boolean, model: ModelNode, split: boolean): string[] {
     const readName = forInput && name.endsWith('Input') ? name.slice(0, -'Input'.length) : name;
-    return renderDataClass(name, fields, ctx, forInput, supertypesFor(readName, ctx, forInput), model.description, model.deprecated);
+    const wireCase = wireCaseFor(model, forInput, split, ctx);
+    // Once per model rather than once per generated class, so a split model does not say it twice.
+    if (!forInput) warnUncasedNesting(model, fields, wireCase, ctx);
+    return renderDataClass(
+        name,
+        fields,
+        ctx,
+        forInput,
+        supertypesFor(readName, ctx, forInput),
+        model.description,
+        model.deprecated,
+        undefined,
+        wireCase,
+    );
 }
 
 function renderDataClass(
@@ -586,6 +687,7 @@ function renderDataClass(
     description?: string,
     deprecated?: boolean,
     serializerName?: string,
+    wireCase?: WireCase,
 ): string[] {
     ctx.imports.add('kotlinx.serialization.Serializable');
 
@@ -602,15 +704,18 @@ function renderDataClass(
     }
 
     lines.push(`data class ${name}(`);
-    for (const field of fields) lines.push(...renderField(field, ctx, forInput));
+    for (const field of fields) lines.push(...renderField(field, ctx, forInput, wireCase));
     lines.push(`)${implementsClause}`);
     return lines;
 }
 
-function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean): string[] {
+function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean, wireCase?: WireCase): string[] {
     const lines: string[] = [];
     const propName = toKotlinPropertyName(field.name);
-    const wireName = propName.replace(/`/g, '');
+    // What the field is CALLED on the wire, which the owning contract's `format()` may have
+    // renamed. The comparison below is against the property name with its backticks stripped, so a
+    // name Kotlin has to quote is not mistaken for one the wire spells differently.
+    const wireName = applyWireCase(field.name, wireCase);
 
     let typeStr = renderKotlinType(field.type, ctx, forInput);
     const explicitDefault = field.default !== undefined ? renderDefault(field.default, field.type, ctx) : undefined;
@@ -632,9 +737,9 @@ function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean): s
     const annotations: string[] = [];
     const serializerAnnotation = typeSerializerAnnotation(field.type, ctx);
     if (serializerAnnotation) annotations.push(serializerAnnotation);
-    if (wireName !== field.name) {
+    if (wireName !== propName.replace(/`/g, '')) {
         ctx.imports.add('kotlinx.serialization.SerialName');
-        annotations.push(`@SerialName(${quoteKotlinString(field.name)})`);
+        annotations.push(`@SerialName(${quoteKotlinString(wireName)})`);
     }
 
     const prefix = annotations.length > 0 ? `${annotations.join(' ')} ` : '';
