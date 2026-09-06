@@ -207,6 +207,65 @@ describe('fields', () => {
         expect(out).not.toContain('@SerialName("amount")');
     });
 
+    // `format(output=snake)` renames the keys on the wire without touching the field names the
+    // contract declares. kotlinx.serialization has no per-class key transform, so the rename has to
+    // reach every field as a `@SerialName` — and until it did, the class was emitted with camelCase
+    // properties and no annotation at all, which decodes a real response as MissingFieldException
+    // on the first renamed field rather than as anything a reader could trace back to here.
+    it('spells a field the way format(output=snake) sends it', () => {
+        const out = gen([
+            model('Token', [field('accessToken', scalarType('string')), field('scope', scalarType('string'))], { outputCase: 'snake' }),
+        ]);
+        expect(out).toContain('@SerialName("access_token") val accessToken: String,');
+        // A field already spelled the same in both cases keeps its bare declaration.
+        expect(out).toContain('val scope: String,');
+        expect(out).not.toContain('@SerialName("scope")');
+    });
+
+    it('spells a field the way format(output=pascal) sends it', () => {
+        const out = gen([model('Token', [field('accessToken', scalarType('string'))], { outputCase: 'pascal' })]);
+        expect(out).toContain('@SerialName("AccessToken") val accessToken: String,');
+    });
+
+    it('leaves format(output=camel) alone, being the identity', () => {
+        const out = gen([model('Token', [field('accessToken', scalarType('string'))], { outputCase: 'camel' })]);
+        expect(out).toContain('val accessToken: String,');
+        expect(out).not.toContain('@SerialName');
+    });
+
+    // The read class decodes a response and the Input twin encodes a request, so they take
+    // `format(output=)` and `format(input=)` respectively rather than sharing one of them.
+    it('gives a split model the output casing to read with and the input casing to write with', () => {
+        const out = gen([
+            model('Token', [field('accessToken', scalarType('string'), { visibility: 'readonly' }), field('grantType', scalarType('string'))], {
+                outputCase: 'snake',
+                inputCase: 'pascal',
+            }),
+        ]);
+        expect(out).toContain('@SerialName("access_token") val accessToken: String,');
+        expect(out).toContain('data class TokenInput(');
+        expect(out).toContain('@SerialName("GrantType") val grantType: String,');
+    });
+
+    it('reports a model asking for two casings it cannot spell at once', () => {
+        const warnings: string[] = [];
+        const out = gen([model('Token', [field('accessToken', scalarType('string'))], { outputCase: 'snake', inputCase: 'pascal' })], {
+            warn: m => warnings.push(m),
+        });
+        // Nothing splits it, so one class carries both directions. It follows the output casing,
+        // which is the direction a client decodes in, and says so rather than deciding quietly.
+        expect(out).toContain('@SerialName("access_token") val accessToken: String,');
+        expect(warnings.join('\n')).toContain("Contract 'Token' sets format(input=pascal) and format(output=snake)");
+    });
+
+    it('reports an anonymous object under a renamed contract, whose hoisted class keeps its own keys', () => {
+        const warnings: string[] = [];
+        gen([model('Token', [field('issuedTo', inlineObjectType([field('userId', scalarType('string'))]))], { outputCase: 'snake' })], {
+            warn: m => warnings.push(m),
+        });
+        expect(warnings.join('\n')).toContain("Contract 'Token' is declared format(output=snake) and holds an anonymous object");
+    });
+
     it('gives a literal field its value as a default so callers never restate it', () => {
         const out = gen([model('M', [field('kind', literalType('card'))])]);
         expect(out).toContain('val kind: String = "card",');
