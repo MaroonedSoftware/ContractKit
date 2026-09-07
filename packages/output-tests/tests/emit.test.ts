@@ -9,7 +9,19 @@ import { buildOnce, formatDiagnostics, type PluginName } from './harness.js';
 
 const { files, diagnostics } = await buildOnce();
 
-const PLUGINS: PluginName[] = ['typescript', 'typescript-fastify', 'python', 'kotlin', 'swift', 'openapi', 'markdown', 'bruno', 'docs', 'docusaurus'];
+const PLUGINS: PluginName[] = [
+    'typescript',
+    'typescript-fastify',
+    'python',
+    'kotlin',
+    'swift',
+    'csharp',
+    'openapi',
+    'markdown',
+    'bruno',
+    'docs',
+    'docusaurus',
+];
 
 describe('generated output', () => {
     it('records the diagnostics the fixtures produce', async () => {

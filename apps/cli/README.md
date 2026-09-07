@@ -87,6 +87,7 @@ Each plugin is its own npm package, listed under `"plugins"`:
 | [`@contractkit/plugin-python`](../../packages/plugin-python)         | Python SDK client (Pydantic v2 + httpx)                                           |
 | [`@contractkit/plugin-kotlin`](../../packages/plugin-kotlin)         | Kotlin Multiplatform SDK client (Ktor + kotlinx.serialization)                    |
 | [`@contractkit/plugin-swift`](../../packages/plugin-swift)           | Swift SDK client (SwiftPM package, Codable + URLSession)                          |
+| [`@contractkit/plugin-csharp`](../../packages/plugin-csharp)         | C#/.NET SDK client (System.Text.Json + HttpClient, no NuGet dependencies)         |
 
 For writing your own plugin, see [@contractkit/core](../../packages/contractkit#plugin-api).
 

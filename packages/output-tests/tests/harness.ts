@@ -23,6 +23,7 @@ import { createTypescriptPlugin } from '@contractkit/plugin-typescript';
 import { createPythonSdkPlugin } from '@contractkit/plugin-python';
 import { createKotlinSdkPlugin } from '@contractkit/plugin-kotlin';
 import { createSwiftSdkPlugin } from '@contractkit/plugin-swift';
+import { createCSharpSdkPlugin } from '@contractkit/plugin-csharp';
 import { createBrunoPlugin } from '@contractkit/plugin-bruno';
 import { createDocsPlugin } from '@contractkit/plugin-docs';
 
@@ -54,6 +55,7 @@ export type PluginName =
     | 'python'
     | 'kotlin'
     | 'swift'
+    | 'csharp'
     | 'openapi'
     | 'markdown'
     | 'bruno'
@@ -165,6 +167,10 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
         {
             name: 'swift',
             plugin: createSwiftSdkPlugin({ baseDir: 'swiftsdk', moduleName: 'ExampleSdk', sdkName: 'KitchenSink', scaffold: true }, ROOT_DIR),
+        },
+        {
+            name: 'csharp',
+            plugin: createCSharpSdkPlugin({ baseDir: 'cssdk', namespace: 'Example.Sdk', sdkName: 'KitchenSink', scaffold: true }, ROOT_DIR),
         },
         {
             name: 'openapi',

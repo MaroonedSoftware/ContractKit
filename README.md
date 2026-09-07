@@ -1,8 +1,8 @@
 # ContractKit
 
 Define an API once, in a file you can read aloud, and generate the parts you would otherwise
-hand-write and keep in sync: Zod schemas, a Koa or Fastify router, TypeScript, Python, Kotlin and Swift
-SDK clients, an OpenAPI spec, Markdown docs, and a Bruno collection.
+hand-write and keep in sync: Zod schemas, a Koa or Fastify router, TypeScript, Python, Kotlin,
+Swift and C# SDK clients, an OpenAPI spec, Markdown docs, and a Bruno collection.
 
 ```
 contract Pet: {
@@ -178,6 +178,7 @@ All packages publish under the `@contractkit` npm scope.
 | [`@contractkit/plugin-python`](packages/plugin-python)         | Python SDK (Pydantic v2 + httpx)                                                                                                     |
 | [`@contractkit/plugin-kotlin`](packages/plugin-kotlin)         | Kotlin Multiplatform SDK (Ktor client + kotlinx.serialization)                                                                       |
 | [`@contractkit/plugin-swift`](packages/plugin-swift)           | Swift SDK (SwiftPM package, Codable models + URLSession async client)                                                                |
+| [`@contractkit/plugin-csharp`](packages/plugin-csharp)         | C#/.NET SDK (System.Text.Json + HttpClient, no NuGet dependencies)                                                                   |
 | [`@contractkit/plugin-docs`](packages/plugin-docs)             | Documentation outputs: OpenAPI 3.1 YAML, a Markdown reference, a Mintlify site, and a Docusaurus docs folder                         |
 | [`@contractkit/plugin-bruno`](packages/plugin-bruno)           | Bruno REST collection                                                                                                                |
 | [`@contractkit/openapi-to-ck`](packages/openapi-to-ck)         | OpenAPI YAML → `.ck`, for adopting an existing API                                                                                   |

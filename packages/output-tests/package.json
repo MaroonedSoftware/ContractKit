@@ -12,6 +12,7 @@
     "devDependencies": {
         "@contractkit/core": "workspace:*",
         "@contractkit/plugin-bruno": "workspace:*",
+        "@contractkit/plugin-csharp": "workspace:*",
         "@contractkit/plugin-docs": "workspace:*",
         "@contractkit/plugin-kotlin": "workspace:*",
         "@contractkit/plugin-swift": "workspace:*",

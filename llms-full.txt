@@ -174,6 +174,7 @@ the artefacts meant for consumers do not.
 | `@contractkit/plugin-python` | Pydantic v2 models + async httpx client | `false` |
 | `@contractkit/plugin-kotlin` | kotlinx.serialization models + Ktor suspend client | `false` |
 | `@contractkit/plugin-swift` | Codable models + URLSession async client | `false` |
+| `@contractkit/plugin-csharp` | System.Text.Json records + async HttpClient client | `false` |
 | `@contractkit/plugin-openapi` | One OpenAPI **3.1** YAML document | `false` |
 | `@contractkit/plugin-markdown` | One Markdown API reference | `false` |
 | `@contractkit/plugin-docs` | An OpenAPI spec, a Markdown reference, a Mintlify docs folder, or a Docusaurus docs folder | `false` |
@@ -257,6 +258,7 @@ both — a requirement naming an undefined scheme produces a spec validators rej
     "@contractkit/plugin-python": { "baseDir": "clients/python/", "packageName": "acme" },
     "@contractkit/plugin-kotlin": { "baseDir": "clients/kotlin/", "packageName": "com.acme.sdk", "sdkName": "AcmeSdk" },
     "@contractkit/plugin-swift": { "baseDir": "clients/swift/", "moduleName": "AcmeSdk", "sdkName": "Acme" },
+    "@contractkit/plugin-csharp": { "baseDir": "clients/csharp/", "namespace": "Acme.Sdk", "sdkName": "AcmeSdk" },
     "@contractkit/plugin-markdown": { "baseDir": "docs/", "output": "api-reference.md" },
     "@contractkit/plugin-bruno": { "baseDir": "bruno/", "collectionName": "Acme API" },
     "@contractkit/plugin-docs": {
@@ -375,6 +377,7 @@ language server use.
 | `@contractkit/plugin-python` | Python SDK (Pydantic v2 + httpx) |
 | `@contractkit/plugin-kotlin` | Kotlin Multiplatform SDK (Ktor + kotlinx.serialization) |
 | `@contractkit/plugin-swift` | Swift SDK (SwiftPM, Codable + URLSession) |
+| `@contractkit/plugin-csharp` | C#/.NET SDK (System.Text.Json + HttpClient, no NuGet dependencies) |
 | `@contractkit/plugin-openapi` | OpenAPI 3.1 YAML |
 | `@contractkit/plugin-markdown` | Markdown API reference |
 | `@contractkit/plugin-docs` | Documentation: OpenAPI, Markdown, Mintlify, Docusaurus |
