@@ -1,0 +1,1 @@
+# @contractkit/plugin-csharp
