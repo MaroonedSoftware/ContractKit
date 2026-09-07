@@ -22,6 +22,7 @@ import {
 import { createTypescriptPlugin } from '@contractkit/plugin-typescript';
 import { createPythonSdkPlugin } from '@contractkit/plugin-python';
 import { createKotlinSdkPlugin } from '@contractkit/plugin-kotlin';
+import { createCSharpSdkPlugin } from '@contractkit/plugin-csharp';
 import { createBrunoPlugin } from '@contractkit/plugin-bruno';
 import { createDocsPlugin } from '@contractkit/plugin-docs';
 
@@ -52,6 +53,7 @@ export type PluginName =
     | 'typescript-fastify'
     | 'python'
     | 'kotlin'
+    | 'csharp'
     | 'openapi'
     | 'markdown'
     | 'bruno'
@@ -162,6 +164,10 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
                 { baseDir: 'ktsdk', packageName: 'com.example.sdk', sdkName: 'KitchenSink', scaffold: true },
                 ROOT_DIR,
             ),
+        },
+        {
+            name: 'csharp',
+            plugin: createCSharpSdkPlugin({ baseDir: 'cssdk', namespace: 'Example.Sdk', sdkName: 'KitchenSink', scaffold: true }, ROOT_DIR),
         },
         {
             name: 'openapi',

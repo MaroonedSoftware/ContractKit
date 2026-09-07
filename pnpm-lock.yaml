@@ -202,6 +202,9 @@ importers:
       '@contractkit/plugin-bruno':
         specifier: workspace:*
         version: link:../plugin-bruno
+      '@contractkit/plugin-csharp':
+        specifier: workspace:*
+        version: link:../plugin-csharp
       '@contractkit/plugin-docs':
         specifier: workspace:*
         version: link:../plugin-docs
