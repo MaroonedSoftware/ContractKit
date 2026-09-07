@@ -25,9 +25,10 @@ Multiple files mapping to the same `(area, subarea)` are merged into one client.
 
 `{subarea}` is available as a path-template variable on `output.clients` and `output.types` alongside `{area}`, `{filename}`, and `{dir}`. Example: `output.clients: "src/{area}/{subarea}.client.ts"` produces `src/identity/invitations.client.ts`.
 
-Python, Kotlin and C# SDKs with the same operation coverage are available via
-`@contractkit/plugin-python`, `@contractkit/plugin-kotlin` and `@contractkit/plugin-csharp`. None of
-them groups clients by area yet; all three emit one client per `.ck` file.
+Python, Kotlin, Swift and C# SDKs with the same operation coverage are available via
+`@contractkit/plugin-python`, `@contractkit/plugin-kotlin`, `@contractkit/plugin-swift` and
+`@contractkit/plugin-csharp`. None of them groups clients by area yet; all four emit one client per
+`.ck` file.
 
 ---
 

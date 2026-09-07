@@ -70,6 +70,7 @@ Each plugin is its own npm package and is loaded by listing it under `"plugins"`
 | `@contractkit/plugin-bruno`      | Bruno REST collection                                            |
 | `@contractkit/plugin-python`     | Python SDK client (Pydantic v2 + httpx)                          |
 | `@contractkit/plugin-kotlin`     | Kotlin Multiplatform SDK client (Ktor + kotlinx.serialization)   |
+| `@contractkit/plugin-swift`      | Swift SDK client (SwiftPM package, Codable + URLSession)         |
 | `@contractkit/plugin-csharp`     | C#/.NET SDK client (System.Text.Json + HttpClient)               |
 
 ### `@contractkit/plugin-typescript`
@@ -358,6 +359,19 @@ Emits one `kotlinx.serialization` models file per contract file and one Ktor cli
 
 Kotlin data classes cannot extend one another, so a contract's bases are flattened into the generated class. Unions become sealed interfaces with generated serializers. The scaffold files are written once and never overwritten — they are yours to edit.
 
+### `@contractkit/plugin-swift`
+
+| Field             | Type      | Description                                                                                         |
+| ----------------- | --------- | --------------------------------------------------------------------------------------------------- |
+| `baseDir`         | `string`  | Output directory relative to `rootDir`. Default: `swift-sdk`                                        |
+| `moduleName`      | `string`  | SwiftPM target and product name; sources land in `Sources/<moduleName>/`. Default: `ContractKitSdk` |
+| `sdkName`         | `string`  | Aggregator class name. Must differ from `moduleName`. Default: `Sdk`                                |
+| `includeInternal` | `boolean` | Whether to emit client methods for `internal` operations. Default: `false`.                         |
+| `scaffold`        | `boolean` | Emit `Package.swift` once, as a user-owned file. Default: `false`.                                  |
+
+Emits one `Codable` models file per contract file and one `async throws` client per operation file, into a single Swift module that depends on nothing but Foundation. Method names follow the same priority as the TS SDK (`sdk:` → `name:` → derived from HTTP verb + path), kept in `camelCase` and backtick-escaped when they land on a Swift reserved word.
+
+A Swift struct cannot extend another, so a contract's bases are flattened into the generated struct, and one that would contain itself is routed through a generated box. Unions become `indirect` enums. Every struct writes its own `CodingKeys`, `init(from:)` and `encode(to:)`, so an optional field, a required nullable one, a default and a `literal()` each mean on the wire exactly what the contract says. The scaffold file is written once and never overwritten — it is yours to edit.
 ### `@contractkit/plugin-csharp`
 
 | Field             | Type      | Description                                                                   |
