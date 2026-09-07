@@ -130,6 +130,7 @@ seeds only from `outputCase`, so a `format(input=snake)`-only model would slip t
 
 SDK method names resolve in priority order: `sdk:` field → `name:` field (camelCased) →
 inferred from HTTP method + path. The Python SDK uses the same priority but `snake_case`; the
-Kotlin SDK keeps `camelCase` and backtick-escapes a name that lands on a Kotlin hard keyword.
+Kotlin SDK keeps `camelCase` and backtick-escapes a name that lands on a Kotlin hard keyword; the
+Swift SDK does the same against Swift's reserved words.
 
 For SDK client grouping and the `scaffold` option, read `references/ts-sdk.md`.

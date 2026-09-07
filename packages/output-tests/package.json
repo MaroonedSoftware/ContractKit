@@ -14,6 +14,7 @@
         "@contractkit/plugin-bruno": "workspace:*",
         "@contractkit/plugin-docs": "workspace:*",
         "@contractkit/plugin-kotlin": "workspace:*",
+        "@contractkit/plugin-swift": "workspace:*",
         "@contractkit/plugin-python": "workspace:*",
         "@contractkit/plugin-typescript": "workspace:*",
         "@types/node": "^25.6.0",
