@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-csharp",
-    "version": "0.0.0",
+    "version": "0.1.0",
     "description": "ContractKit built-in plugin: C#/.NET SDK client generation (System.Text.Json + HttpClient, no NuGet dependencies)",
     "license": "MIT",
     "author": {
