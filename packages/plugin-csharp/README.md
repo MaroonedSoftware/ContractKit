@@ -28,11 +28,11 @@ pnpm add -D @contractkit/plugin-csharp
 
 | Option            | Default           | Meaning                                                                 |
 | ----------------- | ----------------- | ----------------------------------------------------------------------- |
-| `baseDir`         | `csharp-sdk`      | Output directory, relative to the config's `rootDir`.                    |
-| `namespace`       | `ContractKit.Sdk` | Root namespace for the generated sources.                                |
-| `sdkName`         | `Sdk`             | Aggregator class name, and the assembly name when scaffolding.           |
-| `includeInternal` | `false`           | Emit client methods for operations marked `internal`.                    |
-| `scaffold`        | `false`           | Write `<SdkName>.csproj` once, as a user-owned file. Never overwritten.  |
+| `baseDir`         | `csharp-sdk`      | Output directory, relative to the config's `rootDir`.                   |
+| `namespace`       | `ContractKit.Sdk` | Root namespace for the generated sources.                               |
+| `sdkName`         | `Sdk`             | Aggregator class name, and the assembly name when scaffolding.          |
+| `includeInternal` | `false`           | Emit client methods for operations marked `internal`.                   |
+| `scaffold`        | `false`           | Write `<SdkName>.csproj` once, as a user-owned file. Never overwritten. |
 
 Config arrives as JSON, so it is validated at run time: an invalid namespace, a namespace segment
 that is a C# keyword, or a non-boolean flag fails the build rather than emitting C# that cannot
@@ -84,16 +84,16 @@ the converters registered there.
 
 ## Type mapping
 
-| `.ck`                          | C#                        | `.ck`      | C#                |
-| ------------------------------ | ------------------------- | ---------- | ----------------- |
-| `string`, `email`, `url`, `interval` | `string`            | `date`     | `DateOnly`        |
-| `number`                       | `double`                  | `time`     | `TimeOnly`        |
-| `int`                          | `long`                    | `datetime` | `DateTimeOffset`  |
-| `bigint`                       | `BigInteger`              | `duration` | `TimeSpan`        |
-| `decimal`                      | `decimal`                 | `uuid`     | `Guid`            |
-| `boolean`                      | `bool`                    | `binary`   | `byte[]`          |
-| `array(T)`                     | `List<T>`                 | `null`     | `object?`         |
-| `record(string, V)`            | `Dictionary<string, V>`   | `unknown`, `json`, `object` | `JsonElement` |
+| `.ck`                                | C#                      | `.ck`                       | C#               |
+| ------------------------------------ | ----------------------- | --------------------------- | ---------------- |
+| `string`, `email`, `url`, `interval` | `string`                | `date`                      | `DateOnly`       |
+| `number`                             | `double`                | `time`                      | `TimeOnly`       |
+| `int`                                | `long`                  | `datetime`                  | `DateTimeOffset` |
+| `bigint`                             | `BigInteger`            | `duration`                  | `TimeSpan`       |
+| `decimal`                            | `decimal`               | `uuid`                      | `Guid`           |
+| `boolean`                            | `bool`                  | `binary`                    | `byte[]`         |
+| `array(T)`                           | `List<T>`               | `null`                      | `object?`        |
+| `record(string, V)`                  | `Dictionary<string, V>` | `unknown`, `json`, `object` | `JsonElement`    |
 
 `int` is a JavaScript safe integer in the source language, which overflows a 32-bit `int`, so it
 maps to `long`. `decimal` travels as a quoted JSON string and refuses to read an unquoted number,
@@ -104,12 +104,12 @@ matching the server's own schema. `duration` travels as ISO 8601 rather than the
 
 Each property says for itself whether a null is written, so the two are not conflated:
 
-| Contract       | C#                                                                    | On the wire            |
-| -------------- | --------------------------------------------------------------------- | ---------------------- |
-| `x: T`         | `public required T X { get; init; }`                                   | always written         |
-| `x?: T`        | `[JsonIgnore(WhenWritingNull)] public T? X { get; init; }`             | omitted when null      |
-| `x: T \| null` | `public required T? X { get; init; }`                                  | `null` is written      |
-| `x: T = v`     | `public T X { get; init; } = v;`                                       | always written         |
+| Contract       | C#                                                         | On the wire       |
+| -------------- | ---------------------------------------------------------- | ----------------- |
+| `x: T`         | `public required T X { get; init; }`                       | always written    |
+| `x?: T`        | `[JsonIgnore(WhenWritingNull)] public T? X { get; init; }` | omitted when null |
+| `x: T \| null` | `public required T? X { get; init; }`                      | `null` is written |
+| `x: T = v`     | `public T X { get; init; } = v;`                           | always written    |
 
 A missing required property is a read error rather than a silent default. Every property is either
 `required` or initialized, so the generated SDK compiles with warnings as errors.

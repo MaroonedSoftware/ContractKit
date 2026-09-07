@@ -841,7 +841,9 @@ function generateDiscriminatedUnion(decl: HoistedDecl, name: string, ctx: Render
     lines.push('    {');
     lines.push('        using var document = JsonDocument.ParseValue(ref reader);');
     lines.push('        var element = document.RootElement;');
-    lines.push(`        var tag = element.TryGetProperty(${quoteCSharpString(discriminator)}, out var tagElement) && tagElement.ValueKind == JsonValueKind.String`);
+    lines.push(
+        `        var tag = element.TryGetProperty(${quoteCSharpString(discriminator)}, out var tagElement) && tagElement.ValueKind == JsonValueKind.String`,
+    );
     lines.push('            ? tagElement.GetString()');
     lines.push('            : null;');
     lines.push('');

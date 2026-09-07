@@ -19,7 +19,10 @@ import {
 } from './helpers.js';
 
 /** Render a root the way the plugin does: hoist across the project, then generate. */
-function render(root: ContractRootNode, opts: { modelsWithInput?: Set<string>; warn?: (m: string) => void; roots?: ContractRootNode[] } = {}): string {
+function render(
+    root: ContractRootNode,
+    opts: { modelsWithInput?: Set<string>; warn?: (m: string) => void; roots?: ContractRootNode[] } = {},
+): string {
     const roots = opts.roots ?? [root];
     const modelIndex = buildModelIndex(roots.flatMap(r => r.models));
     const modelsWithInput = opts.modelsWithInput ?? new Set<string>();
@@ -145,7 +148,10 @@ describe('optional, nullable, default and literal', () => {
     });
 
     it('names an enum member for a default written against a named enum contract', () => {
-        const root = contractRoot([model('Rating', [], { type: enumType('good', 'neutral') }), model('M', [field('r', refType('Rating'), { default: 'neutral' })])]);
+        const root = contractRoot([
+            model('Rating', [], { type: enumType('good', 'neutral') }),
+            model('M', [field('r', refType('Rating'), { default: 'neutral' })]),
+        ]);
         expect(render(root)).toContain('public Rating R { get; init; } = Rating.Neutral;');
     });
 });
@@ -193,7 +199,9 @@ describe('wire key casing', () => {
 
     it('warns that an anonymous object under a renamed contract keeps its own keys', () => {
         const warnings: string[] = [];
-        const root = contractRoot([model('M', [field('nested', inlineObjectType([field('innerKey', scalarType('string'))]))], { outputCase: 'snake' })]);
+        const root = contractRoot([
+            model('M', [field('nested', inlineObjectType([field('innerKey', scalarType('string'))]))], { outputCase: 'snake' }),
+        ]);
         render(root, { warn: m => warnings.push(m) });
         expect(warnings.join('\n')).toMatch(/will not be snake-cased/);
     });
@@ -273,7 +281,9 @@ describe('read and Input variants', () => {
     });
 
     it('drops a writeonly field from the read record', () => {
-        const root = contractRoot([model('M', [field('secret', scalarType('string'), { visibility: 'writeonly' }), field('id', scalarType('uuid'))])]);
+        const root = contractRoot([
+            model('M', [field('secret', scalarType('string'), { visibility: 'writeonly' }), field('id', scalarType('uuid'))]),
+        ]);
         const out = render(root);
         expect(out.split('public sealed record MInput')[0]).not.toContain('Secret');
         expect(out.split('public sealed record MInput')[1]).toContain('Secret');
@@ -286,7 +296,10 @@ describe('read and Input variants', () => {
 });
 
 describe('plain unions', () => {
-    const root = contractRoot([model('P', [field('id', scalarType('string'))]), model('M', [field('v', unionType(refType('P'), scalarType('int')))])]);
+    const root = contractRoot([
+        model('P', [field('id', scalarType('string'))]),
+        model('M', [field('v', unionType(refType('P'), scalarType('int')))]),
+    ]);
 
     it('emits an abstract record closed by a private constructor', () => {
         const out = render(root);

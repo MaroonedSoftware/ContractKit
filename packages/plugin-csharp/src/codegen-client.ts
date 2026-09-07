@@ -99,7 +99,9 @@ export function generateCSharpClient(root: OpRootNode, opts: CSharpClientCodegen
             if (source?.kind !== 'params' || source.nodes.length === 0) continue;
             const shapeName = `${base}${suffix}`;
             shapeLines.push('');
-            shapeLines.push(...xmlDocLines(`The ${suffix === 'Query' ? 'query parameters' : 'request headers'} declared on ${where(route, op)}.`, ''));
+            shapeLines.push(
+                ...xmlDocLines(`The ${suffix === 'Query' ? 'query parameters' : 'request headers'} declared on ${where(route, op)}.`, ''),
+            );
             shapeLines.push(`public sealed record ${shapeName}`);
             shapeLines.push('{');
             source.nodes.forEach((node, index) => {
@@ -316,7 +318,14 @@ function statusBranch(response: OpResponseNode, base: string, statusCode: number
  * Construct the response case, dispatching on the content type when a status declares several
  * mimes. The first declared mime is the fall-through, for the same reason the first status is.
  */
-function mimeSwitch(response: OpResponseNode, base: string, statusCode: number | undefined, ctx: RenderContext, indent: string, hasHeaders: boolean): string[] {
+function mimeSwitch(
+    response: OpResponseNode,
+    base: string,
+    statusCode: number | undefined,
+    ctx: RenderContext,
+    indent: string,
+    hasHeaders: boolean,
+): string[] {
     const bodies = response.bodies;
     const construct = (body: OpResponseBodyNode | undefined): string => {
         const args: string[] = [];

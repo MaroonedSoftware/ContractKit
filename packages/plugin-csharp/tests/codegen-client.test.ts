@@ -3,7 +3,20 @@ import { buildModelIndex } from '@contractkit/core';
 import type { ContractRootNode, OpRootNode } from '@contractkit/core';
 import { buildPathExpression, deriveClientClassName, deriveMethodName, generateCSharpClient, hasPublicOperations } from '../src/codegen-client.js';
 import { collectHoistedTypes } from '../src/hoist.js';
-import { contractRoot, field, model, opOperation, opParam, opRequest, opResponse, opRoot, opRoute, paramRef, refType, scalarType } from './helpers.js';
+import {
+    contractRoot,
+    field,
+    model,
+    opOperation,
+    opParam,
+    opRequest,
+    opResponse,
+    opRoot,
+    opRoute,
+    paramRef,
+    refType,
+    scalarType,
+} from './helpers.js';
 
 function render(root: OpRootNode, opts: { contracts?: ContractRootNode[]; modelsWithInput?: Set<string>; includeInternal?: boolean } = {}): string {
     const contracts = opts.contracts ?? [];
@@ -26,10 +39,7 @@ describe('naming', () => {
     });
 
     it('rejects two operations that would generate the same method', () => {
-        const root = opRoot([
-            opRoute('/a', [opOperation('get', { sdk: 'thing' })]),
-            opRoute('/b', [opOperation('post', { sdk: 'thing' })]),
-        ]);
+        const root = opRoot([opRoute('/a', [opOperation('get', { sdk: 'thing' })]), opRoute('/b', [opOperation('post', { sdk: 'thing' })])]);
         expect(() => render(root)).toThrow(/both generate the client method 'ThingAsync'/);
     });
 });
@@ -180,13 +190,17 @@ describe('responses', () => {
     });
 
     it('documents the statuses that do throw', () => {
-        const root = opRoot([opRoute('/payments', [opOperation('get', { sdk: 'list', responses: [opResponse(200, 'Payment'), { statusCode: 500, bodies: [] }] })])]);
+        const root = opRoot([
+            opRoute('/payments', [opOperation('get', { sdk: 'list', responses: [opResponse(200, 'Payment'), { statusCode: 500, bodies: [] }] })]),
+        ]);
         expect(render(root, { contracts })).toContain('/// <exception cref="SdkException">On 500.</exception>');
     });
 
     it('switches on the status when the operation declares several', () => {
         const root = opRoot([
-            opRoute('/payments', [opOperation('get', { sdk: 'get', responses: [opResponse(200, 'Payment'), { statusCode: 304, bodies: [], hasBlock: true }] })]),
+            opRoute('/payments', [
+                opOperation('get', { sdk: 'get', responses: [opResponse(200, 'Payment'), { statusCode: 304, bodies: [], hasBlock: true }] }),
+            ]),
         ]);
         const out = render(root, { contracts });
         expect(out).toContain('switch (response.Status)');
@@ -202,7 +216,16 @@ describe('responses', () => {
             opRoute('/payments', [
                 opOperation('get', {
                     sdk: 'get',
-                    responses: [{ statusCode: 200, hasBlock: true, bodies: [{ contentType: 'application/json', bodyType: refType('Payment') }, { contentType: 'text/plain', bodyType: refType('Payment') }] }],
+                    responses: [
+                        {
+                            statusCode: 200,
+                            hasBlock: true,
+                            bodies: [
+                                { contentType: 'application/json', bodyType: refType('Payment') },
+                                { contentType: 'text/plain', bodyType: refType('Payment') },
+                            ],
+                        },
+                    ],
                 }),
             ]),
         ]);
@@ -218,9 +241,7 @@ describe('response headers', () => {
     const contracts = [contractRoot([model('Payment', [field('id', scalarType('uuid'))])])];
 
     function withHeaders(headers: { name: string; optional: boolean; type: ReturnType<typeof scalarType> }[]): string {
-        const root = opRoot([
-            opRoute('/payments', [opOperation('get', { sdk: 'get', responses: [{ ...opResponse(200, 'Payment'), headers }] })]),
-        ]);
+        const root = opRoot([opRoute('/payments', [opOperation('get', { sdk: 'get', responses: [{ ...opResponse(200, 'Payment'), headers }] })])]);
         return render(root, { contracts });
     }
 

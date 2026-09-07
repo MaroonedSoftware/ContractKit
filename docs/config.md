@@ -70,6 +70,7 @@ Each plugin is its own npm package and is loaded by listing it under `"plugins"`
 | `@contractkit/plugin-bruno`      | Bruno REST collection                                            |
 | `@contractkit/plugin-python`     | Python SDK client (Pydantic v2 + httpx)                          |
 | `@contractkit/plugin-kotlin`     | Kotlin Multiplatform SDK client (Ktor + kotlinx.serialization)   |
+| `@contractkit/plugin-csharp`     | C#/.NET SDK client (System.Text.Json + HttpClient)               |
 
 ### `@contractkit/plugin-typescript`
 
@@ -356,6 +357,20 @@ Emits one Pydantic v2 module per contract file and one httpx client per operatio
 Emits one `kotlinx.serialization` models file per contract file and one Ktor client per operation file, into a `commonMain` source set. Method names follow the same priority as the TS SDK (`sdk:` → `name:` → derived from HTTP verb + path), kept in `camelCase` and backtick-escaped when they land on a Kotlin keyword.
 
 Kotlin data classes cannot extend one another, so a contract's bases are flattened into the generated class. Unions become sealed interfaces with generated serializers. The scaffold files are written once and never overwritten — they are yours to edit.
+
+### `@contractkit/plugin-csharp`
+
+| Field             | Type      | Description                                                                   |
+| ----------------- | --------- | ----------------------------------------------------------------------------- |
+| `baseDir`         | `string`  | Output directory relative to `rootDir`. Default: `csharp-sdk`                 |
+| `namespace`       | `string`  | Root namespace for the generated sources. Default: `ContractKit.Sdk`          |
+| `sdkName`         | `string`  | Aggregator class name, and the assembly name when scaffolding. Default: `Sdk` |
+| `includeInternal` | `boolean` | Whether to emit client methods for `internal` operations. Default: `false`.   |
+| `scaffold`        | `boolean` | Emit `<SdkName>.csproj` once. Default: `false`.                               |
+
+Emits one `System.Text.Json` models file per contract file and one `HttpClient`-based client per operation file. Method names follow the same priority as the TS SDK (`sdk:` → `name:` → derived from HTTP verb + path), spelled `PascalCase` with an `Async` suffix; a parameter that lands on a C# keyword is `@`-escaped. The generated SDK targets `net10.0` and takes no NuGet dependencies, so it restores and builds with no feed reachable.
+
+Bases are flattened into each record. An optional field and a required nullable field are told apart per property, so a null the contract requires is written and an absent field is omitted. A plain union becomes an abstract record with one member record each; a discriminated union becomes an interface its members implement, so one contract can belong to several unions. The project file is written once and never overwritten — it is yours to edit.
 
 ## Writing your own plugin
 

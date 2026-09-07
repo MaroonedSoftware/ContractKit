@@ -130,6 +130,8 @@ seeds only from `outputCase`, so a `format(input=snake)`-only model would slip t
 
 SDK method names resolve in priority order: `sdk:` field → `name:` field (camelCased) →
 inferred from HTTP method + path. The Python SDK uses the same priority but `snake_case`; the
-Kotlin SDK keeps `camelCase` and backtick-escapes a name that lands on a Kotlin hard keyword.
+Kotlin SDK keeps `camelCase` and backtick-escapes a name that lands on a Kotlin hard keyword; the
+C# SDK spells it `PascalCase` with an `Async` suffix and `@`-escapes a *parameter* that lands on a
+C# keyword (a PascalCase method name never needs it).
 
 For SDK client grouping and the `scaffold` option, read `references/ts-sdk.md`.

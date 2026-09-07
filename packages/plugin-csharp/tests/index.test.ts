@@ -30,7 +30,10 @@ export function makeCtx(): PluginContext & { emitted: Map<string, string>; ifAbs
 export const INPUTS = {
     contractRoots: [contractRoot([model('Payment', [field('id', scalarType('uuid'))])], 'contracts/billing.ck')],
     opRoots: [
-        opRoot([opRoute('/payments', [opOperation('get', { sdk: 'listPayments', responses: [opResponse(200, 'Payment')] })])], 'contracts/billing.ck'),
+        opRoot(
+            [opRoute('/payments', [opOperation('get', { sdk: 'listPayments', responses: [opResponse(200, 'Payment')] })])],
+            'contracts/billing.ck',
+        ),
     ],
     modelsWithInput: new Set<string>(),
     modelsWithOutput: new Set<string>(),
