@@ -69,8 +69,14 @@ describe('generateTargets', () => {
         const plugin = createCSharpSdkPlugin({ baseDir: 'cssdk', namespace: 'Acme.Sdk', sdkName: 'AcmeSdk' }, ROOT_DIR);
         await plugin.generateTargets!(INPUTS, ctx);
 
-        expect([...ctx.emitted.keys()].sort()).toEqual(['cssdk/AcmeSdk.cs', 'cssdk/Runtime/Converters.cs', 'cssdk/Runtime/SdkRuntime.cs']);
+        expect([...ctx.emitted.keys()].sort()).toEqual([
+            'cssdk/AcmeSdk.cs',
+            'cssdk/Models/Billing.cs',
+            'cssdk/Runtime/Converters.cs',
+            'cssdk/Runtime/SdkRuntime.cs',
+        ]);
         expect(ctx.emitted.get('cssdk/Runtime/SdkRuntime.cs')).toContain('namespace Acme.Sdk.Runtime;');
+        expect(ctx.emitted.get('cssdk/Models/Billing.cs')).toContain('public sealed record Payment');
         expect(ctx.emitted.get('cssdk/AcmeSdk.cs')).toContain('public sealed class AcmeSdk : IDisposable');
     });
 

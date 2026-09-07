@@ -1,12 +1,30 @@
 import { dirname, join, resolve } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
-import type { ContractKitPlugin, IncrementalManifest, IncrementalOutputFile, IncrementalUnit, PluginContext } from '@contractkit/core';
-import { emptyIncrementalManifest, parseIncrementalManifest, runIncrementalCodegen, serializeIncrementalManifest } from '@contractkit/core';
+import type {
+    ContractKitPlugin,
+    ContractRootNode,
+    IncrementalManifest,
+    IncrementalOutputFile,
+    IncrementalUnit,
+    ModelNode,
+    PluginContext,
+} from '@contractkit/core';
+import {
+    buildModelIndex,
+    collectTypeRefs,
+    emptyIncrementalManifest,
+    hashFingerprint,
+    parseIncrementalManifest,
+    runIncrementalCodegen,
+    serializeIncrementalManifest,
+} from '@contractkit/core';
+import { generateCSharpModels, resolveModelsWithInput } from './codegen-models.js';
 import { generateSdkCs, type SdkAggregatorClient } from './codegen-sdk.js';
+import { collectHoistedTypes } from './hoist.js';
 import { generateRuntimeCs } from './runtime.js';
 import { generateConvertersCs } from './runtime-converters.js';
 import { generateCsproj } from './scaffold.js';
-import { CSHARP_KEYWORDS } from './naming.js';
+import { CSHARP_KEYWORDS, deriveCSharpFileBase } from './naming.js';
 
 export interface CSharpSdkPluginConfig {
     /** Output directory relative to rootDir (default: "csharp-sdk") */
@@ -105,14 +123,84 @@ async function runCSharpCodegen(
 ): Promise<void> {
     assertValidConfig(config);
 
+    const { contractRoots } = inputs;
     const namespaceName = config.namespace ?? DEFAULT_NAMESPACE;
     const sdkName = config.sdkName ?? DEFAULT_SDK_NAME;
     const outDir = resolve(rootDir, config.baseDir ?? DEFAULT_BASE_DIR);
     const manifestPath = resolve(ctx.cacheDir, CACHE_MANIFEST_FILENAME);
 
+    // Every model shares one C# namespace, so a cross-file reference resolves by name and the only
+    // cross-file input a models unit has is which names carry an Input variant.
+    const allModels: ModelNode[] = contractRoots.flatMap(root => root.models);
+    const modelIndex = buildModelIndex(allModels);
+    // Resolved once over every model, so the hoisting pass and each file's renderer agree on which
+    // names carry an `Input` variant.
+    const modelsWithInput = resolveModelsWithInput(allModels, inputs.modelsWithInput);
+    const modelsWithInputArray = [...modelsWithInput].sort();
+
+    // Names for the anonymous shapes — unions, inline objects, field-level enums, tuples — that C#
+    // needs a declaration for. Computed across every file at once: a discriminated union declared in
+    // one file makes member records generated in other files implement its interface.
+    const hoisted = collectHoistedTypes(contractRoots, {
+        modelIndex,
+        modelsWithInput,
+        warn: (message, file) => ctx.warn?.(message, file),
+    });
+
     const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(manifestPath) : emptyIncrementalManifest(CSHARP_CODEGEN_VERSION);
     const units: IncrementalUnit[] = [];
     const clients: SdkAggregatorClient[] = [];
+
+    for (const root of contractRoots) {
+        const relPath = `Models/${deriveCSharpFileBase(root.file)}.cs`;
+        const ownNames = new Set(root.models.map(m => m.name));
+        const referenced = referencedModelNames(root);
+        const relevantInputModels = modelsWithInputArray.filter(name => ownNames.has(name) || referenced.has(name));
+        // A base declared in another file contributes its fields to a record generated here, so the
+        // fingerprint has to move when that base does.
+        const externalBases = [...referenced]
+            .filter(name => !ownNames.has(name))
+            .sort()
+            .map(name => modelIndex.get(name))
+            .filter((m): m is ModelNode => m !== undefined);
+
+        // Declarations this file owns, and the interfaces its records implement, are both decided by
+        // the whole project, so they belong in the fingerprint alongside the file.
+        const ownedDeclarations = (hoisted.byFile.get(root.file) ?? []).map(d => ({ kind: d.kind, name: d.name, needsInput: d.needsInput }));
+        const declaredMemberships = [...ownNames]
+            .sort()
+            .map(name => [name, hoisted.memberships.get(name) ?? []] as const)
+            .filter(([, unions]) => unions.length > 0);
+
+        const fingerprint = hashFingerprint({
+            kind: 'models',
+            v: CSHARP_CODEGEN_VERSION,
+            relPath,
+            namespace: namespaceName,
+            root,
+            externalBases,
+            modelsWithInput: relevantInputModels,
+            ownedDeclarations,
+            declaredMemberships,
+        });
+
+        units.push({
+            key: `models::${relPath}`,
+            fingerprint,
+            render: () => [
+                {
+                    relativePath: relPath,
+                    content: generateCSharpModels(root, {
+                        namespace: namespaceName,
+                        modelsWithInput,
+                        modelIndex,
+                        hoisted,
+                        warn: message => ctx.warn?.(message, root.file),
+                    }),
+                },
+            ],
+        });
+    }
 
     // The runtime is a constant, and the aggregator depends only on the list of public clients.
     // Both are small enough that rewriting them every run beats a cache entry.
@@ -143,6 +231,17 @@ async function runCSharpCodegen(
     }
 
     writeManifest(manifestPath, result.manifest);
+}
+
+/** Every model name a contract root references but may not define, including its bases. */
+function referencedModelNames(root: ContractRootNode): Set<string> {
+    const refs = new Set<string>();
+    for (const model of root.models) {
+        if (model.type) collectTypeRefs(model.type, refs);
+        for (const f of model.fields) collectTypeRefs(f.type, refs);
+        if (model.bases) for (const base of model.bases) refs.add(base);
+    }
+    return refs;
 }
 
 /** Read the previous run's manifest. Returns an empty manifest when missing or unreadable. */
