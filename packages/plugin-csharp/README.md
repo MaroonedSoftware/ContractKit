@@ -81,3 +81,93 @@ A status outside 2xx that the contract does not declare throws `SdkException`, w
 
 Serialize a generated model by hand with `SdkJson.Options`: `decimal`, `bigint` and `duration` need
 the converters registered there.
+
+## Type mapping
+
+| `.ck`                          | C#                        | `.ck`      | C#                |
+| ------------------------------ | ------------------------- | ---------- | ----------------- |
+| `string`, `email`, `url`, `interval` | `string`            | `date`     | `DateOnly`        |
+| `number`                       | `double`                  | `time`     | `TimeOnly`        |
+| `int`                          | `long`                    | `datetime` | `DateTimeOffset`  |
+| `bigint`                       | `BigInteger`              | `duration` | `TimeSpan`        |
+| `decimal`                      | `decimal`                 | `uuid`     | `Guid`            |
+| `boolean`                      | `bool`                    | `binary`   | `byte[]`          |
+| `array(T)`                     | `List<T>`                 | `null`     | `object?`         |
+| `record(string, V)`            | `Dictionary<string, V>`   | `unknown`, `json`, `object` | `JsonElement` |
+
+`int` is a JavaScript safe integer in the source language, which overflows a 32-bit `int`, so it
+maps to `long`. `decimal` travels as a quoted JSON string and refuses to read an unquoted number,
+matching the server's own schema. `duration` travels as ISO 8601 rather than the framework's
+`d.hh:mm:ss` default. Both, and `bigint`, need the converters in `SdkJson.Options`.
+
+## Optional and nullable
+
+Each property says for itself whether a null is written, so the two are not conflated:
+
+| Contract       | C#                                                                    | On the wire            |
+| -------------- | --------------------------------------------------------------------- | ---------------------- |
+| `x: T`         | `public required T X { get; init; }`                                   | always written         |
+| `x?: T`        | `[JsonIgnore(WhenWritingNull)] public T? X { get; init; }`             | omitted when null      |
+| `x: T \| null` | `public required T? X { get; init; }`                                  | `null` is written      |
+| `x: T = v`     | `public T X { get; init; } = v;`                                       | always written         |
+
+A missing required property is a read error rather than a silent default. Every property is either
+`required` or initialized, so the generated SDK compiles with warnings as errors.
+
+## Inheritance, and read versus Input variants
+
+Bases are flattened into each record, applying the same later-wins override rule the inheritance
+validator enforces. A contract with a `readonly` or `writeonly` field, or one reached by such a
+contract, is emitted twice: `<Name>` for what a response carries and `<Name>Input` for what a
+request sends. `format(input=)` and `format(output=)` rename the wire keys of each direction; a
+model that is not split can only carry one key set, and asking for two is reported as a warning.
+
+## Unions and anonymous shapes
+
+The `.ck` language lets a union, an enum, an object literal or a tuple appear anonymously inside a
+field. C# needs a name for each, so a project-wide pass assigns one, named after the model and field
+that hold it.
+
+- A **plain union** becomes an abstract record closed by a private constructor, with one nested
+  member record each. Reading tries members in declaration order, which is what the server's own
+  schema does.
+- A **discriminated union** becomes an interface its member records implement, with a converter that
+  dispatches on the tag. An interface rather than an abstract base, so one contract can belong to
+  several unions; the tag stays a real property rather than serializer metadata.
+- A **tuple** becomes a record with a converter that reads and writes a JSON array, so it travels
+  correctly even nested inside a `List<>`.
+- An **inline object** becomes a record, and an **inline enum** a C# enum.
+
+## Response shapes
+
+A method returns the response body directly. Three things change that:
+
+- A status declaring **response headers** returns `<Method>Result(Data, Headers)`, or
+  `<Method>Headers` when there is no body.
+- An operation the client can observe at **several statuses** returns an abstract
+  `<Method>Response` with a `Status<code>` leaf each.
+- A status declaring **several content types** returns one leaf per mime.
+
+A status outside 2xx that the contract declares as an outcome is passed as an expected status and
+comes back as a value; everything else throws `SdkException`, and the method documents which.
+
+## Scaffolding
+
+`scaffold: true` writes `<SdkName>.csproj` once, targeting `net10.0` with nullable enabled and no
+package reference. It is emitted `ifAbsent`, so it is created once and never regenerated: add a
+package id, a version or an analyzer set and the next build leaves them alone.
+
+## Status and known limitations
+
+1. **Clients are not grouped by area.** One client per `.ck` file, as in the Python and Kotlin
+   SDKs. `keys.area` and `keys.subarea` are ignored.
+2. **A `binary` field inside a JSON body is base64.** No two ContractKit SDKs agree on this, so it
+   interoperates only with a service that agrees. Binary really travels as an
+   `application/octet-stream` body or a multipart part, both of which are exact.
+3. **`decimal` is the BCL's 28-digit type.** A contract decimal wider than that fails to read.
+4. **`DateTimeOffset` writes `+00:00`, not `Z`.** The generated server accepts both.
+5. **The three scalar converters are options-level.** Serialize a model yourself with
+   `SdkJson.Options`, or `decimal`, `bigint` and `duration` will not match the contract.
+6. **Only the first declared request mime is used**, since a method has one signature.
+7. **A type switch is not exhaustive.** C# has no compiler check that a union switch covers every
+   member, so each generated converter ends in a `default` that throws.

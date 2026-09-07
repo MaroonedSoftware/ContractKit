@@ -3,14 +3,18 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync, wr
 import type {
     ContractKitPlugin,
     ContractRootNode,
+    ContractTypeNode,
     IncrementalManifest,
     IncrementalOutputFile,
     IncrementalUnit,
     ModelNode,
+    OpRootNode,
+    ParamSource,
     PluginContext,
 } from '@contractkit/core';
 import {
     buildModelIndex,
+    collectTransitiveModelRefs,
     collectTypeRefs,
     emptyIncrementalManifest,
     hashFingerprint,
@@ -19,6 +23,7 @@ import {
     serializeIncrementalManifest,
 } from '@contractkit/core';
 import { generateCSharpModels, resolveModelsWithInput } from './codegen-models.js';
+import { deriveClientClassName, deriveClientPropertyName, generateCSharpClient, hasPublicOperations } from './codegen-client.js';
 import { generateSdkCs, type SdkAggregatorClient } from './codegen-sdk.js';
 import { collectHoistedTypes } from './hoist.js';
 import { generateRuntimeCs } from './runtime.js';
@@ -202,6 +207,51 @@ async function runCSharpCodegen(
         });
     }
 
+    // ── Per-op-root client files ─────────────────────────────────────────────
+    for (const root of inputs.opRoots) {
+        if (!hasPublicOperations(root, config.includeInternal)) continue;
+        const relPath = `Clients/${deriveClientClassName(root.file)}.cs`;
+        clients.push({ className: deriveClientClassName(root.file), propertyName: deriveClientPropertyName(root.file) });
+
+        const referenced = referencedOpModels(root, modelIndex);
+        const relevantInputModels = modelsWithInputArray.filter(name => referenced.has(name));
+        // A client names the models it takes and returns, so the shapes behind those names — and
+        // the declarations hoisted out of them — are part of what this file depends on.
+        const referencedModels = [...referenced]
+            .sort()
+            .map(name => modelIndex.get(name))
+            .filter((m): m is ModelNode => m !== undefined);
+
+        const fingerprint = hashFingerprint({
+            kind: 'client',
+            v: CSHARP_CODEGEN_VERSION,
+            relPath,
+            namespace: namespaceName,
+            root,
+            referencedModels,
+            modelsWithInput: relevantInputModels,
+            includeInternal: config.includeInternal ?? false,
+        });
+
+        units.push({
+            key: `client::${relPath}`,
+            fingerprint,
+            render: () => [
+                {
+                    relativePath: relPath,
+                    content: generateCSharpClient(root, {
+                        namespace: namespaceName,
+                        modelsWithInput,
+                        modelIndex,
+                        hoisted,
+                        includeInternal: config.includeInternal,
+                        warn: message => ctx.warn?.(message, root.file),
+                    }),
+                },
+            ],
+        });
+    }
+
     // The runtime is a constant, and the aggregator depends only on the list of public clients.
     // Both are small enough that rewriting them every run beats a cache entry.
     const globalFiles: IncrementalOutputFile[] = [
@@ -231,6 +281,32 @@ async function runCSharpCodegen(
     }
 
     writeManifest(manifestPath, result.manifest);
+}
+
+/** Every model name an operations file names, transitively, so the client's inputs are covered. */
+function referencedOpModels(root: OpRootNode, modelIndex: Map<string, ModelNode>): Set<string> {
+    const seeds: ContractTypeNode[] = [];
+    const addParamSource = (source: ParamSource | undefined): void => {
+        if (!source) return;
+        if (source.kind === 'params') seeds.push(...source.nodes.map(n => n.type));
+        else if (source.kind === 'ref') seeds.push({ kind: 'ref', name: source.name });
+        else seeds.push(source.node);
+    };
+
+    for (const route of root.routes) {
+        addParamSource(route.params);
+        for (const op of route.operations) {
+            addParamSource(op.query);
+            addParamSource(op.headers);
+            for (const body of op.request?.bodies ?? []) seeds.push(body.bodyType);
+            for (const response of op.responses) {
+                for (const body of response.bodies) seeds.push(body.bodyType);
+                for (const header of response.headers ?? []) seeds.push(header.type);
+            }
+        }
+    }
+
+    return collectTransitiveModelRefs(seeds, modelIndex);
 }
 
 /** Every model name a contract root references but may not define, including its bases. */

@@ -71,13 +71,16 @@ describe('generateTargets', () => {
 
         expect([...ctx.emitted.keys()].sort()).toEqual([
             'cssdk/AcmeSdk.cs',
+            'cssdk/Clients/BillingClient.cs',
             'cssdk/Models/Billing.cs',
             'cssdk/Runtime/Converters.cs',
             'cssdk/Runtime/SdkRuntime.cs',
         ]);
         expect(ctx.emitted.get('cssdk/Runtime/SdkRuntime.cs')).toContain('namespace Acme.Sdk.Runtime;');
         expect(ctx.emitted.get('cssdk/Models/Billing.cs')).toContain('public sealed record Payment');
+        expect(ctx.emitted.get('cssdk/Clients/BillingClient.cs')).toContain('public sealed class BillingClient(SdkHttp http)');
         expect(ctx.emitted.get('cssdk/AcmeSdk.cs')).toContain('public sealed class AcmeSdk : IDisposable');
+        expect(ctx.emitted.get('cssdk/AcmeSdk.cs')).toContain('Billing = new BillingClient(Http);');
     });
 
     it('defaults the output directory, namespace, and aggregator name', async () => {
@@ -85,6 +88,16 @@ describe('generateTargets', () => {
         await createCSharpSdkPlugin({}, ROOT_DIR).generateTargets!(INPUTS, ctx);
         expect(ctx.emitted.has('csharp-sdk/Sdk.cs')).toBe(true);
         expect(ctx.emitted.get('csharp-sdk/Sdk.cs')).toContain('namespace ContractKit.Sdk;');
+    });
+
+    it('skips a client file whose operations are all internal, rather than emitting an empty class', async () => {
+        const ctx = makeCtx();
+        const internalOnly = {
+            ...INPUTS,
+            opRoots: [opRoot([opRoute('/x', [opOperation('get', { sdk: 'x' })], undefined, ['internal'])], 'contracts/admin.ck')],
+        };
+        await createCSharpSdkPlugin({ baseDir: 'cssdk', namespace: 'Acme.Sdk' }, ROOT_DIR).generateTargets!(internalOnly, ctx);
+        expect([...ctx.emitted.keys()].some(k => k.includes('AdminClient'))).toBe(false);
     });
 
     it('emits the project file as user-owned only when scaffolding is asked for', async () => {
