@@ -45,16 +45,26 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-            # The extension is `private: true`, so `pnpm publish -r` above skips it and
-            # it never reaches npm. Changesets still versions it, so publish whatever
-            # version the manifest carries; `--skip-duplicate` makes this a no-op on
-            # pushes that did not bump it.
+            # The extension is `private: true`, so `pnpm publish -r` above skips it and it
+            # never reaches npm. Changesets still versions it, so publish it here.
+            #
+            # `hasChangesets == 'false'` is what makes this a release-only step. When
+            # changesets are pending, the action above has already rewritten every
+            # package.json in this workspace to the next version in order to raise its
+            # version PR, so packaging at that point would ship a version main does not
+            # have yet. Gating on `published` instead would not work: a changeset that
+            # touches only this private package publishes nothing to npm, leaving that
+            # output false on exactly the release we care about.
+            #
+            # `--skip-duplicate` keeps a re-run idempotent. vsce has no retry or timeout
+            # flag and the gallery API intermittently times out after 180s, so retry here.
             #
             # Binaries are invoked directly rather than through `pnpm run`/`pnpm exec`:
             # this job restores node_modules from the build cache without running an
             # install, and a pnpm-mediated call would see deps as out of sync and, with
             # CI=true, silently purge that directory.
             - name: Publish VS Code extension
+              if: steps.changesets.outputs.hasChangesets == 'false'
               working-directory: apps/vscode-extension
               env:
                   VSCE_PAT: ${{ secrets.VSCE_PAT }}
@@ -65,4 +75,12 @@ jobs:
                       exit 0
                   fi
                   node esbuild.mjs --production
-                  ./node_modules/.bin/vsce publish --no-dependencies --skip-duplicate
+                  for attempt in 1 2 3; do
+                      if ./node_modules/.bin/vsce publish --no-dependencies --skip-duplicate; then
+                          exit 0
+                      fi
+                      echo "Attempt $attempt failed."
+                      if [ "$attempt" -lt 3 ]; then sleep 30; fi
+                  done
+                  echo "vsce publish failed after 3 attempts." >&2
+                  exit 1
