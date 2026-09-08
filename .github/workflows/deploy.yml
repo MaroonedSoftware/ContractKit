@@ -44,3 +44,25 @@ jobs:
                   publish: pnpm publish -r --access public --no-git-checks
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            # The extension is `private: true`, so `pnpm publish -r` above skips it and
+            # it never reaches npm. Changesets still versions it, so publish whatever
+            # version the manifest carries; `--skip-duplicate` makes this a no-op on
+            # pushes that did not bump it.
+            #
+            # Binaries are invoked directly rather than through `pnpm run`/`pnpm exec`:
+            # this job restores node_modules from the build cache without running an
+            # install, and a pnpm-mediated call would see deps as out of sync and, with
+            # CI=true, silently purge that directory.
+            - name: Publish VS Code extension
+              working-directory: apps/vscode-extension
+              env:
+                  VSCE_PAT: ${{ secrets.VSCE_PAT }}
+              run: |
+                  set -euo pipefail
+                  if [ -z "${VSCE_PAT:-}" ]; then
+                      echo "VSCE_PAT is not set; skipping the marketplace publish."
+                      exit 0
+                  fi
+                  node esbuild.mjs --production
+                  ./node_modules/.bin/vsce publish --no-dependencies --skip-duplicate

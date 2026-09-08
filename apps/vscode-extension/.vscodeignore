@@ -1,10 +1,12 @@
 src/**
+tests/**
 node_modules/**
 .vscode/**
+.turbo/**
 *.ts
-!dist/**
 tsconfig.json
 esbuild.mjs
+vitest.config.*
 .eslintrc*
 eslint.config.*
 .prettierrc
