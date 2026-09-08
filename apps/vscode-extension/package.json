@@ -11,7 +11,7 @@
     "bugs": {
         "url": "https://github.com/MaroonedSoftware/contractkit/issues"
     },
-    "homepage": "https://github.com/MaroonedSoftware/contractkit/packages/vscode-extension#readme",
+    "homepage": "https://github.com/MaroonedSoftware/contractkit/tree/main/apps/vscode-extension",
     "keywords": [
         "contractkit",
         "vscode",
@@ -264,7 +264,7 @@
         "format": "prettier --write .",
         "test": "vitest run",
         "test:ci": "vitest run --coverage",
-        "package": "node esbuild.mjs && pnpm exec vsce package --no-dependencies",
+        "package": "node esbuild.mjs --production && pnpm exec vsce package --no-dependencies",
         "vscode:install": "pnpm run package && cursor --install-extension contractkit.vsix",
         "vscode:uninstall": "cursor --uninstall-extension contractkit.vsix",
         "typecheck": "tsc --noEmit && tsc --noEmit -p src/webview/tsconfig.json"

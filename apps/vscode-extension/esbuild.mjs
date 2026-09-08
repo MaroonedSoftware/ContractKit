@@ -4,6 +4,9 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const isWatch = process.argv.includes('--watch');
+// Marketplace builds run with --production: minified, no source maps. Local builds
+// keep maps and readable output for debugging a locally installed VSIX.
+const isProduction = process.argv.includes('--production');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -13,8 +16,8 @@ const sharedNode = {
     platform: 'node',
     target: 'es2022',
     format: 'esm',
-    sourcemap: true,
-    minify: false,
+    sourcemap: !isProduction,
+    minify: isProduction,
     external: ['vscode'],
     // Bundled CJS dependencies (e.g. vscode-languageserver) call `require("node:util")` etc.
     // In ESM output esbuild routes those through a shim that throws "Dynamic require ... not supported";
@@ -44,8 +47,8 @@ const webviewConfig = {
     platform: 'browser',
     target: 'es2022',
     format: 'iife',
-    sourcemap: true,
-    minify: false,
+    sourcemap: !isProduction,
+    minify: isProduction,
 };
 
 function copyGrammar() {
