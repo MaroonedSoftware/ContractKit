@@ -109,6 +109,41 @@ describe('toYaml', () => {
         expect(result).toContain('required: [id, name]');
     });
 
+    it('keeps a multi-line string parseable and its line breaks intact', () => {
+        // A description written over several lines in the contract. Single-quoted, the second line
+        // landed at column 0 and the whole document failed to parse.
+        const description = "How an entry reads.\nThere's deliberately no `waiting`:\n\ta station idling says so.";
+        const yaml = toYaml({ components: { schemas: { Severity: { type: 'string', description } } } });
+        const doc = parseDocument(yaml);
+        expect(doc.errors).toEqual([]);
+        expect(doc.getIn(['components', 'schemas', 'Severity', 'description'])).toBe(description);
+    });
+
+    it('keeps a multi-line string intact inside a block sequence', () => {
+        const yaml = toYaml({ servers: [{ url: 'https://api.example.com', description: 'Production\r\nEU region' }] });
+        const doc = parseDocument(yaml);
+        expect(doc.errors).toEqual([]);
+        expect(doc.getIn(['servers', 0, 'description'])).toBe('Production\r\nEU region');
+    });
+
+    it('writes an empty object value inline', () => {
+        // `record(any)` becomes `additionalProperties: {}`. Emitted as a block, the `{}` landed at
+        // column 0 on the next line and broke every mapping after it.
+        const value = { type: 'object', additionalProperties: {}, description: 'after' };
+        const yaml = toYaml({ properties: { detail: value } });
+        expect(yaml).toContain('additionalProperties: {}');
+        const doc = parseDocument(yaml);
+        expect(doc.errors).toEqual([]);
+        expect(doc.toJS()).toEqual({ properties: { detail: value } });
+    });
+
+    it('writes an empty object inline as the first key of a sequence item', () => {
+        const value = [{ schema: {}, name: 'x' }];
+        const doc = parseDocument(toYaml({ items: value }));
+        expect(doc.errors).toEqual([]);
+        expect(doc.toJS()).toEqual({ items: value });
+    });
+
     it('serializes object arrays as block sequences', () => {
         const result = toYaml({
             servers: [{ url: 'https://api.example.com', description: 'Production' }],

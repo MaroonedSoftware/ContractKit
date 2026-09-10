@@ -791,7 +791,9 @@ function isComplex(value: unknown): boolean {
         }
         return true;
     }
-    return isPlainObject(value);
+    // An empty object is written inline as `{}`, like an empty array. Treated as a block, it went on
+    // the line after its key with no indentation at all: `additionalProperties:` then `{}` at column 0.
+    return isPlainObject(value) && Object.keys(value as Record<string, unknown>).length > 0;
 }
 
 function isPlainObject(value: unknown): boolean {
@@ -804,8 +806,24 @@ function yamlString(s: string): string {
     if (/^[\w./-]+$/.test(s) && !/^(true|false|null|yes|no|on|off)$/i.test(s) && !/^\d/.test(s)) {
         return s;
     }
+    // A line break cannot go into a single-quoted scalar as it stands. Written raw, the next line
+    // starts at column 0, which a block mapping reads as the end of the value and a parser rejects;
+    // indented correctly, YAML folds the break into a space and the description loses it anyway. A
+    // JSON string is a valid YAML double-quoted scalar, stays on one line, and keeps `\n` exact.
+    if (hasControlCharacter(s)) {
+        return JSON.stringify(s);
+    }
     // Single-quote, escaping internal single quotes by doubling
     return `'${s.replace(/'/g, "''")}'`;
+}
+
+/** A line break, a tab or any other C0 control character or DEL: nothing a single-quoted scalar can carry verbatim. */
+function hasControlCharacter(s: string): boolean {
+    for (let i = 0; i < s.length; i++) {
+        const code = s.charCodeAt(i);
+        if (code < 0x20 || code === 0x7f) return true;
+    }
+    return false;
 }
 
 function yamlKey(key: string): string {
