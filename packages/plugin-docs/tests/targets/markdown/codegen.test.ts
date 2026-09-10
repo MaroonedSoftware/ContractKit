@@ -305,6 +305,23 @@ describe('generateMarkdown', () => {
             expect(output).toContain('> SDK method: `listAllUsers`');
         });
 
+        it('reports a security floor stated once in the file options', () => {
+            // How most real contracts state it: once in `options`, cascading to every operation.
+            const op = { ...opRoot([opRoute('/users', [opOperation('get')])]), security: { policy: 'platform.view' } };
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
+            expect(output).toContain('Security: authenticated (policy: platform.view)');
+        });
+
+        it('lets a route and then an operation override the file floor', () => {
+            const routeOverride = { ...opRoute('/admin', [opOperation('get')]), security: { policy: 'platform.manage' } };
+            const opOverride = opRoute('/health', [opOperation('get', { security: 'none' })]);
+            const op = { ...opRoot([routeOverride, opOverride]), security: { policy: 'platform.view' } };
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
+            expect(output).toContain('Security: authenticated (policy: platform.manage)');
+            expect(output).toContain('Security: public');
+            expect(output).not.toContain('policy: platform.view');
+        });
+
         it('derives method name with path params', () => {
             const op = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
             const output = generateMarkdown({ contractRoots: [], opRoots: [op] });

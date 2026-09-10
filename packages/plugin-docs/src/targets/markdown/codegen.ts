@@ -289,6 +289,7 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
                         subHeadingLevel: nested ? 5 : 4,
                         dialect: githubDialect,
                         modelIndex,
+                        root: ep.root,
                     }),
                 );
                 lines.push('');
@@ -387,6 +388,11 @@ export interface EndpointBodyOptions {
     dialect: MarkdownDialect;
     /** Models by name, for resolving a `params:`/`query:`/`headers:` reference to its fields. */
     modelIndex: Map<string, ModelNode>;
+    /**
+     * The operation file the route came from. Security cascades file → route → operation, and a
+     * file that states its floor once in `options` relies on this to have it reported at all.
+     */
+    root?: OpRootNode;
 }
 
 /**
@@ -423,7 +429,7 @@ export function renderEndpointBody(route: OpRouteNode, op: OpOperationNode, opts
 
     // SDK method + security
     const note = [`SDK method: \`${methodName}\``];
-    const effectiveSecurity = resolveSecurity(route, op);
+    const effectiveSecurity = resolveSecurity(route, op, opts.root);
     if (effectiveSecurity === SECURITY_NONE) {
         note.push('Security: public');
     } else if (effectiveSecurity !== undefined) {

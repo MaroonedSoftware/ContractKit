@@ -214,7 +214,7 @@ export function buildOpenApiDocument(ctx: OpenApiCodegenContext): Record<string,
                 // Lazily initialize the path object so all-internal routes
                 // leave no empty entry in the output
                 if (!paths[oaPath]) paths[oaPath] = {};
-                const operation = buildOperation(route, op);
+                const operation = buildOperation(route, op, opRoot);
                 if (mods.includes('deprecated')) (operation as Record<string, unknown>).deprecated = true;
                 paths[oaPath][op.method] = operation;
             }
@@ -532,7 +532,7 @@ function wrapNullable(schema: Record<string, unknown>): Record<string, unknown> 
 
 // ─── Operation building ─────────────────────────────────────────────────
 
-function buildOperation(route: OpRouteNode, op: OpOperationNode): Record<string, unknown> {
+function buildOperation(route: OpRouteNode, op: OpOperationNode, root: OpRootNode): Record<string, unknown> {
     const operation: Record<string, unknown> = {};
 
     // operationId from service binding or SDK name
@@ -579,10 +579,10 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode): Record<string,
         operation.requestBody = { required: true, content };
     }
 
-    // Effective security (operation-level wins; falls back to route-level)
+    // Effective security (operation wins, then route, then the file's `options` floor)
     // security: none → empty array (explicit public endpoint, overrides global default)
     // security: { fields } → omit operation-level entry (rely on global security from config)
-    const effectiveSecurity = resolveSecurity(route, op);
+    const effectiveSecurity = resolveSecurity(route, op, root);
     if (effectiveSecurity === SECURITY_NONE) {
         operation.security = [];
     }

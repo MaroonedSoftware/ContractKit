@@ -74,7 +74,7 @@ export function renderEndpointPage(
     if (op.name && op.description) {
         body.push(op.description, '');
     }
-    body.push(...renderEndpointBody(route, op, { subHeadingLevel: 2, dialect, modelIndex: opts.modelIndex }));
+    body.push(...renderEndpointBody(route, op, { subHeadingLevel: 2, dialect, modelIndex: opts.modelIndex, root: entry.root }));
 
     return page(
         frontmatter([

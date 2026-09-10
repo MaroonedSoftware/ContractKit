@@ -9,6 +9,8 @@ import type { ContractRootNode, HttpMethod, ModelNode, OpOperationNode, OpRootNo
 
 /** One documented operation, paired with the route it hangs off. */
 export interface EndpointEntry {
+    /** The operation file the route came from, whose `options` security is the floor for it. */
+    root: OpRootNode;
     route: OpRouteNode;
     op: OpOperationNode;
     /** Human-readable page title. */
@@ -203,6 +205,7 @@ export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): 
             for (const op of route.operations) {
                 if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
                 const entry: EndpointEntry = {
+                    root: opRoot,
                     route,
                     op,
                     title: deriveTitle(op, route),

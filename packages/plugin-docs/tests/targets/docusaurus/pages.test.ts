@@ -111,6 +111,13 @@ describe('renderEndpointPage', () => {
         expect(out).not.toContain('[!WARNING]');
     });
 
+    it('reports the security floor of the file the operation came from', () => {
+        const root = { ...opRoot([opRoute('/users', [opOperation('get')])]), security: { policy: 'platform.view' } };
+        const entry = groupEndpoints([root])[0]!.endpoints[0]!;
+        const out = renderEndpointPage(entry, { position: 1, fromDir: 'api-reference/endpoints', modelPages: MODEL_PAGES, modelIndex: new Map() });
+        expect(out).toContain('Security: authenticated (policy: platform.view)');
+    });
+
     it('renders the SDK note as an admonition', () => {
         const out = endpointPage(opRoute('/users', [opOperation('get', { name: 'listUsers' })]));
         // `name: listUsers` is what the TypeScript SDK names the method, not the path-derived `getUsers`.

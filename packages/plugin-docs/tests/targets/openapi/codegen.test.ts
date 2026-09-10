@@ -188,6 +188,19 @@ describe('buildOpenApiDocument', () => {
     it('is what generateOpenApi serializes', () => {
         expect(generateOpenApi(roots)).toBe(toYaml(buildOpenApiDocument(roots)));
     });
+
+    it('marks an operation public when its file states `security: none` in options', () => {
+        // The file floor is the only declaration here; without it the operation fell back to the
+        // global requirement and was documented as needing auth it does not ask for.
+        const publicFile = { ...opRoot([opRoute('/health', [opOperation('get')])]), security: 'none' as const };
+        const doc = buildOpenApiDocument({
+            contractRoots: [],
+            opRoots: [publicFile],
+            config: { security: [{ bearerAuth: [] }] },
+        });
+        const paths = doc.paths as Record<string, Record<string, { security?: unknown }>>;
+        expect(paths['/health']!.get!.security).toEqual([]);
+    });
 });
 
 describe('generateOpenApi', () => {
