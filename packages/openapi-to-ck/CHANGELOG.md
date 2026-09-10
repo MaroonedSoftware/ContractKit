@@ -1,5 +1,12 @@
 # @contractkit/openapi-to-ck
 
+## 0.12.4
+
+### Patch Changes
+
+- Updated dependencies [17f4261]
+    - @contractkit/core@0.30.0
+
 ## 0.12.3
 
 ### Patch Changes
