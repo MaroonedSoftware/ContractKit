@@ -12,7 +12,7 @@ import type {
     ParamSource,
     ScalarTypeNode,
 } from '@contractkit/core';
-import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses, PATH_PARAM_RE_G, toIdentifier } from '@contractkit/core';
+import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses, PATH_PARAM_RE_G, toIdentifier, deriveSdkMethodName } from '@contractkit/core';
 import {
     renderInputTsType,
     renderOutputTsType,
@@ -338,7 +338,7 @@ export function generateClientMethods(
             if (!includeInternal && mods.includes('internal')) continue;
             lines.push('');
             lines.push(...generateMethod(route, op, root.file, options, inlineRevivers));
-            methodNames.push(deriveMethodName(op, route));
+            methodNames.push(deriveSdkMethodName(op, route));
         }
     }
     // Module-level declarations the methods reference, spliced above the class by the caller —
@@ -428,7 +428,7 @@ function generateMethod(
               }
             : undefined;
     const lines: string[] = [];
-    const methodName = deriveMethodName(op, route);
+    const methodName = deriveSdkMethodName(op, route);
     /** Identifies the operation in a codegen rejection, which the CLI scopes to this plugin. */
     const where = `${op.method.toUpperCase()} ${route.path}`;
     const mRevive = hint(revive, `${methodName.charAt(0).toUpperCase()}${methodName.slice(1)}`);
@@ -893,7 +893,7 @@ function sdkReturnLines(
 // ─── Error body typing ────────────────────────────────────────────────────
 
 function errorBodyTypeName(route: OpRouteNode, op: OpOperationNode): string {
-    const method = deriveMethodName(op, route);
+    const method = deriveSdkMethodName(op, route);
     return `${method.charAt(0).toUpperCase()}${method.slice(1)}ErrorBody`;
 }
 
@@ -1055,44 +1055,6 @@ function inlineArgParam(name: string, source: ParamSource, modelsWithInput?: Set
 function normaliseOptionalOrder(params: MethodParam[]): MethodParam[] {
     const lastRequired = params.reduce((last, p, i) => (p.optional ? last : i), -1);
     return params.map((p, i) => (i < lastRequired ? { ...p, optional: false } : p));
-}
-
-// ─── Method name inference ────────────────────────────────────────────────
-
-function deriveMethodName(op: OpOperationNode, route: OpRouteNode): string {
-    if (op.sdk) return op.sdk;
-    if (op.name) return nameToMethodName(op.name);
-    return inferMethodName(op.method, route.path);
-}
-
-function nameToMethodName(name: string): string {
-    const parts = name.split(/[\s\-_]+/).filter(Boolean);
-    return parts.map((p, i) => (i === 0 ? p.charAt(0).toLowerCase() + p.slice(1) : p.charAt(0).toUpperCase() + p.slice(1))).join('');
-}
-
-function inferMethodName(method: string, path: string): string {
-    // Build a name from the path segments + method
-    // e.g. GET /users/:id → getUsersById
-    // e.g. POST /users → postUsers
-    // e.g. DELETE /users/:id → deleteUsersById
-    const segments = path.split('/').filter(s => s.length > 0);
-    const parts: string[] = [method.toLowerCase()];
-
-    for (const seg of segments) {
-        if (seg.startsWith('{')) {
-            // {id} → ById, {accountId} → ByAccountId
-            const paramName = seg.slice(1, -1);
-            parts.push('By' + paramName.charAt(0).toUpperCase() + paramName.slice(1));
-        } else {
-            // Regular segment — camelCase it
-            const segParts = seg.split(/[.-]/).filter(Boolean);
-            for (const sp of segParts) {
-                parts.push(sp.charAt(0).toUpperCase() + sp.slice(1));
-            }
-        }
-    }
-
-    return parts[0]! + parts.slice(1).join('');
 }
 
 // ─── Naming conventions ────────────────────────────────────────────────────
