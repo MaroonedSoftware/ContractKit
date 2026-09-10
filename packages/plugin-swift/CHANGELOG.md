@@ -1,5 +1,17 @@
 # @contractkit/plugin-swift
 
+## 0.1.2
+
+### Patch Changes
+
+- b0f3778: Published builds no longer wrap every function in a `__name()` call, so a bundler can drop the
+  exports it does not use. The shared tsconfig enabled `emitDecoratorMetadata`, which made tsup compile
+  through swc with `keepNames` forced on, and nothing in the repo uses decorators. `@contractkit/core`
+  shrinks by about 7%, and anything that bundles it, the VS Code extension included, no longer
+  carries core functions it never calls.
+- Updated dependencies [b0f3778]
+    - @contractkit/core@0.30.1
+
 ## 0.1.1
 
 ### Patch Changes
