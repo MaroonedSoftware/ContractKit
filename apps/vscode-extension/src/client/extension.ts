@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node.js';
 import type { ItemSelection } from '@contractkit/explorer-ui';
 import { operationId } from '@contractkit/explorer-ui';
+import { GitignoreScope } from '../shared/index-scope.js';
 import { PREVIEW_DATA_CHANGED_NOTIFICATION, REINDEX_WORKSPACE_REQUEST } from '../shared/protocol.js';
 import { ApiTreeProvider, type GroupingMode } from './api-tree-provider.js';
 import { buildCurl, revealSelectionSource } from './commands.js';
@@ -24,9 +25,19 @@ const DETECTION_EXCLUDE = '**/node_modules/**';
 
 let client: LanguageClient | undefined;
 
+/**
+ * The same gitignore rules the server indexes by, so a `.ck` file that only exists in `dist/` or
+ * another ignored folder doesn't reveal the Explorer. Built fresh on each use so `.gitignore` edits
+ * and workspace-folder changes are picked up.
+ */
+function detectionScope(): GitignoreScope {
+    return new GitignoreScope((vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath));
+}
+
 async function probeDetected(): Promise<boolean> {
-    const matches = await vscode.workspace.findFiles(DETECTION_GLOB, DETECTION_EXCLUDE, 1);
-    return matches.length > 0;
+    const matches = await vscode.workspace.findFiles(DETECTION_GLOB, DETECTION_EXCLUDE);
+    const scope = detectionScope();
+    return matches.some(uri => scope.includesFile(uri.fsPath));
 }
 
 /**
@@ -76,7 +87,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await setDetected(await probeDetected());
 
     const watcher = vscode.workspace.createFileSystemWatcher(DETECTION_GLOB, false, true, false);
-    watcher.onDidCreate(() => void setDetected(true));
+    watcher.onDidCreate(uri => {
+        if (detectionScope().includesFile(uri.fsPath)) void setDetected(true);
+    });
     watcher.onDidDelete(async () => {
         await setDetected(await probeDetected());
     });
