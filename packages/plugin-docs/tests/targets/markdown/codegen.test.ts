@@ -286,6 +286,25 @@ describe('generateMarkdown', () => {
             expect(output).toContain('> SDK method: `listAllUsers`');
         });
 
+        it('derives the method name from name: the way the TypeScript SDK does', () => {
+            const op = opRoot([opRoute('/auth/token', [opOperation('post', { name: 'Request token' })])]);
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
+            expect(output).toContain('> SDK method: `requestToken`');
+            expect(output).not.toContain('postAuthToken');
+        });
+
+        it('splits name: on hyphens and underscores as well as spaces', () => {
+            const op = opRoot([opRoute('/users', [opOperation('get', { name: 'list all_users-now' })])]);
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
+            expect(output).toContain('> SDK method: `listAllUsersNow`');
+        });
+
+        it('prefers sdk: over name:', () => {
+            const op = opRoot([opRoute('/users', [opOperation('get', { sdk: 'listAllUsers', name: 'Fetch users' })])]);
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
+            expect(output).toContain('> SDK method: `listAllUsers`');
+        });
+
         it('derives method name with path params', () => {
             const op = opRoot([opRoute('/users/{id}', [opOperation('get')], [opParam('id', scalarType('uuid'))])]);
             const output = generateMarkdown({ contractRoots: [], opRoots: [op] });

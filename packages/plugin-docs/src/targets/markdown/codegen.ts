@@ -8,6 +8,7 @@ import {
     FieldNode,
     ModelNode,
     ParamSource,
+    deriveSdkMethodName,
     resolveModifiers,
     resolveSecurity,
     SECURITY_NONE,
@@ -400,7 +401,7 @@ export function renderEndpointBody(route: OpRouteNode, op: OpOperationNode, opts
     const lines: string[] = [];
     const method = op.method.toUpperCase();
     const path = route.path;
-    const methodName = deriveMethodName(op, route);
+    const methodName = deriveSdkMethodName(op, route);
     const subH = hashes(opts.subHeadingLevel);
 
     // Deprecation notice
@@ -800,24 +801,4 @@ function escapeCell(s: string): string {
 
 function anchor(name: string): string {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-}
-
-function deriveMethodName(op: OpOperationNode, route: OpRouteNode): string {
-    if (op.sdk) return op.sdk;
-    const segments = route.path.split('/').filter(s => s.length > 0);
-    const parts: string[] = [op.method.toLowerCase()];
-
-    for (const seg of segments) {
-        if (seg.startsWith('{')) {
-            const paramName = seg.slice(1, -1);
-            parts.push('By' + paramName.charAt(0).toUpperCase() + paramName.slice(1));
-        } else {
-            const segParts = seg.split(/[.-]/).filter(Boolean);
-            for (const sp of segParts) {
-                parts.push(sp.charAt(0).toUpperCase() + sp.slice(1));
-            }
-        }
-    }
-
-    return parts.join('');
 }

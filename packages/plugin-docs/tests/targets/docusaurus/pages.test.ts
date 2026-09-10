@@ -113,7 +113,8 @@ describe('renderEndpointPage', () => {
 
     it('renders the SDK note as an admonition', () => {
         const out = endpointPage(opRoute('/users', [opOperation('get', { name: 'listUsers' })]));
-        expect(out).toContain(':::note\nSDK method: `getUsers`\n:::');
+        // `name: listUsers` is what the TypeScript SDK names the method, not the path-derived `getUsers`.
+        expect(out).toContain(':::note\nSDK method: `listUsers`\n:::');
     });
 });
 
