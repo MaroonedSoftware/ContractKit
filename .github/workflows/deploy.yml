@@ -56,14 +56,18 @@ jobs:
             # touches only this private package publishes nothing to npm, leaving that
             # output false on exactly the release we care about.
             #
-            # `--skip-duplicate` keeps a re-run idempotent. vsce has no retry or timeout
-            # flag and the gallery API intermittently times out after 180s, so retry here.
+            # Changesets bumps the extension whenever a package it bundles is bumped, even
+            # when the bundled code it actually ships is unchanged. So fingerprint what
+            # goes into the VSIX, leaving out the `version` field and CHANGELOG.md (the two
+            # things every bump touches), and publish only a fingerprint not published yet.
+            # The build is deterministic, so an unchanged extension hashes the same.
             #
             # Binaries are invoked directly rather than through `pnpm run`/`pnpm exec`:
             # this job restores node_modules from the build cache without running an
             # install, and a pnpm-mediated call would see deps as out of sync and, with
             # CI=true, silently purge that directory.
-            - name: Publish VS Code extension
+            - name: Fingerprint VS Code extension
+              id: vscode
               if: steps.changesets.outputs.hasChangesets == 'false'
               working-directory: apps/vscode-extension
               env:
@@ -75,6 +79,40 @@ jobs:
                       exit 0
                   fi
                   node esbuild.mjs --production
+                  fingerprint=$(
+                      ./node_modules/.bin/vsce ls --no-dependencies | LC_ALL=C sort | while IFS= read -r file; do
+                          case "$file" in
+                              CHANGELOG.md) ;;
+                              package.json) echo "$(jq -S 'del(.version)' package.json | sha256sum | cut -d' ' -f1)  package.json" ;;
+                              *) sha256sum "$file" ;;
+                          esac
+                      done | sha256sum | cut -d' ' -f1
+                  )
+                  echo "Extension fingerprint: $fingerprint"
+                  echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+            # A cache entry keyed on the fingerprint records that it was published. A miss,
+            # including an entry GitHub has evicted, only costs a redundant publish, which
+            # `--skip-duplicate` below keeps harmless.
+            - name: Look up published fingerprint
+              id: vscode-published
+              if: steps.vscode.outputs.fingerprint != ''
+              uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+              with:
+                  path: ${{ runner.temp }}/vscode-published
+                  key: vscode-extension-published-${{ steps.vscode.outputs.fingerprint }}
+                  lookup-only: true
+
+            # `--skip-duplicate` keeps a re-run idempotent. vsce has no retry or timeout
+            # flag and the gallery API intermittently times out after 180s, so retry here.
+            - name: Publish VS Code extension
+              id: vscode-publish
+              if: steps.vscode.outputs.fingerprint != '' && steps.vscode-published.outputs.cache-hit != 'true'
+              working-directory: apps/vscode-extension
+              env:
+                  VSCE_PAT: ${{ secrets.VSCE_PAT }}
+              run: |
+                  set -euo pipefail
                   for attempt in 1 2 3; do
                       if ./node_modules/.bin/vsce publish --no-dependencies --skip-duplicate; then
                           exit 0
@@ -84,3 +122,16 @@ jobs:
                   done
                   echo "vsce publish failed after 3 attempts." >&2
                   exit 1
+
+            - name: Mark fingerprint as published
+              if: steps.vscode-publish.outcome == 'success'
+              run: |
+                  mkdir -p "$RUNNER_TEMP/vscode-published"
+                  jq -r .version apps/vscode-extension/package.json > "$RUNNER_TEMP/vscode-published/version"
+
+            - name: Record published fingerprint
+              if: steps.vscode-publish.outcome == 'success'
+              uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+              with:
+                  path: ${{ runner.temp }}/vscode-published
+                  key: vscode-extension-published-${{ steps.vscode.outputs.fingerprint }}
