@@ -1,5 +1,25 @@
 # @contractkit/vscode-extension
 
+## 0.14.13
+
+### Patch Changes
+
+- b2f6d15: The ContractKit Explorer view no longer appears in a workspace whose only `.ck` files or
+  `contractkit.config.json` sit in `dist/` or another gitignored folder. Workspace detection now
+  applies the same gitignore rules as the index.
+- 1debddf: When a `.ck` file's nearest `contractkit.config.json` lists `patterns`, the workspace index keeps
+  the file only if one of those patterns matches it, the same set the CLI compiles. Test fixtures and
+  scratch contracts outside the patterns stop feeding cross-file diagnostics and the Explorer. Files
+  with no config, a config without `patterns`, or a config whose `rootDir` does not contain them fall
+  back to the gitignore rules. Files open in the editor stay indexed either way, and editing a config
+  re-indexes the workspace.
+- 937469f: The workspace index now skips every path git ignores, not just `node_modules` and `.git`. It reads
+  `.gitignore` files at every level and `.git/info/exclude`, so `.ck` copies in `dist/`, `build/`, or
+  any other ignored folder no longer shadow the real contracts in go-to-definition, the Explorer, or
+  cross-file diagnostics. File-watcher events follow the same rules, so a `pnpm install` or a build
+  that writes `.ck` files into an ignored folder no longer pulls them into the index. Editing a
+  `.gitignore` re-indexes the workspace.
+
 ## 0.14.12
 
 ### Patch Changes
