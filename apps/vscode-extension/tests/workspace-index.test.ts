@@ -1,3 +1,7 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { WorkspaceIndex } from '../src/server/workspace-index.js';
 
 describe('WorkspaceIndex', () => {
@@ -217,6 +221,40 @@ operation /b: { get: { service: Svc.find } }
             const v1 = index.version();
             index.removeFile('file:///x.ck');
             expect(index.version()).toBeGreaterThan(v1);
+        });
+    });
+
+    describe('indexWorkspace', () => {
+        let tmp: string;
+
+        beforeEach(() => {
+            tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ck-ws-index-')));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tmp, { recursive: true, force: true });
+        });
+
+        function write(rel: string, content: string): string {
+            const full = path.join(tmp, rel);
+            fs.mkdirSync(path.dirname(full), { recursive: true });
+            fs.writeFileSync(full, content);
+            return full;
+        }
+
+        it('skips gitignored folders and node_modules, so build copies cannot shadow the source', async () => {
+            fs.mkdirSync(path.join(tmp, '.git'));
+            write('.gitignore', 'dist/\n');
+            const source = write('contracts/user.ck', 'contract User: { name: string }');
+            write('dist/contracts/user.ck', 'contract User: { name: string }');
+            write('node_modules/pkg/user.ck', 'contract User: { name: string }\ncontract Vendored: { id: string }');
+
+            const index = new WorkspaceIndex();
+            await index.indexWorkspace([tmp]);
+
+            expect(index.getAllAsts().map(a => a.filePath)).toEqual([source]);
+            expect(index.getModel('User')!.uri).toBe(pathToFileURL(source).toString());
+            expect(index.getModel('Vendored')).toBeUndefined();
         });
     });
 

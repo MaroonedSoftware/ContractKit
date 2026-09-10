@@ -33,6 +33,22 @@ Language support for ContractKit `.ck` contract files in VS Code and Cursor. Inc
 
 Requires VS Code or Cursor 1.105.1+.
 
+## Which files are indexed
+
+Cross-file features (go-to-definition, references, rename, the Explorer, the preview, and cross-file
+diagnostics) work from an index of `.ck` files on disk. A file is indexed when:
+
+1. **Git doesn't ignore it.** The index reads `.gitignore` files at every level, plus `.git/info/exclude`,
+   so `.ck` copies in `dist/`, `build/`, or any other ignored folder stay out. `node_modules` and `.git`
+   are always skipped. Global excludes (`core.excludesFile`) are not read.
+2. **Its config compiles it.** When the nearest `contractkit.config.json` above the file lists `patterns`
+   and its `rootDir` contains the file, the file is indexed only if one of those patterns matches it,
+   the same set `contractkit` compiles. With no config, no `patterns`, or a `rootDir` that doesn't contain
+   the file, only rule 1 applies.
+
+A file open in the editor is always indexed while it's open. Editing a `.gitignore` or a config
+re-indexes the workspace, and so does **Refresh Explorer**.
+
 ## Installation
 
 The extension is workspace-internal and built/installed from source:
@@ -77,6 +93,8 @@ The extension is split into a thin client and a Language Server, communicating o
 | `src/server/server.ts` | LSP server entry — wires document manager + providers + diagnostics |
 | `src/server/document-manager.ts` | Re-parses each open document; drives diagnostics |
 | `src/server/workspace-index.ts` | Cross-file index of `contract` and `operation` declarations |
+| `src/shared/index-scope.ts` | `IndexScope` seam and `GitignoreScope`, which decide which `.ck` files the index and workspace detection see |
+| `src/server/pattern-scope.ts` | `PatternScope`, which narrows the index to a config's `patterns` |
 | `src/server/completion-provider.ts` | Context-aware completion (types, keywords, model refs) |
 | `src/server/hover-provider.ts` | Hover info for types and model refs |
 | `src/server/definition-provider.ts` | Go-to-definition on identifiers |

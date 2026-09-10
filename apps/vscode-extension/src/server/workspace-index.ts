@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { parseCk, DiagnosticCollector } from '@contractkit/core';
 import type { CkRootNode, ModelNode, OpRouteNode } from '@contractkit/core';
+import { GitignoreScope, type IndexScope } from '../shared/index-scope.js';
 
 export interface ModelEntry {
     uri: string;
@@ -120,10 +121,11 @@ export class WorkspaceIndex {
         this.versionCounter++;
     }
 
-    async indexWorkspace(workspaceFolders: string[]): Promise<void> {
+    /** Index every `.ck` file under `workspaceFolders` that `scope` admits. */
+    async indexWorkspace(workspaceFolders: string[], scope: IndexScope = new GitignoreScope(workspaceFolders)): Promise<void> {
         const allFiles: string[] = [];
         for (const folder of workspaceFolders) {
-            allFiles.push(...(await this.walkDir(folder)));
+            allFiles.push(...(await this.walkDir(folder, scope)));
         }
         // Two-pass: first index every file's declarations, then scan every file for references.
         // Without two passes, an early file's references to a later file's declarations would be missed.
@@ -143,8 +145,8 @@ export class WorkspaceIndex {
         this.versionCounter++;
     }
 
-    async indexFolder(folder: string): Promise<void> {
-        const entries = await this.walkDir(folder);
+    async indexFolder(folder: string, scope: IndexScope = new GitignoreScope([folder])): Promise<void> {
+        const entries = await this.walkDir(folder, scope);
         for (const filePath of entries) {
             this.indexFile(filePath);
         }
@@ -267,16 +269,15 @@ export class WorkspaceIndex {
         this.versionCounter++;
     }
 
-    private async walkDir(dir: string): Promise<string[]> {
+    private async walkDir(dir: string, scope: IndexScope): Promise<string[]> {
         const results: string[] = [];
         try {
             const entries = await fs.promises.readdir(dir, { withFileTypes: true });
             for (const entry of entries) {
                 const fullPath = path.join(dir, entry.name);
-                if (entry.name === 'node_modules' || entry.name === '.git') continue;
                 if (entry.isDirectory()) {
-                    results.push(...(await this.walkDir(fullPath)));
-                } else if (entry.name.endsWith('.ck')) {
+                    if (scope.includesDir(fullPath)) results.push(...(await this.walkDir(fullPath, scope)));
+                } else if (entry.name.endsWith('.ck') && scope.includesFile(fullPath)) {
                     results.push(fullPath);
                 }
             }

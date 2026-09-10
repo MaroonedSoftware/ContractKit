@@ -30,6 +30,8 @@ import { getSemanticTokens, SEMANTIC_TOKENS_LEGEND } from './semantic-tokens-pro
 import { WorkspaceConfigCache } from './workspace-config.js';
 import { buildPreviewData } from './preview-data-builder.js';
 import { ProjectValidator } from './project-validator.js';
+import { GitignoreScope, type IndexScope } from '../shared/index-scope.js';
+import { PatternScope } from './pattern-scope.js';
 import {
     PREVIEW_DATA_CHANGED_NOTIFICATION,
     PREVIEW_DATA_REQUEST,
@@ -49,6 +51,8 @@ const projectValidator = new ProjectValidator(connection, documentManager, works
 documentManager.setOnParsed(() => projectValidator.schedule());
 let workspaceRoot: string | undefined;
 let workspaceFolderPaths: string[] = [];
+/** Which `.ck` files on disk the index loads. Rebuilt with the real folders once the client initializes. */
+let indexScope: IndexScope = new GitignoreScope([]);
 /**
  * Resolves after the initial workspace scan completes. `PREVIEW_DATA_REQUEST` awaits this so a
  * client that asks for the preview snapshot before indexing finishes doesn't receive an empty
@@ -81,7 +85,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
     if (rootPaths.length > 0) {
         workspaceRoot = rootPaths[0];
         workspaceFolderPaths = rootPaths;
-        initialIndexing = workspaceIndex.indexWorkspace(rootPaths)
+        indexScope = new PatternScope(new GitignoreScope(rootPaths), workspaceConfigCache);
+        initialIndexing = workspaceIndex.indexWorkspace(rootPaths, indexScope)
             .catch(() => undefined)
             .then(() => {
                 // Notify clients that the snapshot has changed now that indexing is complete.
@@ -132,24 +137,58 @@ documents.onDidChangeContent(change => {
 // Clean up on document close
 documents.onDidClose(event => {
     documentManager.removeDocument(event.document.uri);
+    // An open document is always indexed so its own features work. Once it closes, a file outside
+    // the index scope (a build copy, a gitignored folder) must stop contributing models and routes.
+    let filePath: string;
+    try {
+        filePath = fileURLToPath(event.document.uri);
+    } catch {
+        return;
+    }
+    if (!indexScope.includesFile(filePath)) {
+        workspaceIndex.removeFile(event.document.uri);
+        schedulePreviewChanged();
+        projectValidator.schedule();
+    }
 });
+
+/**
+ * Wipe the in-memory index and re-walk every workspace folder from disk, then re-apply the text of
+ * open documents so unsaved edits, and open files outside the index scope, stay indexed.
+ */
+async function reindexWorkspace(): Promise<void> {
+    if (workspaceFolderPaths.length === 0) return;
+    workspaceConfigCache.clear();
+    indexScope.clear();
+    workspaceIndex.clear();
+    await workspaceIndex.indexWorkspace(workspaceFolderPaths, indexScope);
+    for (const document of documents.all()) {
+        workspaceIndex.indexFromSource(document.uri, document.getText());
+    }
+    schedulePreviewChanged();
+    projectValidator.schedule();
+}
 
 // Watch for file system changes (saves, creates, deletes of .ck files)
 connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
-    let configChanged = false;
+    // A `.gitignore` or config edit can move any number of files in or out of scope (and a config
+    // also changes `{{var}}` fallbacks), so start over.
+    const scopeChanged = params.changes.some(
+        change => change.uri.endsWith('/.gitignore') || change.uri.endsWith('/contractkit.config.json'),
+    );
+    if (scopeChanged) {
+        void reindexWorkspace();
+        return;
+    }
     for (const change of params.changes) {
         const filePath = fileURLToPath(change.uri);
-        if (filePath.endsWith('contractkit.config.json')) {
-            configChanged = true;
-            continue;
-        }
         if (change.type === FileChangeType.Deleted) {
             workspaceIndex.removeFile(change.uri);
-        } else {
+        } else if (indexScope.includesFile(filePath)) {
             workspaceIndex.indexFile(filePath);
         }
+        // An out-of-scope file is only indexed while open, and then from the editor's text.
     }
-    if (configChanged) workspaceConfigCache.clear();
     schedulePreviewChanged();
     projectValidator.schedule();
 });
@@ -164,14 +203,7 @@ connection.onRequest(PREVIEW_DATA_REQUEST, async () => {
 // Manual reindex: wipes the in-memory workspace index and re-walks every workspace folder
 // from disk. Used by the explorer/preview refresh buttons to force-pick-up changes that
 // somehow bypassed the live update path (external edits, stale state, etc.).
-connection.onRequest(REINDEX_WORKSPACE_REQUEST, async () => {
-    if (workspaceFolderPaths.length === 0) return;
-    workspaceConfigCache.clear();
-    workspaceIndex.clear();
-    await workspaceIndex.indexWorkspace(workspaceFolderPaths);
-    schedulePreviewChanged();
-    projectValidator.schedule();
-});
+connection.onRequest(REINDEX_WORKSPACE_REQUEST, reindexWorkspace);
 
 // Document symbols (Outline panel)
 connection.onDocumentSymbol(params => {
