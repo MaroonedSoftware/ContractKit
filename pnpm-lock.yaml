@@ -88,6 +88,9 @@ importers:
       '@contractkit/prettier-plugin':
         specifier: workspace:*
         version: link:../prettier-plugin
+      ignore:
+        specifier: ^7.0.5
+        version: 7.0.5
       vscode-languageclient:
         specifier: ^9.0.1
         version: 9.0.1

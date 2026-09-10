@@ -52,10 +52,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             // Forward `.ck` and config file events to the server so it can re-index files
             // that aren't currently open in an editor (external edits, git operations, etc.).
             // Without this, `connection.onDidChangeWatchedFiles` on the server never fires
-            // and the workspace index goes stale.
+            // and the workspace index goes stale. `.gitignore` edits change which files the
+            // index covers, so the server re-walks the workspace when one changes.
             fileEvents: [
                 vscode.workspace.createFileSystemWatcher('**/*.ck'),
                 vscode.workspace.createFileSystemWatcher('**/contractkit.config.json'),
+                vscode.workspace.createFileSystemWatcher('**/.gitignore'),
             ],
         },
     };
