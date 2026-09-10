@@ -4,8 +4,6 @@
     "ignoreDeprecations": "6.0",
     "declaration": true,
     "declarationMap": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
     "esModuleInterop": true,
     "incremental": false,
     "isolatedModules": true,
