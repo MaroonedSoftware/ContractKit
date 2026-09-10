@@ -31,6 +31,7 @@ import { WorkspaceConfigCache } from './workspace-config.js';
 import { buildPreviewData } from './preview-data-builder.js';
 import { ProjectValidator } from './project-validator.js';
 import { GitignoreScope, type IndexScope } from '../shared/index-scope.js';
+import { PatternScope } from './pattern-scope.js';
 import {
     PREVIEW_DATA_CHANGED_NOTIFICATION,
     PREVIEW_DATA_REQUEST,
@@ -84,7 +85,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
     if (rootPaths.length > 0) {
         workspaceRoot = rootPaths[0];
         workspaceFolderPaths = rootPaths;
-        indexScope = new GitignoreScope(rootPaths);
+        indexScope = new PatternScope(new GitignoreScope(rootPaths), workspaceConfigCache);
         initialIndexing = workspaceIndex.indexWorkspace(rootPaths, indexScope)
             .catch(() => undefined)
             .then(() => {
@@ -170,18 +171,17 @@ async function reindexWorkspace(): Promise<void> {
 
 // Watch for file system changes (saves, creates, deletes of .ck files)
 connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
-    // A `.gitignore` edit can move any number of files in or out of scope, so start over.
-    if (params.changes.some(change => change.uri.endsWith('/.gitignore'))) {
+    // A `.gitignore` or config edit can move any number of files in or out of scope (and a config
+    // also changes `{{var}}` fallbacks), so start over.
+    const scopeChanged = params.changes.some(
+        change => change.uri.endsWith('/.gitignore') || change.uri.endsWith('/contractkit.config.json'),
+    );
+    if (scopeChanged) {
         void reindexWorkspace();
         return;
     }
-    let configChanged = false;
     for (const change of params.changes) {
         const filePath = fileURLToPath(change.uri);
-        if (filePath.endsWith('contractkit.config.json')) {
-            configChanged = true;
-            continue;
-        }
         if (change.type === FileChangeType.Deleted) {
             workspaceIndex.removeFile(change.uri);
         } else if (indexScope.includesFile(filePath)) {
@@ -189,7 +189,6 @@ connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
         }
         // An out-of-scope file is only indexed while open, and then from the editor's text.
     }
-    if (configChanged) workspaceConfigCache.clear();
     schedulePreviewChanged();
     projectValidator.schedule();
 });

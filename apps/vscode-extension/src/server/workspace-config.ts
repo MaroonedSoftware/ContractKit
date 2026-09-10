@@ -6,10 +6,19 @@ const FALLBACK_BUILTINS_RE = /\\\{\{(\w+)\}\}|\{\{(\w+)\}\}/g;
 
 interface RawConfig {
     rootDir?: string;
+    patterns?: unknown;
     plugins?: Record<string, { keys?: Record<string, string> } | unknown>;
 }
 
 const TS_PLUGIN_NAME = '@contractkit/plugin-typescript';
+
+/** A config's `patterns`, with the absolute directory they are relative to. */
+export interface ConfigPatterns {
+    /** The config's resolved `rootDir`. */
+    rootDir: string;
+    /** Glob patterns for the `.ck` files the CLI compiles, as written in the config. Never empty. */
+    patterns: string[];
+}
 
 /**
  * Resolves `contractkit.config.json` relative to each `.ck` file and merges every plugin
@@ -28,6 +37,8 @@ export class WorkspaceConfigCache {
     private byConfigPath = new Map<string, Record<string, string>>();
     /** Resolved absolute TS-plugin `server.baseDir` per config-file path (`null` when none). */
     private serviceBaseDirByConfigPath = new Map<string, string | null>();
+    /** Parsed `patterns` per config-file path; `undefined` when the config lists none. */
+    private patternsByConfigPath = new Map<string, ConfigPatterns | undefined>();
     /** Per-directory memoization of "the nearest config above this dir" lookups. */
     private dirToConfigPath = new Map<string, string | null>();
 
@@ -58,10 +69,25 @@ export class WorkspaceConfigCache {
         return baseDir ?? undefined;
     }
 
+    /**
+     * Returns the `patterns` of the config nearest to `filePath`, resolved against its `rootDir`.
+     * `undefined` when no config is reachable or it lists no patterns. The same object comes back
+     * until {@link clear}, so callers can memoize work derived from it by identity.
+     */
+    getPatternsForFile(filePath: string): ConfigPatterns | undefined {
+        const configPath = this.findConfigForFile(filePath);
+        if (!configPath) return undefined;
+        if (this.patternsByConfigPath.has(configPath)) return this.patternsByConfigPath.get(configPath);
+        const patterns = this.loadPatterns(configPath);
+        this.patternsByConfigPath.set(configPath, patterns);
+        return patterns;
+    }
+
     /** Drop all cached entries — call when files change or the workspace is re-indexed. */
     clear(): void {
         this.byConfigPath.clear();
         this.serviceBaseDirByConfigPath.clear();
+        this.patternsByConfigPath.clear();
         this.dirToConfigPath.clear();
     }
 
@@ -121,6 +147,19 @@ export class WorkspaceConfigCache {
         const baseDir = tsPlugin?.server?.baseDir;
         if (typeof baseDir !== 'string') return null;
         return path.resolve(rootDir, baseDir);
+    }
+
+    private loadPatterns(configPath: string): ConfigPatterns | undefined {
+        let raw: RawConfig;
+        try {
+            raw = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as RawConfig;
+        } catch {
+            return undefined;
+        }
+        if (!Array.isArray(raw.patterns)) return undefined;
+        const patterns = raw.patterns.filter((p): p is string => typeof p === 'string' && p.length > 0);
+        if (patterns.length === 0) return undefined;
+        return { rootDir: resolveRootDir(raw.rootDir, path.dirname(configPath)), patterns };
     }
 }
 

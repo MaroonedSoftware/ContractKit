@@ -91,6 +91,9 @@ importers:
       ignore:
         specifier: ^7.0.5
         version: 7.0.5
+      minimatch:
+        specifier: ^10.2.5
+        version: 10.2.5
       vscode-languageclient:
         specifier: ^9.0.1
         version: 9.0.1

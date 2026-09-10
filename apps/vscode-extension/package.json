@@ -274,6 +274,7 @@
         "@contractkit/explorer-ui": "workspace:*",
         "@contractkit/prettier-plugin": "workspace:*",
         "ignore": "^7.0.5",
+        "minimatch": "^10.2.5",
         "vscode-languageclient": "^9.0.1",
         "vscode-languageserver": "^9.0.1",
         "vscode-languageserver-textdocument": "^1.0.12"
