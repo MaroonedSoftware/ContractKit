@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { createTypescriptPlugin } from '../src/index.js';
 import type { PluginContext } from '@contractkit/core';
 import { SECURITY_NONE } from '@contractkit/core';
@@ -278,6 +281,39 @@ describe('createTypescriptPlugin (server)', () => {
             await plugin.generateTargets!(mcpInputs(), ctx);
             const router = [...ctx.emitted.entries()].find(([p]) => p.endsWith('mcp.router.ts'))?.[1];
             expect(router).toContain("from '@maroonedsoftware/koa'");
+        });
+    });
+
+    describe('bigint responses', () => {
+        // The bigint sits two models down, in a different .ck file from the operation, so only the
+        // cross-file transitive set can tell the router that `Statement` needs the replacer.
+        const contractRoots = [
+            contractRoot([model('Ledger', [field('total', scalarType('bigint'))])], '/project/contracts/ledger.ck'),
+            contractRoot(
+                [model('Statement', [field('ledger', refType('Ledger'))]), model('Note', [field('text', scalarType('string'))])],
+                '/project/contracts/statement.ck',
+            ),
+        ];
+        const render = async (responseType: string) => {
+            const root = opRoot(
+                [opRoute('/statements', [opOperation('get', { responses: [opResponse(200, responseType, 'application/json')] })])],
+                '/project/contracts/statements.ck',
+            );
+            const ctx = makeCtx('/project');
+            await createTypescriptPlugin({ server: {} }, '/project').generateTargets!(inputs([root], contractRoots as any), ctx);
+            return [...ctx.emitted.entries()].find(([p]) => p.endsWith('.router.ts'))?.[1] ?? '';
+        };
+
+        it('writes a body reaching a bigint in another file through bigIntReplacer', async () => {
+            const router = await render('Statement');
+            expect(router).toContain('ctx.body = JSON.stringify(result, bigIntReplacer);');
+            expect(router).toContain("import { bigIntReplacer } from '@maroonedsoftware/utilities';");
+        });
+
+        it('leaves a body with no bigint below it alone', async () => {
+            const router = await render('Note');
+            expect(router).toContain('ctx.body = result;');
+            expect(router).not.toContain('bigIntReplacer');
         });
     });
 
@@ -636,5 +672,63 @@ describe('unresolved output path template variables', () => {
         await plugin.generateTargets!(inputs(), ctx);
 
         expect(ctx.warnings).toEqual([]);
+    });
+});
+
+describe('createTypescriptPlugin — format() across files', () => {
+    /** A context whose emits land on disk, so the incremental cache sees real files between runs. */
+    function diskCtx(rootDir: string): PluginContext & { emitted: Map<string, string> } {
+        const emitted = new Map<string, string>();
+        return {
+            rootDir,
+            options: {},
+            cacheEnabled: true,
+            cacheDir: join(rootDir, '.contractkit/cache'),
+            emitFile: (outPath: string, content: string) => {
+                mkdirSync(dirname(outPath), { recursive: true });
+                writeFileSync(outPath, content, 'utf-8');
+                emitted.set(outPath, content);
+            },
+            emitted,
+        };
+    }
+
+    function contracts(rootDir: string, baseFields: string[]) {
+        const base = contractRoot(
+            [
+                model(
+                    'Base',
+                    baseFields.map(n => field(n, scalarType('string'))),
+                    { loc: { file: join(rootDir, 'contracts/base.ck'), line: 1 } },
+                ),
+            ],
+            join(rootDir, 'contracts/base.ck'),
+        );
+        const child = contractRoot(
+            [
+                model('Child', [field('childField', scalarType('string'))], {
+                    bases: ['Base'],
+                    inputCase: 'snake',
+                    loc: { file: join(rootDir, 'contracts/child.ck'), line: 1 },
+                }),
+            ],
+            join(rootDir, 'contracts/child.ck'),
+        );
+        return { contractRoots: [base, child], opRoots: [], modelsWithInput: new Set<string>(), modelsWithOutput: new Set<string>() };
+    }
+
+    it("flattens a base from another .ck file, and re-emits the child when that base's fields change", async () => {
+        const rootDir = mkdtempSync(join(tmpdir(), 'ck-format-'));
+        const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } } }, rootDir);
+        const childPath = join(rootDir, 'types/child.ts');
+
+        const first = diskCtx(rootDir);
+        await plugin.generateTargets!(contracts(rootDir, ['baseField']), first);
+        expect(first.emitted.get(childPath)).toContain('base_field: z.string(),');
+
+        // Only base.ck changed. child.ck's own AST did not, but its schema carries Base's fields.
+        const second = diskCtx(rootDir);
+        await plugin.generateTargets!(contracts(rootDir, ['baseField', 'addedField']), second);
+        expect(second.emitted.get(childPath)).toContain('added_field: z.string(),');
     });
 });

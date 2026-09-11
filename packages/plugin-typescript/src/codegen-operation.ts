@@ -3,16 +3,26 @@ import type {
     OpRouteNode,
     OpOperationNode,
     OpResponseNode,
+    OpResponseBodyNode,
     OpResponseHeaderNode,
     ContractTypeNode,
     ScalarTypeNode,
     ParamSource,
     ObjectMode,
 } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses, PATH_PARAM_RE_G, toIdentifier } from '@contractkit/core';
+import {
+    resolveModifiers,
+    resolveSecurity,
+    SECURITY_NONE,
+    emittedResponses,
+    PATH_PARAM_RE_G,
+    toIdentifier,
+    classifyContentType,
+} from '@contractkit/core';
 import { renderType, renderInputType, renderQueryType, applyFieldModifiers, pascalToDotCase, modeToWrapper } from './codegen-contract.js';
 import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
+import { BIGINT_REPLACER_IMPORT, typeReachesBigInt } from './bigint-runtime.js';
 import { basename, dirname, relative } from 'path';
 import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
@@ -161,6 +171,12 @@ export interface OpCodegenOptions {
      */
     modelsWithTransform?: Set<string>;
     /**
+     * Set of model names carrying a `bigint`, directly or through a referenced model. A JSON response
+     * body reaching one is written with `bigIntReplacer`, since the framework's own `JSON.stringify`
+     * throws on a `bigint`.
+     */
+    modelsWithBigInt?: Set<string>;
+    /**
      * Which HTTP framework the emitted router targets. Every framework-specific string in the output
      * comes from here. Defaults to Koa; pass `FASTIFY_SERVER_FRAMEWORK` (or resolve a configured
      * `server.framework` name via `resolveServerFramework`) to target Fastify instead.
@@ -293,6 +309,10 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
     if (uses('parseAndValidate')) {
         body.push(`import { parseAndValidate } from '@maroonedsoftware/zod';`);
+    }
+
+    if (uses('bigIntReplacer')) {
+        body.push(BIGINT_REPLACER_IMPORT);
     }
 
     if (uses('MultipartBody')) {
@@ -486,10 +506,10 @@ function generateSingleStatusResult(
 
     if (bodies.length === 1) {
         lines.push(`    ${framework.response.type(`'${bodies[0]!.contentType}'`)}`);
-        lines.push(...indent(framework.response.send(responseBodyExpr(hasRespHeaders ? 'result.body' : 'result', bodySchema)), '    '));
+        lines.push(...indent(sendBody(bodies, responseBodyExpr(hasRespHeaders ? 'result.body' : 'result', bodySchema), options), '    '));
     } else if (bodies.length > 1) {
         lines.push(`    ${framework.response.type('result.contentType')}`);
-        lines.push(...indent(framework.response.send(responseBodyExpr('result.body', bodySchema)), '    '));
+        lines.push(...indent(sendBody(bodies, responseBodyExpr('result.body', bodySchema), options), '    '));
     } else {
         // Nothing to write, but a framework that ends a response by returning still needs a statement.
         lines.push(...indent(framework.response.send(undefined), '    '));
@@ -531,7 +551,7 @@ function generateMultiStatusResult(emitted: OpResponseNode[], className: string,
         lines.push(...headerSetLines(resp.headers ?? [], '            ', framework));
         if (resp.bodies.length > 0) {
             lines.push(`            ${framework.response.type('result.contentType')}`);
-            lines.push(...indent(framework.response.send(responseBodyExpr('result.body', bodySchemas.get(resp.statusCode))), '            '));
+            lines.push(...indent(sendBody(resp.bodies, responseBodyExpr('result.body', bodySchemas.get(resp.statusCode)), options), '            '));
         } else {
             lines.push(...indent(framework.response.send(undefined), '            '));
         }
@@ -594,6 +614,29 @@ function renderHeadersAnnotation(headers: OpResponseHeaderNode[], modelsWithOutp
         h => `${quoteKey(headerNameToProperty(h.name))}${h.optional ? '?' : ''}: ${renderOutputTsType(h.type, modelsWithOutput, 'server')}`,
     );
     return `{ ${fields.join('; ')} }`;
+}
+
+/**
+ * The terminal write for one status's body: {@link ServerFramework.response.sendBigIntJson} for a
+ * JSON mime whose type can carry a `bigint`, the framework's plain `send` otherwise.
+ *
+ * A status declaring several mimes can mix the two — a bigint model as `application/json` beside a
+ * `text/csv` string — and the service picks one per call, so that case branches on
+ * `result.contentType` rather than stringifying a body that was never meant to be JSON.
+ */
+function sendBody(bodies: readonly OpResponseBodyNode[], bodyExpr: string, options: ResolvedOpCodegenOptions): string[] {
+    const { response } = options.framework;
+    const bigIntMimes = [
+        ...new Set(
+            bodies
+                .filter(b => classifyContentType(b.contentType) === 'json' && typeReachesBigInt(b.bodyType, options.modelsWithBigInt))
+                .map(b => b.contentType),
+        ),
+    ];
+    if (bigIntMimes.length === 0) return response.send(bodyExpr);
+    if (bodies.every(b => bigIntMimes.includes(b.contentType))) return response.sendBigIntJson(bodyExpr);
+    const test = bigIntMimes.map(mime => `result.contentType === '${mime}'`).join(' || ');
+    return [`if (${test}) {`, ...indent(response.sendBigIntJson(bodyExpr), '    '), '} else {', ...indent(response.send(bodyExpr), '    '), '}'];
 }
 
 /** Response-header writes for a status's declared headers, guarding the optional ones. */

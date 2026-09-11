@@ -16,6 +16,18 @@ export function escapeJsDocLines(text: string): string[] {
     return text.replace(/\*\//g, '*\\/').split('\n');
 }
 
+/** Prefix a field declaration with a JSDoc comment built from `@deprecated` / description parts,
+ *  neutralizing any block-comment terminator and expanding embedded newlines into continuation lines. */
+export function withFieldJsDoc(jsdocParts: string[], line: string): string {
+    if (jsdocParts.length === 0) return line;
+    const contentLines = escapeJsDocLines(jsdocParts.join(' '));
+    if (contentLines.length === 1) {
+        return `/** ${contentLines[0]} */\n    ${line}`;
+    }
+    const body = contentLines.map(l => `     * ${l}`).join('\n');
+    return `/**\n${body}\n     */\n    ${line}`;
+}
+
 /** Escape a string for inclusion inside a single-quoted TypeScript string literal. */
 export function escapeSingleQuoted(s: string): string {
     return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
@@ -168,14 +180,27 @@ function renderTsInlineObject(fields: FieldNode[], target: TsRenderTarget): stri
  * (body, params, query, headers).
  *
  * @param target Runtime the type describes; only `binary` differs (`Buffer` vs `Blob`).
+ * @param modelsWithWireInput Models whose request keys `format(input=)` renames, directly or below
+ * them. A ref to one renders as its `WireInput` type, ahead of any `Input` variant, because the
+ * `WireInput` type already covers the write-side field set. Pass it only where the value is
+ * serialized with its keys intact (a body, a query or header object), never for path params.
  */
-export function renderInputTsType(type: ContractTypeNode, modelsWithInput?: Set<string>, target: TsRenderTarget = 'client'): string {
-    if (!modelsWithInput || modelsWithInput.size === 0) return renderTsType(type, target);
+export function renderInputTsType(
+    type: ContractTypeNode,
+    modelsWithInput?: Set<string>,
+    target: TsRenderTarget = 'client',
+    modelsWithWireInput?: Set<string>,
+): string {
+    if ((!modelsWithInput || modelsWithInput.size === 0) && (!modelsWithWireInput || modelsWithWireInput.size === 0)) {
+        return renderTsType(type, target);
+    }
+    const recurse = (t: ContractTypeNode) => renderInputTsType(t, modelsWithInput, target, modelsWithWireInput);
     switch (type.kind) {
         case 'ref':
-            return modelsWithInput.has(type.name) ? `${type.name}Input` : type.name;
+            if (modelsWithWireInput?.has(type.name)) return `${type.name}WireInput`;
+            return modelsWithInput?.has(type.name) ? `${type.name}Input` : type.name;
         case 'array': {
-            const inner = renderInputTsType(type.item, modelsWithInput, target);
+            const inner = recurse(type.item);
             const needsParens =
                 type.item.kind === 'union' ||
                 type.item.kind === 'discriminatedUnion' ||
@@ -184,15 +209,15 @@ export function renderInputTsType(type: ContractTypeNode, modelsWithInput?: Set<
             return needsParens ? `(${inner})[]` : `${inner}[]`;
         }
         case 'intersection':
-            return type.members.map(m => renderInputTsType(m, modelsWithInput, target)).join(' & ');
+            return type.members.map(recurse).join(' & ');
         case 'union':
-            return type.members.map(m => renderInputTsType(m, modelsWithInput, target)).join(' | ');
+            return type.members.map(recurse).join(' | ');
         case 'discriminatedUnion':
-            return type.members.map(m => renderInputTsType(m, modelsWithInput, target)).join(' | ');
+            return type.members.map(recurse).join(' | ');
         case 'inlineObject':
-            return `{ ${type.fields.map(f => `${quoteKey(f.name)}${f.optional ? '?' : ''}: ${renderInputTsType(f.type, modelsWithInput, target)}`).join('; ')} }`;
+            return `{ ${type.fields.map(f => `${quoteKey(f.name)}${f.optional ? '?' : ''}: ${recurse(f.type)}`).join('; ')} }`;
         case 'lazy':
-            return renderInputTsType(type.inner, modelsWithInput, target);
+            return recurse(type.inner);
         default:
             return renderTsType(type, target);
     }

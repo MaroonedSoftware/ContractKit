@@ -1,0 +1,21 @@
+info:
+  name: /stamps
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/stamps"
+  body:
+    type: json
+    data: |
+      {
+        "stampedBy": "",
+        "stampedAt": "2024-01-01T00:00:00Z"
+      }
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"

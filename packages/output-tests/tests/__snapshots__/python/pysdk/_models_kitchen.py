@@ -6,16 +6,17 @@ from uuid import UUID
 from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 from decimal import Decimal
+from ._scalars import BigInt
 
 # A named enum, so a field default has to resolve to a member rather than its wire spelling
 Rating = Literal["good", "neutral", "bad"]
 
 class Card(BaseModel):
-    kind: "card"
+    kind: Literal["card"]
     last4: str
 
 class Bank(BaseModel):
-    kind: "bank"
+    kind: Literal["bank"]
     iban: str
 
 # Decodes snake_case keys and encodes PascalCase ones
@@ -34,7 +35,32 @@ class OwnedInput(BaseModel):
 class Named(BaseModel):
     name: str
 
+class Stamp(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    stamped_by: str = Field(alias="stampedBy")
+    stamped_at: datetime = Field(alias="stampedAt")
+
+# format() on a contract split for readonly and writeonly fields, applied to both of its schemas
+class Ledger(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: UUID
+    posted_at: datetime = Field(alias="postedAt")
+
+class LedgerInput(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    entry_code: str = Field(alias="entryCode")
+    posted_at: datetime = Field(alias="postedAt")
+
 Instrument = Annotated[Card | Bank, Field(discriminator="kind")]
+
+# A plain base under format(), which the schema inlines rather than extends
+class Stamped(Stamp):
+    model_config = ConfigDict(populate_by_name=True)
+
+    stamp_note: str | None = Field(alias="stampNote", default=None)
 
 # Two flattened bases, split into a read and an input shape
 class Shared(Owned, Named):
@@ -57,14 +83,14 @@ class Folder(BaseModel):
     parent: Folder | None = None
     readme: Doc | None = None
     children: list[Folder]
-    by_name: dict[str, Folder] | None = Field(alias="byName")
+    by_name: dict[str, Folder] | None = Field(alias="byName", default=None)
     span: tuple[int, int] | None = None
     stamped: tuple[UUID, datetime, bool] | None = None
     label: str | int
     pinned: Doc | Folder | None
     instrument: Card | Bank | None = None
     origin: dict[str, Any] | None = None
-    size: int
+    size: BigInt
     price: Decimal
     day: date | None = None
     at: time | None = None

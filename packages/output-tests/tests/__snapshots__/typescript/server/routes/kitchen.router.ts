@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';
 import { KitchenService } from '#src/services/kitchen.service.js';
-import { Folder, Instrument, Shared, SharedInput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
+import { Folder, Instrument, LedgerInput, LedgerOutput, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
+import { bigIntReplacer } from '@maroonedsoftware/utilities';
 
 /**
  * generated from [kitchen.ck](../../contracts/kitchen.ck)
@@ -12,7 +13,7 @@ export const KitchenRouter = ServerKitRouter();
 
 /**
  * several statuses, and two content types on one of them
- * from [kitchen.ck](../../contracts/kitchen.ck#L91)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L108)
 */
 KitchenRouter.get('/folders/:folderId', requirePolicy(), async ctx => {
     const { folderId } = await parseAndValidate(
@@ -52,7 +53,11 @@ KitchenRouter.get('/folders/:folderId', requirePolicy(), async ctx => {
             ctx.set('x-count', String(result.headers["xCount"]));
             if (result.headers["xWhen"] !== undefined) ctx.set('x-when', String(result.headers["xWhen"]));
             ctx.type = result.contentType;
-            ctx.body = result.body;
+            if (result.contentType === 'application/json') {
+                ctx.body = JSON.stringify(result.body, bigIntReplacer);
+            } else {
+                ctx.body = result.body;
+            }
             break;
         case 204:
             break;
@@ -65,7 +70,7 @@ KitchenRouter.get('/folders/:folderId', requirePolicy(), async ctx => {
 
 /**
  * a method name that is a keyword in the target languages
- * from [kitchen.ck](../../contracts/kitchen.ck#L118)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L135)
 */
 KitchenRouter.put('/folders/:folderId', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const { folderId } = await parseAndValidate(
@@ -86,7 +91,35 @@ KitchenRouter.put('/folders/:folderId', requirePolicy(), bodyParserMiddleware(['
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L133)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L150)
+*/
+KitchenRouter.post('/ledgers', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
+    const body = await parseAndValidate(ctx.parsedBody, LedgerInput);
+
+    const service = ctx.container.get(KitchenService);
+    const result: LedgerOutput = await service.postLedger(body);
+
+    ctx.status = 201;
+    ctx.type = 'application/json';
+    ctx.body = result;
+});
+
+/**
+ * from [kitchen.ck](../../contracts/kitchen.ck#L165)
+*/
+KitchenRouter.post('/stamps', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
+    const body = await parseAndValidate(ctx.parsedBody, Stamped);
+
+    const service = ctx.container.get(KitchenService);
+    const result: StampedOutput = await service.stamp(body);
+
+    ctx.status = 201;
+    ctx.type = 'application/json';
+    ctx.body = result;
+});
+
+/**
+ * from [kitchen.ck](../../contracts/kitchen.ck#L180)
 */
 KitchenRouter.post('/tokens', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, Token);
@@ -100,7 +133,7 @@ KitchenRouter.post('/tokens', requirePolicy(), bodyParserMiddleware(['json']), a
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L147)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L194)
 */
 KitchenRouter.get('/tokens', requirePolicy(), async ctx => {
     const service = ctx.container.get(KitchenService);

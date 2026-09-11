@@ -5,13 +5,16 @@
 **Endpoints**
 
 - [Fetch an invoice](#fetch-an-invoice)
+- [Fetch one seat](#fetch-one-seat)
+- [Fetch a row by its seat class](#fetch-a-row-by-its-seat-class)
 - [Current service status](#current-service-status)
 
 <details>
-<summary><strong>Billing</strong> (9)</summary>
+<summary><strong>Billing</strong> (10)</summary>
 
 - [Create a payment](#create-a-payment)
 - [List payments](#list-payments)
+- [Create several payments at once](#create-several-payments-at-once)
 - [Fetch one payment](#fetch-one-payment)
 - [Update a payment with form data](#update-a-payment-with-form-data)
 - [Delete a payment — declares only a documented error status](#delete-a-payment-declares-only-a-documented-error-status)
@@ -23,10 +26,12 @@
 </details>
 
 <details>
-<summary><strong>Kitchen</strong> (4)</summary>
+<summary><strong>Kitchen</strong> (6)</summary>
 
 - [Several statuses, and two content types on one of them](#several-statuses-and-two-content-types-on-one-of-them)
 - [A method name that is a keyword in the target languages](#a-method-name-that-is-a-keyword-in-the-target-languages)
+- [Post ledger](#post-ledger)
+- [Stamp](#stamp)
 - [Mint](#mint)
 - [List tokens](#list-tokens)
 
@@ -35,6 +40,8 @@
 **Models**
 
 - [Invoice](#invoice)
+- [Seat](#seat)
+- [SeatRef](#seatref)
 - [Heartbeat](#heartbeat)
 
 <details>
@@ -51,7 +58,7 @@
 </details>
 
 <details>
-<summary><strong>Kitchen</strong> (10)</summary>
+<summary><strong>Kitchen</strong> (13)</summary>
 
 - [Rating](#rating)
 - [Folder](#folder)
@@ -63,6 +70,9 @@
 - [Owned](#owned)
 - [Named](#named)
 - [Shared](#shared)
+- [Stamp](#stamp)
+- [Stamped](#stamped)
+- [Ledger](#ledger)
 
 </details>
 
@@ -93,6 +103,64 @@
 `200 OK` — Returns a [Invoice](#invoice) object.
 
 `404 Not Found`
+
+
+---
+
+### Fetch one seat
+
+**`GET`** `/seats/{seatId}`
+
+> [!NOTE]
+> SDK method: `getSeat`
+
+#### Attributes
+
+<details>
+<summary>Attributes (3)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `seatId` | `string` | Yes | Path parameter. |
+| `from` | `string` | No |  |
+| `pageSize` | `number` | No |  |
+
+</details>
+
+#### Response
+
+`200 OK` — Returns a [Seat](#seat) object.
+
+Response headers:
+
+| Header | Type | Description |
+| ------ | ---- | ----------- |
+| `from` | `string` |  |
+
+
+---
+
+### Fetch a row by its seat class
+
+**`GET`** `/rows/{class}`
+
+> [!NOTE]
+> SDK method: `getRow`
+
+#### Attributes
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `class` | `string` | Yes | Path parameter. |
+
+</details>
+
+#### Response
+
+`200 OK` — Returns a [Seat](#seat) object.
 
 
 ---
@@ -150,7 +218,7 @@ Response headers:
 ##### Attributes
 
 <details>
-<summary>Attributes (4)</summary>
+<summary>Attributes (5)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -158,8 +226,27 @@ Response headers:
 | `x-tenant` | `string` | Yes |  |
 | `api-key` | `string` | No |  |
 | `limit` | `number` | No |  |
+| `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
 
 </details>
+
+##### Response
+
+`200 OK` — Returns a list of [Payment](#payment) objects.
+
+
+---
+
+#### Create several payments at once
+
+**`POST`** `/payments/batch`
+
+> [!NOTE]
+> SDK method: `createPayments`
+
+##### Request body (`application/json`)
+
+Accepts a list of [Payment](#payment) objects.
 
 ##### Response
 
@@ -415,6 +502,42 @@ Accepts a [Shared](#shared) object.
 
 ---
 
+#### Post ledger
+
+**`POST`** `/ledgers`
+
+> [!NOTE]
+> SDK method: `postLedger`
+
+##### Request body (`application/json`)
+
+Accepts a [Ledger](#ledger) object.
+
+##### Response
+
+`201 Created` — Returns a [Ledger](#ledger) object.
+
+
+---
+
+#### Stamp
+
+**`POST`** `/stamps`
+
+> [!NOTE]
+> SDK method: `stamp`
+
+##### Request body (`application/json`)
+
+Accepts a [Stamped](#stamped) object.
+
+##### Response
+
+`201 Created` — Returns a [Stamped](#stamped) object.
+
+
+---
+
 #### Mint
 
 **`POST`** `/tokens`
@@ -461,6 +584,38 @@ Accepts a [Token](#token) object.
 
 </details>
 
+### Seat
+
+> A seat, whose field names are all reserved somewhere in Python
+
+<details>
+<summary>Attributes (7)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `class` | `string` | Yes |  |
+| `from` | `string` | No |  |
+| `date` | `string` | Yes |  |
+| `time` | `string` | No |  |
+| `copy` | `string` | No |  |
+| `modelDump` | `string` | No |  |
+| `json` | `string` | No |  |
+
+</details>
+
+### SeatRef
+
+> Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `class` | `string` | Yes |  |
+
+</details>
+
 ### Heartbeat
 
 > A service heartbeat — deliberately no bigint field and no `area` key
@@ -489,7 +644,7 @@ Accepts a [Token](#token) object.
 | `id` | `string` | Yes | *read-only* |
 | `amount` | `number` | Yes |  |
 | `unitPrice` | `Decimal` | Yes |  |
-| `quantity` | `bigint` | Yes |  |
+| `quantity` | `bigint` | Yes | *sent as a digit string, "123" or "123n"* |
 | `createdAt` | `string` | Yes |  |
 | `processingTime` | `string` | No |  |
 | `status` | `'pending' \| 'completed' \| 'failed'` | Yes | *default: `pending`* |
@@ -610,7 +765,7 @@ type Rating = 'good' | 'neutral' | 'bad'
 | `pinned` | `Doc \| Folder` | Yes | *nullable* |
 | `instrument` | `Card \| Bank` | No |  |
 | `origin` | `{ x: number; y: number }` | No |  |
-| `size` | `bigint` | Yes |  |
+| `size` | `bigint` | Yes | *sent as a digit string, "123" or "123n"* |
 | `price` | `Decimal` | Yes |  |
 | `day` | `string` | No |  |
 | `at` | `string` | No |  |
@@ -713,5 +868,47 @@ Extends [`Owned`](#owned), [`Named`](#named)
 | --- | --- | --- | --- |
 | `label` | `string` | No | *default: `x`* |
 | `instrument` | `Instrument` | No |  |
+
+</details>
+
+#### Stamp
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `stampedBy` | `string` | Yes |  |
+| `stampedAt` | `string` | Yes |  |
+
+</details>
+
+#### Stamped
+
+> A plain base under format(), which the schema inlines rather than extends
+
+Extends [`Stamp`](#stamp)
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `stampNote` | `string` | No |  |
+
+</details>
+
+#### Ledger
+
+> format() on a contract split for readonly and writeonly fields, applied to both of its schemas
+
+<details>
+<summary>Attributes (3)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | *read-only* |
+| `entryCode` | `string` | Yes | *write-only* |
+| `postedAt` | `string` | Yes |  |
 
 </details>

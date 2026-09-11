@@ -10,7 +10,7 @@ import {
     deriveMcpRegisterFnName,
 } from '../src/codegen-mcp.js';
 import type { RouteMiddleware } from '../src/server-framework.js';
-import { opRoot, opRoute, opOperation, opParam, opRequest, opResponse, scalarType, loc } from './helpers.js';
+import { opRoot, opRoute, opOperation, opParam, opRequest, opResponse, opResponseMulti, scalarType, arrayType, loc } from './helpers.js';
 
 function mcpBlock(over: Partial<McpConfigNode>): McpConfigNode {
     return { loc: loc(), ...over };
@@ -166,6 +166,45 @@ describe('generateMcpFile', () => {
             expect(out).toContain('constructor(private readonly service: PaymentsService, private readonly policies: PolicyService) {}');
             expect(out).toContain('const result = await this.service.getById(id);');
             expect(out).toContain('structuredContent: result');
+        });
+
+        describe('a result that can carry a bigint', () => {
+            const REPLACER_IMPORT = "import { bigIntReplacer } from '@maroonedsoftware/utilities';";
+            const toolFor = (op: ReturnType<typeof opOperation>, modelsWithBigInt = new Set(['Ledger'])) =>
+                generateMcpFile(opRoot([opRoute('/ledgers', [op])]), { modelsWithBigInt });
+
+            it('serializes the text through bigIntReplacer and hands structuredContent the parsed-back JSON', () => {
+                const out = toolFor(opOperation('get', { mcp: true, responses: [opResponse(200, 'Ledger', 'application/json')] }));
+                expect(out).toContain('const resultJson = JSON.stringify(result, bigIntReplacer);');
+                expect(out).toContain("return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };");
+                expect(out).not.toContain('structuredContent: result');
+                expect(out).toContain(REPLACER_IMPORT);
+            });
+
+            it('uses the replacer for the text alone when the result has no object output schema', () => {
+                const out = toolFor(opOperation('get', { mcp: true, responses: [opResponse(200, arrayType(scalarType('bigint')), 'application/json')] }));
+                expect(out).toContain("return { content: [{ type: 'text', text: JSON.stringify(result, bigIntReplacer) }] };");
+            });
+
+            it('counts a bigint response header, since the whole result is stringified', () => {
+                const out = toolFor(
+                    opOperation('get', {
+                        mcp: true,
+                        responses: [
+                            opResponseMulti(200, [{ contentType: 'application/json', bodyType: 'User' }], {
+                                headers: [{ name: 'x-total', optional: false, type: scalarType('bigint') }],
+                            }),
+                        ],
+                    }),
+                );
+                expect(out).toContain('JSON.stringify(result, bigIntReplacer)');
+            });
+
+            it('leaves a result with no bigint below it as it was', () => {
+                const out = toolFor(opOperation('get', { mcp: true, responses: [opResponse(200, 'User', 'application/json')] }));
+                expect(out).toContain("return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };");
+                expect(out).not.toContain('bigIntReplacer');
+            });
         });
 
         it('returns bare content (no structuredContent / outputSchema) for a void response', () => {

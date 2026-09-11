@@ -71,6 +71,49 @@ public sealed record Named
     public required string Name { get; init; }
 }
 
+public sealed record Stamp
+{
+    [JsonPropertyName("stampedBy")]
+    public required string StampedBy { get; init; }
+
+    [JsonPropertyName("stampedAt")]
+    public required DateTimeOffset StampedAt { get; init; }
+}
+
+/// <summary>format() on a contract split for readonly and writeonly fields, applied to both of its schemas</summary>
+public sealed record Ledger
+{
+    [JsonPropertyName("Id")]
+    public required Guid Id { get; init; }
+
+    [JsonPropertyName("PostedAt")]
+    public required DateTimeOffset PostedAt { get; init; }
+}
+
+/// <summary>format() on a contract split for readonly and writeonly fields, applied to both of its schemas</summary>
+public sealed record LedgerInput
+{
+    [JsonPropertyName("entry_code")]
+    public required string EntryCode { get; init; }
+
+    [JsonPropertyName("posted_at")]
+    public required DateTimeOffset PostedAt { get; init; }
+}
+
+/// <summary>A plain base under format(), which the schema inlines rather than extends</summary>
+public sealed record Stamped
+{
+    [JsonPropertyName("StampedBy")]
+    public required string StampedBy { get; init; }
+
+    [JsonPropertyName("StampedAt")]
+    public required DateTimeOffset StampedAt { get; init; }
+
+    [JsonPropertyName("StampNote")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? StampNote { get; init; }
+}
+
 /// <summary>Two flattened bases, split into a read and an input shape</summary>
 public sealed record Shared
 {

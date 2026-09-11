@@ -50,6 +50,13 @@ Codegen impact per plugin:
 
 - **Zod**: `Test5 = A.extend(B.shape).extend(C.shape).extend(D.shape).extend({...inline})`.
   Last-wins is the runtime semantics; the inline block is appended last so overrides win.
+  The exception is a model whose keys a `format()` renames, its own or inherited from any base:
+  a `format()` schema is a pipe with no `.extend()` or `.shape`, so `flattenFormatChain`
+  (`codegen-wire-input.ts`) inlines every base's fields into one object, in the same last-wins
+  order. It resolves bases through the all-files model map (`ContractCodegenContext.modelMap`),
+  so a base in another `.ck` file still contributes, and the generators take imports and scalar
+  needs from the flattened models. The plain `XOutput`, the SDK revivers and `XWireInput` all
+  follow the same flattened shape.
 - **Plain TS** (`codegen-plain-types.ts`): `interface Test5 extends A, B, C, D { ... }`.
   When fields are overridden, each base is wrapped in `Omit<Base, 'a' | 'b'>` — TypeScript's
   `Omit` tolerates omit keys that don't exist on the base, so we omit unconditionally and
@@ -78,6 +85,30 @@ means **it cannot re-parse its own output**. That is why the TypeScript router's
 the service already returns the post-transform shape. Note that `modelsWithOutput` is the wrong
 set to test for this — it seeds only from `outputCase`, since only that case needs an `Output`
 type alias. Use `computeModelsWithCaseTransform`, which covers both directions.
+
+On the wire, a request travels in the `input` casing and a response in the `output` casing.
+Every SDK plugin encodes a request body under `format(input=)` and decodes a response under
+`format(output=)`. In the TypeScript SDK the model's own type is the wrong request type: for a
+Zod SDK it is `z.output` (post-transform keys), and for a plain one it has the declared keys.
+So SDK type files emit **`ModelWireInput`**, a rendered interface in the input casing, and
+request bodies, query objects and header objects use it. Path params don't, because the URL
+reads their fields by declared name. Which models get one is `computeModelsWithWireInput` in
+`codegen-wire-input.ts`, and it differs by SDK flavour. A Zod SDK also needs one for a plain
+model nesting an output-only model, since `z.infer` gives the nested model's output keys. It is
+not `z.input<typeof X>`: that types every coercing scalar (`int`, `datetime`, `decimal`) as
+`unknown`.
+
+A model split for `readonly`/`writeonly` applies its `format()` to both schemas: `Model` is the
+transform over the readable fields and `ModelInput` over the writable ones, each typed by the same
+rule as a single schema (`z.input` when only `output=` is set, else `z.output`), and `ModelOutput`
+is `z.output<typeof Model>`. That is what the Swift, Kotlin and C# SDKs expect of the Input twin.
+A type alias ignores `format()`. `ModelWireInput` mirrors what the server parses, so it follows
+the same rules; `appliedCasing` in `codegen-wire-input.ts` is where the two must agree.
+
+Known gap: an intersection type (a field typed `A & B`, or `contract X: A & B` with no
+trailing inline block, which is a type alias rather than inheritance) still renders
+`A.extend(B.shape)`, which fails when either side is a `format()` pipe. Inheritance is
+flattened; an intersection type is not.
 
 ## Discriminated unions
 

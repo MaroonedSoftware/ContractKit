@@ -20,6 +20,8 @@
                         "group": "Endpoints",
                         "pages": [
                             "api-reference/endpoints/get-invoice",
+                            "api-reference/endpoints/get-seat",
+                            "api-reference/endpoints/get-row",
                             "api-reference/endpoints/get-status"
                         ]
                     },
@@ -28,6 +30,7 @@
                         "pages": [
                             "api-reference/billing/create-payment",
                             "api-reference/billing/list-payments",
+                            "api-reference/billing/create-payments",
                             "api-reference/billing/get-payment",
                             "api-reference/billing/update-payment-with-form",
                             "api-reference/billing/delete-payment",
@@ -42,6 +45,8 @@
                         "pages": [
                             "api-reference/kitchen/get-folder",
                             "api-reference/kitchen/import",
+                            "api-reference/kitchen/post-ledger",
+                            "api-reference/kitchen/stamp",
                             "api-reference/kitchen/mint",
                             "api-reference/kitchen/list-tokens"
                         ]
@@ -50,6 +55,8 @@
                         "group": "Models",
                         "pages": [
                             "api-reference/models/invoice",
+                            "api-reference/models/seat",
+                            "api-reference/models/seat-ref",
                             "api-reference/models/heartbeat",
                             {
                                 "group": "Billing",
@@ -75,7 +82,10 @@
                                     "api-reference/models/kitchen/token",
                                     "api-reference/models/kitchen/owned",
                                     "api-reference/models/kitchen/named",
-                                    "api-reference/models/kitchen/shared"
+                                    "api-reference/models/kitchen/shared",
+                                    "api-reference/models/kitchen/stamp",
+                                    "api-reference/models/kitchen/stamped",
+                                    "api-reference/models/kitchen/ledger"
                                 ]
                             }
                         ]

@@ -79,10 +79,24 @@ operation /payments: {
         query: {
             limit?: int = 20
             cursor: string
+            status?: enum(pending, completed, failed)
         }
         headers: {
             api-key?: string
             x-tenant: string
+        }
+        response: {
+            200: { application/json: array(Payment) }
+        }
+    }
+}
+
+operation /payments/batch: {
+    post: { # create several payments at once
+        sdk: createPayments
+        service: PaymentService.createBatch
+        request: {
+            application/json: array(Payment)
         }
         response: {
             200: { application/json: array(Payment) }

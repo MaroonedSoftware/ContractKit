@@ -20,11 +20,21 @@ export class BillingClient {
     }
 
     /** @description list payments */
-    async listPayments(query: { limit?: number; cursor: string }, customHeaders: { 'api-key'?: string; 'x-tenant': string }): Promise<Payment[]> {
+    async listPayments(query: { limit?: number; cursor: string; status?: 'pending' | 'completed' | 'failed' }, customHeaders: { 'api-key'?: string; 'x-tenant': string }): Promise<Payment[]> {
         const qs = buildQueryString(query);
         const result = await this.fetch(`/payments${qs}`, {
             method: 'GET',
             headers: buildHeaders(customHeaders),
+        });
+        return (await parseJson<Payment[]>(result)).map(revivePayment);
+    }
+
+    /** @description create several payments at once */
+    async createPayments(body: PaymentInput[]): Promise<Payment[]> {
+        const result = await this.fetch(`/payments/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body, bigIntReplacer),
         });
         return (await parseJson<Payment[]>(result)).map(revivePayment);
     }

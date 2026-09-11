@@ -141,6 +141,14 @@ export interface ServerFramework {
          * ends it by assignment, emits nothing for a bodyless one.
          */
         send(bodyExpr: string | undefined): string[];
+        /**
+         * The terminal write for a JSON body whose type can carry a `bigint`, in place of
+         * {@link send}. Both frameworks serialize an object body with a bare `JSON.stringify`, which
+         * throws on a `bigint`, so the adapter serializes with `bigIntReplacer` from
+         * `@maroonedsoftware/utilities` instead: the `"123n"` string the SDK's reviver reads back.
+         * Emitted only after {@link type} has set a JSON content type.
+         */
+        sendBigIntJson(bodyExpr: string): string[];
         /** What closes one `case` of the multi-status switch, after that status has been written. */
         caseEnd(): string[];
     };

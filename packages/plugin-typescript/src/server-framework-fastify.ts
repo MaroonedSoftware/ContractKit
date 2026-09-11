@@ -120,6 +120,11 @@ export const FASTIFY_SERVER_FRAMEWORK: ServerFramework = {
             // a body nor calls `send` leaves the request hanging.
             return bodyExpr === undefined ? ['return reply.send();'] : [`return reply.send(${bodyExpr});`];
         },
+        sendBigIntJson(bodyExpr) {
+            // A per-reply serializer rather than a pre-stringified body: the payload stays an object
+            // through `preSerialization` hooks, and it wins over the route's default serializer.
+            return [`return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(${bodyExpr});`];
+        },
         caseEnd() {
             // Every status case has already returned, so a `break` here would be unreachable code.
             return [];

@@ -52,6 +52,12 @@ paths:
           required: true
           schema:
             type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, completed, failed]
         - name: api-key
           in: header
           required: false
@@ -62,6 +68,27 @@ paths:
           required: true
           schema:
             type: string
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                type: array
+                items:
+                  '$ref': '#/components/schemas/Payment'
+  '/payments/batch':
+    post:
+      operationId: createPayments
+      description: 'create several payments at once'
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              type: array
+              items:
+                '$ref': '#/components/schemas/Payment'
       responses:
         '200':
           description: 'Successful response'
@@ -304,6 +331,38 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Instrument'
+  '/ledgers':
+    post:
+      operationId: postLedger
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Ledger'
+      responses:
+        '201':
+          description: Created
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Ledger'
+  '/stamps':
+    post:
+      operationId: stamp
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Stamped'
+      responses:
+        '201':
+          description: Created
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Stamped'
   '/tokens':
     post:
       operationId: mint
@@ -333,6 +392,54 @@ paths:
                 type: array
                 items:
                   '$ref': '#/components/schemas/Token'
+  '/seats/{seatId}':
+    get:
+      operationId: getSeat
+      description: 'fetch one seat'
+      parameters:
+        - name: seatId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Seat'
+          headers:
+            from:
+              schema:
+                type: string
+  '/rows/{class}':
+    get:
+      operationId: getRow
+      description: 'fetch a row by its seat class'
+      parameters:
+        - name: SeatRef
+          in: path
+          required: true
+          schema:
+            '$ref': '#/components/schemas/SeatRef'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Seat'
   '/status':
     get:
       operationId: getStatus
@@ -362,8 +469,9 @@ components:
           pattern: '^-?\d+(\.\d{1,2})?$'
           x-contractkit-scale: 2
         quantity:
-          type: integer
-          format: int64
+          type: string
+          format: bigint
+          pattern: '^-?\d+n?$'
         createdAt:
           type: string
           format: date-time
@@ -506,8 +614,9 @@ components:
               type: number
           required: [x, y]
         size:
-          type: integer
-          format: int64
+          type: string
+          format: bigint
+          pattern: '^-?\d+n?$'
         price:
           type: string
           format: decimal
@@ -603,6 +712,66 @@ components:
               default: x
             instrument:
               '$ref': '#/components/schemas/Instrument'
+    Stamp:
+      type: object
+      properties:
+        stampedBy:
+          type: string
+        stampedAt:
+          type: string
+          format: date-time
+      required: [stampedBy, stampedAt]
+    Stamped:
+      allOf:
+        - '$ref': '#/components/schemas/Stamp'
+        - type: object
+          properties:
+            stampNote:
+              type: string
+    Ledger:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        entryCode:
+          type: string
+          writeOnly: true
+        postedAt:
+          type: string
+          format: date-time
+      required: [id, entryCode, postedAt]
+      description: 'format() on a contract split for readonly and writeonly fields, applied to both of its schemas'
+    Seat:
+      type: object
+      properties:
+        class:
+          type: string
+        from:
+          type: string
+          format: date
+        date:
+          type: string
+          format: date
+        time:
+          type: string
+          format: time
+        copy:
+          type: string
+        modelDump:
+          type: string
+        json:
+          type: string
+      required: [class, date]
+      description: 'A seat, whose field names are all reserved somewhere in Python'
+    SeatRef:
+      type: object
+      properties:
+        class:
+          type: string
+      required: [class]
+      description: 'Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`'
     Heartbeat:
       type: object
       properties:

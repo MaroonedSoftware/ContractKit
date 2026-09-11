@@ -147,6 +147,15 @@ describe('renderModelPage', () => {
         expect(out).toContain('| `id` | `string` | Yes |  |');
     });
 
+    it('notes the wire form of a bigint field, through the shared markdown renderer', () => {
+        const out = renderModelPage(modelEntry(model('Order', [field('quantity', scalarType('bigint'))]), 'order'), {
+            position: 1,
+            fromDir: 'api-reference/models',
+            modelPages: MODEL_PAGES,
+        });
+        expect(out).toContain('| `quantity` | `bigint` | Yes | *sent as a digit string, "123" or "123n"* |');
+    });
+
     it('links a base model to its page', () => {
         const admin = model('Admin', [field('role', scalarType('string'))], { bases: ['User'] });
         const out = renderModelPage(modelEntry(admin), { position: 1, fromDir: 'api-reference/models', modelPages: MODEL_PAGES });
