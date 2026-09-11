@@ -1338,6 +1338,20 @@ describe('generateContract - declaration order', () => {
         expect(declaredAt(output, 'Doc')).toBeLessThan(declaredAt(output, 'Folder'));
     });
 
+    it('declares every base before the contract that extends it, not only the first', () => {
+        // `C = A.extend(B.shape)` reads B at load time. With only bases[0] counted, B waited on D,
+        // C became ready first, and C was emitted ahead of the base it spreads.
+        const root = contractRoot([
+            model('C', [field('c', scalarType('string'))], { bases: ['A', 'B'] }),
+            model('A', [field('a', scalarType('string'))]),
+            model('B', [field('d', refType('D'))]),
+            model('D', [field('x', scalarType('string'))]),
+        ]);
+        const output = generateContract(root);
+        expect(output).toContain('B.shape');
+        expect(declaredAt(output, 'B')).toBeLessThan(declaredAt(output, 'C'));
+    });
+
     it('ignores a lazy reference nested inside a container', () => {
         const root = contractRoot([
             model('Folder', [field('docs', arrayType(refType('Doc')))]),

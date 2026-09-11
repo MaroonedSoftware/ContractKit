@@ -1225,7 +1225,8 @@ export function topoSortModels(models: ModelNode[]): ModelNode[] {
     const deps = new Map<string, Set<string>>();
     for (const model of models) {
         const refs = new Set<string>();
-        if (model.bases?.[0] && localNames.has(model.bases?.[0])) refs.add(model.bases?.[0]);
+        // Every base, not only the first: `C: A & B` emits `A.extend(B.shape)`, which reads B at load.
+        for (const base of model.bases ?? []) refs.add(base);
         if (model.type) collectEagerTypeRefs(model.type, refs);
         for (const field of model.fields) {
             collectEagerTypeRefs(field.type, refs);
