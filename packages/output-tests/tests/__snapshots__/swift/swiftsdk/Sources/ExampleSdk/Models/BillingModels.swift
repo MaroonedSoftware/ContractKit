@@ -294,8 +294,8 @@ public struct PaymentFilter: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(status, forKey: .status)
-        try container.encodeIfPresent(since, forKey: .since)
+        try container.encodeIfPresent(self.status, forKey: .status)
+        try container.encodeIfPresent(self.since, forKey: .since)
     }
 }
 
@@ -318,7 +318,7 @@ public struct TenantHeaders: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(xTenant, forKey: .xTenant)
+        try container.encode(self.xTenant, forKey: .xTenant)
     }
 }
 
