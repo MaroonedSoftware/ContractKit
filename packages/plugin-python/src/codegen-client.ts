@@ -9,7 +9,7 @@ import type {
     ParamSource,
 } from '@contractkit/core';
 import { resolveModifiers, classifyContentType, observableResponses } from '@contractkit/core';
-import { renderPyType, toPythonFieldName } from './codegen-models.js';
+import { renderPyType, toPythonFieldName, SCALARS_MODULE } from './codegen-models.js';
 
 // ─── Response shape ────────────────────────────────────────────────────────
 
@@ -179,6 +179,7 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     if (bodyAdapters.length > 0) pydanticImports.push('TypeAdapter');
     if (pydanticImports.length > 0) lines.push(`from pydantic import ${pydanticImports.join(', ')}`);
     lines.push('from ._base_client import BaseClient, SdkError  # noqa: F401');
+    if (referencedModels.has('__bigint__')) lines.push(`from ${SCALARS_MODULE} import BigInt`);
 
     // Model imports grouped by module
     const modelImportsByModule = new Map<string, Set<string>>();
@@ -907,6 +908,9 @@ function collectTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWithInp
                     break;
                 case 'duration':
                     out.add('__timedelta__');
+                    break;
+                case 'bigint':
+                    out.add('__bigint__');
                     break;
                 case 'unknown':
                 case 'json':

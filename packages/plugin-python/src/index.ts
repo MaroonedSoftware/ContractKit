@@ -18,7 +18,7 @@ import {
     collectTransitiveModelRefs,
     collectTypeRefs,
 } from '@contractkit/core';
-import { generatePydanticModels, deriveModelsModuleName } from './codegen-models.js';
+import { generatePydanticModels, deriveModelsModuleName, SCALARS_PY } from './codegen-models.js';
 import {
     generatePythonClient,
     deriveClientClassName,
@@ -208,7 +208,7 @@ async function runPythonCodegen(
     // ── Global files: base client, requirements, aggregator ──────────────────
     // The aggregator (__init__.py) depends on the public-clients list. Writing it
     // every run is cheap (a few imports + a class body), so we skip a separate
-    // unit for it. base_client.py and requirements.txt are constants.
+    // unit for it. base_client.py, _scalars.py and requirements.txt are constants.
     const sdkClassName = config.packageName
         ? config.packageName
               .split(/[-._\s]+/)
@@ -244,6 +244,7 @@ async function runPythonCodegen(
 
     const globalFiles = [
         { relativePath: '_base_client.py', content: BASE_CLIENT_PY },
+        { relativePath: '_scalars.py', content: SCALARS_PY },
         { relativePath: 'requirements.txt', content: 'httpx\npydantic>=2.0\n' },
         { relativePath: '__init__.py', content: initLines.join('\n') },
     ];

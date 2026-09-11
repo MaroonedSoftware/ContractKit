@@ -6,6 +6,7 @@ from uuid import UUID
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 from decimal import Decimal
+from ._scalars import BigInt
 
 # A customer payment
 class Payment(BaseModel):
@@ -14,7 +15,7 @@ class Payment(BaseModel):
     id: UUID
     amount: float
     unit_price: Decimal = Field(alias="unitPrice")
-    quantity: int
+    quantity: BigInt
     created_at: datetime = Field(alias="createdAt")
     processing_time: timedelta | None = Field(alias="processingTime", default=None)
     status: Literal["pending", "completed", "failed"] | None = Field(default="pending")
@@ -24,7 +25,7 @@ class PaymentInput(BaseModel):
 
     amount: float
     unit_price: Decimal = Field(alias="unitPrice")
-    quantity: int
+    quantity: BigInt
     created_at: datetime = Field(alias="createdAt")
     processing_time: timedelta | None = Field(alias="processingTime", default=None)
     status: Literal["pending", "completed", "failed"] | None = Field(default="pending")
