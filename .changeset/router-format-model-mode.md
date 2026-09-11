@@ -8,4 +8,4 @@ A model such as `contract format(input=snake) SnakeFilter: { fromDate?: date }` 
 
 The mode now goes on the object inside the pipe, and the result is piped back through the model's own transform: `SnakeFilter.in.strict().pipe(SnakeFilter.out)`. The block's mode wins over the model's own, as it does for any other model, so a `headers:` block still strips the headers it does not declare (`SnakeHeaders.in.strip().pipe(SnakeHeaders.out)`) instead of the model's strict object rejecting every one of them. A model without `format()` is validated exactly as before.
 
-`TYPESCRIPT_CODEGEN_VERSION` is bumped to `7`, so an existing incremental cache regenerates its routers. A router's cache fingerprint now also covers which of its param models compile to a pipe, so a model in another `.ck` file gaining or losing `format()` regenerates the router.
+`TYPESCRIPT_CODEGEN_VERSION` is bumped to `8`, so an existing incremental cache regenerates its routers. A router's cache fingerprint now also covers which of its param models compile to a pipe, so a model in another `.ck` file gaining or losing `format()` regenerates the router.

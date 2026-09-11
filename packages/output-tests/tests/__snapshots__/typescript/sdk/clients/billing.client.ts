@@ -109,7 +109,7 @@ export class BillingClient {
 
     /** @description search payments with snake_case filter and header models */
     async searchPaymentsByDate(query?: SnakeFilterWireInput, customHeaders?: SnakeHeadersWireInput): Promise<void> {
-        const qs = buildQueryString(query);
+        const qs = buildQueryString({ ...query, from_date: query?.from_date?.toFormat('yyyy-MM-dd') });
         await this.fetch(`/payments/by-date${qs}`, {
             method: 'GET',
             headers: buildHeaders(customHeaders),
