@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/plugin-swift",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "description": "ContractKit built-in plugin: Swift SDK client generation (SwiftPM package, Codable models, URLSession async client)",
     "license": "MIT",
     "author": {
