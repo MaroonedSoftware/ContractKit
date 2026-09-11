@@ -30,7 +30,6 @@
                         "pages": [
                             "api-reference/billing/create-payment",
                             "api-reference/billing/list-payments",
-                            "api-reference/billing/search-payments",
                             "api-reference/billing/create-payments",
                             "api-reference/billing/get-payment",
                             "api-reference/billing/update-payment-with-form",
@@ -68,9 +67,7 @@
                                     "api-reference/models/billing/session",
                                     "api-reference/models/billing/payment-ref",
                                     "api-reference/models/billing/update-payment-form",
-                                    "api-reference/models/billing/upload-receipt-form",
-                                    "api-reference/models/billing/payment-filter",
-                                    "api-reference/models/billing/tenant-headers"
+                                    "api-reference/models/billing/upload-receipt-form"
                                 ]
                             },
                             {

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { generatePydanticModels, renderPyType, toPythonFieldName, deriveModelsModuleName, SCALARS_PY } from '../src/codegen-models.js';
+import {
+    generatePydanticModels,
+    renderPyType,
+    toPythonFieldName,
+    deriveModelsModuleName,
+    computeTypeAliases,
+    SCALARS_PY,
+} from '../src/codegen-models.js';
 import {
     scalarType,
     arrayType,
@@ -124,11 +131,15 @@ describe('toPythonFieldName', () => {
         expect(toPythonFieldName('class')).toBe('class_');
         expect(toPythonFieldName('from')).toBe('from_');
         expect(toPythonFieldName('import')).toBe('import_');
+        expect(toPythonFieldName('async')).toBe('async_');
+        // Keywords only once snake_cased, so the check has to come after the conversion.
+        expect(toPythonFieldName('Lambda')).toBe('lambda_');
     });
 
     it('leaves soft keywords and near-misses alone', () => {
         expect(toPythonFieldName('type')).toBe('type');
         expect(toPythonFieldName('match')).toBe('match');
+        expect(toPythonFieldName('case')).toBe('case');
         expect(toPythonFieldName('classes')).toBe('classes');
         expect(toPythonFieldName('None')).toBe('none');
     });
@@ -192,21 +203,19 @@ describe('generatePydanticModels', () => {
         expect(output).toContain('from pydantic import BaseModel, ConfigDict, Field');
     });
 
-    it('aliases a keyword field to its wire name, so the class body parses', () => {
-        const root = contractRoot([
-            model('Folder', [field('class', scalarType('string')), field('default', scalarType('string'), { optional: true })]),
-        ]);
-        const output = generatePydanticModels(root);
-        expect(output).toContain('class_: str = Field(alias="class")');
-        expect(output).toContain('default: str | None = None');
-        expect(output).toContain('model_config = ConfigDict(populate_by_name=True)');
-        expect(output).not.toMatch(/^\s+class:/m);
-    });
-
     it('gives an optional aliased field default=None, since Field() with no default is required', () => {
         const root = contractRoot([model('Payment', [field('processingTime', scalarType('duration'), { optional: true })])]);
         const output = generatePydanticModels(root);
         expect(output).toContain('processing_time: timedelta | None = Field(alias="processingTime", default=None)');
+    });
+
+    it('escapes a keyword field and aliases it back to its contract name', () => {
+        const root = contractRoot([model('Seat', [field('class', scalarType('string')), field('from', scalarType('date'), { optional: true })])]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('    class_: str = Field(alias="class")');
+        expect(output).toContain('    from_: date | None = Field(alias="from", default=None)');
+        // Without it, the model could only be built from the alias: `Seat(class_=...)` would fail.
+        expect(output).toContain('model_config = ConfigDict(populate_by_name=True)');
     });
 
     it('escapes a field named after a BaseModel attribute', () => {
@@ -310,6 +319,17 @@ describe('generatePydanticModels', () => {
         const root = contractRoot([model('Order', [field('lineCount', scalarType('int'), { optional: true, default: 1 })])]);
         const output = generatePydanticModels(root);
         expect(output).toMatch(/^ {4}line_count: int \| None = Field\(alias="lineCount", default=1\)$/m);
+    });
+
+    it('aliases a keyword field to its wire name, so the class body parses', () => {
+        const root = contractRoot([
+            model('Folder', [field('class', scalarType('string')), field('default', scalarType('string'), { optional: true })]),
+        ]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('class_: str = Field(alias="class")');
+        expect(output).toContain('default: str | None = None');
+        expect(output).toContain('model_config = ConfigDict(populate_by_name=True)');
+        expect(output).not.toMatch(/^\s+class:/m);
     });
 
     it('generates Input/Read split for readonly fields', () => {
@@ -468,6 +488,27 @@ describe('multi-line descriptions', () => {
         expect(output).toContain('# Lifecycle status.');
         expect(output).toContain('# Extra detail line.');
         expect(output).not.toMatch(/^Extra detail line\.$/m);
+    });
+});
+
+describe('computeTypeAliases', () => {
+    it('lists the contracts emitted as something other than a Pydantic class', () => {
+        const models = [
+            model('Card', [field('last4', scalarType('string'))]),
+            model('Tier', [], { type: enumType('free', 'pro') }),
+            model('Ids', [], { type: arrayType(scalarType('string')) }),
+            model('Method', [], { type: unionType(refType('Card'), refType('Bank')) }),
+            // A rename of a class is the class itself: `Renamed = Card` has `model_validate`.
+            model('Renamed', [], { type: refType('Card') }),
+            model('Deferred', [], { type: lazyType(refType('Renamed')) }),
+            model('OfAlias', [], { type: refType('Tier') }),
+        ];
+        expect([...computeTypeAliases(models)].sort()).toEqual(['Ids', 'Method', 'OfAlias', 'Tier']);
+    });
+
+    it('does not loop on aliases that refer to each other', () => {
+        const models = [model('A', [], { type: refType('B') }), model('B', [], { type: refType('A') })];
+        expect([...computeTypeAliases(models)].sort()).toEqual(['A', 'B']);
     });
 });
 

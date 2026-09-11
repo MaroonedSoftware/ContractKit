@@ -1,7 +1,7 @@
 ---
 title: "Upload a receipt image"
 sidebar_label: "Upload a receipt image"
-sidebar_position: 8
+sidebar_position: 7
 mdx:
     format: "md"
 ---

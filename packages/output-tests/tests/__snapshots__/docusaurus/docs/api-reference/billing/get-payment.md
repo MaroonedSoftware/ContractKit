@@ -1,7 +1,7 @@
 ---
 title: "Fetch one payment"
 sidebar_label: "Fetch one payment"
-sidebar_position: 5
+sidebar_position: 4
 mdx:
     format: "md"
 ---

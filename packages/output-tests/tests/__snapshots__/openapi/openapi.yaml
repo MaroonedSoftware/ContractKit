@@ -77,30 +77,6 @@ paths:
                 type: array
                 items:
                   '$ref': '#/components/schemas/Payment'
-  '/payments/search':
-    get:
-      operationId: searchPayments
-      description: 'search payments with a filter model'
-      parameters:
-        - name: PaymentFilter
-          in: query
-          required: false
-          schema:
-            '$ref': '#/components/schemas/PaymentFilter'
-        - name: TenantHeaders
-          in: header
-          required: false
-          schema:
-            '$ref': '#/components/schemas/TenantHeaders'
-      responses:
-        '200':
-          description: 'Successful response'
-          content:
-            'application/json':
-              schema:
-                type: array
-                items:
-                  '$ref': '#/components/schemas/Payment'
   '/payments/batch':
     post:
       operationId: createPayments
@@ -562,23 +538,6 @@ components:
         file:
           type: string
           format: binary
-    PaymentFilter:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [pending, completed, failed]
-        since:
-          type: string
-          format: date-time
-      description: 'Query params declared as a model, referenced via `query: PaymentFilter`'
-    TenantHeaders:
-      type: object
-      properties:
-        x-tenant:
-          type: string
-      required: [x-tenant]
-      description: 'Request headers declared as a model. Hyphenated, because a server sees header names lowercased.'
     Invoice:
       type: object
       properties:
