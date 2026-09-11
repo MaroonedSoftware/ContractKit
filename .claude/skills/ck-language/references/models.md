@@ -105,10 +105,16 @@ is `z.output<typeof Model>`. That is what the Swift, Kotlin and C# SDKs expect o
 A type alias ignores `format()`. `ModelWireInput` mirrors what the server parses, so it follows
 the same rules; `appliedCasing` in `codegen-wire-input.ts` is where the two must agree.
 
-Known gap: an intersection type (a field typed `A & B`, or `contract X: A & B` with no
-trailing inline block, which is a type alias rather than inheritance) still renders
-`A.extend(B.shape)`, which fails when either side is a `format()` pipe. Inheritance is
-flattened; an intersection type is not.
+An intersection type (a field typed `A & B`, or `contract X: A & B` with no trailing inline
+block, which is a type alias rather than inheritance) is not flattened. `renderExtendChain` in
+`codegen-contract.ts` builds it with `.extend()`, and a `format()` member stands in by its own
+object: `X.in.extend({...})`, `Plain.extend(X.in.shape)`. The chain ends in one `.transform(...)`
+that hands that member's keys to `X.out` and passes every other key through, so a request
+parses `from_date` and the service gets `fromDate`. A request block's mode goes between the
+object and the transform, since a pipe has no `.strict()`. `compilesToPipe` counts an alias of
+such an intersection as a pipe, so a block referencing it validates as
+`X.in.strict().pipe(X.out)`. Telling a pipe member from a plain object takes the all-files
+model map; a renderer called without it takes every member for a plain object.
 
 ## Discriminated unions
 

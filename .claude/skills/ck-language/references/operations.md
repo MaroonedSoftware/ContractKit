@@ -34,6 +34,17 @@ reused for `parseAndValidate` in `handle`. The handler constructor-injects the o
 and an optional `mcp.router.ts`. The `@maroonedsoftware/mcp` runtime owns the JSON-RPC
 lifecycle, sessions, Streamable HTTP transport, and authentication.
 
+The args schema reuses the router's renderers with the all-files model map
+(`McpCodegenOptions.models`), so an intersection with a `format()` member is built from that
+member's object exactly as the router builds it, and a tool parses the keys its HTTP route
+parses. A model ref stays its own schema, a pipe included. `inputSchema` is
+`z.toJSONSchema(Args, { unrepresentable: 'any', io: 'input' })`: on the default output side a
+pipe renders as `{}`, since JSON Schema cannot describe its transform, and a client learned
+nothing of the `from_date` the args require. The output side has no such fix, so a tool whose
+result compiles to a `format()` pipe publishes no `outputSchema` (`outputSchemaBody`) and returns
+text content only, with no `structuredContent`. MCP requires `outputSchema` to be
+`type: 'object'`, and an SDK client rejects the whole `tools/list` over one that is not.
+
 Each handler also enforces the op's effective `security` with `requireMcpPolicy` before it
 parses its arguments — a tool is another way to invoke the operation, not a way around its
 gate. An op declaring nothing takes `MFA_SATISFIED_POLICY`, the same gate its HTTP route
