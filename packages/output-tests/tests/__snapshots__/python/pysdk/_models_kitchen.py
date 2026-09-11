@@ -11,11 +11,11 @@ from decimal import Decimal
 Rating = Literal["good", "neutral", "bad"]
 
 class Card(BaseModel):
-    kind: "card"
+    kind: Literal["card"]
     last4: str
 
 class Bank(BaseModel):
-    kind: "bank"
+    kind: Literal["bank"]
     iban: str
 
 # Decodes snake_case keys and encodes PascalCase ones

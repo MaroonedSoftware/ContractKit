@@ -940,6 +940,7 @@ function collectTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWithInp
             type.members.forEach(m => collectTypeRefs(m, out, modelsWithInput, forInput));
             break;
         case 'enum':
+        case 'literal':
             out.add('__literal__');
             break;
         case 'intersection':

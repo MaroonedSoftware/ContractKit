@@ -49,10 +49,11 @@ describe('renderPyType', () => {
         expect(renderPyType(enumType('pending', 'completed', 'failed'))).toBe('Literal["pending", "completed", "failed"]');
     });
 
-    it('renders literal', () => {
-        expect(renderPyType(literalType('hello'))).toBe('"hello"');
-        expect(renderPyType(literalType(42))).toBe('42');
-        expect(renderPyType(literalType(true))).toBe('true');
+    it('renders literal as Literal[...], with Python booleans', () => {
+        expect(renderPyType(literalType('hello'))).toBe('Literal["hello"]');
+        expect(renderPyType(literalType(42))).toBe('Literal[42]');
+        expect(renderPyType(literalType(true))).toBe('Literal[True]');
+        expect(renderPyType(literalType(false))).toBe('Literal[False]');
     });
 
     it('renders array', () => {
@@ -287,6 +288,18 @@ describe('generatePydanticModels', () => {
         const [read, input] = output.split('class BookingInput(BaseModel):');
         expect(read).toContain('    date_: str | None = Field(alias="date", default=None)');
         expect(input).toContain('    date_: str | None = Field(alias="date", default=None)');
+    });
+
+    it('types a discriminator field as a Literal, so its union can be built', () => {
+        const root = contractRoot([
+            model('Card', [field('kind', literalType('card')), field('last4', scalarType('string'))]),
+            model('Bank', [field('kind', literalType('bank')), field('iban', scalarType('string'))]),
+            model('Method', [], { type: { kind: 'discriminatedUnion', discriminator: 'kind', members: [refType('Card'), refType('Bank')] } as never }),
+        ]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('    kind: Literal["card"]');
+        expect(output).toContain('from typing import Annotated, Literal');
+        expect(output).toContain('Method = Annotated[Card | Bank, Field(discriminator="kind")]');
     });
 
     it('keeps a required nullable aliased field required', () => {
