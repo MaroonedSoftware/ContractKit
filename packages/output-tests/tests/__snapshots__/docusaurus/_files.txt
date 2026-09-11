@@ -2,6 +2,7 @@ docs/api-reference/_category_.json
 docs/api-reference/billing/_category_.json
 docs/api-reference/billing/create-credential.md
 docs/api-reference/billing/create-payment.md
+docs/api-reference/billing/create-payments.md
 docs/api-reference/billing/create-session.md
 docs/api-reference/billing/delete-payment.md
 docs/api-reference/billing/get-payment.md

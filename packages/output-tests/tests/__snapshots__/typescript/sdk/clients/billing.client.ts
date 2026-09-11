@@ -29,6 +29,16 @@ export class BillingClient {
         return (await parseJson<Payment[]>(result)).map(revivePayment);
     }
 
+    /** @description create several payments at once */
+    async createPayments(body: PaymentInput[]): Promise<Payment[]> {
+        const result = await this.fetch(`/payments/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body, bigIntReplacer),
+        });
+        return (await parseJson<Payment[]>(result)).map(revivePayment);
+    }
+
     /** @description fetch one payment */
     async getPayment(paymentId: string): Promise<Payment> {
         const result = await this.fetch(`/payments/${encodeURIComponent(paymentId)}`, { method: 'GET' });

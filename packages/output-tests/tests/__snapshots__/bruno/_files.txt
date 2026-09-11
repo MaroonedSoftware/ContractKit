@@ -4,6 +4,7 @@ bruno/billing/get-payments-paymentId.yml
 bruno/billing/get-payments.yml
 bruno/billing/get-refunds-paymentId.yml
 bruno/billing/post-credentials.yml
+bruno/billing/post-payments-batch.yml
 bruno/billing/post-payments-paymentId-receipt.yml
 bruno/billing/post-payments-paymentId.yml
 bruno/billing/post-payments.yml

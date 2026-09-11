@@ -51,6 +51,15 @@ class BillingClient(private val http: SdkHttp) {
         return http.decodeJson(response)
     }
 
+    /** create several payments at once */
+    suspend fun createPayments(body: List<PaymentInput>): List<Payment> {
+        val response = http.execute(HttpMethod.Post) {
+            path("payments", "batch")
+            jsonBody(body, "application/json")
+        }
+        return http.decodeJson(response)
+    }
+
     /**
      * fetch one payment
      * @throws SdkError on 404

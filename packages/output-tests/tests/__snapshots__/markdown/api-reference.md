@@ -10,10 +10,11 @@
 - [Current service status](#current-service-status)
 
 <details>
-<summary><strong>Billing</strong> (9)</summary>
+<summary><strong>Billing</strong> (10)</summary>
 
 - [Create a payment](#create-a-payment)
 - [List payments](#list-payments)
+- [Create several payments at once](#create-several-payments-at-once)
 - [Fetch one payment](#fetch-one-payment)
 - [Update a payment with form data](#update-a-payment-with-form-data)
 - [Delete a payment — declares only a documented error status](#delete-a-payment-declares-only-a-documented-error-status)
@@ -197,6 +198,24 @@ Response headers:
 | `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
 
 </details>
+
+##### Response
+
+`200 OK` — Returns a list of [Payment](#payment) objects.
+
+
+---
+
+#### Create several payments at once
+
+**`POST`** `/payments/batch`
+
+> [!NOTE]
+> SDK method: `createPayments`
+
+##### Request body (`application/json`)
+
+Accepts a list of [Payment](#payment) objects.
 
 ##### Response
 
