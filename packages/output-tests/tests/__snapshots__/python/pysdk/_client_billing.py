@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 from urllib.parse import quote
-from typing import Literal, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError  # noqa: F401
 from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, TenantHeaders, UpdatePaymentForm, UploadReceiptForm
@@ -93,7 +93,7 @@ class BillingClient(BaseClient):
         result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="DELETE")
         return None
 
-    async def upload_receipt(self, payment_id: UUID, body: dict) -> Payment:
+    async def upload_receipt(self, payment_id: UUID, body: dict[str, Any]) -> Payment:
         """
         upload a receipt image
         """

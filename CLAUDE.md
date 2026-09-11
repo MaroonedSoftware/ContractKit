@@ -49,3 +49,7 @@ pnpm test
 
 Scope with `pnpm --filter @contractkit/core test`, or a single file with
 `pnpm --filter @contractkit/core exec vitest run tests/parser-ck.test.ts`.
+
+output-tests also runs `mypy --strict` over the generated Python SDK and imports it, but only when
+`CK_TEST_PYTHON` points at a Python 3.11+ with mypy, pydantic and httpx installed. CI has none, so
+those checks are skipped there.

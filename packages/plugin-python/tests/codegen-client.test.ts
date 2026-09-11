@@ -420,8 +420,18 @@ describe('generatePythonClient', () => {
         const output = generatePythonClient(root);
         expect(output).toContain('body_kind="multipart"');
         // A mapping of parts, not bytes: httpx generates the boundary from it, and a caller
-        // could never have supplied a boundary of their own.
-        expect(output).toContain('body: dict');
+        // could never have supplied a boundary of their own. Parameterized, for mypy --strict.
+        expect(output).toContain('body: dict[str, Any]');
+        expect(output).toContain('from typing import Any');
+    });
+
+    it('types an inline block that declares nothing as dict[str, Any]', () => {
+        const root = opRoot([
+            opRoute('/payments', [opOperation('get', { sdk: 'listPayments', query: paramNodes([]), responses: [opResponse(204)] })]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('query: dict[str, Any] | None = None');
+        expect(output).toContain('from typing import Any');
     });
 
     it('leaves a JSON body on the json= path with no body_kind', () => {

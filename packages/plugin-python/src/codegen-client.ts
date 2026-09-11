@@ -765,7 +765,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
             // httpx's `files=` takes a mapping of part name to content, and generates the
             // boundary from it. `bytes` could never have worked: it is the whole payload with no
             // boundary, and there is no way for the client to supply one.
-            params.push({ name: 'body', type: 'dict', optional: false, isModel: false });
+            params.push({ name: 'body', type: 'dict[str, Any]', optional: false, isModel: false });
         } else if (cat === 'binary') {
             params.push({ name: 'body', type: 'bytes', optional: false, isModel: false });
         } else if (cat === 'text') {
@@ -818,7 +818,7 @@ function renderParamSourceType(source: ParamSource, modelsWithInput?: Set<string
     if (source.kind === 'params') {
         // The module-level TypedDict emitted for this method, or a bare dict when the block
         // declares nothing to describe.
-        return source.nodes.length > 0 ? typedDictName! : 'dict';
+        return source.nodes.length > 0 ? typedDictName! : 'dict[str, Any]';
     }
     return renderPyType(source.node, modelsWithInput, forInput);
 }
@@ -915,6 +915,8 @@ function collectReferencedModels(root: OpRootNode, modelsWithInput?: Set<string>
             if (route.params) collectParamSourceRefs(route.params, refs, modelsWithInput);
             if (op.request) {
                 for (const body of op.request.bodies) collectTypeRefs(body.bodyType, refs, modelsWithInput, true);
+                // A multipart body is typed `dict[str, Any]` whatever its schema says.
+                if (op.request.bodies[0]?.contentType === 'multipart/form-data') refs.add('__any__');
             }
             for (const resp of op.responses) {
                 for (const body of resp.bodies) collectTypeRefs(body.bodyType, refs, modelsWithInput, false);
@@ -922,8 +924,12 @@ function collectReferencedModels(root: OpRootNode, modelsWithInput?: Set<string>
                 // `datetime` or `uuid` needs the same stdlib import a body of that type would.
                 for (const h of resp.headers ?? []) collectTypeRefs(h.type, refs, modelsWithInput, false);
             }
-            if (op.query) collectParamSourceRefs(op.query, refs, modelsWithInput);
-            if (op.headers) collectParamSourceRefs(op.headers, refs, modelsWithInput);
+            for (const source of [op.query, op.headers]) {
+                if (!source) continue;
+                collectParamSourceRefs(source, refs, modelsWithInput);
+                // An inline block that declares nothing is typed `dict[str, Any]`.
+                if (source.kind === 'params' && source.nodes.length === 0) refs.add('__any__');
+            }
         }
     }
 
