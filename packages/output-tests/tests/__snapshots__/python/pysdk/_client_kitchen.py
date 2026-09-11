@@ -65,19 +65,19 @@ class KitchenClient(BaseClient):
         """
         a method name that is a keyword in the target languages
         """
-        result = await self._fetch(f"/folders/{quote(str(folder_id), safe='')}", method="PUT", body=body.model_dump(mode="json"))
+        result = await self._fetch(f"/folders/{quote(str(folder_id), safe='')}", method="PUT", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Instrument.model_validate(result)
 
     async def post_ledger(self, body: LedgerInput) -> Ledger:
-        result = await self._fetch("/ledgers", method="POST", body=body.model_dump(mode="json"))
+        result = await self._fetch("/ledgers", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Ledger.model_validate(result)
 
     async def stamp(self, body: Stamped) -> Stamped:
-        result = await self._fetch("/stamps", method="POST", body=body.model_dump(mode="json"))
+        result = await self._fetch("/stamps", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Stamped.model_validate(result)
 
     async def mint(self, body: Token) -> Token:
-        result = await self._fetch("/tokens", method="POST", body=body.model_dump(mode="json"))
+        result = await self._fetch("/tokens", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Token.model_validate(result)
 
     async def list_tokens(self) -> list[Token]:
