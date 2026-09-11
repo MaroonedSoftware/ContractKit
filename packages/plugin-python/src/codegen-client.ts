@@ -172,17 +172,24 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         if (needsTypedDict) typingImports.push('TypedDict');
         lines.push(`from typing import ${typingImports.join(', ')}`);
     }
-    // Request bodies that are neither a single model nor sent raw, each serialized by a
-    // module-level TypeAdapter built once at import rather than on every call.
-    const bodyAdapters = publicOps.flatMap(({ route, op }) => {
-        const name = bodyAdapterName(route, op, typeAliases);
-        return name ? [{ name, type: renderInputPyType(op.request!.bodies[0]!.bodyType, modelsWithInput) }] : [];
-    });
+    // Module-level TypeAdapters, built once at import rather than on every call: one for each
+    // request body that is neither a single model nor sent raw, and one for each JSON response
+    // type that is not a single model. Each method's come in the order it declares them.
+    const adapters: { name: string; type: string }[] = [];
+    const responseAdapterNames = new Map<OpResponseBodyNode, string>();
+    for (const { route, op } of publicOps) {
+        const bodyName = bodyAdapterName(route, op, typeAliases);
+        if (bodyName) adapters.push({ name: bodyName, type: renderInputPyType(op.request!.bodies[0]!.bodyType, modelsWithInput) });
+        for (const { body, name, type } of responseAdapters(route, op, opShapes.get(op)!, modelsWithInput, typeAliases)) {
+            responseAdapterNames.set(body, name);
+            if (!adapters.some(a => a.name === name)) adapters.push({ name, type });
+        }
+    }
 
     const pydanticImports: string[] = [];
     // A discriminated union renders as `Annotated[A | B, Field(discriminator=...)]`.
     if (needsAnnotated) pydanticImports.push('Field');
-    if (bodyAdapters.length > 0) pydanticImports.push('TypeAdapter');
+    if (adapters.length > 0) pydanticImports.push('TypeAdapter');
     if (pydanticImports.length > 0) lines.push(`from pydantic import ${pydanticImports.join(', ')}`);
     lines.push('from ._base_client import BaseClient, SdkError  # noqa: F401');
     if (referencedModels.has('__bigint__')) lines.push(`from ${SCALARS_MODULE} import BigInt`);
@@ -281,10 +288,10 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         }
     }
 
-    if (bodyAdapters.length > 0) {
+    if (adapters.length > 0) {
         lines.push('');
         lines.push('');
-        for (const { name, type } of bodyAdapters) lines.push(`${name} = TypeAdapter(${type})`);
+        for (const { name, type } of adapters) lines.push(`${name} = TypeAdapter(${type})`);
     }
 
     lines.push('');
@@ -299,7 +306,7 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
             hasAnyMethod = true;
             lines.push('');
             if (mods.includes('deprecated')) lines.push('    # @deprecated');
-            lines.push(...generateMethod(route, op, opts));
+            lines.push(...generateMethod(route, op, opts, responseAdapterNames));
         }
     }
 
@@ -321,7 +328,12 @@ interface MethodParam {
     isModel: boolean; // Pydantic BaseModel → serialized with .model_dump(...) by its contract names
 }
 
-function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCodegenOptions): string[] {
+function generateMethod(
+    route: OpRouteNode,
+    op: OpOperationNode,
+    opts: ClientCodegenOptions,
+    responseAdapterNames: Map<OpResponseBodyNode, string>,
+): string[] {
     const lines: string[] = [];
     const { modelsWithInput, typeAliases } = opts;
     const methodName = deriveMethodName(op, route);
@@ -348,8 +360,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     const isVoid = primaryBodies.length === 0;
     const respCategory = primaryBodies[0] ? classifyContentType(primaryBodies[0].contentType) : 'json';
     const dataType = isVoid ? 'None' : pyBodyType(primaryBodies[0]!, modelsWithInput);
-    const isModelReturn = !isVoid && respCategory === 'json' && isModelRef(primaryBodies[0]!.bodyType, typeAliases);
-    const isListModelReturn = !isVoid && respCategory === 'json' && isListModelRef(primaryBodies[0]!.bodyType, typeAliases);
+    const dataExpr = (body: OpResponseBodyNode) => pyDataExpr(body, responseAdapterNames, modelsWithInput, typeAliases);
     const respHeaders = primaryResponse?.headers ?? [];
     const hasRespHeaders = respHeaders.length > 0;
     const headersTypeName = hasRespHeaders ? headersClassName(methodBase) : '';
@@ -450,7 +461,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
 
     if (shape.kind !== 'simple') {
         lines.push(`        _status, _content_type, result, _response_headers = await self._fetch_full(${urlExpr}, ${kwargsStr})`);
-        lines.push(...buildMultiReturnLines(shape, methodBase, where, modelsWithInput, typeAliases));
+        lines.push(...buildMultiReturnLines(shape, methodBase, where, dataExpr));
         return lines;
     }
 
@@ -467,36 +478,75 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
         } else {
             lines.push(`        return None`);
         }
+    } else if (hasRespHeaders) {
+        lines.push(`        return ${dataExpr(primaryBodies[0]!)}, headers`);
     } else {
-        let dataExpr: string;
-        if (isListModelReturn) {
-            const innerType = getListItemType(primaryBodies[0]!.bodyType, modelsWithInput);
-            dataExpr = `[${innerType}.model_validate(item) for item in result]`;
-        } else if (isModelReturn) {
-            dataExpr = `${dataType}.model_validate(result)`;
-        } else {
-            dataExpr = 'result';
-        }
-        if (hasRespHeaders) {
-            lines.push(`        return ${dataExpr}, headers`);
-        } else {
-            lines.push(`        return ${dataExpr}`);
-        }
+        lines.push(`        return ${dataExpr(primaryBodies[0]!)}`);
     }
 
     return lines;
 }
 
-/** The expression that turns a decoded body into the declared type, validating models. */
-function pyDataExpr(body: OpResponseBodyNode, modelsWithInput?: Set<string>, typeAliases?: Set<string>): string {
-    if (classifyContentType(body.contentType) !== 'json') return 'result';
-    if (isListModelRef(body.bodyType, typeAliases)) {
-        return `[${getListItemType(body.bodyType, modelsWithInput)}.model_validate(item) for item in result]`;
-    }
-    if (isModelRef(body.bodyType, typeAliases)) {
+/**
+ * The expression that turns a decoded body into its declared type: `model_validate` for a single
+ * model, the body's module-level `TypeAdapter` for any other JSON type, and the decoded value as
+ * it is for text, binary and `Any`.
+ */
+function pyDataExpr(
+    body: OpResponseBodyNode,
+    responseAdapterNames: Map<OpResponseBodyNode, string>,
+    modelsWithInput?: Set<string>,
+    typeAliases?: Set<string>,
+): string {
+    const adapter = responseAdapterNames.get(body);
+    if (adapter) return `${adapter}.validate_python(result)`;
+    if (classifyContentType(body.contentType) === 'json' && isModelRef(body.bodyType, typeAliases)) {
         return `${renderPyType(body.bodyType, modelsWithInput)}.model_validate(result)`;
     }
     return 'result';
+}
+
+/**
+ * The module-level `TypeAdapter` each of an operation's JSON response bodies is validated with.
+ *
+ * Only a single model used to be validated. Everything else was returned as decoded JSON under
+ * the declared annotation, so `record(string, Item)` came back as plain dicts, a union as a dict,
+ * and `array(bigint)` or `array(date)` as the strings on the wire.
+ *
+ * Left out: a single model, which keeps `model_validate`; a type rendered `Any`, which has nothing
+ * to check; and text and binary bodies, which are returned as they arrived. The name is
+ * `_<METHOD>_RESPONSE`, with the status appended when the method reports several. Bodies of one
+ * status that share a type share an adapter, and a status's second distinct type gets its mime
+ * appended, since the status alone no longer tells them apart.
+ */
+function responseAdapters(
+    route: OpRouteNode,
+    op: OpOperationNode,
+    shape: PyResponseShape,
+    modelsWithInput?: Set<string>,
+    typeAliases?: Set<string>,
+): { body: OpResponseBodyNode; name: string; type: string }[] {
+    const method = deriveMethodName(op, route).toUpperCase();
+    const responses = shape.kind === 'multiStatus' ? shape.responses : shape.resp ? [shape.resp] : [];
+    return responses.flatMap(resp => {
+        const base = shape.kind === 'multiStatus' ? `_${method}_RESPONSE_${resp.statusCode}` : `_${method}_RESPONSE`;
+        const namesByType = new Map<string, string>();
+        return resp.bodies.flatMap(body => {
+            if (classifyContentType(body.contentType) !== 'json' || isModelRef(body.bodyType, typeAliases)) return [];
+            const type = renderPyType(body.bodyType, modelsWithInput);
+            if (type === 'Any') return [];
+            let name = namesByType.get(type);
+            if (!name) {
+                const mime = body.contentType
+                    .replace(/^application\//, '')
+                    .replace(/[^A-Za-z0-9]+/g, '_')
+                    .toUpperCase();
+                name = namesByType.size === 0 ? base : `${base}_${mime}`;
+                namesByType.set(type, name);
+            }
+            return [{ body, name, type }];
+        });
+    });
 }
 
 /**
@@ -509,8 +559,7 @@ function buildMultiReturnLines(
     shape: Extract<PyResponseShape, { kind: 'multiMime' | 'multiStatus' }>,
     methodBase: string,
     where: string,
-    modelsWithInput?: Set<string>,
-    typeAliases?: Set<string>,
+    dataExpr: (body: OpResponseBodyNode) => string,
 ): string[] {
     const lines: string[] = [];
 
@@ -519,7 +568,7 @@ function buildMultiReturnLines(
         if (includeStatus) entries.push(`"status": ${resp.statusCode}`);
         if (body) {
             entries.push(`"content_type": ${JSON.stringify(body.contentType)}`);
-            entries.push(`"data": ${pyDataExpr(body, modelsWithInput, typeAliases)}`);
+            entries.push(`"data": ${dataExpr(body)}`);
         }
         if (headersVar) entries.push(`"headers": ${headersVar}`);
         return [`${indent}return {${entries.length > 0 ? ` ${entries.join(', ')} ` : ''}}`];
@@ -837,17 +886,6 @@ function bodyAdapterName(route: OpRouteNode, op: OpOperationNode, typeAliases?: 
     if (category !== 'json' && category !== 'urlencoded') return undefined;
     if (isModelRef(body.bodyType, typeAliases)) return undefined;
     return `_${deriveMethodName(op, route).toUpperCase()}_BODY`;
-}
-
-function isListModelRef(type: ContractTypeNode, typeAliases?: Set<string>): boolean {
-    if (type.kind === 'array') return isModelRef(type.item, typeAliases);
-    if (type.kind === 'lazy') return isListModelRef(type.inner, typeAliases);
-    return false;
-}
-
-function getListItemType(type: ContractTypeNode, modelsWithInput?: Set<string>): string {
-    if (type.kind === 'array') return renderPyType(type.item, modelsWithInput);
-    return 'dict';
 }
 
 // ─── Referenced model collection ─────────────────────────────────────────

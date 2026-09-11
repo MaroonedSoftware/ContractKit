@@ -30,7 +30,9 @@ ListPaymentsHeaders = TypedDict("ListPaymentsHeaders", {
 })
 
 
+_LIST_PAYMENTS_RESPONSE = TypeAdapter(list[Payment])
 _CREATE_PAYMENTS_BODY = TypeAdapter(list[PaymentInput])
+_CREATE_PAYMENTS_RESPONSE = TypeAdapter(list[Payment])
 
 
 class BillingClient(BaseClient):
@@ -56,14 +58,14 @@ class BillingClient(BaseClient):
         list payments
         """
         result = await self._fetch("/payments", method="GET", params=query, extra_headers=custom_headers)
-        return [Payment.model_validate(item) for item in result]
+        return _LIST_PAYMENTS_RESPONSE.validate_python(result)
 
     async def create_payments(self, body: list[PaymentInput]) -> list[Payment]:
         """
         create several payments at once
         """
         result = await self._fetch("/payments/batch", method="POST", body=_CREATE_PAYMENTS_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True))
-        return [Payment.model_validate(item) for item in result]
+        return _CREATE_PAYMENTS_RESPONSE.validate_python(result)
 
     async def get_payment(self, payment_id: UUID) -> Payment:
         """

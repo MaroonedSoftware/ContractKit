@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { generatePythonClient, deriveClientClassName, deriveClientModuleName, hasPublicOperations, BASE_CLIENT_PY } from '../src/codegen-client.js';
 import {
-    scalarType, arrayType, refType, enumType, recordType, unionType, inlineObjectType,
+    scalarType, arrayType, tupleType, refType, enumType, recordType, unionType, inlineObjectType,
     opParam, paramNodes, paramRef, paramType, opRequest, opResponse, opOperation, opRoute, opRoot,
+    type ContractTypeNode,
 } from './helpers.js';
 
 // ─── deriveClientClassName ────────────────────────────────────────────────
@@ -128,14 +129,136 @@ describe('generatePythonClient', () => {
         expect(output).toContain('Payment.model_validate(result)');
     });
 
-    it('generates list comprehension for array model responses', () => {
+    it('validates an array-of-model response through a module-level TypeAdapter', () => {
         const root = opRoot([
             opRoute('/payments', [
                 opOperation('get', { responses: [opResponse(200, 'array(Payment)')] }),
             ]),
         ]);
         const output = generatePythonClient(root);
-        expect(output).toContain('[Payment.model_validate(item) for item in result]');
+        expect(output).toContain('_GET_PAYMENTS_RESPONSE = TypeAdapter(list[Payment])');
+        expect(output).toContain('return _GET_PAYMENTS_RESPONSE.validate_python(result)');
+    });
+
+    describe('response validation', () => {
+        const discriminated: ContractTypeNode = { kind: 'discriminatedUnion', discriminator: 'kind', members: [refType('Card'), refType('Bank')] };
+
+        it('validates every JSON response that is not a single model, not just lists of models', () => {
+            const root = opRoot([
+                opRoute('/a', [opOperation('get', { sdk: 'byId', responses: [opResponse(200, recordType(scalarType('string'), refType('Item')))] })]),
+                opRoute('/b', [opOperation('get', { sdk: 'anyMethod', responses: [opResponse(200, unionType(refType('Card'), refType('Bank')))] })]),
+                opRoute('/c', [opOperation('get', { sdk: 'tagged', responses: [opResponse(200, discriminated)] })]),
+                opRoute('/d', [opOperation('get', { sdk: 'counts', responses: [opResponse(200, arrayType(scalarType('bigint')))] })]),
+                opRoute('/e', [opOperation('get', { sdk: 'days', responses: [opResponse(200, arrayType(scalarType('date')))] })]),
+                opRoute('/f', [opOperation('get', { sdk: 'pair', responses: [opResponse(200, tupleType(scalarType('date'), scalarType('decimal')))] })]),
+            ]);
+            const output = generatePythonClient(root);
+            // Returned raw, each of these was decoded JSON under a lying annotation: plain dicts for
+            // the models, and the wire strings for bigint, date and Decimal.
+            expect(output).toContain('_BY_ID_RESPONSE = TypeAdapter(dict[str, Item])');
+            expect(output).toContain('_ANY_METHOD_RESPONSE = TypeAdapter(Card | Bank)');
+            expect(output).toContain('_TAGGED_RESPONSE = TypeAdapter(Annotated[Card | Bank, Field(discriminator="kind")])');
+            expect(output).toContain('_COUNTS_RESPONSE = TypeAdapter(list[BigInt])');
+            expect(output).toContain('_DAYS_RESPONSE = TypeAdapter(list[date])');
+            expect(output).toContain('_PAIR_RESPONSE = TypeAdapter(tuple[date, Decimal])');
+            expect(output).toContain('return _BY_ID_RESPONSE.validate_python(result)');
+            expect(output).toContain('return _COUNTS_RESPONSE.validate_python(result)');
+            expect(output).not.toMatch(/^\s+return result$/m);
+            // The adapters are evaluated at import, so everything their types name is imported.
+            expect(output).toContain('from pydantic import Field, TypeAdapter');
+            expect(output).toContain('from ._scalars import BigInt');
+            expect(output).toContain('from datetime import date');
+            expect(output).toContain('from decimal import Decimal');
+        });
+
+        it('keeps model_validate for a single model and adds no adapter for Any, text or binary', () => {
+            const root = opRoot([
+                opRoute('/m', [opOperation('get', { sdk: 'getModel', responses: [opResponse(200, 'Item')] })]),
+                opRoute('/j', [opOperation('get', { sdk: 'getJson', responses: [opResponse(200, scalarType('json'))] })]),
+                opRoute('/t', [opOperation('get', { sdk: 'getText', responses: [opResponse(200, scalarType('string'), 'text/plain')] })]),
+                opRoute('/b', [opOperation('get', { sdk: 'getBytes', responses: [opResponse(200, scalarType('binary'), 'application/octet-stream')] })]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).not.toContain('TypeAdapter');
+            expect(output).toContain('return Item.model_validate(result)');
+        });
+
+        it('validates a response typed by a type-alias contract through an adapter', () => {
+            const root = opRoot([opRoute('/tier', [opOperation('get', { sdk: 'getTier', responses: [opResponse(200, 'Tier')] })])]);
+            const output = generatePythonClient(root, { typeAliases: new Set(['Tier']) });
+            expect(output).toContain('_GET_TIER_RESPONSE = TypeAdapter(Tier)');
+            expect(output).toContain('return _GET_TIER_RESPONSE.validate_python(result)');
+        });
+
+        it('validates the body alongside declared response headers', () => {
+            const root = opRoot([
+                opRoute('/days', [
+                    opOperation('get', {
+                        sdk: 'days',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: arrayType(scalarType('date')) }],
+                                headers: [{ name: 'etag', optional: true, type: scalarType('string') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('return _DAYS_RESPONSE.validate_python(result), headers');
+        });
+
+        it('names one adapter per status when a method reports several', () => {
+            const root = opRoot([
+                opRoute('/multi', [
+                    opOperation('get', {
+                        sdk: 'multi',
+                        responses: [
+                            opResponse(200, recordType(scalarType('string'), refType('Item'))),
+                            opResponse(202, arrayType(scalarType('date'))),
+                            opResponse(409, 'Item'),
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('_MULTI_RESPONSE_200 = TypeAdapter(dict[str, Item])');
+            expect(output).toContain('_MULTI_RESPONSE_202 = TypeAdapter(list[date])');
+            expect(output).toContain('"data": _MULTI_RESPONSE_202.validate_python(result)');
+            expect(output).toContain('"data": _MULTI_RESPONSE_200.validate_python(result)');
+            expect(output).toContain('"data": Item.model_validate(result)');
+        });
+
+        it('shares an adapter across mimes of one type and tells a second type apart by its mime', () => {
+            const root = opRoot([
+                opRoute('/mime', [
+                    opOperation('get', {
+                        sdk: 'mime',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [
+                                    { contentType: 'application/json', bodyType: arrayType(scalarType('bigint')) },
+                                    { contentType: 'application/vnd.api+json', bodyType: arrayType(scalarType('bigint')) },
+                                    { contentType: 'application/vnd.map+json', bodyType: recordType(scalarType('string'), scalarType('bigint')) },
+                                    { contentType: 'text/csv', bodyType: scalarType('string') },
+                                ],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output.match(/^_MIME_RESPONSE\w* = /gm)).toEqual(['_MIME_RESPONSE = ', '_MIME_RESPONSE_VND_MAP_JSON = ']);
+            expect(output).toContain('_MIME_RESPONSE = TypeAdapter(list[BigInt])');
+            expect(output).toContain('_MIME_RESPONSE_VND_MAP_JSON = TypeAdapter(dict[str, BigInt])');
+            expect(output).toContain('return { "content_type": "application/vnd.api+json", "data": _MIME_RESPONSE.validate_python(result) }');
+            expect(output).toContain('return { "content_type": "application/vnd.map+json", "data": _MIME_RESPONSE_VND_MAP_JSON.validate_python(result) }');
+            expect(output).toContain('return { "content_type": "text/csv", "data": result }');
+        });
     });
 
     it('emits a TypedDict for an inline query block and requires it when its fields are', () => {

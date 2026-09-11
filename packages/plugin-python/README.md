@@ -50,6 +50,8 @@ Each `contract` declaration becomes a Pydantic v2 `BaseModel`. Contracts that ha
 
 Each operation file with at least one public operation generates a client class. Methods correspond to HTTP verbs and are named from the `sdk:` field in the `.ck` source. Request and response bodies are typed with the generated Pydantic models.
 
+A JSON response is validated against its declared type, so a method returns the Python type it is annotated with. A single model goes through `model_validate`. Any other type (a list, record, tuple or union, or one holding a `bigint`, `date` or `Decimal`) goes through a module-level `TypeAdapter` built once at import. A response that does not match raises `pydantic.ValidationError`. Text and binary responses are returned as `str` and `bytes`.
+
 A method returns its body directly when the operation has one response a caller can receive. When it has several, the return type is a union of per-status `TypedDict`s keyed on a `Literal` status, and when one status declares several content types the result carries the `content_type` that actually came back.
 
 ### Aggregator (`__init__.py`)
