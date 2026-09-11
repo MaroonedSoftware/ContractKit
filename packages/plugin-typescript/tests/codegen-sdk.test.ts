@@ -46,6 +46,7 @@ import {
     literalType,
     lazyType,
     unionType,
+    intersectionType,
     field,
     loc,
 } from './helpers.js';
@@ -2279,6 +2280,39 @@ describe('decimal rehydration', () => {
         expect(out).toContain(`import { Decimal } from 'decimal.js';`);
         expect(out).toContain('Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });');
         expect(out).toContain('const __dec = (v: unknown, path: string): Decimal =>');
+    });
+
+    // A wrapper for a body with no reviveX of its own still calls the reviveX of each model it
+    // holds. Imports read off the method bodies alone missed those calls: TS2304 in the client.
+    it('imports the model reviver an inline wrapper calls', () => {
+        const bodyType = intersectionType(refType('Invoice'), inlineObjectType([field('note', scalarType('string'))]));
+        const root = opRoot(
+            [opRoute('/invoices/{id}', [opOperation('get', { sdk: 'getInvoice', responses: [opResponse(200, bodyType)] })])],
+            'inv.op',
+        );
+        const out = generateSdk(root, withDecimal());
+        expect(out).toMatch(/function __reviveGetInvoice200\(/);
+        expect(out).toContain('reviveInvoice(__v[0] as never);');
+        expect(out).toContain(`import { reviveInvoice } from '../types/models.js';`);
+    });
+
+    it('imports the model reviver an inline wrapper calls in an area client', () => {
+        const bodyType = inlineObjectType([field('invoice', refType('Invoice'))]);
+        const root = opRoot(
+            [opRoute('/invoices/{id}', [opOperation('get', { sdk: 'getInvoice', responses: [opResponse(200, bodyType)] })])],
+            'inv.op',
+            { area: 'billing' },
+        );
+        const outPath = '/out/billing/billing.client.ts';
+        const out = generateAreaClient({
+            area: 'billing',
+            outPath,
+            inlineFiles: [{ root, codegenOptions: withDecimal({ outPath }) }],
+            subareaClients: [],
+            sdkOptionsPath: '/out/sdk-options.ts',
+        });
+        expect(out).toMatch(/function __reviveGetInvoice200\(/);
+        expect(out).toContain(`import { reviveInvoice } from '../types/models.js';`);
     });
 
     it('picks the Output reviver when the model has an Output variant', () => {

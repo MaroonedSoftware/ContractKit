@@ -218,7 +218,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '9';
+export const TYPESCRIPT_CODEGEN_VERSION = '10';
 
 // The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
 // temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`

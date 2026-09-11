@@ -240,7 +240,15 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     // text-derived idiom the reviver imports already use just below.
     const referenced = referencedTypes(types, [...classBody, ...errorAliases, ...inlineReviverDecls, ...inlineSerializerDecls]);
     if (referenced.length > 0) {
-        lines.push(...generateTypeImports(referenced, root.file, options, usedRevivers(classBody), usedSerializers(serialize, options)));
+        lines.push(
+            ...generateTypeImports(
+                referenced,
+                root.file,
+                options,
+                usedRevivers([...classBody, ...inlineReviverDecls]),
+                usedSerializers(serialize, options),
+            ),
+        );
     }
     lines.push(...scalarClassImports([...classBody, ...errorAliases, ...decimalPrelude, ...inlineReviverDecls, ...inlineSerializerDecls]));
 
@@ -466,7 +474,6 @@ function scalarClassImports(emitted: string[]): string[] {
     return imports;
 }
 
-/** Model reviver names referenced by generated method bodies. `__revive…` wrappers are local. */
 /**
  * Narrow a collected type list to the names the emitted code actually mentions.
  *
@@ -490,6 +497,11 @@ function usedSerializers(state: BodySerializeState, options: SdkCodegenOptions):
     return calledSerializerModels([...state.calls, ...[...state.inlineSerializers.values()].flat()], options.modelsWithSerializer ?? new Set());
 }
 
+/**
+ * Model reviver names the emitted lines call. Pass the inline `__revive…` wrappers along with the
+ * method bodies: a wrapper for an intersection or an inline object calls the `reviveX` of each model
+ * it holds. The wrappers themselves are local and never matched, `_` being a word character.
+ */
 function usedRevivers(lines: string[]): string[] {
     const found = new Set<string>();
     for (const m of lines.join('\n').matchAll(/\brevive[A-Z]\w*/g)) found.add(m[0]);
@@ -2307,9 +2319,10 @@ export function generateAreaClient(input: AreaClientInput): string {
         if (sdkNeedsHeaders(inline.root, includeInternal)) needsHeaders = true;
         if (sdkNeedsReadContentType(inline.root, includeInternal)) needsReadContentType = true;
 
-        // Revivers this file's methods call, resolved against the same modelOutPaths. Derived from
-        // the emitted lines, exactly as `generateSdk` does, so the two paths cannot disagree.
-        for (const reviver of usedRevivers(methodLines)) {
+        // Revivers this file's methods and inline wrappers call, resolved against the same
+        // modelOutPaths. Derived from the emitted lines, exactly as `generateSdk` does, so the two
+        // paths cannot disagree.
+        for (const reviver of usedRevivers([...methodLines, ...inlineDecls.flat()])) {
             const stem = reviver.replace(/^revive/, '');
             const modelOut = inline.codegenOptions.modelOutPaths?.get(stem) ?? inline.codegenOptions.modelOutPaths?.get(stem.replace(/Output$/, ''));
             if (!modelOut) continue;
