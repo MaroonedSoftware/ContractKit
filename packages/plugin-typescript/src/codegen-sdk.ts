@@ -7,6 +7,7 @@ import type {
     OpResponseBodyNode,
     OpResponseHeaderNode,
     ContractTypeNode,
+    FieldNode,
     ModelNode,
     OpParamNode,
     ParamSource,
@@ -28,9 +29,11 @@ import {
     quoteKey,
     headerNameToProperty,
     escapeJsDocLines,
+    escapeSingleQuoted,
     sourceLink,
     JSON_VALUE_TYPE_DECL,
 } from './ts-render.js';
+import { requestWireFields } from './codegen-wire-input.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { reviveFnName, renderInlineReviver, typeReachesDecimal, coerceDeclsFor } from './codegen-revive.js';
@@ -241,6 +244,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         if (sdkNeedsQueryString(root, includeInternal)) valueImports.push('buildQueryString');
         if (sdkNeedsHeaders(root, includeInternal)) valueImports.push('buildHeaders');
         if (sdkNeedsReadContentType(root, includeInternal)) valueImports.push('readContentType');
+        if (usesParseBigIntHeader(classBody)) valueImports.push('parseBigIntHeader');
         if (valueImports.length > 0) {
             lines.push(`import { ${valueImports.join(', ')} } from '${rel}';`);
         }
@@ -316,6 +320,10 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('');
         lines.push(...BUILD_HEADERS_DECL);
         lines.push('');
+        if (usesParseBigIntHeader(classBody)) {
+            lines.push(...PARSE_BIGINT_HEADER_DECL);
+            lines.push('');
+        }
         lines.push('export async function parseJson<T>(res: Response): Promise<T> {');
         lines.push(
             sdkResponsesUseBigInt(root, options, includeInternal)
@@ -558,13 +566,14 @@ function generateMethod(
     }
 
     // Build URL with path params
-    const urlExpr = buildUrlExpression(route.path, route.params, pathBindings);
+    const urlExpr = buildUrlExpression(route.path, route.params, pathBindings, options.modelMap);
 
     // Query string
     const hasQuery = !!op.query;
     let fetchUrl = urlExpr;
     if (hasQuery) {
-        lines.push(`        const qs = buildQueryString(query);`);
+        const queryOptional = params.find(p => p.name === 'query')?.optional ?? false;
+        lines.push(`        const qs = buildQueryString(${serializedParamArg('query', queryOptional, op.query!, options.modelMap)});`);
         fetchUrl = urlExpr;
     }
 
@@ -624,13 +633,15 @@ function generateMethod(
     }
 
     if (hasOpHeaders) {
+        const headersOptional = params.find(p => p.name === 'customHeaders')?.optional ?? false;
+        const headersCall = `buildHeaders(${serializedParamArg('customHeaders', headersOptional, op.headers!, options.modelMap)})`;
         const lastHeaderIdx = fetchArgs.findIndex(a => a.startsWith('headers:'));
         if (lastHeaderIdx !== -1) {
             const existing = fetchArgs[lastHeaderIdx]!;
             const inner = existing.slice('headers: '.length).replace(/^\{\s*|\s*\}$/g, '');
-            fetchArgs[lastHeaderIdx] = `headers: { ${inner}, ...buildHeaders(customHeaders) }`;
+            fetchArgs[lastHeaderIdx] = `headers: { ${inner}, ...${headersCall} }`;
         } else {
-            fetchArgs.push('headers: buildHeaders(customHeaders)');
+            fetchArgs.push(`headers: ${headersCall}`);
         }
     }
 
@@ -831,7 +842,7 @@ function sdkHeaderEntry(h: OpResponseHeaderNode, where: string): string {
         case 'boolean':
             return `${key}: ${h.optional ? `${raw} === null ? undefined : ${raw} === 'true'` : `${raw} === 'true'`}`;
         case 'bigint':
-            return convert(v => `BigInt(${v})`);
+            return convert(v => `parseBigIntHeader('${h.name}', ${v})`);
         default:
             throw new Error(
                 `Response header '${h.name}' on ${where} is declared as ${describeHeaderType(h.type)}, which cannot be read from an HTTP header. ` +
@@ -987,17 +998,55 @@ export function generateErrorBodyAliases(root: OpRootNode, options: SdkCodegenOp
  * The placeholder pattern matches what the `.ck` grammar allows rather than just
  * `[a-zA-Z_]\w*`, so a hyphenated `{payment-id}` is interpolated instead of being left in the URL
  * verbatim. Such a name is not a valid property accessor either, hence the bracket form.
+ *
+ * A value `String` would mangle, a `date`, `time` or `decimal`, is written in the text the router
+ * parses; see {@link wireValueExpr}.
  */
-function buildUrlExpression(path: string, params: ParamSource | undefined, bindings: Map<string, string>): string {
+function buildUrlExpression(path: string, params: ParamSource | undefined, bindings: Map<string, string>, modelMap?: Map<string, ModelNode>): string {
     return path.replace(PATH_PARAM_RE_G, (_m, name: string) => {
         // Spread across the signature: interpolate the identifier `buildMethodParams` bound.
-        if (!params || params.kind === 'params') return `\${encodeURIComponent(${bindings.get(name) ?? toIdentifier(name)})}`;
+        if (!params || params.kind === 'params') {
+            const binding = bindings.get(name) ?? toIdentifier(name);
+            const type = params?.nodes.find(p => p.name === name)?.type;
+            return `\${encodeURIComponent(${type ? spreadPathValue(type, binding, modelMap) : binding})}`;
+        }
         // Behind one `params` argument: read the model's field, which keeps its declared spelling
         // and so may need bracket access. `String(...)` because that field may be typed something
         // `encodeURIComponent` does not accept.
         const access = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? `params.${name}` : `params[${JSON.stringify(name)}]`;
-        return `\${encodeURIComponent(String(${access}))}`;
+        const field = pathParamFields(params, modelMap).find(f => f.name === name);
+        const wire = field && wireValueExpr(field.type, access, Boolean(field.optional || field.nullable), modelMap);
+        return `\${encodeURIComponent(String(${wire ?? access}))}`;
     });
+}
+
+/**
+ * An inline path parameter as `encodeURIComponent` takes it.
+ *
+ * Its TypeScript type is the scalar's, and the global accepts only `string | number | boolean`, so
+ * a `datetime`, `duration` or `bigint` argument did not compile. Those go through `String`, whose
+ * output the router parses. Everything else is passed as it always was.
+ */
+function spreadPathValue(type: ContractTypeNode, binding: string, modelMap?: Map<string, ModelNode>): string {
+    const wire = wireValueExpr(type, binding, false, modelMap);
+    if (wire) return wire;
+    const resolved = resolveParamType(type, modelMap);
+    const needsString = resolved.kind === 'scalar' && (resolved.name === 'datetime' || resolved.name === 'duration' || resolved.name === 'bigint');
+    return needsString ? `String(${binding})` : binding;
+}
+
+/**
+ * The fields behind a `params: Model` or inline-object argument, under their declared names: the
+ * URL reads each one by the placeholder's name, so no `format(input=)` casing applies.
+ */
+function pathParamFields(params: ParamSource, modelMap?: Map<string, ModelNode>): FieldNode[] {
+    if (params.kind === 'params') return [];
+    if (params.kind === 'type') {
+        const node = resolveParamType(params.node, modelMap);
+        return node.kind === 'inlineObject' ? node.fields : [];
+    }
+    const model = modelMap?.get(params.name);
+    return model ? requestWireFields(model, modelMap!).map(f => f.field) : [];
 }
 
 // ─── Method parameters ────────────────────────────────────────────────────
@@ -1036,6 +1085,7 @@ const SDK_METHOD_LOCALS = [
     'buildQueryString',
     'buildHeaders',
     'readContentType',
+    'parseBigIntHeader',
 ] as const;
 
 /**
@@ -1165,6 +1215,167 @@ function inlineArgParam(name: string, source: ParamSource, modelsWithInput?: Set
 function normaliseOptionalOrder(params: MethodParam[]): MethodParam[] {
     const lastRequired = params.reduce((last, p, i) => (p.optional ? last : i), -1);
     return params.map((p, i) => (i < lastRequired ? { ...p, optional: false } : p));
+}
+
+// ─── Parameter serialization ──────────────────────────────────────────────
+
+/**
+ * `type` with `lazy()` and type aliases (`contract Day: date`) unwrapped, which the router parses
+ * exactly as whatever they name.
+ */
+function resolveParamType(type: ContractTypeNode, modelMap?: Map<string, ModelNode>): ContractTypeNode {
+    const seen = new Set<string>();
+    let current = type;
+    for (;;) {
+        if (current.kind === 'lazy') {
+            current = current.inner;
+        } else if (current.kind === 'ref' && !seen.has(current.name) && modelMap?.get(current.name)?.type) {
+            seen.add(current.name);
+            current = modelMap.get(current.name)!.type!;
+        } else {
+            return current;
+        }
+    }
+}
+
+/**
+ * The text one scalar value has to go out as, where `String(value)` gets it wrong.
+ *
+ * The router parses a query, header or path value from the text it receives, and for most scalars
+ * `String` already produces what it parses: a number, a boolean, a bigint, and a `datetime` or
+ * `duration`, whose luxon `toString()` is the ISO form `fromISO` reads back. Three do not:
+ *
+ * - `date` and `time` are luxon `DateTime`s, which stringify as a full ISO timestamp. The router
+ *   reads them with `DateTime.fromFormat` against the contract's `format` (`yyyy-MM-dd` and
+ *   `HH:mm:ss` by default), so `2026-09-11T00:00:00.000-04:00` was a 400.
+ * - `decimal` stringifies in exponential notation outside decimal.js's `toExpNeg`/`toExpPos`
+ *   range unless the file happened to apply the global config, so `0.00000001` went out as
+ *   `1e-8`, which the contract's documented pattern rejects. `toFixed()` with no argument is exact
+ *   and always in normal notation.
+ *
+ * A union is left alone: which member a value belongs to is only known at run time, and a
+ * `date | time` union has no single format to apply.
+ *
+ * @param dot `?.` when the value may be absent, so the call is skipped rather than thrown on.
+ */
+function wireScalarExpr(type: ContractTypeNode, value: string, dot: '.' | '?.'): string | undefined {
+    if (type.kind !== 'scalar') return undefined;
+    switch (type.name) {
+        case 'date':
+            return `${value}${dot}toFormat('${escapeSingleQuoted(type.format ?? 'yyyy-MM-dd')}')`;
+        case 'time':
+            return `${value}${dot}toFormat('${escapeSingleQuoted(type.format ?? 'HH:mm:ss')}')`;
+        case 'decimal':
+            return `${value}${dot}toFixed()`;
+        default:
+            return undefined;
+    }
+}
+
+/**
+ * {@link wireScalarExpr} for a value that may also be an array of such scalars, which
+ * `buildQueryString` repeats and `buildHeaders` joins item by item.
+ *
+ * @returns `undefined` when `String` already produces the right text, so the call site is left as
+ * it was.
+ */
+function wireValueExpr(type: ContractTypeNode, value: string, maybeAbsent: boolean, modelMap?: Map<string, ModelNode>): string | undefined {
+    const resolved = resolveParamType(type, modelMap);
+    const dot = maybeAbsent ? '?.' : '.';
+    if (resolved.kind === 'array') {
+        const item = wireScalarExpr(resolveParamType(resolved.item, modelMap), 'v', '.');
+        return item && `${value}${dot}map(v => ${item})`;
+    }
+    return wireScalarExpr(resolved, value, dot);
+}
+
+/** One key of a `query:` or `headers:` object, as the caller's argument spells it. */
+interface ParamField {
+    key: string;
+    type: ContractTypeNode;
+    /** Whether the value can be absent: `?`, a default, or `null`. */
+    optional: boolean;
+}
+
+/** The keys of a `query:` or `headers:` object whose declaration is visible from here. */
+function paramSourceFields(source: ParamSource, modelMap?: Map<string, ModelNode>): ParamField[] {
+    if (source.kind === 'params') {
+        return source.nodes.map(p => ({ key: p.name, type: p.type, optional: Boolean(p.optional || p.nullable) || p.default !== undefined }));
+    }
+    return typeFields(source.kind === 'ref' ? { kind: 'ref', name: source.name } : source.node, modelMap, new Set());
+}
+
+/**
+ * The fields of an object-shaped type: an inline object, a model (under the keys its `XWireInput`
+ * type spells), or an intersection of those. Anything else has no keys to name.
+ */
+function typeFields(type: ContractTypeNode, modelMap: Map<string, ModelNode> | undefined, seen: Set<string>): ParamField[] {
+    const field = (key: string, f: FieldNode): ParamField => ({
+        key,
+        type: f.type,
+        optional: Boolean(f.optional || f.nullable) || f.default !== undefined,
+    });
+    switch (type.kind) {
+        case 'lazy':
+            return typeFields(type.inner, modelMap, seen);
+        case 'inlineObject':
+            return type.fields.map(f => field(f.name, f));
+        case 'intersection':
+            return type.members.flatMap(m => typeFields(m, modelMap, seen));
+        case 'ref': {
+            const model = modelMap?.get(type.name);
+            if (!model || seen.has(model.name)) return [];
+            const inner = new Set(seen).add(model.name);
+            if (model.type) return typeFields(model.type, modelMap, inner);
+            return requestWireFields(model, modelMap!).map(({ key, field: f }) => field(key, f));
+        }
+        default:
+            return [];
+    }
+}
+
+/**
+ * The argument an SDK method hands `buildQueryString` or `buildHeaders` for its `query:` or
+ * `headers:` object: the object itself when every value stringifies correctly, otherwise a copy
+ * with each value that does not replaced by its wire text, e.g.
+ * `{ ...query, from: query?.from?.toFormat('yyyy-MM-dd') }`.
+ *
+ * Written out here, per field, because only the call site knows each value's declared type. The
+ * runtime helpers see a `DateTime` either way, and cannot tell a `date` from a `datetime`.
+ *
+ * @param argOptional Whether the method's argument itself may be omitted.
+ */
+function serializedParamArg(arg: string, argOptional: boolean, source: ParamSource, modelMap?: Map<string, ModelNode>): string {
+    // Keyed so an intersection naming a key twice keeps the last, as its type does; an object
+    // literal repeating a key does not compile.
+    const overrides = new Map<string, string>();
+    for (const f of paramSourceFields(source, modelMap)) {
+        const ident = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(f.key);
+        const read = `${arg}${argOptional ? '?.' : ident ? '.' : ''}${ident ? f.key : `['${f.key}']`}`;
+        const expr = wireValueExpr(f.type, read, argOptional || f.optional, modelMap);
+        if (expr) overrides.set(f.key, `${quoteKey(f.key)}: ${expr}`);
+        else overrides.delete(f.key);
+    }
+    if (overrides.size === 0) return arg;
+    return `{ ...${arg}, ${[...overrides.values()].join(', ')} }`;
+}
+
+/**
+ * Every parameter serialization the clients for `root` emit that depends on a model rather than on
+ * `root` itself, for the incremental cache. A `query: Filter` or `params: Key` argument is written
+ * field by field from the model's declaration, so a field becoming a `date`, or changing its
+ * `format`, changes the client even though the client's own AST did not move.
+ */
+export function sdkParamSerializationKey(root: OpRootNode, modelMap: Map<string, ModelNode>): string[] {
+    const out: string[] = [];
+    for (const route of root.routes) {
+        out.push(buildUrlExpression(route.path, route.params, bindSdkPathParams(route), modelMap));
+        for (const op of route.operations) {
+            if (op.query) out.push(serializedParamArg('query', false, op.query, modelMap));
+            if (op.headers) out.push(serializedParamArg('customHeaders', false, op.headers, modelMap));
+        }
+    }
+    return out;
 }
 
 // ─── Naming conventions ────────────────────────────────────────────────────
@@ -1411,6 +1622,27 @@ const BUILD_HEADERS_DECL: readonly string[] = [
     '    return out;',
     '}',
 ];
+
+/**
+ * The runtime helper that reads a `bigint` response header. The client used to call `BigInt()` on
+ * the raw value, which is looser than the wire form in one direction and stricter in the other:
+ * it took `0x10`, `''` and `' 7'` as `16n`, `0n` and `7n`, and threw an opaque SyntaxError on
+ * `123n`, which the OpenAPI output documents (`^-?\d+n?$`). This accepts exactly that pattern.
+ *
+ * Anything else throws, naming the header. A header has no validator to hand a bad value to, and
+ * no invalid `bigint` exists to stand in for one the way `NaN` does for `Number()`.
+ */
+const PARSE_BIGINT_HEADER_DECL: readonly string[] = [
+    'export function parseBigIntHeader(name: string, value: string): bigint {',
+    "    if (/^-?\\d+n?$/.test(value)) return BigInt(value.replace(/n$/, ''));",
+    "    throw new Error(`Response header '${name}' is not a bigint: ${JSON.stringify(value)}`);",
+    '}',
+];
+
+/** Whether emitted method lines read a `bigint` response header, and so import its helper. */
+function usesParseBigIntHeader(lines: readonly string[]): boolean {
+    return lines.some(l => l.includes('parseBigIntHeader('));
+}
 
 /** True if any emitted operation has query params (drives the `buildQueryString` import). */
 function sdkNeedsQueryString(root: OpRootNode, includeInternal = false): boolean {
@@ -1711,6 +1943,8 @@ export function generateSdkOptions(): string {
         '',
         ...BUILD_HEADERS_DECL,
         '',
+        ...PARSE_BIGINT_HEADER_DECL,
+        '',
         '/**',
         ' * Read a JSON response body.',
         ' *',
@@ -1993,6 +2227,7 @@ export function generateAreaClient(input: AreaClientInput): string {
     if (needsQueryString) valueImports.push('buildQueryString');
     if (needsHeaders) valueImports.push('buildHeaders');
     if (needsReadContentType) valueImports.push('readContentType');
+    if (usesParseBigIntHeader(collectedMethodLines)) valueImports.push('parseBigIntHeader');
     if (valueImports.length > 0) {
         lines.push(`import { ${valueImports.join(', ')} } from '${sdkOptionsRel}';`);
     }

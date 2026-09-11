@@ -104,6 +104,23 @@ function appliedCasing(model: ModelNode, modelMap: Map<string, ModelNode>): { in
     return { input: renamingCase(effective.inputCase), output: renamingCase(effective.outputCase) };
 }
 
+/**
+ * Every field a request can send for `model`, its bases' included, under the key the server's
+ * schema parses: the `format(input=)` spelling where one applies. Readonly fields are left out,
+ * as the model's `Input` schema leaves them out. Empty for a type alias, which has no fields.
+ *
+ * Used where the SDK writes a `query: X` or `headers: X` argument key by key, and so has to name
+ * each key exactly as the caller's `XWireInput` (or `XInput`) object spells it.
+ */
+export function requestWireFields(model: ModelNode, modelMap: Map<string, ModelNode>): { key: string; field: FieldNode }[] {
+    if (model.type) return [];
+    const effective = flattenFormatChain(model, modelMap);
+    const { input } = appliedCasing(model, modelMap);
+    return inheritedFields(effective, modelMap, new Set())
+        .filter(f => f.visibility !== 'readonly')
+        .map(field => ({ key: applyKeyCase(field.name, input), field }));
+}
+
 /** Every model name `model` mentions: its fields, its bases, and a type alias's expression. */
 function directRefs(model: ModelNode): Set<string> {
     const refs = new Set<string>();

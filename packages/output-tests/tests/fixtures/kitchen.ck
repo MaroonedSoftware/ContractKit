@@ -126,6 +126,7 @@ operation /folders/{folder-id}: {
                 headers: {
                     x-count: int
                     x-when?: datetime
+                    x-seq?: bigint
                 }
             }
             204:

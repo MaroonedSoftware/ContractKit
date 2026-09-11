@@ -46,7 +46,8 @@ public sealed class KitchenClient(SdkHttp http)
             {
                 var headers = new GetFolder200Headers(
                     long.Parse(http.RequireHeader(response, "x-count"), CultureInfo.InvariantCulture),
-                    response.Header("x-when") is { } xWhen ? DateTimeOffset.Parse(xWhen, CultureInfo.InvariantCulture) : null);
+                    response.Header("x-when") is { } xWhen ? DateTimeOffset.Parse(xWhen, CultureInfo.InvariantCulture) : null,
+                    response.Header("x-seq") is { } xSeq ? BigInteger.Parse(xSeq, CultureInfo.InvariantCulture) : null);
                 switch (response.ContentType)
                 {
                     case "text/plain":
@@ -153,7 +154,7 @@ public sealed record GetFolderHeaders
 }
 
 /// <summary>Response headers declared on GET /folders/{folder-id}.</summary>
-public sealed record GetFolder200Headers(long XCount, DateTimeOffset? XWhen);
+public sealed record GetFolder200Headers(long XCount, DateTimeOffset? XWhen, BigInteger? XSeq);
 
 /// <summary>
 /// What GET /folders/{folder-id} returned.

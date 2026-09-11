@@ -11,6 +11,7 @@ import com.example.sdk.models.Shared
 import com.example.sdk.models.SharedInput
 import com.example.sdk.models.Stamped
 import com.example.sdk.models.Token
+import com.example.sdk.runtime.BigInt
 import com.example.sdk.runtime.SdkHttp
 import io.ktor.http.HttpMethod
 import kotlin.time.Instant
@@ -39,6 +40,7 @@ class KitchenClient(private val http: SdkHttp) {
                 val headers = GetFolder200Headers(
                     http.requireHeader(response, "x-count").toLong(),
                     response.headers["x-when"]?.let { Instant.parse(it) },
+                    response.headers["x-seq"]?.let { BigInt(it) },
                 )
                 when (response.contentType) {
                     "text/plain" -> GetFolderResponse.Status200TextPlain(response.text, headers)
@@ -121,6 +123,7 @@ data class GetFolderHeaders(
 data class GetFolder200Headers(
     val xCount: Long,
     val xWhen: Instant?,
+    val xSeq: BigInt?,
 )
 
 /**

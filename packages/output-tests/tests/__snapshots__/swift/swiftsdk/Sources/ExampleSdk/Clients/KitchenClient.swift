@@ -23,7 +23,8 @@ public final class KitchenClient: Sendable {
         default:
             let headers = try GetFolder200Headers(
                 xCount: http.requireHeader(response, "x-count", as: Int.self),
-                xWhen: http.optionalHeader(response, "x-when", as: Date.self)
+                xWhen: http.optionalHeader(response, "x-when", as: Date.self),
+                xSeq: http.optionalHeader(response, "x-seq", as: BigIntValue.self)
             )
             switch response.contentType {
             case "text/plain":
@@ -123,10 +124,12 @@ public struct GetFolderHeaders: Encodable, Equatable, Sendable {
 public struct GetFolder200Headers: Equatable, Sendable {
     public let xCount: Int
     public let xWhen: Date?
+    public let xSeq: BigIntValue?
 
-    public init(xCount: Int, xWhen: Date?) {
+    public init(xCount: Int, xWhen: Date?, xSeq: BigIntValue?) {
         self.xCount = xCount
         self.xWhen = xWhen
+        self.xSeq = xSeq
     }
 }
 

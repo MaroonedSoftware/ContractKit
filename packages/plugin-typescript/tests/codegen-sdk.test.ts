@@ -16,8 +16,11 @@ import {
     generateSdkPackageJson,
     generateSdkTsconfig,
     generateErrorBodyAliases,
+    sdkParamSerializationKey,
 } from '../src/codegen-sdk.js';
-import { collectPublicTypeNames } from '@contractkit/core';
+import { generateOp } from '../src/codegen-operation.js';
+import { computeModelsWithWireInput } from '../src/codegen-wire-input.js';
+import { collectPublicTypeNames, computeModelsWithInput, decomposeCk, DiagnosticCollector, parseCk } from '@contractkit/core';
 import type { ContractTypeNode, OpRootNode } from '@contractkit/core';
 import { renderTsType, renderInputTsType } from '../src/ts-render.js';
 import {
@@ -465,10 +468,12 @@ describe('generateSdk', () => {
             expect(out).toContain("xRatio: result.headers.get('x-ratio') === null ? undefined : Number(result.headers.get('x-ratio'))");
             expect(out).toContain("xCached: result.headers.get('x-cached') === 'true'");
             expect(out).toContain("xFresh: result.headers.get('x-fresh') === null ? undefined : result.headers.get('x-fresh') === 'true'");
-            expect(out).toContain("xSeq: BigInt(result.headers.get('x-seq')!)");
+            expect(out).toContain("xSeq: parseBigIntHeader('x-seq', result.headers.get('x-seq')!)");
             // Asserted in both branches: TS does not carry the null narrowing across a second
-            // `get()` call, and `BigInt` takes no null.
-            expect(out).toContain("xPrev: result.headers.get('x-prev') === null ? undefined : BigInt(result.headers.get('x-prev')!)");
+            // `get()` call, and `parseBigIntHeader` takes no null.
+            expect(out).toContain(
+                "xPrev: result.headers.get('x-prev') === null ? undefined : parseBigIntHeader('x-prev', result.headers.get('x-prev')!)",
+            );
             // Temporals are Luxon objects since the SDK started reviving them, so a raw string no
             // longer satisfies the shape `renderOutputTsType` produces.
             expect(out).toContain(
@@ -2474,6 +2479,79 @@ describe('generateSdk — bigint reviver gating', () => {
     });
 });
 
+// ─── bigint response headers ──────────────────────────────────────────────
+
+describe('generateSdk — bigint response headers', () => {
+    const withHeader = (type: ReturnType<typeof scalarType>) =>
+        opRoot([
+            opRoute('/things', [
+                opOperation('get', {
+                    sdk: 'getThing',
+                    responses: [
+                        {
+                            statusCode: 200,
+                            hasBlock: true,
+                            bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Thing' } }],
+                            headers: [{ name: 'x-total', optional: false, type }],
+                        },
+                    ],
+                }),
+            ]),
+        ]);
+
+    const opts = { outPath: '/sdk/src/things.client.ts', sdkOptionsPath: '/sdk/sdk-options.ts' };
+
+    /** The helper the shared runtime emits, run for real. Its three annotations are the only TS in it. */
+    function runtimeParseBigIntHeader(): (name: string, value: string) => bigint {
+        const decl = generateSdkOptions()
+            .match(/export function parseBigIntHeader[\s\S]*?\n}/)![0]
+            .replace('export ', '')
+            .replace('(name: string, value: string): bigint', '(name, value)');
+        return new Function(`${decl}\nreturn parseBigIntHeader;`)();
+    }
+
+    it.each([
+        ['123', 123n],
+        ['123n', 123n],
+        ['-42', -42n],
+        ['98765432109876543210', 98765432109876543210n],
+    ])('reads the wire form %j', (value, expected) => {
+        expect(runtimeParseBigIntHeader()('x-total', value)).toBe(expected);
+    });
+
+    it.each(['abc', '0x10', '', ' 7', '7 ', '+7', '1.5', '1nn'])('rejects %j, naming the header, instead of letting BigInt() decide', value => {
+        // BigInt() took "0x10", "" and " 7" as 16n, 0n and 7n, and threw an opaque SyntaxError on
+        // "abc" and on the documented "123n" form alike.
+        expect(() => runtimeParseBigIntHeader()('x-total', value)).toThrow(`Response header 'x-total' is not a bigint: ${JSON.stringify(value)}`);
+    });
+
+    it('imports parseBigIntHeader only into a client that reads a bigint header', () => {
+        expect(generateSdk(withHeader(scalarType('bigint')), opts)).toMatch(
+            /import \{[^}]*\bparseBigIntHeader\b[^}]*\} from '\.\.\/sdk-options\.js';/,
+        );
+        expect(generateSdk(withHeader(scalarType('int')), opts)).not.toContain('parseBigIntHeader');
+    });
+
+    it('defines parseBigIntHeader inline when there is no shared sdk-options file', () => {
+        const out = generateSdk(withHeader(scalarType('bigint')));
+        expect(out).toContain('export function parseBigIntHeader(name: string, value: string): bigint {');
+        expect(out).not.toMatch(/import \{[^}]*parseBigIntHeader/);
+    });
+
+    it('imports parseBigIntHeader into an area client whose inlined method reads one', () => {
+        const root = withHeader(scalarType('bigint'));
+        const out = generateAreaClient({
+            area: 'things',
+            outPath: '/out/things/things.client.ts',
+            inlineFiles: [{ root, codegenOptions: { outPath: '/out/things/things.client.ts', sdkOptionsPath: '/out/sdk-options.ts' } }],
+            subareaClients: [],
+            sdkOptionsPath: '/out/sdk-options.ts',
+        });
+        expect(out).toContain("parseBigIntHeader('x-total', result.headers.get('x-total')!)");
+        expect(out).toMatch(/import \{[^}]*\bparseBigIntHeader\b[^}]*\} from '\.\.\/sdk-options\.js';/);
+    });
+});
+
 // ─── Hyphenated path parameters ───────────────────────────────────────────
 
 describe('generateSdk — path parameter names that are not identifiers', () => {
@@ -2490,5 +2568,292 @@ describe('generateSdk — path parameter names that are not identifiers', () => 
         expect(out).toContain('async getInvoice(invoiceId: string)');
         expect(out).toContain('${encodeURIComponent(invoiceId)}');
         expect(out).not.toContain('{invoice-id}');
+    });
+});
+
+// ─── Query and header param wire format ───────────────────────────────────
+
+function parseSource(source: string) {
+    const diag = new DiagnosticCollector();
+    const parsed = decomposeCk(parseCk(source, 'test.ck', diag));
+    expect(diag.getAll().filter(d => d.severity === 'error')).toEqual([]);
+    return parsed;
+}
+
+/** The SDK client for `.ck` source, with the model context the plugin passes in. */
+function sdkFor(source: string): string {
+    const { contract, op } = parseSource(source);
+    return generateSdk(op, {
+        modelMap: new Map(contract.models.map(m => [m.name, m])),
+        modelsWithInput: computeModelsWithInput(contract.models),
+        modelsWithWireInput: computeModelsWithWireInput(contract.models, 'zod'),
+    });
+}
+
+describe('generateSdk: query and header values in the wire format the router parses', () => {
+    /** An operation `GET /reports` declaring `block` (a `query:` or `headers:` entry), plus any models. */
+    const reportsOp = (block: string, models = '') => `${models}
+operation /reports: {
+    get: {
+        sdk: listReports
+        service: ReportService.list
+        ${block}
+        response: {
+            204:
+        }
+    }
+}
+`;
+
+    it('formats a date query param with the router default instead of a full ISO timestamp', () => {
+        const out = sdkFor(reportsOp('query: {\n            from?: date\n        }'));
+        // `String(DateTime)` is `toISO()`, which `DateTime.fromFormat(val, 'yyyy-MM-dd')` rejects.
+        expect(out).toContain("const qs = buildQueryString({ ...query, from: query?.from?.toFormat('yyyy-MM-dd') });");
+    });
+
+    it('reads a required field off a required argument without optional chaining', () => {
+        const out = sdkFor(reportsOp('query: {\n            day: date\n        }'));
+        expect(out).toContain('async listReports(query: { day: DateTime })');
+        expect(out).toContain("buildQueryString({ ...query, day: query.day.toFormat('yyyy-MM-dd') })");
+    });
+
+    it('chains optionally into a required field when the argument itself may be omitted', () => {
+        // Every field optional but one with a default: the argument is optional, so even a field
+        // the caller must otherwise supply is read through `query?.`.
+        const out = sdkFor(reportsOp('query: {\n            at?: time\n            limit: int = 20\n        }'));
+        expect(out).toContain("buildQueryString({ ...query, at: query?.at?.toFormat('HH:mm:ss') })");
+    });
+
+    it('honours a custom format on date and time, escaping a quote luxon uses for literals', () => {
+        const out = sdkFor(reportsOp(`query: {\n            day: date("dd.MM.yyyy")\n            at: time(format="HH'h'mm")\n        }`));
+        expect(out).toContain("day: query.day.toFormat('dd.MM.yyyy')");
+        expect(out).toContain("at: query.at.toFormat('HH\\'h\\'mm')");
+    });
+
+    it('formats with exactly the format string the router parses with', () => {
+        const source = reportsOp(
+            'query: {\n            a: date\n            b: date("MM/dd/yyyy")\n            c?: time\n            d?: time("HH:mm")\n        }',
+        );
+        const { op } = parseSource(source);
+        const router = generateOp(op);
+        const sdk = sdkFor(source);
+        const formats = (text: string, re: RegExp) => [...text.matchAll(re)].map(m => m[1]).sort();
+        const parsed = formats(router, /DateTime\.fromFormat\(val, '([^']+)'\)/g);
+        expect(parsed).toEqual(['HH:mm', 'HH:mm:ss', 'MM/dd/yyyy', 'yyyy-MM-dd']);
+        expect(formats(sdk, /toFormat\('([^']+)'\)/g)).toEqual(parsed);
+    });
+
+    it('writes a decimal in normal notation rather than the exponential form String() can produce', () => {
+        const out = sdkFor(reportsOp('query: {\n            minTotal?: decimal(scale=2)\n        }'));
+        expect(out).toContain('buildQueryString({ ...query, minTotal: query?.minTotal?.toFixed() })');
+    });
+
+    it('leaves the call untouched when every value already stringifies to what the router parses', () => {
+        // datetime and duration stringify through luxon's toISO(), which the router reads back with
+        // fromISO; the numeric and boolean scalars through their own String form. A datetime's
+        // format is not consulted, since the router's `_ZodDatetime` always parses ISO.
+        const out = sdkFor(
+            reportsOp(
+                'query: {\n            since?: datetime\n            stamped?: datetime("yyyy-MM-dd HH:mm")\n            ttl?: duration\n            n?: int\n            big?: bigint\n            flag?: boolean\n            q?: string\n        }',
+            ),
+        );
+        expect(out).toContain('const qs = buildQueryString(query);');
+    });
+
+    it('formats each item of an array of dates', () => {
+        const out = sdkFor(reportsOp('query: {\n            days?: array(date)\n        }'));
+        expect(out).toContain("buildQueryString({ ...query, days: query?.days?.map(v => v.toFormat('yyyy-MM-dd')) })");
+    });
+
+    it('uses bracket access for a key that is not an identifier', () => {
+        const out = sdkFor(reportsOp('query: {\n            from-date?: date\n        }'));
+        expect(out).toContain("buildQueryString({ ...query, 'from-date': query?.['from-date']?.toFormat('yyyy-MM-dd') })");
+    });
+
+    it('leaves a union alone, since no single format fits every member', () => {
+        const out = sdkFor(reportsOp('query: {\n            when?: date | time\n        }'));
+        expect(out).toContain('const qs = buildQueryString(query);');
+    });
+
+    it('formats a header param the same way', () => {
+        const out = sdkFor(reportsOp('headers: {\n            x-as-of: date\n            x-trace?: string\n        }'));
+        expect(out).toContain("headers: buildHeaders({ ...customHeaders, 'x-as-of': customHeaders['x-as-of'].toFormat('yyyy-MM-dd') }),");
+    });
+
+    it('formats a header param alongside a request content type', () => {
+        const source = `contract Note: {
+    text: string
+}
+
+operation /notes: {
+    post: {
+        sdk: createNote
+        service: NoteService.create
+        headers: {
+            x-effective?: date
+        }
+        request: {
+            application/json: Note
+        }
+        response: {
+            204:
+        }
+    }
+}
+`;
+        expect(sdkFor(source)).toContain(
+            "headers: { 'Content-Type': 'application/json', ...buildHeaders({ ...customHeaders, 'x-effective': customHeaders?.['x-effective']?.toFormat('yyyy-MM-dd') }) },",
+        );
+    });
+
+    it("reads a query model's fields, its bases' included, and skips readonly ones", () => {
+        const models = `contract Window: {
+    from?: date
+}
+
+contract ReportFilter: Window & {
+    until?: date("dd.MM.yyyy")
+    generatedOn?: readonly date
+    status?: string
+}
+`;
+        const out = sdkFor(reportsOp('query: ReportFilter', models));
+        expect(out).toContain('query?: ReportFilterInput');
+        expect(out).toContain(
+            "buildQueryString({ ...query, from: query?.from?.toFormat('yyyy-MM-dd'), until: query?.until?.toFormat('dd.MM.yyyy') })",
+        );
+        // Not a key of `ReportFilterInput`, so naming it would not compile.
+        expect(out).not.toContain('generatedOn');
+    });
+
+    it("sends a format(input=) model's fields under the keys its WireInput type spells", () => {
+        const models = `contract format(input=snake) ReportFilter: {
+    fromDate?: date
+}
+`;
+        const out = sdkFor(reportsOp('query: ReportFilter', models));
+        expect(out).toContain('query?: ReportFilterWireInput');
+        expect(out).toContain("buildQueryString({ ...query, from_date: query?.from_date?.toFormat('yyyy-MM-dd') })");
+    });
+
+    it('resolves a type alias to the scalar and format it names', () => {
+        const models = `contract Day: date("yyyyMMdd")
+`;
+        const out = sdkFor(reportsOp('query: {\n            day: Day\n            days?: array(Day)\n        }', models));
+        expect(out).toContain("day: query.day.toFormat('yyyyMMdd')");
+        expect(out).toContain("days: query.days?.map(v => v.toFormat('yyyyMMdd'))");
+    });
+
+    it('formats a header model as well', () => {
+        const models = `contract AsOfHeaders: {
+    x-as-of: date
+}
+`;
+        const out = sdkFor(reportsOp('headers: AsOfHeaders', models));
+        // A model-typed argument is optional, so even its required field may be absent.
+        expect(out).toContain("headers: buildHeaders({ ...customHeaders, 'x-as-of': customHeaders?.['x-as-of']?.toFormat('yyyy-MM-dd') }),");
+    });
+
+    it('writes the same serialization inside an area client', () => {
+        const { contract, op } = parseSource(reportsOp('query: {\n            from?: date\n        }'));
+        const out = generateAreaClient({
+            area: 'reports',
+            outPath: '/out/clients/reports.client.ts',
+            inlineFiles: [{ root: op, codegenOptions: { modelMap: new Map(contract.models.map(m => [m.name, m])) } }],
+            subareaClients: [],
+            sdkOptionsPath: '/out/sdk-options.ts',
+        });
+        expect(out).toContain("buildQueryString({ ...query, from: query?.from?.toFormat('yyyy-MM-dd') })");
+        expect(out).toContain("import { DateTime } from 'luxon';");
+    });
+});
+
+describe('generateSdk: path params in the wire format the router parses', () => {
+    /** `GET <path>` declaring `params`, plus any models. */
+    const pathOp = (path: string, params: string, models = '') => `${models}
+operation ${path}: {
+    params: ${params}
+    get: {
+        sdk: getReport
+        service: ReportService.get
+        response: {
+            204:
+        }
+    }
+}
+`;
+
+    it('formats an inline date or time path param, honouring a custom format', () => {
+        const out = sdkFor(pathOp('/reports/{day}/{at}', '{\n        day: date\n        at: time("HH:mm")\n    }'));
+        // `encodeURIComponent(day)` with a DateTime did not compile, and at run time sent toISO().
+        expect(out).toContain("`/reports/${encodeURIComponent(day.toFormat('yyyy-MM-dd'))}/${encodeURIComponent(at.toFormat('HH:mm'))}`");
+    });
+
+    it('formats with exactly the format string the router parses a path param with', () => {
+        const source = pathOp('/reports/{day}/{at}', '{\n        day: date("MM-dd-yyyy")\n        at: time\n    }');
+        const router = generateOp(parseSource(source).op);
+        const formats = (text: string, re: RegExp) => [...text.matchAll(re)].map(m => m[1]).sort();
+        const parsed = formats(router, /DateTime\.fromFormat\(val, '([^']+)'\)/g);
+        expect(parsed).toEqual(['HH:mm:ss', 'MM-dd-yyyy']);
+        expect(formats(sdkFor(source), /toFormat\('([^']+)'\)/g)).toEqual(parsed);
+    });
+
+    it('passes a datetime, duration or bigint through String, which encodeURIComponent requires', () => {
+        const out = sdkFor(pathOp('/runs/{at}/{ttl}/{seq}', '{\n        at: datetime\n        ttl: duration\n        seq: bigint\n    }'));
+        expect(out).toContain('`/runs/${encodeURIComponent(String(at))}/${encodeURIComponent(String(ttl))}/${encodeURIComponent(String(seq))}`');
+    });
+
+    it('leaves a string or numeric path param as it was', () => {
+        const out = sdkFor(pathOp('/users/{id}/{page}', '{\n        id: uuid\n        page: int\n    }'));
+        expect(out).toContain('`/users/${encodeURIComponent(id)}/${encodeURIComponent(page)}`');
+    });
+
+    it("formats a params model's date field, read under its declared name", () => {
+        const models = `contract ReportKey: {
+    region: string
+    day: date("yyyyMMdd")
+}
+`;
+        const out = sdkFor(pathOp('/reports/{region}/{day}', 'ReportKey', models));
+        expect(out).toContain(
+            "`/reports/${encodeURIComponent(String(params.region))}/${encodeURIComponent(String(params.day.toFormat('yyyyMMdd')))}`",
+        );
+    });
+});
+
+describe('sdkParamSerializationKey', () => {
+    const keyFor = (source: string) => {
+        const { contract, op } = parseSource(source);
+        return sdkParamSerializationKey(op, new Map(contract.models.map(m => [m.name, m]))).join();
+    };
+    /** `GET /reports/{day}` with `params` at the route and `query` (if any) on the method. */
+    const withModel = (model: string, params: string, query = '') => `${model}
+operation /reports/{day}: {
+    params: ${params}
+    get: {
+        sdk: listReports
+        service: ReportService.list
+        ${query}
+        response: {
+            204:
+        }
+    }
+}
+`;
+
+    it("changes when a referenced query model's field changes, though the client's own AST does not", () => {
+        // The incremental cache fingerprints a client by its own AST; a `query: X` argument is
+        // written from X's fields, so the key has to carry them or the client goes stale.
+        const keys = ['from?: string', 'from?: date', 'from?: date("dd.MM.yyyy")'].map(f =>
+            keyFor(withModel(`contract ReportFilter: {\n    ${f}\n}`, '{\n        day: string\n    }', 'query: ReportFilter')),
+        );
+        expect(new Set(keys).size).toBe(3);
+    });
+
+    it("changes when a params model's field changes", () => {
+        const keys = ['day: string', 'day: date', 'day: date("dd.MM.yyyy")'].map(f =>
+            keyFor(withModel(`contract ReportKey: {\n    ${f}\n}`, 'ReportKey')),
+        );
+        expect(new Set(keys).size).toBe(3);
     });
 });
