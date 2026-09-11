@@ -37,6 +37,7 @@ import { requestWireFields } from './codegen-wire-input.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { reviveFnName, renderInlineReviver, typeReachesDecimal, coerceDeclsFor } from './codegen-revive.js';
+import { calledSerializerModels, renderInlineSerializer, serializeFnName, temporalWireFormat, wireDeclsFor } from './codegen-serialize.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
 import { typeReachesBigInt } from './bigint-runtime.js';
 import { bindIdentifiers } from './reserved-words.js';
@@ -51,30 +52,39 @@ type BodyStrategy =
     | { kind: 'multi-formdata-detect'; bodies: OpRequestBodyNode[] }
     | { kind: 'multi-required-arg'; bodies: OpRequestBodyNode[] };
 
-/** Serialize expression for a single MIME, given the source body var (e.g. 'body'). */
-function jsonOrFormSerialize(varName: string, contentType: string): string {
+/**
+ * Serialize expression for a single MIME, given the source body var (e.g. 'body').
+ *
+ * @param wire The body with its `date`, `time` and `decimal` values rewritten, from
+ * {@link bodyWireExpr}, when it holds any. A multipart body is `FormData` and never has one.
+ */
+function jsonOrFormSerialize(varName: string, contentType: string, wire?: string): string {
     if (contentType === 'application/x-www-form-urlencoded') {
-        return `new URLSearchParams(${varName} as unknown as Record<string, string>).toString()`;
+        return wire
+            ? `new URLSearchParams(${wire} as Record<string, string>).toString()`
+            : `new URLSearchParams(${varName} as unknown as Record<string, string>).toString()`;
     }
     if (contentType === 'multipart/form-data') {
         return `(${varName} as FormData)`;
     }
     // application/json + any `+json` structured suffix — JSON.stringify with bigint support.
-    return `JSON.stringify(${varName}, bigIntReplacer)`;
+    return `JSON.stringify(${wire ?? varName}, bigIntReplacer)`;
 }
 
 /**
  * Build a runtime expression that picks the right serialization based on a contentType variable.
  * Used by the SDK when the caller passes (or defaults to) a content-type at call time.
+ *
+ * @param wireFor The rewritten body for the arm at each index, as {@link jsonOrFormSerialize} takes it.
  */
-function renderSerializeExpr(varName: string, bodies: OpRequestBodyNode[], ctVar: string): string {
+function renderSerializeExpr(varName: string, bodies: OpRequestBodyNode[], ctVar: string, wireFor: (index: number) => string | undefined): string {
     // Build a chained ternary, last MIME is the fallback
     const arms = bodies.slice(0, -1);
     const last = bodies[bodies.length - 1]!;
-    let expr = jsonOrFormSerialize(varName, last.contentType);
+    let expr = jsonOrFormSerialize(varName, last.contentType, wireFor(bodies.length - 1));
     for (let i = arms.length - 1; i >= 0; i--) {
         const arm = arms[i]!;
-        expr = `${ctVar} === '${arm.contentType}' ? ${jsonOrFormSerialize(varName, arm.contentType)} : ${expr}`;
+        expr = `${ctVar} === '${arm.contentType}' ? ${jsonOrFormSerialize(varName, arm.contentType, wireFor(i))} : ${expr}`;
     }
     return expr;
 }
@@ -117,6 +127,11 @@ export interface SdkCodegenOptions {
     modelsWithDecimal?: Set<string>;
     /** Model names carrying a `bigint`, directly or transitively. Selects the JSON reviver. */
     modelsWithBigInt?: Set<string>;
+    /**
+     * Models whose types file declares a `serializeX`, from `computeModelsWithSerializer`. A request
+     * body reaching one is passed through it before it is stringified.
+     */
+    modelsWithSerializer?: Set<string>;
     /** Every model in scope, for resolving discriminated-union members inside an inline reviver. */
     modelMap?: Map<string, ModelNode>;
     /**
@@ -197,18 +212,20 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     // codegen-operation decides its imports from the code it just emitted. A reviver import that
     // came from a predicate instead could drift and leave an unused local behind.
     const inlineRevivers = new Map<string, string[]>();
+    const serialize = newBodySerializeState();
     const classBody: string[] = [];
     for (const route of root.routes) {
         for (const op of route.operations) {
             const mods = resolveModifiers(route, op);
             if (!includeInternal && mods.includes('internal')) continue;
             classBody.push('');
-            classBody.push(...generateMethod(route, op, root.file, options, inlineRevivers));
+            classBody.push(...generateMethod(route, op, root.file, options, inlineRevivers, serialize));
         }
     }
 
     const inlineReviverDecls = [...inlineRevivers.values()].flat();
-    const decimalPrelude = decimalPreludeFor(inlineReviverDecls);
+    const inlineSerializerDecls = [...serialize.inlineSerializers.values()].flat();
+    const decimalPrelude = inlinePreludeFor([...inlineReviverDecls, ...inlineSerializerDecls]);
     // Computed here rather than at its splice point below, so the import filter can see the
     // aliases: an error-body alias is a genuine reference to a model type.
     const errorAliases = generateErrorBodyAliases(root, options);
@@ -221,11 +238,11 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     // special-casing multipart in `collectTypes`, which validating multipart bodies would later
     // have to undo, keep only the types the emitted text actually names. This is the same
     // text-derived idiom the reviver imports already use just below.
-    const referenced = referencedTypes(types, [...classBody, ...errorAliases, ...inlineReviverDecls]);
+    const referenced = referencedTypes(types, [...classBody, ...errorAliases, ...inlineReviverDecls, ...inlineSerializerDecls]);
     if (referenced.length > 0) {
-        lines.push(...generateTypeImports(referenced, root.file, options, usedRevivers(classBody)));
+        lines.push(...generateTypeImports(referenced, root.file, options, usedRevivers(classBody), usedSerializers(serialize, options)));
     }
-    lines.push(...scalarClassImports([...classBody, ...errorAliases, ...decimalPrelude, ...inlineReviverDecls]));
+    lines.push(...scalarClassImports([...classBody, ...errorAliases, ...decimalPrelude, ...inlineReviverDecls, ...inlineSerializerDecls]));
 
     // SdkOptions import (from shared file) or inline fallback
     if (options.sdkOptionsPath && options.outPath) {
@@ -349,8 +366,9 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push(...decimalPrelude);
     }
 
-    // Wrappers for bodies with no `reviveX` of their own — an inline object, a record, a tuple.
-    for (const decl of inlineRevivers.values()) {
+    // Wrappers for bodies with no `reviveX` or `serializeX` of their own: an inline object, a
+    // record, a tuple.
+    for (const decl of [...inlineRevivers.values(), ...serialize.inlineSerializers.values()]) {
         lines.push('');
         lines.push(...decl);
     }
@@ -377,45 +395,46 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
  *
  * @returns `lines`, one consolidated array pre-indented for class-body level with leading blank
  * lines between methods; `methodNames`, used by the caller to detect cross-file collisions when
- * several files contribute to the same area-level client; `preludeLines`, module-level
- * declarations the methods reference (decimal revivers and their `__dec` helper) which the caller
- * must splice in above the class. The emitting file derives its own imports from these lines.
+ * several files contribute to the same area-level client; `inlineDecls`, the module-level
+ * functions the methods reference (inline revivers and serializers), which the caller must splice
+ * in above the class along with the helpers {@link inlinePreludeFor} finds in them;
+ * `serializerModels`, the models whose `serializeX` the methods call. The emitting file derives
+ * its other imports from these lines.
  */
 export function generateClientMethods(
     root: OpRootNode,
     options: SdkCodegenOptions,
-): { lines: string[]; methodNames: string[]; preludeLines: string[] } {
+): { lines: string[]; methodNames: string[]; inlineDecls: string[][]; serializerModels: string[] } {
     const lines: string[] = [];
     const methodNames: string[] = [];
     const includeInternal = options.includeInternal ?? false;
     const inlineRevivers = new Map<string, string[]>();
+    const serialize = newBodySerializeState();
     for (const route of root.routes) {
         for (const op of route.operations) {
             const mods = resolveModifiers(route, op);
             if (!includeInternal && mods.includes('internal')) continue;
             lines.push('');
-            lines.push(...generateMethod(route, op, root.file, options, inlineRevivers));
+            lines.push(...generateMethod(route, op, root.file, options, inlineRevivers, serialize));
             methodNames.push(deriveSdkMethodName(op, route));
         }
     }
-    // Module-level declarations the methods reference, spliced above the class by the caller —
-    // the same shape `generateErrorBodyAliases` already uses.
-    const declLines = [...inlineRevivers.values()].flat();
-    const decls = decimalPreludeFor(declLines);
-    const preludeLines = [...(decls.length > 0 ? ['', ...decls] : []), ...[...inlineRevivers.values()].flatMap(decl => ['', ...decl])];
-    return { lines, methodNames, preludeLines };
+    // Returned undivided rather than with their helpers prepended: several files feed one area
+    // client, and each helper has to be declared there once.
+    const inlineDecls = [...inlineRevivers.values(), ...serialize.inlineSerializers.values()];
+    return { lines, methodNames, inlineDecls, serializerModels: usedSerializers(serialize, options) };
 }
 
 /**
- * Declarations a client file needs for the inline revivers it carries.
+ * Declarations a client file needs for the inline revivers and serializers it carries.
  *
- * An inline wrapper calls `__dec`, which is file-local to the *types* module and not exported, so
- * a client file that has one needs its own copy, along with the global config, since nothing else
- * in the file necessarily pulls it in. The imports these declarations need are left to
- * {@link scalarClassImports}, which reads them off the emitted text.
+ * An inline wrapper calls `__dec`, `__wireDt` and the like, which are file-local to the *types*
+ * module and not exported, so a client file that has one needs its own copy, along with the global
+ * decimal.js config, since nothing else in the file necessarily pulls it in. The imports these
+ * declarations need are left to {@link scalarClassImports}, which reads them off the emitted text.
  */
-function decimalPreludeFor(declLines: string[]): string[] {
-    const decls = coerceDeclsFor(declLines);
+function inlinePreludeFor(declLines: string[]): string[] {
+    const decls = [...coerceDeclsFor(declLines), ...wireDeclsFor(declLines)];
     if (decls.length === 0) return [];
     // The global config keeps decimals out of exponential notation; only decimal.js needs it.
     const preamble = declLines.some(l => l.includes('__dec(')) ? [DECIMAL_CONFIG_LINE, ''] : [];
@@ -431,10 +450,14 @@ function decimalPreludeFor(declLines: string[]): string[] {
  * a `date` query parameter came to be typed `DateTime` in a file that never imported it.
  *
  * Doc comments are skipped and a quoted or property-key spelling does not count, so a description
- * that mentions `DateTime`, or an inline object with a `Decimal:` key, adds no unused import.
+ * that mentions `DateTime`, an inline object with a `Decimal:` key, or the `'[object Decimal]'` tag
+ * `__wireDec` compares against, adds no unused import.
  */
 function scalarClassImports(emitted: string[]): string[] {
-    const code = emitted.filter(l => !/^\s*(\/\*\*|\*|\/\/)/.test(l)).join('\n');
+    const code = emitted
+        .filter(l => !/^\s*(\/\*\*|\*|\/\/)/.test(l))
+        .join('\n')
+        .replace(/'(?:[^'\\\n]|\\.)*'/g, "''");
     const uses = (name: string) => new RegExp(`(?<![A-Za-z0-9_$.'"])${name}(?![A-Za-z0-9_$'"]|\\??:)`).test(code);
     const imports: string[] = [];
     if (uses('Decimal')) imports.push(DECIMAL_IMPORT);
@@ -459,6 +482,14 @@ function referencedTypes(types: string[], emitted: string[]): string[] {
     });
 }
 
+/**
+ * The models whose `serializeX` a file's methods call, read off the call-site expressions and the
+ * inline serializers rather than the class body, where a method name can spell `serializeX(` too.
+ */
+function usedSerializers(state: BodySerializeState, options: SdkCodegenOptions): string[] {
+    return calledSerializerModels([...state.calls, ...[...state.inlineSerializers.values()].flat()], options.modelsWithSerializer ?? new Set());
+}
+
 function usedRevivers(lines: string[]): string[] {
     const found = new Set<string>();
     for (const m of lines.join('\n').matchAll(/\brevive[A-Z]\w*/g)) found.add(m[0]);
@@ -473,6 +504,7 @@ function generateMethod(
     file: string,
     options: SdkCodegenOptions,
     inlineRevivers?: Map<string, string[]>,
+    serialize?: BodySerializeState,
 ): string[] {
     const revive: ReviveContext | undefined =
         options.modelsWithDecimal && options.modelsWithDecimal.size > 0 && inlineRevivers
@@ -488,7 +520,8 @@ function generateMethod(
     const methodName = deriveSdkMethodName(op, route);
     /** Identifies the operation in a codegen rejection, which the CLI scopes to this plugin. */
     const where = `${op.method.toUpperCase()} ${route.path}`;
-    const mRevive = hint(revive, `${methodName.charAt(0).toUpperCase()}${methodName.slice(1)}`);
+    const methodPascal = `${methodName.charAt(0).toUpperCase()}${methodName.slice(1)}`;
+    const mRevive = hint(revive, methodPascal);
     const httpMethod = op.method.toUpperCase();
     const { modelsWithInput, modelsWithOutput } = options;
 
@@ -582,21 +615,35 @@ function generateMethod(
     const hasBody = strategy.kind !== 'none';
     const hasOpHeaders = !!op.headers;
 
+    // The body with its `date`, `time` and `decimal` values rewritten, where it holds any. A body
+    // argument typed as a union of the arms is narrowed to the arm's own type first.
+    const requestType = (b: OpRequestBodyNode) => renderInputTsType(b.bodyType, modelsWithInput, 'client', options.modelsWithWireInput);
+    const wire = (b: OpRequestBodyNode, arg: string, name: string) =>
+        classifyContentType(b.contentType) === 'json' || classifyContentType(b.contentType) === 'urlencoded'
+            ? bodyWireExpr(b.bodyType, arg, requestType(b), `${methodPascal}${name}`, options, serialize)
+            : undefined;
+
     // Pre-emit serialization preludes for multi-MIME strategies
     if (strategy.kind === 'multi-equal') {
         const defaultCt = strategy.bodies[0]!.contentType;
+        // Every arm has the same type, so one rewrite serves them all.
+        const shared = wire(strategy.bodies.find(b => b.contentType !== 'multipart/form-data') ?? strategy.bodies[0]!, 'body', 'Body');
         lines.push(`        const __contentType = options?.contentType ?? '${defaultCt}';`);
-        lines.push(`        const __serialized = ${renderSerializeExpr('body', strategy.bodies, '__contentType')};`);
+        lines.push(`        const __serialized = ${renderSerializeExpr('body', strategy.bodies, '__contentType', () => shared)};`);
     } else if (strategy.kind === 'multi-formdata-detect') {
         lines.push(`        const __isFormData = body instanceof FormData;`);
         const nonMultipart = strategy.bodies.find(b => b.contentType !== 'multipart/form-data')!;
         lines.push(`        const __contentType: string = __isFormData ? 'multipart/form-data' : '${nonMultipart.contentType}';`);
+        const nonMultipartWire = wire(nonMultipart, `body as ${requestType(nonMultipart)}`, 'Body');
         lines.push(
-            `        const __serialized: BodyInit = __isFormData ? (body as FormData) : ${jsonOrFormSerialize('body', nonMultipart.contentType)};`,
+            `        const __serialized: BodyInit = __isFormData ? (body as FormData) : ${jsonOrFormSerialize('body', nonMultipart.contentType, nonMultipartWire)};`,
         );
     } else if (strategy.kind === 'multi-required-arg') {
+        const bodies = strategy.bodies;
         lines.push(`        const __contentType = options.contentType;`);
-        lines.push(`        const __serialized = ${renderSerializeExpr('body', strategy.bodies, '__contentType')};`);
+        lines.push(
+            `        const __serialized = ${renderSerializeExpr('body', bodies, '__contentType', i => wire(bodies[i]!, `body as ${requestType(bodies[i]!)}`, `Body${i}`))};`,
+        );
     }
 
     const fetchArgs: string[] = [];
@@ -615,16 +662,14 @@ function generateMethod(
         if (cat === 'multipart') {
             // FormData supplies its own Content-Type with boundary; don't override it.
             fetchArgs.push('body: body');
-        } else if (cat === 'urlencoded') {
-            fetchArgs.push(`headers: { 'Content-Type': '${body.contentType}' }`);
-            fetchArgs.push('body: new URLSearchParams(body as unknown as Record<string, string>).toString()');
         } else if (cat === 'text' || cat === 'binary') {
             // text/* and binary mimes pass the body through to fetch as-is — no schema serialization.
             fetchArgs.push(`headers: { 'Content-Type': '${body.contentType}' }`);
             fetchArgs.push('body: body');
         } else {
+            // JSON or urlencoded: the one shared rule, so a single body and a multi-MIME arm agree.
             fetchArgs.push(`headers: { 'Content-Type': '${body.contentType}' }`);
-            fetchArgs.push('body: JSON.stringify(body, bigIntReplacer)');
+            fetchArgs.push(`body: ${jsonOrFormSerialize('body', body.contentType, wire(body, 'body', 'Body'))}`);
         }
     } else if (hasBody) {
         // multi-equal | multi-formdata-detect | multi-required-arg — share a __contentType / __serialized prelude
@@ -777,6 +822,67 @@ function reviveExprFor(bodyType: ContractTypeNode, ctx: ReviveContext | undefine
         ctx.inlineRevivers.set(fnName, decl);
     }
     return { name: fnName, kind: 'value' };
+}
+
+// ─── Request body serialization ───────────────────────────────────────────
+
+/** Where one client file collects what its request bodies are serialized with. */
+interface BodySerializeState {
+    /** Inline serializer declarations for the file, keyed by function name. */
+    inlineSerializers: Map<string, string[]>;
+    /** Every serializer call a method emitted, to read the `serializeX` imports off. */
+    calls: string[];
+}
+
+function newBodySerializeState(): BodySerializeState {
+    return { inlineSerializers: new Map(), calls: [] };
+}
+
+/**
+ * The expression a request body is stringified from: `arg` passed through its serializer when the
+ * body holds a `date`, `time` or `decimal` to rewrite, otherwise `undefined`, and the call site
+ * keeps `arg` exactly as it was.
+ *
+ * The request-side mirror of {@link reviveExprFor}: a model's own `serializeX` from its types
+ * file, `.map` of one over an array of them, or a wrapper for anything else, emitted into this file
+ * under `__serialize<nameHint>`.
+ *
+ * @param arg The body, possibly with a cast (`body as Booking`), which is parenthesized where needed.
+ * @param tsType The type `arg` has, for an inline wrapper's parameter.
+ */
+function bodyWireExpr(
+    bodyType: ContractTypeNode,
+    arg: string,
+    tsType: string,
+    nameHint: string,
+    options: SdkCodegenOptions,
+    state: BodySerializeState | undefined,
+): string | undefined {
+    if (!state) return undefined;
+    const opts = {
+        modelsWithSerializer: options.modelsWithSerializer ?? new Set<string>(),
+        modelMap: options.modelMap ?? new Map<string, ModelNode>(),
+    };
+    const refName = (t: ContractTypeNode): string | null => (t.kind === 'ref' ? t.name : t.kind === 'lazy' ? refName(t.inner) : null);
+
+    let expr: string;
+    const direct = refName(bodyType);
+    const item = bodyType.kind === 'array' ? refName(bodyType.item) : null;
+    if (direct && opts.modelsWithSerializer.has(direct)) {
+        expr = `${serializeFnName(direct)}(${arg})`;
+    } else if (item && opts.modelsWithSerializer.has(item)) {
+        expr = `${/^[\w$]+$/.test(arg) ? arg : `(${arg})`}.map(${serializeFnName(item)})`;
+    } else {
+        const fnName = `__serialize${nameHint}`;
+        if (!state.inlineSerializers.has(fnName)) {
+            const decl = renderInlineSerializer(fnName, tsType, bodyType, opts);
+            if (!decl) return undefined;
+            state.inlineSerializers.set(fnName, decl);
+        }
+        expr = `${fnName}(${arg})`;
+    }
+    state.calls.push(expr);
+    return expr;
 }
 
 function renderSdkHeadersShape(headers: OpResponseHeaderNode[], modelsWithOutput?: Set<string>): string {
@@ -1260,16 +1366,9 @@ function resolveParamType(type: ContractTypeNode, modelMap?: Map<string, ModelNo
  */
 function wireScalarExpr(type: ContractTypeNode, value: string, dot: '.' | '?.'): string | undefined {
     if (type.kind !== 'scalar') return undefined;
-    switch (type.name) {
-        case 'date':
-            return `${value}${dot}toFormat('${escapeSingleQuoted(type.format ?? 'yyyy-MM-dd')}')`;
-        case 'time':
-            return `${value}${dot}toFormat('${escapeSingleQuoted(type.format ?? 'HH:mm:ss')}')`;
-        case 'decimal':
-            return `${value}${dot}toFixed()`;
-        default:
-            return undefined;
-    }
+    const fmt = temporalWireFormat(type);
+    if (fmt !== undefined) return `${value}${dot}toFormat('${escapeSingleQuoted(fmt)}')`;
+    return type.name === 'decimal' ? `${value}${dot}toFixed()` : undefined;
 }
 
 /**
@@ -1358,6 +1457,25 @@ function serializedParamArg(arg: string, argOptional: boolean, source: ParamSour
     }
     if (overrides.size === 0) return arg;
     return `{ ...${arg}, ${[...overrides.values()].join(', ')} }`;
+}
+
+/**
+ * How the clients for `root` serialize each request body, for the incremental cache. Which bodies
+ * call a `serializeX` depends on which models have one, and an inline wrapper follows type aliases
+ * and reads a discriminated-union member's tag off its model, none of which the client's own AST
+ * records.
+ */
+export function sdkBodySerializationKey(root: OpRootNode, options: SdkCodegenOptions): string[] {
+    const state = newBodySerializeState();
+    const out: string[] = [];
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            for (const [i, body] of (op.request?.bodies ?? []).entries()) {
+                out.push(bodyWireExpr(body.bodyType, 'body', '', `${op.method}${route.path}${i}`, options, state) ?? '');
+            }
+        }
+    }
+    return [...out, ...[...state.inlineSerializers.values()].flat()];
 }
 
 /**
@@ -1785,7 +1903,18 @@ function collectTypeNodeRefs(type: ContractTypeNode, out: Set<string>): void {
 
 // ─── Type import resolution ───────────────────────────────────────────────
 
-function generateTypeImports(types: string[], opFile: string, options: SdkCodegenOptions, revivers: string[] = []): string[] {
+/**
+ * @param serializerModels Models whose `serializeX` the file calls. Keyed by the model rather than
+ * by a type the file names, so one is imported from its model's module whichever of the model's
+ * types (`X`, `XInput`, `XWireInput`) the file happens to mention.
+ */
+function generateTypeImports(
+    types: string[],
+    opFile: string,
+    options: SdkCodegenOptions,
+    revivers: string[] = [],
+    serializerModels: string[] = [],
+): string[] {
     const lines: string[] = [];
     const { modelOutPaths, outPath } = options;
 
@@ -1803,15 +1932,24 @@ function generateTypeImports(types: string[], opFile: string, options: SdkCodege
                 unresolved.push(type);
             }
         }
+        // A module the file calls a serializer from but names no type of still needs its import.
+        for (const model of serializerModels) {
+            const modelOut = modelOutPaths.get(model);
+            if (modelOut && !byFile.has(modelOut)) byFile.set(modelOut, []);
+        }
 
         const fromDir = dirname(outPath);
         for (const [typeOutPath, names] of byFile) {
             let rel = relative(fromDir, typeOutPath);
             rel = rel.replace(/\.ts$/, '.js');
             if (!rel.startsWith('.')) rel = './' + rel;
-            lines.push(`import type { ${names.sort().join(', ')} } from '${rel}';`);
-            // Revivers are values, so they need a second, non-type import from the same module.
-            const fromHere = revivers.filter(r => modelOutPaths.get(reviverModelName(r, names)) === typeOutPath);
+            if (names.length > 0) lines.push(`import type { ${names.sort().join(', ')} } from '${rel}';`);
+            // Revivers and serializers are values, so they need a second, non-type import from the
+            // same module.
+            const fromHere = [
+                ...revivers.filter(r => modelOutPaths.get(reviverModelName(r, names)) === typeOutPath),
+                ...serializerModels.filter(m => modelOutPaths.get(m) === typeOutPath).map(serializeFnName),
+            ];
             if (fromHere.length > 0) lines.push(`import { ${fromHere.sort().join(', ')} } from '${rel}';`);
         }
 
@@ -1822,6 +1960,7 @@ function generateTypeImports(types: string[], opFile: string, options: SdkCodege
     } else {
         const typeImport = deriveTypeImportPath(opFile, options.typeImportPathTemplate);
         lines.push(`import type { ${types.join(', ')} } from '${typeImport}';`);
+        if (serializerModels.length > 0) lines.push(`import { ${serializerModels.map(serializeFnName).join(', ')} } from '${typeImport}';`);
     }
 
     return lines;
@@ -2130,9 +2269,9 @@ export function generateAreaClient(input: AreaClientInput): string {
 
     // ── Merge inputs across all inline files ────────────────────────────────
     const collectedMethodLines: string[] = [];
-    const collectedRevivePrelude: string[] = [];
-    /** Reviver value imports, grouped the same way `typesByImportPath` groups the type imports. */
-    const reviversByImportPath = new Map<string, Set<string>>();
+    const collectedInlineDecls: string[][] = [];
+    /** Reviver and serializer value imports, grouped the same way `typesByImportPath` groups the type imports. */
+    const valueImportsByPath = new Map<string, Set<string>>();
     // Aliases are keyed off method names, which already collide-check below, so a Set is enough.
     const collectedErrorAliases = new Set<string>();
     const seenMethods = new Set<string>();
@@ -2148,8 +2287,8 @@ export function generateAreaClient(input: AreaClientInput): string {
 
     for (const inline of inlineFiles) {
         const includeInternal = inline.codegenOptions.includeInternal ?? false;
-        const { lines: methodLines, methodNames, preludeLines } = generateClientMethods(inline.root, inline.codegenOptions);
-        collectedRevivePrelude.push(...preludeLines);
+        const { lines: methodLines, methodNames, inlineDecls, serializerModels } = generateClientMethods(inline.root, inline.codegenOptions);
+        collectedInlineDecls.push(...inlineDecls);
         for (const name of methodNames) {
             if (seenMethods.has(name)) {
                 throw new Error(
@@ -2176,9 +2315,18 @@ export function generateAreaClient(input: AreaClientInput): string {
             if (!modelOut) continue;
             let rel = relative(dirname(outPath), modelOut).replace(/\.ts$/, '.js');
             if (!rel.startsWith('.')) rel = './' + rel;
-            const set = reviversByImportPath.get(rel) ?? new Set<string>();
+            const set = valueImportsByPath.get(rel) ?? new Set<string>();
             set.add(reviver);
-            reviversByImportPath.set(rel, set);
+            valueImportsByPath.set(rel, set);
+        }
+        for (const model of serializerModels) {
+            const modelOut = inline.codegenOptions.modelOutPaths?.get(model);
+            if (!modelOut) continue;
+            let rel = relative(dirname(outPath), modelOut).replace(/\.ts$/, '.js');
+            if (!rel.startsWith('.')) rel = './' + rel;
+            const set = valueImportsByPath.get(rel) ?? new Set<string>();
+            set.add(serializeFnName(model));
+            valueImportsByPath.set(rel, set);
         }
 
         // Resolve each file's type refs against THIS file's modelOutPaths, but
@@ -2194,7 +2342,7 @@ export function generateAreaClient(input: AreaClientInput): string {
                 includeInternal,
                 inline.codegenOptions.modelsWithWireInput,
             ),
-            [...methodLines, ...generateErrorBodyAliases(inline.root, inline.codegenOptions), ...preludeLines],
+            [...methodLines, ...generateErrorBodyAliases(inline.root, inline.codegenOptions), ...inlineDecls.flat()],
         );
         const { modelOutPaths } = inline.codegenOptions;
         if (modelOutPaths) {
@@ -2232,16 +2380,19 @@ export function generateAreaClient(input: AreaClientInput): string {
         lines.push(`import { ${valueImports.join(', ')} } from '${sdkOptionsRel}';`);
     }
 
-    for (const path of [...typesByImportPath.keys()].sort()) {
-        const names = [...typesByImportPath.get(path)!].sort();
-        lines.push(`import type { ${names.join(', ')} } from '${path}';`);
-        const revivers = reviversByImportPath.get(path);
-        if (revivers && revivers.size > 0) lines.push(`import { ${[...revivers].sort().join(', ')} } from '${path}';`);
+    for (const path of [...new Set([...typesByImportPath.keys(), ...valueImportsByPath.keys()])].sort()) {
+        const names = [...(typesByImportPath.get(path) ?? [])].sort();
+        if (names.length > 0) lines.push(`import type { ${names.join(', ')} } from '${path}';`);
+        const values = valueImportsByPath.get(path);
+        if (values && values.size > 0) lines.push(`import { ${[...values].sort().join(', ')} } from '${path}';`);
     }
     for (const t of [...unresolvedTypes].sort()) {
         lines.push(`import type { ${t} } from './${pascalToDotCase(t)}.js';`);
     }
 
+    // Helpers are found across every file's declarations at once, so each is declared once.
+    const helperDecls = inlinePreludeFor(collectedInlineDecls.flat());
+    const collectedRevivePrelude = [...(helperDecls.length > 0 ? ['', ...helperDecls] : []), ...collectedInlineDecls.flatMap(decl => ['', ...decl])];
     lines.push(...scalarClassImports([...collectedMethodLines, ...collectedErrorAliases, ...collectedRevivePrelude]));
 
     // Leaf client imports (subareas only — top-level clients live next to sdk.ts).

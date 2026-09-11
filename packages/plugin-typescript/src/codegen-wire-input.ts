@@ -98,7 +98,7 @@ function inheritedFields(model: ModelNode, modelMap: Map<string, ModelNode>, cha
  * or to both the read and the `Input` schema of one split for readonly/writeonly fields. A type alias
  * ignores it. The SDK has to send what the server parses, so it follows the same rule.
  */
-function appliedCasing(model: ModelNode, modelMap: Map<string, ModelNode>): { input?: 'snake' | 'pascal'; output?: 'snake' | 'pascal' } {
+export function appliedCasing(model: ModelNode, modelMap: Map<string, ModelNode>): { input?: 'snake' | 'pascal'; output?: 'snake' | 'pascal' } {
     if (model.type) return {};
     const effective = flattenFormatChain(model, modelMap);
     return { input: renamingCase(effective.inputCase), output: renamingCase(effective.outputCase) };

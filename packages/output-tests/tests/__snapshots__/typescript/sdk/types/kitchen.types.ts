@@ -43,6 +43,12 @@ const __dur = (v: unknown, path: string): Duration => {
     if (!d.isValid) throw new TypeError(`ContractKit: '${v}' at '${path}' is not a valid ISO 8601 duration.`);
     return d;
 };
+/** A luxon DateTime in `fmt`, as the server's `DateTime.fromFormat` reads it. Anything else is returned as it is. */
+const __wireDt = (v: unknown, fmt: string): unknown =>
+    (v as { isLuxonDateTime?: unknown } | null | undefined)?.isLuxonDateTime === true ? (v as { toFormat(fmt: string): string }).toFormat(fmt) : v;
+/** A decimal.js value in normal notation, which its `toString()` is not at every magnitude. Anything else is returned as it is. */
+const __wireDec = (v: unknown): unknown =>
+    (v as { toStringTag?: unknown } | null | undefined)?.toStringTag === '[object Decimal]' ? (v as { toFixed(): string }).toFixed() : v;
 
 /**
  * A named enum, so a field default has to resolve to a member rather than its wire spelling
@@ -67,6 +73,15 @@ export function reviveDoc(raw: Doc): Doc {
         reviveFolder(__o0["folder"] as never);
     }
     return raw;
+}
+
+/** Doc as a request body sends it, with every `date`, `time` and `decimal` in the text the server parses. Returns a copy; `value` is not modified. */
+export function serializeDoc(value: Doc): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    if (__o0["folder"] != null) {
+        __o0["folder"] = serializeFolder(__o0["folder"] as never);
+    }
+    return __o0;
 }
 
 /**
@@ -302,6 +317,41 @@ export function reviveFolder(raw: Folder): Folder {
         __o0["ttl"] = __dur(__o0["ttl"], 'Folder.ttl');
     }
     return raw;
+}
+
+/** Folder as a request body sends it, with every `date`, `time` and `decimal` in the text the server parses. Returns a copy; `value` is not modified. */
+export function serializeFolder(value: Folder): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    if (__o0["parent"] != null) {
+        __o0["parent"] = serializeFolder(__o0["parent"] as never);
+    }
+    if (__o0["readme"] != null) {
+        __o0["readme"] = serializeDoc(__o0["readme"] as never);
+    }
+    {
+        const __a1 = [...(__o0["children"] as unknown[])];
+        for (let __i2 = 0; __i2 < __a1.length; __i2++) {
+            __a1[__i2] = serializeFolder(__a1[__i2] as never);
+        }
+        __o0["children"] = __a1;
+    }
+    if (__o0["byName"] != null) {
+        {
+            const __r3 = { ...(__o0["byName"] as Record<string, unknown>) };
+            for (const __k4 of Object.keys(__r3)) {
+                __r3[__k4] = serializeFolder(__r3[__k4] as never);
+            }
+            __o0["byName"] = __r3;
+        }
+    }
+    __o0["price"] = __wireDec(__o0["price"]);
+    if (__o0["day"] != null) {
+        __o0["day"] = __wireDt(__o0["day"], 'yyyy-MM-dd');
+    }
+    if (__o0["at"] != null) {
+        __o0["at"] = __wireDt(__o0["at"], 'HH:mm:ss');
+    }
+    return __o0;
 }
 
 /**

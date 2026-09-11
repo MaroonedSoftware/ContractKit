@@ -17,7 +17,9 @@ import {
     generateSdkTsconfig,
     generateErrorBodyAliases,
     sdkParamSerializationKey,
+    sdkBodySerializationKey,
 } from '../src/codegen-sdk.js';
+import { computeModelsWithSerializer } from '../src/codegen-serialize.js';
 import { generateOp } from '../src/codegen-operation.js';
 import { computeModelsWithWireInput } from '../src/codegen-wire-input.js';
 import { collectPublicTypeNames, computeModelsWithInput, decomposeCk, DiagnosticCollector, parseCk } from '@contractkit/core';
@@ -2855,5 +2857,162 @@ operation /reports/{day}: {
             keyFor(withModel(`contract ReportKey: {\n    ${f}\n}`, 'ReportKey')),
         );
         expect(new Set(keys).size).toBe(3);
+    });
+});
+
+// ─── Request body wire format ─────────────────────────────────────────────
+
+describe('generateSdk: request bodies in the wire format the router parses', () => {
+    /** The SDK client for `.ck` source, with every model set the plugin passes in. */
+    function bodySdkFor(source: string): string {
+        const { contract, op } = parseSource(source);
+        const modelMap = new Map(contract.models.map(m => [m.name, m]));
+        return generateSdk(op, {
+            modelMap,
+            modelsWithInput: computeModelsWithInput(contract.models),
+            modelsWithWireInput: computeModelsWithWireInput(contract.models, 'zod'),
+            modelsWithSerializer: computeModelsWithSerializer(contract.models, modelMap),
+        });
+    }
+
+    /** `POST /bookings` sending `request` (the lines of a `request:` block), plus any models. */
+    const bookingsOp = (request: string, models = '') => `${models}
+operation /bookings: {
+    post: {
+        sdk: createBooking
+        service: BookingService.create
+        request: {
+            ${request}
+        }
+        response: {
+            204:
+        }
+    }
+}
+`;
+    const BOOKING = `
+contract Booking: {
+    day: date
+    deposit: decimal
+}
+`;
+
+    it("passes a model body through the model's serializer before stringifying it", () => {
+        const out = bodySdkFor(bookingsOp('application/json: Booking', BOOKING));
+        // `JSON.stringify(body)` wrote the date as DateTime.toJSON()'s full timestamp: a 400.
+        expect(out).toContain('body: JSON.stringify(serializeBooking(body), bigIntReplacer),');
+        expect(out).toContain("import { serializeBooking } from '#modules/test/types/index.js';");
+    });
+
+    it('maps an array body of models through the serializer', () => {
+        const out = bodySdkFor(bookingsOp('application/json: array(Booking)', BOOKING));
+        expect(out).toContain('body: JSON.stringify(body.map(serializeBooking), bigIntReplacer),');
+    });
+
+    it('gives an inline body a serializer of its own, with the helpers it calls', () => {
+        const out = bodySdkFor(bookingsOp('application/json: { day: date("dd/MM/yyyy"), note?: string, fee?: decimal }'));
+        expect(out).toContain('body: JSON.stringify(__serializeCreateBookingBody(body), bigIntReplacer),');
+        expect(out).toContain('function __serializeCreateBookingBody(value: { day: DateTime; note?: string; fee?: Decimal }): unknown {');
+        expect(out).toContain(`__o0["day"] = __wireDt(__o0["day"], 'dd/MM/yyyy');`);
+        expect(out).toContain('const __wireDt = ');
+        expect(out).toContain('const __wireDec = ');
+    });
+
+    it('serializes a urlencoded body before handing it to URLSearchParams', () => {
+        // `URLSearchParams` stringifies each value with String(), which for a DateTime is toISO().
+        const out = bodySdkFor(bookingsOp('application/x-www-form-urlencoded: Booking', BOOKING));
+        expect(out).toContain('body: new URLSearchParams(serializeBooking(body) as Record<string, string>).toString(),');
+    });
+
+    it('serializes the one body type every mime of a multi-mime request shares', () => {
+        const out = bodySdkFor(bookingsOp('application/json: Booking\n            application/x-www-form-urlencoded: Booking', BOOKING));
+        expect(out).toContain(
+            "const __serialized = __contentType === 'application/json' ? JSON.stringify(serializeBooking(body), bigIntReplacer) : new URLSearchParams(serializeBooking(body) as Record<string, string>).toString();",
+        );
+    });
+
+    it('narrows the body to each mime’s own type when the mimes carry different ones', () => {
+        const out = bodySdkFor(bookingsOp('application/json: Booking\n            application/x-www-form-urlencoded: { day: time }', BOOKING));
+        expect(out).toContain('JSON.stringify(serializeBooking(body as Booking), bigIntReplacer)');
+        expect(out).toContain('new URLSearchParams(__serializeCreateBookingBody1(body as { day: DateTime }) as Record<string, string>).toString()');
+    });
+
+    it('parenthesizes a narrowed array body before mapping it', () => {
+        const out = bodySdkFor(bookingsOp('application/json: array(Booking)\n            application/x-www-form-urlencoded: { day: time }', BOOKING));
+        expect(out).toContain('JSON.stringify((body as Booking[]).map(serializeBooking), bigIntReplacer)');
+    });
+
+    it('serializes the non-multipart arm when the body may also be FormData', () => {
+        const out = bodySdkFor(bookingsOp('application/json: Booking\n            multipart/form-data: { file: binary }', BOOKING));
+        expect(out).toContain(
+            'const __serialized: BodyInit = __isFormData ? (body as FormData) : JSON.stringify(serializeBooking(body as Booking), bigIntReplacer);',
+        );
+    });
+
+    it('leaves a body with nothing to rewrite exactly as it was', () => {
+        const out = bodySdkFor(bookingsOp('application/json: { name: string, at: datetime }'));
+        expect(out).toContain('body: JSON.stringify(body, bigIntReplacer),');
+        expect(out).not.toContain('serialize');
+        expect(out).not.toContain('__wire');
+    });
+
+    it('declares each helper once in an area client several files contribute to', () => {
+        const roots = ['a', 'b'].map(name => {
+            const { op } = parseSource(`
+operation /${name}: {
+    post: {
+        sdk: create${name.toUpperCase()}
+        service: Svc.create${name.toUpperCase()}
+        request: {
+            application/json: { day: date }
+        }
+        response: {
+            204:
+        }
+    }
+}
+`);
+            return op;
+        });
+        const out = generateAreaClient({
+            area: 'venue',
+            outPath: '/out/venue/venue.client.ts',
+            inlineFiles: roots.map(root => ({
+                root,
+                codegenOptions: { outPath: '/out/venue/venue.client.ts', sdkOptionsPath: '/out/sdk-options.ts' },
+            })),
+            subareaClients: [],
+            sdkOptionsPath: '/out/sdk-options.ts',
+        });
+        expect(out.match(/const __wireDt = /g)).toHaveLength(1);
+        expect(out).toContain('function __serializeCreateABody(');
+        expect(out).toContain('function __serializeCreateBBody(');
+    });
+});
+
+describe('sdkBodySerializationKey', () => {
+    const keyFor = (source: string) => {
+        const { contract, op } = parseSource(source);
+        const modelMap = new Map(contract.models.map(m => [m.name, m]));
+        return sdkBodySerializationKey(op, { modelMap, modelsWithSerializer: computeModelsWithSerializer(contract.models, modelMap) }).join();
+    };
+    const withBody = (model: string) => `${model}
+operation /bookings: {
+    post: {
+        sdk: createBooking
+        service: BookingService.create
+        request: {
+            application/json: { booking: Booking }
+        }
+        response: {
+            204:
+        }
+    }
+}
+`;
+
+    it("changes when a referenced model gains a date, though the client's own AST does not", () => {
+        const keys = ['day: string', 'day: date'].map(f => keyFor(withBody(`contract Booking: {\n    ${f}\n}`)));
+        expect(new Set(keys).size).toBe(2);
     });
 });

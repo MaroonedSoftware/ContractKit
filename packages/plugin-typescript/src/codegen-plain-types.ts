@@ -16,6 +16,7 @@ import { collectExternalWireInputRefs, flattenFormatChain, renderWireInputModel 
 import type { WireInputRenderContext } from './codegen-wire-input.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
+import { renderSerializeFunction, requestTypeName, serializerImportLines, wireDeclsFor } from './codegen-serialize.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
         context?.emitRevivers && context.modelsWithDecimal
             ? { modelsWithDecimal: context.modelsWithDecimal, modelsWithOutput: allModelsWithOutput, modelMap }
             : undefined;
+    const serializeOpts = context?.modelsWithSerializer ? { modelsWithSerializer: context.modelsWithSerializer, modelMap } : undefined;
 
     const bodyLines: string[] = [];
     for (const model of topoSortModels(root.models)) {
@@ -66,6 +68,17 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
             if (revivers.length > 0) {
                 bodyLines.push('');
                 bodyLines.push(...revivers);
+            }
+        }
+        if (serializeOpts) {
+            const serializer = renderSerializeFunction(
+                model,
+                requestTypeName(model.name, allModelsWithInput, context?.modelsWithWireInput),
+                serializeOpts,
+            );
+            if (serializer.length > 0) {
+                bodyLines.push('');
+                bodyLines.push(...serializer);
             }
         }
         bodyLines.push('');
@@ -119,7 +132,11 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
             lines.push(`import { ${reviveFnName(ref)} } from '${importPath}';`);
         }
     }
-    if (allExternalRefs.length > 0) lines.push('');
+    const localNames = new Set(root.models.map(m => m.name));
+    const importPath = (ref: string) => resolveImportPath(ref, context);
+    const serializerImports = serializeOpts ? serializerImportLines(bodyLines, localNames, serializeOpts.modelsWithSerializer, importPath) : [];
+    lines.push(...serializerImports);
+    if (allExternalRefs.length > 0 || serializerImports.length > 0) lines.push('');
 
     if (needs('json', 'JsonValue')) {
         if (context?.jsonValueImportPath) {
@@ -137,9 +154,9 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
         lines.push(DECIMAL_CONFIG_LINE);
     }
 
-    // Same rule as in `generateContract`: a helper is emitted only if the revivers actually
-    // reference it, so the two cannot drift and trip `noUnusedLocals`.
-    const coerceDecls = coerceDeclsFor(bodyLines);
+    // Same rule as in `generateContract`: a helper is emitted only if the revivers or serializers
+    // actually reference it, so the two cannot drift and trip `noUnusedLocals`.
+    const coerceDecls = [...coerceDeclsFor(bodyLines), ...wireDeclsFor(bodyLines)];
     if (coerceDecls.length > 0) {
         lines.push(...coerceDecls);
         lines.push('');

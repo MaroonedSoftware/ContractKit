@@ -1,7 +1,7 @@
 import type { SdkFetch } from '../sdk-options.js';
 import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString, buildHeaders } from '../sdk-options.js';
 import type { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, SnakeFilterWireInput, SnakeHeadersWireInput, TenantHeaders, UpdatePaymentForm } from '../types/billing.types.js';
-import { revivePayment } from '../types/billing.types.js';
+import { revivePayment, serializePayment } from '../types/billing.types.js';
 import { DateTime } from 'luxon';
 
 export class BillingClient {
@@ -13,7 +13,7 @@ export class BillingClient {
         const result = await this.fetch(`/payments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body, bigIntReplacer),
+            body: JSON.stringify(serializePayment(body), bigIntReplacer),
         });
         const data = revivePayment(await parseJson<Payment>(result));
         return { data, headers: { xRequestId: result.headers.get('x-request-id')!, xRatelimitRemaining: Number(result.headers.get('x-ratelimit-remaining')), xCacheHit: result.headers.get('x-cache-hit') === null ? undefined : result.headers.get('x-cache-hit') === 'true', xExpiresAfter: result.headers.get('x-expires-after') === null ? undefined : DateTime.fromISO(result.headers.get('x-expires-after')!) } };
@@ -44,7 +44,7 @@ export class BillingClient {
         const result = await this.fetch(`/payments/batch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body, bigIntReplacer),
+            body: JSON.stringify(body.map(serializePayment), bigIntReplacer),
         });
         return (await parseJson<Payment[]>(result)).map(revivePayment);
     }
