@@ -221,6 +221,118 @@ paths:
                 '$ref': '#/components/schemas/Invoice'
         '404':
           description: 'Not found'
+  '/folders/{folder-id}':
+    get:
+      operationId: getFolder
+      description: 'several statuses, and two content types on one of them'
+      parameters:
+        - name: folder-id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: depth
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: tags
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: x-trace
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: x-opt
+          in: header
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Folder'
+            'text/plain':
+              schema:
+                type: string
+          headers:
+            x-count:
+              schema:
+                type: integer
+              required: true
+            x-when:
+              schema:
+                type: string
+                format: date-time
+        '204':
+          description: 'No content'
+        '404':
+          description: 'Not found'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Shared'
+    put:
+      operationId: import
+      description: 'a method name that is a keyword in the target languages'
+      parameters:
+        - name: folder-id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Shared'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Instrument'
+  '/tokens':
+    post:
+      operationId: mint
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Token'
+      responses:
+        '201':
+          description: Created
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Token'
+        '400':
+          description: 'Bad request'
+    get:
+      operationId: listTokens
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                type: array
+                items:
+                  '$ref': '#/components/schemas/Token'
   '/status':
     get:
       operationId: getStatus
@@ -331,6 +443,166 @@ components:
           pattern: '^-?\d+(\.\d{1,2})?$'
           x-contractkit-scale: 2
       required: [id, total]
+    Rating:
+      type: string
+      enum: [good, neutral, bad]
+      description: 'A named enum, so a field default has to resolve to a member rather than its wire spelling'
+    Folder:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        class:
+          type: string
+        default:
+          type: string
+        rating:
+          '$ref': '#/components/schemas/Rating'
+          default: neutral
+        parent:
+          '$ref': '#/components/schemas/Folder'
+        readme:
+          '$ref': '#/components/schemas/Doc'
+        children:
+          type: array
+          items:
+            '$ref': '#/components/schemas/Folder'
+        byName:
+          type: object
+          additionalProperties:
+            '$ref': '#/components/schemas/Folder'
+        span:
+          type: array
+          prefixItems:
+            - type: integer
+            - type: integer
+        stamped:
+          type: array
+          prefixItems:
+            - type: string
+              format: uuid
+            - type: string
+              format: date-time
+            - type: boolean
+        label:
+          oneOf:
+            - type: string
+            - type: integer
+        pinned:
+          oneOf:
+            - '$ref': '#/components/schemas/Doc'
+            - '$ref': '#/components/schemas/Folder'
+        instrument:
+          oneOf:
+            - '$ref': '#/components/schemas/Card'
+            - '$ref': '#/components/schemas/Bank'
+        origin:
+          type: object
+          properties:
+            x:
+              type: number
+            y:
+              type: number
+          required: [x, y]
+        size:
+          type: integer
+          format: int64
+        price:
+          type: string
+          format: decimal
+          pattern: '^-?\d+(\.\d{1,2})?$'
+          x-contractkit-scale: 2
+        day:
+          type: string
+          format: date
+        at:
+          type: string
+          format: time
+        ttl:
+          type: string
+          format: duration
+        blob:
+          type: string
+          format: binary
+        extra: {}
+        raw: {}
+      required: [id, class, children, label, pinned, size, price]
+      description: "Self recursion through lazy(), mutual recursion through Doc, every container, both union\nforms, every scalar, and field names that are keywords in the target languages"
+    Doc:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        folder:
+          '$ref': '#/components/schemas/Folder'
+      required: [id]
+    Card:
+      type: object
+      properties:
+        kind:
+          const: card
+        last4:
+          type: string
+          minLength: 4
+          maxLength: 4
+      required: [kind, last4]
+    Bank:
+      type: object
+      properties:
+        kind:
+          const: bank
+        iban:
+          type: string
+      required: [kind, iban]
+    Instrument:
+      oneOf:
+        - '$ref': '#/components/schemas/Card'
+        - '$ref': '#/components/schemas/Bank'
+      discriminator:
+        propertyName: kind
+        mapping:
+          card: '#/components/schemas/Card'
+          bank: '#/components/schemas/Bank'
+    Token:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: integer
+          default: 3600
+      required: [accessToken]
+      description: 'Decodes snake_case keys and encodes PascalCase ones'
+    Owned:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        secret:
+          type: string
+          writeOnly: true
+      required: [id, secret]
+    Named:
+      type: object
+      properties:
+        name:
+          type: string
+      required: [name]
+    Shared:
+      allOf:
+        - '$ref': '#/components/schemas/Owned'
+        - '$ref': '#/components/schemas/Named'
+        - type: object
+          properties:
+            label:
+              type: string
+              default: x
+            instrument:
+              '$ref': '#/components/schemas/Instrument'
     Heartbeat:
       type: object
       properties:
