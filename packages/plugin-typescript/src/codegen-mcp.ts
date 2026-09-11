@@ -466,7 +466,12 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     if (cfg?.title) lines.push(`        title: '${escapeSingleQuoted(cfg.title)}',`);
     const desc = cfg?.description ?? op.description ?? route.description;
     if (desc) lines.push(`        description: '${escapeSingleQuoted(desc)}',`);
-    lines.push(`        inputSchema: z.toJSONSchema(${argsConstName}, { unrepresentable: 'any' }) as Tool['inputSchema'],`);
+    // The input side, which is what a caller sends. A `format()` model's schema is a pipe ending in
+    // the transform that renames its keys, which JSON Schema cannot describe, so its output side is
+    // `{}` and a client learns nothing of the keys the args require. Its input side is the object the
+    // pipe parses, keyed as a request spells them (`from_date`). A field with a default is left out
+    // of `required` there too, being one the caller may omit.
+    lines.push(`        inputSchema: z.toJSONSchema(${argsConstName}, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],`);
     const outExpr = outputSchemaExpr(op, options.models);
     if (outExpr) lines.push(`        outputSchema: z.toJSONSchema(${outExpr}, { unrepresentable: 'any' }) as Tool['outputSchema'],`);
     const annotations = annotationsExpr(cfg);

@@ -37,7 +37,7 @@ export class GetRefundMcpTool implements McpToolHandler {
     readonly definition: Tool = {
         name: 'get_refund',
         description: 'look up a refund by its originating payment',
-        inputSchema: z.toJSONSchema(GetRefundArgs, { unrepresentable: 'any' }) as Tool['inputSchema'],
+        inputSchema: z.toJSONSchema(GetRefundArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Payment, { unrepresentable: 'any' }) as Tool['outputSchema'],
     };
 
@@ -60,7 +60,7 @@ export class SearchPaymentsByDateMcpTool implements McpToolHandler {
     readonly definition: Tool = {
         name: 'search_payments_by_date',
         description: 'search payments with snake_case filter and header models',
-        inputSchema: z.toJSONSchema(SearchPaymentsByDateArgs, { unrepresentable: 'any' }) as Tool['inputSchema'],
+        inputSchema: z.toJSONSchema(SearchPaymentsByDateArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
     };
 
     constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
@@ -81,7 +81,7 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
     readonly definition: Tool = {
         name: 'search_payments_scoped',
         description: 'search payments with a snake_case filter extended inline',
-        inputSchema: z.toJSONSchema(SearchPaymentsScopedArgs, { unrepresentable: 'any' }) as Tool['inputSchema'],
+        inputSchema: z.toJSONSchema(SearchPaymentsScopedArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
     };
 
     constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
@@ -102,7 +102,7 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
     readonly definition: Tool = {
         name: 'save_scoped_search',
         description: 'save a scoped search',
-        inputSchema: z.toJSONSchema(SaveScopedSearchArgs, { unrepresentable: 'any' }) as Tool['inputSchema'],
+        inputSchema: z.toJSONSchema(SaveScopedSearchArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(SavedSearch, { unrepresentable: 'any' }) as Tool['outputSchema'],
     };
 

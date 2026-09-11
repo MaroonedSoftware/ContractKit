@@ -119,6 +119,18 @@ async function toolArgs(tools: string, schemas: string): Promise<(name: string) 
     };
 }
 
+/**
+ * The JSON Schema a generated MCP tool publishes as its `inputSchema`: the definition's own
+ * `z.toJSONSchema(...)` call, evaluated with real Zod over the tool's args schema.
+ */
+async function toolInputSchema(tools: string, schemas: string, argsName: string): Promise<Record<string, unknown>> {
+    const evaluate = await schemaEvaluator(schemas);
+    const args = new RegExp(`^const ${argsName} = ([\\s\\S]*?);\\n(?=const |\\n)`, 'm').exec(tools)?.[1];
+    const call = new RegExp(`inputSchema: (z\\.toJSONSchema\\(${argsName}, [^\\n]*\\)) as Tool\\['inputSchema'\\],`).exec(tools)?.[1];
+    expect(args && call, `no ${argsName} input schema in:\n${tools}`).toBeTruthy();
+    return evaluate(`(() => { const ${argsName} = ${args}; return ${call}; })()`) as Record<string, unknown>;
+}
+
 /** Evaluates an expression with real Zod and every schema the schema file exports in scope. */
 async function schemaEvaluator(schemas: string): Promise<(expr: string) => unknown> {
     const names = [...schemas.matchAll(/^export const (\w+)/gm)].map(m => m[1]!);
@@ -1222,5 +1234,41 @@ operation /reports: {
         });
         expect(args.safeParse({ ...call, query: { fromDate: '2026-01-01', q: 'x' } }).success).toBe(false);
         expect(args.safeParse({ ...call, body: { region: 'eu', fromDate: '2026-02-01' } }).success).toBe(false);
+    });
+
+    // A format() schema is a pipe ending in a transform, which JSON Schema cannot describe, so its
+    // output side came out as `{}`: a client was told nothing of the `from_date` its args require.
+    it("publishes an MCP tool's args as it parses them, keyed as a request spells them", async () => {
+        const { tools, schemas } = await buildReports(`
+contract format(input=snake) SnakeFilter: { fromDate?: string }
+contract Scope: { region: string, page?: int = 1 }
+
+operation /reports: {
+    post: {
+        sdk: saveReport
+        service: ReportService.save
+        mcp: true
+        query: SnakeFilter
+        request: { application/json: Scope & SnakeFilter }
+        response: { 204: }
+    }
+}
+`);
+        const inputSchema = await toolInputSchema(tools!, schemas, 'SaveReportArgs');
+        const fromDate = { anyOf: [{ type: 'string' }, { type: 'null' }] };
+        expect(inputSchema).toMatchObject({
+            type: 'object',
+            properties: {
+                query: { type: 'object', properties: { from_date: fromDate }, additionalProperties: false },
+                body: {
+                    type: 'object',
+                    properties: { region: { type: 'string' }, page: { type: 'integer' }, from_date: fromDate },
+                    // A field with a default is one the caller may leave out.
+                    required: ['region'],
+                    additionalProperties: false,
+                },
+            },
+            required: ['body'],
+        });
     });
 });

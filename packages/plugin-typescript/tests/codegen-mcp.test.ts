@@ -149,7 +149,7 @@ describe('generateMcpFile', () => {
             ]);
             const out = generateMcpFile(root);
             expect(out).toContain('const GetPaymentsByIdArgs = z.object({ id: z.uuid() });');
-            expect(out).toContain("inputSchema: z.toJSONSchema(GetPaymentsByIdArgs, { unrepresentable: 'any' }) as Tool['inputSchema']");
+            expect(out).toContain("inputSchema: z.toJSONSchema(GetPaymentsByIdArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema']");
             expect(out).toContain('const { id } = await parseAndValidate(args, GetPaymentsByIdArgs);');
         });
 
