@@ -8,6 +8,8 @@ docs/api-reference/billing/list-payments.mdx
 docs/api-reference/billing/update-payment-with-form.mdx
 docs/api-reference/billing/upload-receipt.mdx
 docs/api-reference/endpoints/get-invoice.mdx
+docs/api-reference/endpoints/get-row.mdx
+docs/api-reference/endpoints/get-seat.mdx
 docs/api-reference/endpoints/get-status.mdx
 docs/api-reference/kitchen/get-folder.mdx
 docs/api-reference/kitchen/import.mdx
@@ -37,6 +39,8 @@ docs/api-reference/models/kitchen/shared.mdx
 docs/api-reference/models/kitchen/stamp.mdx
 docs/api-reference/models/kitchen/stamped.mdx
 docs/api-reference/models/kitchen/token.mdx
+docs/api-reference/models/seat-ref.mdx
+docs/api-reference/models/seat.mdx
 docs/docs.json
 docs/index.mdx
 docs/openapi.yaml

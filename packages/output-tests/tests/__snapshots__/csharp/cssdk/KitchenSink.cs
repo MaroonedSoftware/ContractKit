@@ -22,6 +22,7 @@ public sealed class KitchenSink : IDisposable
         Billing = new BillingClient(Http);
         Hyphenated = new HyphenatedClient(Http);
         Kitchen = new KitchenClient(Http);
+        Reserved = new ReservedClient(Http);
         Simple = new SimpleClient(Http);
     }
 
@@ -32,6 +33,8 @@ public sealed class KitchenSink : IDisposable
     public HyphenatedClient Hyphenated { get; }
 
     public KitchenClient Kitchen { get; }
+
+    public ReservedClient Reserved { get; }
 
     public SimpleClient Simple { get; }
 

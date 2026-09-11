@@ -199,3 +199,8 @@ declare module '#src/services/kitchen.service.js' {
         [key: string]: any;
     }
 }
+declare module '#src/services/seat.service.js' {
+    export class SeatService {
+        [key: string]: any;
+    }
+}

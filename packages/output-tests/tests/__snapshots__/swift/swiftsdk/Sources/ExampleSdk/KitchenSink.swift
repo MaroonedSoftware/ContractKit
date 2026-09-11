@@ -9,6 +9,7 @@ public final class KitchenSink: Sendable {
     public let billing: BillingClient
     public let hyphenated: HyphenatedClient
     public let kitchen: KitchenClient
+    public let reserved: ReservedClient
     public let simple: SimpleClient
 
     public init(config: SdkConfig) {
@@ -17,6 +18,7 @@ public final class KitchenSink: Sendable {
         self.billing = BillingClient(http: http)
         self.hyphenated = HyphenatedClient(http: http)
         self.kitchen = KitchenClient(http: http)
+        self.reserved = ReservedClient(http: http)
         self.simple = SimpleClient(http: http)
     }
 

@@ -5,6 +5,8 @@
 **Endpoints**
 
 - [Fetch an invoice](#fetch-an-invoice)
+- [Fetch one seat](#fetch-one-seat)
+- [Fetch a row by its seat class](#fetch-a-row-by-its-seat-class)
 - [Current service status](#current-service-status)
 
 <details>
@@ -37,6 +39,8 @@
 **Models**
 
 - [Invoice](#invoice)
+- [Seat](#seat)
+- [SeatRef](#seatref)
 - [Heartbeat](#heartbeat)
 
 <details>
@@ -98,6 +102,66 @@
 `200 OK` — Returns a [Invoice](#invoice) object.
 
 `404 Not Found`
+
+
+---
+
+### Fetch one seat
+
+**`GET`** `/seats/{class}`
+
+> [!NOTE]
+> SDK method: `getSeat`
+
+#### Attributes
+
+<details>
+<summary>Attributes (5)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `class` | `string` | Yes | Path parameter. |
+| `from` | `string` | No |  |
+| `from` | `string` | No |  |
+| `in` | `string` | No |  |
+| `pageSize` | `number` | No |  |
+
+</details>
+
+#### Response
+
+`200 OK` — Returns a [Seat](#seat) object.
+
+Response headers:
+
+| Header | Type | Description |
+| ------ | ---- | ----------- |
+| `from` | `string` |  |
+
+
+---
+
+### Fetch a row by its seat class
+
+**`GET`** `/rows/{class}`
+
+> [!NOTE]
+> SDK method: `getRow`
+
+#### Attributes
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `class` | `string` | Yes | Path parameter. |
+
+</details>
+
+#### Response
+
+`200 OK` — Returns a [Seat](#seat) object.
 
 
 ---
@@ -499,6 +563,37 @@ Accepts a [Token](#token) object.
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | *read-only* |
 | `total` | `Decimal` | Yes |  |
+
+</details>
+
+### Seat
+
+> A seat, whose field names are all reserved somewhere
+
+<details>
+<summary>Attributes (6)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `class` | `string` | Yes |  |
+| `from` | `string` | No |  |
+| `in` | `string` | No |  |
+| `is` | `boolean` | No |  |
+| `object` | `string` | No |  |
+| `default` | `string` | No |  |
+
+</details>
+
+### SeatRef
+
+> Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `class` | `string` | Yes |  |
 
 </details>
 
