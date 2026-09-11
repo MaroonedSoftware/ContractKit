@@ -144,13 +144,18 @@ public sealed record TenantHeaders
 
 /// <summary>
 /// Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
-/// its own, so the router applies the block's object mode to the object inside it.
+/// its own, so the router applies the block's object mode to the object inside it. A query array is
+/// split on commas there too, read off the object's shape under its snake_case key.
 /// </summary>
 public sealed record SnakeFilter
 {
     [JsonPropertyName("from_date")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateOnly? FromDate { get; init; }
+
+    [JsonPropertyName("tag_ids")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Guid>? TagIds { get; init; }
 }
 
 public sealed record SnakeHeaders
@@ -158,6 +163,17 @@ public sealed record SnakeHeaders
     [JsonPropertyName("tenant_id")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? TenantId { get; init; }
+}
+
+/// <summary>
+/// A format() member of an intersection has no `.extend()` or `.shape`, being a pipe. The router and the
+/// schemas build the object from the member's own object (`SnakeFilter.in`) and end in one transform
+/// that renames the member's keys through its `.out`, passing every other key through.
+/// </summary>
+public sealed record PaymentScope
+{
+    [JsonPropertyName("region")]
+    public required string Region { get; init; }
 }
 
 /// <summary>Extends a writeonly base and is itself writeonly</summary>
@@ -181,6 +197,31 @@ public sealed record AdminCredentialInput
 
     [JsonPropertyName("token")]
     public required string Token { get; init; }
+}
+
+/// <summary>A field typed as one</summary>
+public sealed record SavedSearch
+{
+    [JsonPropertyName("label")]
+    public required string Label { get; init; }
+
+    [JsonPropertyName("filter")]
+    public required SavedSearchFilter Filter { get; init; }
+}
+
+/// <summary>An alias of such an intersection, which is a pipe itself</summary>
+public sealed record ScopedFilter
+{
+    [JsonPropertyName("fromDate")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateOnly? FromDate { get; init; }
+
+    [JsonPropertyName("tagIds")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Guid>? TagIds { get; init; }
+
+    [JsonPropertyName("region")]
+    public required string Region { get; init; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PaymentStatus>))]
@@ -207,4 +248,18 @@ public enum PaymentFilterStatus
 
     [JsonStringEnumMemberName("failed")]
     Failed,
+}
+
+public sealed record SavedSearchFilter
+{
+    [JsonPropertyName("fromDate")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateOnly? FromDate { get; init; }
+
+    [JsonPropertyName("tagIds")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Guid>? TagIds { get; init; }
+
+    [JsonPropertyName("q")]
+    public required string Q { get; init; }
 }

@@ -333,30 +333,37 @@ public struct TenantHeaders: Codable, Equatable, Sendable {
 }
 
 /// Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
-/// its own, so the router applies the block's object mode to the object inside it.
+/// its own, so the router applies the block's object mode to the object inside it. A query array is
+/// split on commas there too, read off the object's shape under its snake_case key.
 public struct SnakeFilter: Codable, Equatable, Sendable {
     public var fromDate: LocalDate?
+    public var tagIds: [UUID]?
 
-    public init(fromDate: LocalDate? = nil) {
+    public init(fromDate: LocalDate? = nil, tagIds: [UUID]? = nil) {
         self.fromDate = fromDate
+        self.tagIds = tagIds
     }
 
     private enum CodingKeys: String, CodingKey {
         case fromDate = "fromDate"
+        case tagIds = "tagIds"
     }
 
     private enum EncodingKeys: String, CodingKey {
         case fromDate = "from_date"
+        case tagIds = "tag_ids"
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.fromDate = try container.decodeIfPresent(LocalDate.self, forKey: .fromDate)
+        self.tagIds = try container.decodeIfPresent([UUID].self, forKey: .tagIds)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: EncodingKeys.self)
         try container.encodeIfPresent(self.fromDate, forKey: .fromDate)
+        try container.encodeIfPresent(self.tagIds, forKey: .tagIds)
     }
 }
 
@@ -383,6 +390,31 @@ public struct SnakeHeaders: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: EncodingKeys.self)
         try container.encodeIfPresent(self.tenantId, forKey: .tenantId)
+    }
+}
+
+/// A format() member of an intersection has no `.extend()` or `.shape`, being a pipe. The router and the
+/// schemas build the object from the member's own object (`SnakeFilter.in`) and end in one transform
+/// that renames the member's keys through its `.out`, passing every other key through.
+public struct PaymentScope: Codable, Equatable, Sendable {
+    public var region: String
+
+    public init(region: String) {
+        self.region = region
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case region = "region"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.region = try container.decode(String.self, forKey: .region)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.region, forKey: .region)
     }
 }
 
@@ -447,6 +479,67 @@ public struct AdminCredentialInput: Codable, Equatable, Sendable {
     }
 }
 
+/// A field typed as one
+public struct SavedSearch: Codable, Equatable, Sendable {
+    public var label: String
+    public var filter: SavedSearchFilter
+
+    public init(label: String, filter: SavedSearchFilter) {
+        self.label = label
+        self.filter = filter
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case label = "label"
+        case filter = "filter"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.label = try container.decode(String.self, forKey: .label)
+        self.filter = try container.decode(SavedSearchFilter.self, forKey: .filter)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.label, forKey: .label)
+        try container.encode(self.filter, forKey: .filter)
+    }
+}
+
+/// An alias of such an intersection, which is a pipe itself
+public struct ScopedFilter: Codable, Equatable, Sendable {
+    public var fromDate: LocalDate?
+    public var tagIds: [UUID]?
+    public var region: String
+
+    public init(fromDate: LocalDate? = nil, tagIds: [UUID]? = nil, region: String) {
+        self.fromDate = fromDate
+        self.tagIds = tagIds
+        self.region = region
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case fromDate = "fromDate"
+        case tagIds = "tagIds"
+        case region = "region"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.fromDate = try container.decodeIfPresent(LocalDate.self, forKey: .fromDate)
+        self.tagIds = try container.decodeIfPresent([UUID].self, forKey: .tagIds)
+        self.region = try container.decode(String.self, forKey: .region)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(self.fromDate, forKey: .fromDate)
+        try container.encodeIfPresent(self.tagIds, forKey: .tagIds)
+        try container.encode(self.region, forKey: .region)
+    }
+}
+
 public enum PaymentStatus: String, Codable, CaseIterable, Sendable {
     case pending = "pending"
     case completed = "completed"
@@ -457,4 +550,36 @@ public enum PaymentFilterStatus: String, Codable, CaseIterable, Sendable {
     case pending = "pending"
     case completed = "completed"
     case failed = "failed"
+}
+
+public struct SavedSearchFilter: Codable, Equatable, Sendable {
+    public var fromDate: LocalDate?
+    public var tagIds: [UUID]?
+    public var q: String
+
+    public init(fromDate: LocalDate? = nil, tagIds: [UUID]? = nil, q: String) {
+        self.fromDate = fromDate
+        self.tagIds = tagIds
+        self.q = q
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case fromDate = "fromDate"
+        case tagIds = "tagIds"
+        case q = "q"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.fromDate = try container.decodeIfPresent(LocalDate.self, forKey: .fromDate)
+        self.tagIds = try container.decodeIfPresent([UUID].self, forKey: .tagIds)
+        self.q = try container.decode(String.self, forKey: .q)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(self.fromDate, forKey: .fromDate)
+        try container.encodeIfPresent(self.tagIds, forKey: .tagIds)
+        try container.encode(self.q, forKey: .q)
+    }
 }

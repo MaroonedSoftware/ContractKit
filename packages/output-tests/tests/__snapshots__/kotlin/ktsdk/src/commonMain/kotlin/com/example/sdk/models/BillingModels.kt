@@ -95,16 +95,28 @@ data class TenantHeaders(
 
 /**
  * Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
- * its own, so the router applies the block's object mode to the object inside it.
+ * its own, so the router applies the block's object mode to the object inside it. A query array is
+ * split on commas there too, read off the object's shape under its snake_case key.
  */
 @Serializable
 data class SnakeFilter(
     @SerialName("from_date") val fromDate: LocalDate? = null,
+    @SerialName("tag_ids") val tagIds: List<Uuid>? = null,
 )
 
 @Serializable
 data class SnakeHeaders(
     @SerialName("tenant_id") val tenantId: String? = null,
+)
+
+/**
+ * A format() member of an intersection has no `.extend()` or `.shape`, being a pipe. The router and the
+ * schemas build the object from the member's own object (`SnakeFilter.in`) and end in one transform
+ * that renames the member's keys through its `.out`, passing every other key through.
+ */
+@Serializable
+data class PaymentScope(
+    val region: String,
 )
 
 /** Extends a writeonly base and is itself writeonly */
@@ -120,6 +132,21 @@ data class AdminCredentialInput(
     val secret: String,
     val scope: String,
     val token: String,
+)
+
+/** A field typed as one */
+@Serializable
+data class SavedSearch(
+    val label: String,
+    val filter: SavedSearchFilter,
+)
+
+/** An alias of such an intersection, which is a pipe itself */
+@Serializable
+data class ScopedFilter(
+    val fromDate: LocalDate? = null,
+    val tagIds: List<Uuid>? = null,
+    val region: String,
 )
 
 @Serializable
@@ -141,3 +168,10 @@ enum class PaymentFilterStatus {
     @SerialName("failed")
     FAILED,
 }
+
+@Serializable
+data class SavedSearchFilter(
+    val fromDate: LocalDate? = null,
+    val tagIds: List<Uuid>? = null,
+    val q: String,
+)

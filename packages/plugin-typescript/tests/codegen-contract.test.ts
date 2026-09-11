@@ -1,4 +1,4 @@
-import { generateContract, renderType, renderInputType, renderQueryType, applyFieldModifiers } from '../src/codegen-contract.js';
+import { generateContract, renderType, renderInputType, renderQueryType, applyFieldModifiers, compilesToPipe } from '../src/codegen-contract.js';
 import type { ContractCodegenContext } from '../src/codegen-contract.js';
 import {
     scalarType,
@@ -10,6 +10,7 @@ import {
     literalType,
     unionType,
     discriminatedUnionType,
+    intersectionType,
     refType,
     lazyType,
     inlineObjectType,
@@ -17,13 +18,27 @@ import {
     model,
     contractRoot,
 } from './helpers.js';
-import type { ScalarTypeNode } from '@contractkit/core';
+import type { ModelNode, ScalarTypeNode } from '@contractkit/core';
 
 /** The narrowed numeric coercion `renderScalar` emits — see NUMERIC_PREPROCESS in codegen-contract. */
 const NUM = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number())`;
 const NUM_INT = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int())`;
 /** The wire-form-only bigint coercion `renderScalar` emits — see BIGINT_PREPROCESS in codegen-contract. */
 const BIGINT_PREPROCESS = `(val) => typeof val === 'string' && /^-?\\d+n?$/.test(val) ? BigInt(val.replace(/n$/, '')) : val`;
+
+type Schema = { safeParse: (v: unknown) => { success: boolean; data?: unknown } };
+
+/** Every schema a generated file exports, evaluated with real Zod. */
+async function evaluate(output: string): Promise<Record<string, Schema>> {
+    const names = [...output.matchAll(/^export const (\w+)/gm)].map(m => m[1]!);
+    const body = output
+        .split('\n')
+        .filter(l => !l.startsWith('import ') && !l.startsWith('export type '))
+        .join('\n')
+        .replace(/^export const /gm, 'const ');
+    const { z } = await import('zod');
+    return new Function('z', `${body}\nreturn { ${names.join(', ')} };`)(z);
+}
 
 describe('renderType', () => {
     // ─── Scalar types ───────────────────────────────────────────────
@@ -1416,18 +1431,6 @@ describe('generateContract', () => {
                     ),
                 ]);
 
-            /** Every schema the file exports, evaluated with real Zod. */
-            async function evaluate(output: string): Promise<Record<string, { safeParse: (v: unknown) => { success: boolean; data?: unknown } }>> {
-                const names = [...output.matchAll(/^export const (\w+)/gm)].map(m => m[1]!);
-                const body = output
-                    .split('\n')
-                    .filter(l => !l.startsWith('import ') && !l.startsWith('export type '))
-                    .join('\n')
-                    .replace(/^export const /gm, 'const ');
-                const { z } = await import('zod');
-                return new Function('z', `${body}\nreturn { ${names.join(', ')} };`)(z);
-            }
-
             it('applies the transform to both the read schema and the Input schema', () => {
                 const output = generateContract(split({ inputCase: 'snake' }));
                 expect(output).toContain(
@@ -1561,6 +1564,127 @@ describe('generateContract', () => {
             expect(output).toContain('id: data.Id,');
             expect(output).toContain('...(data.Amount != null ? { amount: data.Amount } : {}),');
             expect(output).not.toContain('?? undefined');
+        });
+    });
+});
+
+// ─── An intersection with a format() member ───────────────────────────────
+
+// A format() model compiles to `z.strictObject({...}).transform(...)`, a ZodPipe, which has neither
+// `.extend()` nor `.shape`. An intersection builds such a member from its object, `X.in`, and ends in
+// one transform that renames that member's keys through the member's own `X.out`.
+describe('an intersection with a format() member', () => {
+    const models = (...ms: ModelNode[]) => new Map(ms.map(m => [m.name, m]));
+    const snakeFilter = model('SnakeFilter', [field('fromDate', scalarType('string'), { optional: true }), field('pageSize', scalarType('int'))], {
+        inputCase: 'snake',
+    });
+    const plain = model('Plain', [field('kind', scalarType('string'))]);
+    const withQ = intersectionType(refType('SnakeFilter'), inlineObjectType([field('q', scalarType('string'))]));
+
+    it("builds the object from the member's own object and renames the member's keys through its .out", () => {
+        expect(renderType(withQ, undefined, undefined, models(snakeFilter))).toBe(
+            [
+                'SnakeFilter.in.extend({',
+                '    q: z.string(),',
+                '}).transform(({ from_date: _0, page_size: _1, ...rest }) => ({',
+                '    ...rest,',
+                '    ...SnakeFilter.out.parse({ from_date: _0, page_size: _1 }),',
+                '}))',
+            ].join('\n'),
+        );
+    });
+
+    it("extends a plain member with a format() member's object shape", () => {
+        expect(renderType(intersectionType(refType('Plain'), refType('SnakeFilter')), undefined, undefined, models(snakeFilter, plain))).toBe(
+            [
+                'Plain.extend(SnakeFilter.in.shape).transform(({ from_date: _0, page_size: _1, ...rest }) => ({',
+                '    ...rest,',
+                '    ...SnakeFilter.out.parse({ from_date: _0, page_size: _1 }),',
+                '}))',
+            ].join('\n'),
+        );
+    });
+
+    it('binds a key two format() members share once, and hands it to each', () => {
+        const other = model('OtherFilter', [field('fromDate', scalarType('string'))], { inputCase: 'snake' });
+        const output = renderType(intersectionType(refType('SnakeFilter'), refType('OtherFilter')), undefined, undefined, models(snakeFilter, other));
+        expect(output).toContain('.transform(({ from_date: _0, page_size: _1, ...rest }) => ({');
+        expect(output).toContain('    ...SnakeFilter.out.parse({ from_date: _0, page_size: _1 }),');
+        expect(output).toContain('    ...OtherFilter.out.parse({ from_date: _0 }),');
+    });
+
+    it('quotes a key that is not an identifier', () => {
+        const typed = model('Typed', [field('content-type', scalarType('string'))], { inputCase: 'snake' });
+        const output = renderType(intersectionType(refType('Typed'), refType('Plain')), undefined, undefined, models(typed, plain));
+        expect(output).toContain(".transform(({ 'content-type': _0, ...rest }) => ({");
+        expect(output).toContain("    ...Typed.out.parse({ 'content-type': _0 }),");
+    });
+
+    it('reads the Input variant on the request side, whose object leaves readonly fields out', () => {
+        const split = model('SnakeFilter', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('fromDate', scalarType('string'))], {
+            inputCase: 'snake',
+        });
+        const request = renderInputType(withQ, new Set(['SnakeFilter']), undefined, undefined, models(split));
+        expect(request).toContain('SnakeFilterInput.in.extend({');
+        expect(request).toContain('.transform(({ from_date: _0, ...rest }) => ({');
+        expect(request).toContain('    ...SnakeFilterInput.out.parse({ from_date: _0 }),');
+        // The read schema keeps the readonly field, so its transform takes it too.
+        expect(renderType(withQ, undefined, undefined, models(split))).toContain('.transform(({ id: _0, from_date: _1, ...rest }) => ({');
+    });
+
+    it('applies a request block mode to the object, before the transform', () => {
+        const query = renderQueryType(withQ, undefined, undefined, models(snakeFilter), 'strict');
+        expect(query).toContain('}).strict().transform(({ from_date: _0, page_size: _1, ...rest }) => ({');
+        const headers = renderInputType(withQ, undefined, undefined, undefined, models(snakeFilter), 'strip');
+        expect(headers).toContain('}).strip().transform(({ from_date: _0, page_size: _1, ...rest }) => ({');
+    });
+
+    it('leaves an intersection without a format() member extending each .shape', () => {
+        const withKind = intersectionType(refType('Plain'), inlineObjectType([field('q', scalarType('string'))]));
+        expect(renderType(withKind, undefined, undefined, models(plain))).toBe(['Plain.extend({', '    q: z.string(),', '})'].join('\n'));
+        expect(renderQueryType(withKind, undefined, undefined, models(plain), 'strict')).toBe(
+            ['(Plain.extend({', '    q: z.string(),', '})).strict()'].join('\n'),
+        );
+    });
+
+    it('takes an alias of such an intersection for a pipe, whose keys are every member object', () => {
+        const combo = model('Combo', [], { type: intersectionType(refType('SnakeFilter'), refType('Plain')) });
+        expect(compilesToPipe('Combo', models(snakeFilter, plain, combo))).toBe(true);
+        expect(compilesToPipe('Both', models(plain, model('Both', [], { type: intersectionType(refType('Plain'), refType('Plain')) })))).toBe(false);
+        const output = renderType(
+            intersectionType(refType('Combo'), inlineObjectType([field('q', scalarType('string'))])),
+            undefined,
+            undefined,
+            models(snakeFilter, plain, combo),
+        );
+        expect(output).toContain('Combo.in.extend({');
+        // Combo's own transform destructures SnakeFilter's keys out of everything it is given and
+        // passes the rest through, so it has to be handed Plain's too.
+        expect(output).toContain('    ...Combo.out.parse({ from_date: _0, page_size: _1, kind: _2 }),');
+    });
+
+    it('parses the keys a request sends and hands back the declared names, at run time', async () => {
+        const combo = model('Combo', [], { type: intersectionType(refType('SnakeFilter'), refType('Plain')) });
+        const search = model('Search', [field('filter', withQ)]);
+        const wider = model('Wider', [], { type: intersectionType(refType('Combo'), inlineObjectType([field('extra', scalarType('string'))])) });
+        const { Search, Combo, Wider } = await evaluate(generateContract(contractRoot([snakeFilter, plain, combo, search, wider])));
+
+        expect(Search!.safeParse({ filter: { from_date: 'd', page_size: '2', q: 'x' } })).toEqual({
+            success: true,
+            data: { filter: { q: 'x', fromDate: 'd', pageSize: 2 } },
+        });
+        // The member's object is strict, and keyed as the request spells it.
+        expect(Search!.safeParse({ filter: { fromDate: 'd', page_size: 2, q: 'x' } }).success).toBe(false);
+        // An absent optional key stays absent, as the model's own transform leaves it.
+        expect(Search!.safeParse({ filter: { page_size: 2, q: 'x' } })).toEqual({ success: true, data: { filter: { q: 'x', pageSize: 2 } } });
+
+        expect(Combo!.safeParse({ from_date: 'd', page_size: 1, kind: 'k' })).toEqual({
+            success: true,
+            data: { kind: 'k', fromDate: 'd', pageSize: 1 },
+        });
+        expect(Wider!.safeParse({ from_date: 'd', page_size: 1, kind: 'k', extra: 'e' })).toEqual({
+            success: true,
+            data: { extra: 'e', kind: 'k', fromDate: 'd', pageSize: 1 },
         });
     });
 });

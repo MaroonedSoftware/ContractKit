@@ -24,7 +24,7 @@ import {
     resolveEffectiveFields,
 } from '@contractkit/core';
 import { escapeJsDocLines, escapeSingleQuoted, sourceLink } from './ts-render.js';
-import { collectExternalWireInputRefs, flattenFormatChain, renamingCase, renderWireInputModel } from './codegen-wire-input.js';
+import { applyKeyCase, collectExternalWireInputRefs, flattenFormatChain, renamingCase, renderWireInputModel } from './codegen-wire-input.js';
 import type { WireInputRenderContext } from './codegen-wire-input.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
@@ -324,7 +324,7 @@ function generateModel(
 ): string[] {
     // Type alias: Name : typeExpression
     if (model.type) {
-        return generateTypeAlias(model, outPath, modelsWithInput, modelsWithOutput);
+        return generateTypeAlias(model, outPath, modelsWithInput, modelsWithOutput, modelMap);
     }
 
     const effective = modelMap ? flattenFormatChain(model, modelMap) : model;
@@ -335,7 +335,7 @@ function generateModel(
 
     const lines = needsInputSplit
         ? generateThreeSchemaModel(effective, outPath, modelsWithInput, modelMap)
-        : generateSimpleModel(effective, outPath);
+        : generateSimpleModel(effective, outPath, modelMap);
 
     // Emit Output type alias when this model (transitively) has format(output=...)
     if (modelsWithOutput?.has(effective.name)) {
@@ -345,13 +345,19 @@ function generateModel(
     return lines;
 }
 
-function generateTypeAlias(model: ModelNode, outPath?: string, modelsWithInput?: Set<string>, modelsWithOutput?: Set<string>): string[] {
+function generateTypeAlias(
+    model: ModelNode,
+    outPath?: string,
+    modelsWithInput?: Set<string>,
+    modelsWithOutput?: Set<string>,
+    modelMap?: Map<string, ModelNode>,
+): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
-    lines.push(`export const ${model.name} = ${renderType(model.type!)};`);
+    lines.push(`export const ${model.name} = ${renderType(model.type!, undefined, undefined, modelMap)};`);
     lines.push(`export type ${model.name} = z.infer<typeof ${model.name}>;`);
     if (modelsWithInput?.has(model.name)) {
-        lines.push(`export const ${model.name}Input = ${renderInputType(model.type!, modelsWithInput)};`);
+        lines.push(`export const ${model.name}Input = ${renderInputType(model.type!, modelsWithInput, undefined, undefined, modelMap)};`);
         lines.push(`export type ${model.name}Input = z.infer<typeof ${model.name}Input>;`);
     }
     if (modelsWithOutput?.has(model.name)) {
@@ -360,7 +366,7 @@ function generateTypeAlias(model: ModelNode, outPath?: string, modelsWithInput?:
     return lines;
 }
 
-function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
+function generateSimpleModel(model: ModelNode, outPath?: string, modelMap?: Map<string, ModelNode>): string[] {
     const lines: string[] = [];
     lines.push(...generateComments(model, outPath));
 
@@ -371,13 +377,13 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
 
     if (inputCase || outputCase) {
         const body = inputCase
-            ? renderCasedFields(model.fields, inputCase, model.mode, t => renderType(t, inputCase, model.mode))
-            : renderFields(model.fields, model.mode);
+            ? renderCasedFields(model.fields, inputCase, model.mode, t => renderType(t, inputCase, model.mode, modelMap))
+            : renderFields(model.fields, model.mode, modelMap);
         lines.push(...renderCasedSchema(model.name, model.fields, wrapper, inputCase, outputCase, body));
         return lines;
     }
 
-    const body = renderFields(model.fields, model.mode);
+    const body = renderFields(model.fields, model.mode, modelMap);
     const bases = model.bases ?? [];
     if (bases.length > 0) {
         const head = bases[0]!;
@@ -452,22 +458,22 @@ function generateThreeSchemaModel(
     if (inputCase || outputCase) {
         const mode = model.mode;
         const renderWrite = (t: ContractTypeNode) =>
-            modelsWithInput ? renderInputType(t, modelsWithInput, mode, inputCase) : renderType(t, inputCase, mode);
+            modelsWithInput ? renderInputType(t, modelsWithInput, mode, inputCase, modelMap) : renderType(t, inputCase, mode, modelMap);
         const readBody = inputCase
-            ? renderCasedFields(readFields, inputCase, mode, t => renderType(t, inputCase, mode))
-            : renderFields(readFields, mode);
+            ? renderCasedFields(readFields, inputCase, mode, t => renderType(t, inputCase, mode, modelMap))
+            : renderFields(readFields, mode, modelMap);
         const writeBody = inputCase
             ? renderCasedFields(writeFields, inputCase, mode, renderWrite)
             : modelsWithInput
-              ? renderInputFields(writeFields, modelsWithInput, mode)
-              : renderFields(writeFields, mode);
+              ? renderInputFields(writeFields, modelsWithInput, mode, modelMap)
+              : renderFields(writeFields, mode, modelMap);
         lines.push(...renderCasedSchema(name, readFields, wrapper, inputCase, outputCase, readBody));
         lines.push('');
         lines.push(...renderCasedSchema(`${name}Input`, writeFields, wrapper, inputCase, outputCase, writeBody));
         return lines;
     }
 
-    const readBody = renderFields(readFields, model.mode);
+    const readBody = renderFields(readFields, model.mode, modelMap);
     if (bases.length > 0) {
         const { head, tail } = buildExtendChain(bases, b => b);
         lines.push(`export const ${name} = ${head}${tail}.extend({`);
@@ -481,7 +487,9 @@ function generateThreeSchemaModel(
 
     // Write schema — omit readonly fields (use Input variants for sub-type refs);
     // extends ParentInput if parent has an Input variant, else extends parent read schema
-    const writeBody = modelsWithInput ? renderInputFields(writeFields, modelsWithInput, model.mode) : renderFields(writeFields, model.mode);
+    const writeBody = modelsWithInput
+        ? renderInputFields(writeFields, modelsWithInput, model.mode, modelMap)
+        : renderFields(writeFields, model.mode, modelMap);
     // Fields that become readonly in this model but were writable in a base must be omitted from
     // the base Input schema — Zod's .extend() cannot remove inherited fields.
     const fieldsToOmit = new Set<string>();
@@ -530,8 +538,8 @@ function applyCase(name: string, caseTransform: 'camel' | 'snake' | 'pascal' | u
     return camelToPascal(name);
 }
 
-function renderFields(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
-    return fields.flatMap(f => renderField(f, defaultMode));
+function renderFields(fields: FieldNode[], defaultMode?: ObjectMode, models?: Map<string, ModelNode>): string[] {
+    return fields.flatMap(f => renderField(f, defaultMode, models));
 }
 
 /**
@@ -737,12 +745,12 @@ function renderObjectMember(key: string, expr: string, getter: boolean): string 
     return getter ? `get ${quoteKey(key)}() { return ${expr}; },` : `${quoteKey(key)}: ${expr},`;
 }
 
-function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
+function renderField(field: FieldNode, defaultMode?: ObjectMode, models?: Map<string, ModelNode>): string[] {
     const lines: string[] = [];
     if (field.deprecated) lines.push('/** @deprecated */');
 
     const member = memberType(field.type);
-    let expr = renderType(member.type, undefined, defaultMode);
+    let expr = renderType(member.type, undefined, defaultMode, models);
 
     expr = applyFieldModifiers(expr, field);
 
@@ -759,33 +767,41 @@ function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
  *   the given casing (`'snake'` | `'pascal'`) to camelCase for `inlineObject` types.
  * @param defaultMode - Fallback object mode (`'strict'` | `'strip'` | `'loose'`) when the node
  *   doesn't specify its own mode.
+ * @param models - Every model a ref may name, across all files. An intersection needs them to tell
+ *   a `format()` member, whose schema is a pipe, from a plain object ({@link renderExtendChain}).
+ *   Without them every member is taken for a plain object.
  */
-export function renderType(type: ContractTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
+export function renderType(
+    type: ContractTypeNode,
+    parseCaseTransform?: 'snake' | 'pascal',
+    defaultMode?: ObjectMode,
+    models?: Map<string, ModelNode>,
+): string {
     switch (type.kind) {
         case 'scalar':
             return renderScalar(type);
         case 'array':
-            return renderArray(type, parseCaseTransform, defaultMode);
+            return renderArray(type, parseCaseTransform, defaultMode, models);
         case 'tuple':
-            return renderTuple(type);
+            return renderTuple(type, models);
         case 'record':
-            return renderRecord(type);
+            return renderRecord(type, models);
         case 'enum':
             return renderEnum(type);
         case 'literal':
             return renderLiteral(type);
         case 'union':
-            return renderUnion(type, parseCaseTransform, defaultMode);
+            return renderUnion(type, parseCaseTransform, defaultMode, models);
         case 'discriminatedUnion':
-            return renderDiscriminatedUnion(type, parseCaseTransform, defaultMode);
+            return renderDiscriminatedUnion(type, parseCaseTransform, defaultMode, models);
         case 'intersection':
-            return renderIntersection(type, parseCaseTransform, defaultMode);
+            return renderIntersection(type, parseCaseTransform, defaultMode, models);
         case 'ref':
             return type.name;
         case 'lazy':
-            return `z.lazy(() => ${renderType(type.inner, parseCaseTransform, defaultMode)})`;
+            return `z.lazy(() => ${renderType(type.inner, parseCaseTransform, defaultMode, models)})`;
         case 'inlineObject':
-            return renderInlineObject(type, parseCaseTransform, defaultMode);
+            return renderInlineObject(type, parseCaseTransform, defaultMode, models);
         default:
             return 'z.unknown()';
     }
@@ -934,19 +950,19 @@ function renderScalar(s: ScalarTypeNode): string {
     }
 }
 
-function renderArray(a: ArrayTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
-    let e = `z.array(${renderType(a.item, parseCaseTransform, defaultMode)})`;
+function renderArray(a: ArrayTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode, models?: Map<string, ModelNode>): string {
+    let e = `z.array(${renderType(a.item, parseCaseTransform, defaultMode, models)})`;
     if (a.min !== undefined) e += `.min(${a.min})`;
     if (a.max !== undefined) e += `.max(${a.max})`;
     return e;
 }
 
-function renderTuple(t: TupleTypeNode): string {
-    return `z.tuple([${t.items.map(i => renderType(i)).join(', ')}])`;
+function renderTuple(t: TupleTypeNode, models?: Map<string, ModelNode>): string {
+    return `z.tuple([${t.items.map(i => renderType(i, undefined, undefined, models)).join(', ')}])`;
 }
 
-function renderRecord(r: RecordTypeNode): string {
-    return `z.record(${renderType(r.key)}, ${renderType(r.value)})`;
+function renderRecord(r: RecordTypeNode, models?: Map<string, ModelNode>): string {
+    return `z.record(${renderType(r.key, undefined, undefined, models)}, ${renderType(r.value, undefined, undefined, models)})`;
 }
 
 function renderEnum(e: EnumTypeNode): string {
@@ -959,54 +975,234 @@ function renderLiteral(l: LiteralTypeNode): string {
     return `z.literal(${l.value})`;
 }
 
-function renderUnion(u: UnionTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
-    return `z.union([${u.members.map(m => renderType(m, parseCaseTransform, defaultMode)).join(', ')}])`;
+function renderUnion(u: UnionTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode, models?: Map<string, ModelNode>): string {
+    return `z.union([${u.members.map(m => renderType(m, parseCaseTransform, defaultMode, models)).join(', ')}])`;
 }
 
-function renderDiscriminatedUnion(u: DiscriminatedUnionTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
-    return `z.discriminatedUnion("${escapeString(u.discriminator)}", [${u.members.map(m => renderType(m, parseCaseTransform, defaultMode)).join(', ')}])`;
+function renderDiscriminatedUnion(
+    u: DiscriminatedUnionTypeNode,
+    parseCaseTransform?: 'snake' | 'pascal',
+    defaultMode?: ObjectMode,
+    models?: Map<string, ModelNode>,
+): string {
+    return `z.discriminatedUnion("${escapeString(u.discriminator)}", [${u.members.map(m => renderType(m, parseCaseTransform, defaultMode, models)).join(', ')}])`;
 }
 
-function renderIntersection(i: IntersectionTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
-    const [first, ...rest] = i.members;
-    // When the pattern is ref & (ref | inlineObject)*, use .extend() chains to
-    // produce a single ZodObject. .and() breaks strict objects — each strict side
-    // rejects the other side's keys during intersection parsing, and ZodIntersection
-    // has no .strict() method.
-    if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'ref' || m.kind === 'inlineObject')) {
-        let expr = first.name;
-        for (const member of rest) {
-            if (member.kind === 'ref') {
-                expr += `.extend(${member.name}.shape)`;
-            } else {
-                const m = member as InlineObjectTypeNode;
-                const fieldLines = (
-                    parseCaseTransform
-                        ? renderCasedFields(m.fields, parseCaseTransform, defaultMode, t => renderType(t, parseCaseTransform, defaultMode))
-                        : m.fields.flatMap(f => renderField(f, defaultMode))
-                )
-                    .map(l => `    ${l}`)
-                    .join('\n');
-                expr += `.extend({\n${fieldLines}\n})`;
-            }
-        }
-        return expr;
+function renderIntersection(
+    i: IntersectionTypeNode,
+    parseCaseTransform?: 'snake' | 'pascal',
+    defaultMode?: ObjectMode,
+    models?: Map<string, ModelNode>,
+): string {
+    if (isExtendChain(i)) {
+        const inlineFields = (m: InlineObjectTypeNode) =>
+            parseCaseTransform
+                ? renderCasedFields(m.fields, parseCaseTransform, defaultMode, t => renderType(t, parseCaseTransform, defaultMode, models))
+                : m.fields.flatMap(f => renderField(f, defaultMode, models));
+        return joinChain(renderExtendChain(i.members, name => name, inlineFields, models));
     }
-    let expr = renderType(first!, parseCaseTransform, defaultMode);
+    const [first, ...rest] = i.members;
+    let expr = renderType(first!, parseCaseTransform, defaultMode, models);
     for (const member of rest) {
-        expr += `.and(${renderType(member, parseCaseTransform, defaultMode)})`;
+        expr += `.and(${renderType(member, parseCaseTransform, defaultMode, models)})`;
     }
     return expr;
 }
 
-function renderInlineObject(o: InlineObjectTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
+function renderInlineObject(
+    o: InlineObjectTypeNode,
+    parseCaseTransform?: 'snake' | 'pascal',
+    defaultMode?: ObjectMode,
+    models?: Map<string, ModelNode>,
+): string {
     const wrapper = modeToWrapper(o.mode ?? defaultMode ?? 'strict');
-    if (parseCaseTransform) return renderCasedInlineObject(o, parseCaseTransform, defaultMode, t => renderType(t, parseCaseTransform, defaultMode));
+    if (parseCaseTransform)
+        return renderCasedInlineObject(o, parseCaseTransform, defaultMode, t => renderType(t, parseCaseTransform, defaultMode, models));
     const fields = o.fields
-        .flatMap(f => renderField(f, defaultMode))
+        .flatMap(f => renderField(f, defaultMode, models))
         .map(l => `    ${l}`)
         .join('\n');
     return `${wrapper}({\n${fields}\n})`;
+}
+
+// ─── Intersections ────────────────────────────────────────────────────────
+
+/**
+ * Whether an intersection is built as one object by `.extend()`: a ref first, then refs and inline
+ * objects. Anything else is joined with `.and()`, which of two strict objects rejects every value,
+ * each side seeing the other's keys as unrecognized. A `ZodIntersection` has no `.strict()` either.
+ */
+export function isExtendChain(i: IntersectionTypeNode): boolean {
+    const [first, ...rest] = i.members;
+    return first?.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'ref' || m.kind === 'inlineObject');
+}
+
+/**
+ * An intersection `.extend()` builds, split where a request block's object mode goes: after the
+ * object and before the transform, which a `.strict()` could not follow because a pipe has none.
+ */
+interface ExtendChain {
+    object: string;
+    /** The `.transform(...)` that renames the keys of each `format()` member. Absent when none is. */
+    transform?: string;
+}
+
+/**
+ * `A & B & { … }` as one object, each member's keys added by `.extend()` in turn, a later one
+ * replacing an earlier.
+ *
+ * A `format()` member's schema is a pipe (`object().transform()`), which has neither `.extend()` nor
+ * `.shape`. Its object, `X.in`, stands in for it, and the chain ends in one transform that hands
+ * that member's keys to its own `X.out` and passes every other key through. So the keys are parsed
+ * as a request spells them (`from_date`) and come out as the model's own transform renames them
+ * (`fromDate`): the wire shape the SDK sends for the intersection (`XWireInput & { … }`), and the
+ * post-transform shape the service is typed against.
+ *
+ * @param schemaName The schema a ref member names: the model's own, or its `Input` variant.
+ * @param inlineFields An inline member's fields, one rendered line each.
+ * @param models Every model a ref may name. Without them no member is taken for a pipe.
+ * @param modelsWithInput Given on the request side, where `schemaName` picks `Input` variants. Decides
+ *   which fields each pipe's object keeps, and so which keys the transform takes from it.
+ */
+function renderExtendChain(
+    members: readonly ContractTypeNode[],
+    schemaName: (name: string) => string,
+    inlineFields: (member: InlineObjectTypeNode) => string[],
+    models?: Map<string, ModelNode>,
+    modelsWithInput?: Set<string>,
+): ExtendChain {
+    const pipes: { schema: string; keys: string[] }[] = [];
+    const objectOf = (name: string): string => {
+        const schema = schemaName(name);
+        if (!models || !compilesToPipe(name, models)) return schema;
+        pipes.push({ schema, keys: schemaKeys(name, models, modelsWithInput) });
+        return `${schema}.in`;
+    };
+    let object = '';
+    for (const member of members) {
+        if (member.kind === 'ref') {
+            object += object ? `.extend(${objectOf(member.name)}.shape)` : objectOf(member.name);
+        } else if (member.kind === 'inlineObject') {
+            const fieldLines = inlineFields(member)
+                .map(l => `    ${l}`)
+                .join('\n');
+            object += `.extend({\n${fieldLines}\n})`;
+        }
+    }
+    return { object, transform: pipes.length > 0 ? renderPipeTransform(pipes) : undefined };
+}
+
+/**
+ * The transform ending an intersection with `format()` members: each member's keys handed to its own
+ * `.out`, which renames them, and every other key passed through as it is.
+ *
+ * Each key is bound under a positional alias rather than its own name, so a key that is no identifier
+ * (`'x-id'`) or is a reserved word (`class`) needs no special case, and none can clash with `rest`.
+ */
+function renderPipeTransform(pipes: readonly { schema: string; keys: readonly string[] }[]): string {
+    const aliases = new Map<string, string>();
+    for (const pipe of pipes) for (const key of pipe.keys) if (!aliases.has(key)) aliases.set(key, `_${aliases.size}`);
+    const bind = (key: string) => `${propertyKey(key)}: ${aliases.get(key)}`;
+    const params = [...[...aliases.keys()].map(bind), '...rest'].join(', ');
+    const lines = [`.transform(({ ${params} }) => ({`, '    ...rest,'];
+    for (const pipe of pipes) {
+        lines.push(`    ...${pipe.schema}.out.parse(${pipe.keys.length > 0 ? `{ ${pipe.keys.map(bind).join(', ')} }` : '{}'}),`);
+    }
+    lines.push('}))');
+    return lines.join('\n');
+}
+
+/** The chain as one expression, with a request block's object mode, if any, applied to its object. */
+function joinChain(chain: ExtendChain, blockMode?: ObjectMode): string {
+    if (!blockMode) return `${chain.object}${chain.transform ?? ''}`;
+    if (chain.transform) return `${chain.object}.${blockMode}()${chain.transform}`;
+    return withBlockMode(chain.object, blockMode);
+}
+
+/**
+ * A request block's schema under the block's object mode: `(expr).strict()`. The block's mode wins
+ * over the schema's own, as it does for an inline block.
+ */
+function withBlockMode(expr: string, blockMode: ObjectMode): string {
+    return `(${expr}).${blockMode}()`;
+}
+
+/**
+ * A ref as a request block (`query: X`, `headers: X`, `params: X`) validates it, under the block's
+ * object mode: `X.strict()`, or `X.in.strict().pipe(X.out)` for a model whose schema is a pipe.
+ *
+ * A `format()` schema is an object piped through the `.transform()` that renames its keys, and a pipe
+ * has no `.strict()` of its own. So the mode goes on the object inside it (`.in`), and the result is
+ * piped back through the same transform (`.out`). Applying it there rather than keeping the model's
+ * own mode is what lets a headers block strip the headers it does not declare, as it does for any
+ * other model, where the model's default strict object would reject every one of them.
+ */
+function refWithBlockMode(schema: string, name: string, blockMode: ObjectMode, models?: Map<string, ModelNode>): string {
+    return models && compilesToPipe(name, models) ? `${schema}.in.${blockMode}().pipe(${schema}.out)` : `${schema}.${blockMode}()`;
+}
+
+/**
+ * The keys the object in `name`'s schema parses, as a request spells them: a `format(input=)`
+ * model's recased (`from_date`), anyone else's as declared. For a pipe, that object is `X.in`, and
+ * these are exactly the keys its transform reads.
+ *
+ * The side is the schema's own: an `XInput` variant (named in `modelsWithInput`) leaves readonly
+ * fields out, the read schema writeonly ones. An alias has its type's keys, rendered on that same
+ * side, so an alias of an intersection has every member's.
+ *
+ * @param modelsWithInput Given on the request side, where a model with an `Input` variant is read
+ *   through it. Leave it out for the read side.
+ */
+export function schemaKeys(name: string, models: Map<string, ModelNode>, modelsWithInput?: Set<string>): string[] {
+    return schemaEntries(name, models, modelsWithInput).map(e => e.key);
+}
+
+/** {@link schemaKeys} for a type: a ref's, an inline object's declared names, or every member's. */
+export function typeKeys(type: ContractTypeNode, models: Map<string, ModelNode>, modelsWithInput?: Set<string>): string[] {
+    return typeEntries(type, models, modelsWithInput, new Set()).map(e => e.key);
+}
+
+/** One key of a schema's object, with the field it parses. */
+interface SchemaEntry {
+    key: string;
+    field: FieldNode;
+}
+
+/** {@link schemaKeys}, each key with its field. A key two members share is the later one's. */
+function schemaEntries(name: string, models: Map<string, ModelNode>, modelsWithInput?: Set<string>, seen = new Set<string>()): SchemaEntry[] {
+    const model = models.get(name);
+    if (!model || seen.has(name)) return [];
+    const inner = new Set(seen).add(name);
+    const side = modelsWithInput?.has(name) ? modelsWithInput : undefined;
+    if (model.type) return typeEntries(model.type, models, side, inner);
+    const keyCase = renamingCase(flattenFormatChain(model, models).inputCase);
+    const dropped = side ? 'readonly' : 'writeonly';
+    return resolveEffectiveFields(name, models)
+        .fields.filter(f => f.visibility !== dropped)
+        .map(field => ({ key: applyKeyCase(field.name, keyCase), field }));
+}
+
+function typeEntries(
+    type: ContractTypeNode,
+    models: Map<string, ModelNode>,
+    modelsWithInput: Set<string> | undefined,
+    seen: Set<string>,
+): SchemaEntry[] {
+    switch (type.kind) {
+        case 'ref':
+            return schemaEntries(type.name, models, modelsWithInput, seen);
+        case 'inlineObject':
+            return type.fields.map(field => ({ key: field.name, field }));
+        case 'intersection': {
+            const byKey = new Map<string, SchemaEntry>();
+            for (const member of type.members) for (const e of typeEntries(member, models, modelsWithInput, seen)) byKey.set(e.key, e);
+            return [...byKey.values()];
+        }
+        case 'lazy':
+            return typeEntries(type.inner, models, modelsWithInput, seen);
+        default:
+            return [];
+    }
 }
 
 // ─── Input type rendering ─────────────────────────────────────────────────
@@ -1037,19 +1233,29 @@ function renderInputScalar(s: ScalarTypeNode): string {
  * @param parseCaseTransform - An enclosing `format(input=)`, which re-keys anonymous objects below it
  *   exactly as {@link renderType} does: through arrays, unions, intersections and `lazy()`, but not
  *   into a tuple or a record.
+ * @param models - Every model a ref may name, as for {@link renderType}.
+ * @param blockMode - The object mode of the request block (`headers:`, `params:`) validating the
+ *   type as a whole, applied to the top-level schema: inside the pipe of a `format()` model, and
+ *   between the object and the transform of an intersection with a `format()` member.
  */
 export function renderInputType(
     type: ContractTypeNode,
     modelsWithInput?: Set<string>,
     defaultMode?: ObjectMode,
     parseCaseTransform?: 'snake' | 'pascal',
+    models?: Map<string, ModelNode>,
+    blockMode?: ObjectMode,
 ): string {
-    const recurse = (t: ContractTypeNode) => renderInputType(t, modelsWithInput, defaultMode, parseCaseTransform);
+    const recurse = (t: ContractTypeNode) => renderInputType(t, modelsWithInput, defaultMode, parseCaseTransform, models);
+    const inputName = (name: string) => (modelsWithInput?.has(name) ? `${name}Input` : name);
+    // Only an intersection places the mode inside its own rendering, between its object and its transform.
+    if (blockMode && type.kind === 'ref') return refWithBlockMode(inputName(type.name), type.name, blockMode, models);
+    if (blockMode && (type.kind !== 'intersection' || !isExtendChain(type))) return withBlockMode(recurse(type), blockMode);
     switch (type.kind) {
         case 'scalar':
             return renderInputScalar(type);
         case 'ref':
-            return modelsWithInput?.has(type.name) ? `${type.name}Input` : type.name;
+            return inputName(type.name);
         case 'array': {
             let e = `z.array(${recurse(type.item)})`;
             if (type.min !== undefined) e += `.min(${type.min})`;
@@ -1057,35 +1263,22 @@ export function renderInputType(
             return e;
         }
         case 'tuple':
-            return `z.tuple([${type.items.map(i => renderInputType(i, modelsWithInput, defaultMode)).join(', ')}])`;
+            return `z.tuple([${type.items.map(i => renderInputType(i, modelsWithInput, defaultMode, undefined, models)).join(', ')}])`;
         case 'record':
-            return `z.record(${renderInputType(type.key, modelsWithInput, defaultMode)}, ${renderInputType(type.value, modelsWithInput, defaultMode)})`;
+            return `z.record(${renderInputType(type.key, modelsWithInput, defaultMode, undefined, models)}, ${renderInputType(type.value, modelsWithInput, defaultMode, undefined, models)})`;
         case 'union':
             return `z.union([${type.members.map(recurse).join(', ')}])`;
         case 'discriminatedUnion':
             return `z.discriminatedUnion("${escapeString(type.discriminator)}", [${type.members.map(recurse).join(', ')}])`;
         case 'intersection': {
-            const [first, ...rest] = type.members;
-            if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'ref' || m.kind === 'inlineObject')) {
-                let expr = modelsWithInput?.has(first.name) ? `${first.name}Input` : first.name;
-                for (const member of rest) {
-                    if (member.kind === 'ref') {
-                        const name = modelsWithInput?.has(member.name) ? `${member.name}Input` : member.name;
-                        expr += `.extend(${name}.shape)`;
-                    } else {
-                        const inline = member as InlineObjectTypeNode;
-                        const fieldLines = (
-                            parseCaseTransform
-                                ? renderCasedFields(inline.fields, parseCaseTransform, defaultMode, recurse)
-                                : inline.fields.map(f => renderInputField(f, modelsWithInput ?? new Set(), defaultMode))
-                        )
-                            .map(l => `    ${l}`)
-                            .join('\n');
-                        expr += `.extend({\n${fieldLines}\n})`;
-                    }
-                }
-                return expr;
+            if (isExtendChain(type)) {
+                const inlineFields = (inline: InlineObjectTypeNode) =>
+                    parseCaseTransform
+                        ? renderCasedFields(inline.fields, parseCaseTransform, defaultMode, recurse)
+                        : inline.fields.flatMap(f => renderInputField(f, modelsWithInput ?? new Set(), defaultMode, models));
+                return joinChain(renderExtendChain(type.members, inputName, inlineFields, models, modelsWithInput), blockMode);
             }
+            const [first, ...rest] = type.members;
             let expr = recurse(first!);
             for (const member of rest) {
                 expr += `.and(${recurse(member)})`;
@@ -1097,22 +1290,22 @@ export function renderInputType(
         case 'inlineObject': {
             if (parseCaseTransform) return renderCasedInlineObject(type, parseCaseTransform, defaultMode, recurse);
             const fields = type.fields
-                .flatMap(f => renderInputField(f, modelsWithInput ?? new Set(), defaultMode))
+                .flatMap(f => renderInputField(f, modelsWithInput ?? new Set(), defaultMode, models))
                 .map(l => `    ${l}`)
                 .join('\n');
             return `${modeToWrapper(type.mode ?? defaultMode ?? 'strict')}({\n${fields}\n})`;
         }
         default:
-            return renderType(type, undefined, defaultMode);
+            return renderType(type, undefined, defaultMode, models);
     }
 }
 
-function renderInputField(field: FieldNode, modelsWithInput: Set<string>, defaultMode?: ObjectMode): string[] {
+function renderInputField(field: FieldNode, modelsWithInput: Set<string>, defaultMode?: ObjectMode, models?: Map<string, ModelNode>): string[] {
     const lines: string[] = [];
     if (field.deprecated) lines.push('/** @deprecated */');
 
     const member = memberType(field.type);
-    let expr = renderInputType(member.type, modelsWithInput, defaultMode);
+    let expr = renderInputType(member.type, modelsWithInput, defaultMode, undefined, models);
 
     expr = applyFieldModifiers(expr, field);
 
@@ -1120,8 +1313,8 @@ function renderInputField(field: FieldNode, modelsWithInput: Set<string>, defaul
     return lines;
 }
 
-function renderInputFields(fields: FieldNode[], modelsWithInput: Set<string>, defaultMode?: ObjectMode): string[] {
-    return fields.flatMap(f => renderInputField(f, modelsWithInput, defaultMode));
+function renderInputFields(fields: FieldNode[], modelsWithInput: Set<string>, defaultMode?: ObjectMode, models?: Map<string, ModelNode>): string[] {
+    return fields.flatMap(f => renderInputField(f, modelsWithInput, defaultMode, models));
 }
 
 // ─── Query type rendering ─────────────────────────────────────────────────
@@ -1142,62 +1335,77 @@ export function queryArrayPreprocess(schema: string): string {
  *
  * @param models Every model a ref may name, across all files. A referenced model's schema is the one
  *   request bodies validate against, so its array fields have no split; with the models to hand, each
- *   is re-wrapped here ({@link queryArrayOverrides}). Without them a model's arrays are left as-is.
+ *   is re-wrapped here ({@link queryArrayOverrides}). Without them a model's arrays are left as-is, and
+ *   no intersection member is taken for a `format()` pipe ({@link renderExtendChain}).
+ * @param blockMode The `query:` block's object mode, applied to the top-level schema as
+ *   {@link renderInputType} applies a `headers:` block's.
  */
 export function renderQueryType(
     type: ContractTypeNode,
     modelsWithInput?: Set<string>,
     defaultMode?: ObjectMode,
     models?: Map<string, ModelNode>,
+    blockMode?: ObjectMode,
 ): string {
+    const inputName = (name: string) => (modelsWithInput?.has(name) ? `${name}Input` : name);
     switch (type.kind) {
         case 'array': {
-            const inner = modelsWithInput ? renderInputType(type, modelsWithInput, defaultMode) : renderType(type, undefined, defaultMode);
-            return queryArrayPreprocess(inner);
+            const inner = modelsWithInput
+                ? renderInputType(type, modelsWithInput, defaultMode, undefined, models)
+                : renderType(type, undefined, defaultMode, models);
+            return applyBlockMode(queryArrayPreprocess(inner), blockMode);
         }
         case 'inlineObject': {
-            const fields = type.fields.map(f => `    ${renderQueryField(f, modelsWithInput, defaultMode)}`).join('\n');
-            return `${modeToWrapper(type.mode ?? defaultMode ?? 'strict')}({\n${fields}\n})`;
+            const fields = type.fields.map(f => `    ${renderQueryField(f, modelsWithInput, defaultMode, models)}`).join('\n');
+            return applyBlockMode(`${modeToWrapper(type.mode ?? defaultMode ?? 'strict')}({\n${fields}\n})`, blockMode);
         }
         case 'intersection': {
-            const [first, ...rest] = type.members;
-            if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'ref' || m.kind === 'inlineObject')) {
-                let expr = modelsWithInput?.has(first.name) ? `${first.name}Input` : first.name;
-                for (const member of rest) {
-                    if (member.kind === 'ref') {
-                        const name = modelsWithInput?.has(member.name) ? `${member.name}Input` : member.name;
-                        expr += `.extend(${name}.shape)`;
-                    } else {
-                        const fieldLines = (member as InlineObjectTypeNode).fields
-                            .map(f => `    ${renderQueryField(f, modelsWithInput, defaultMode)}`)
-                            .join('\n');
-                        expr += `.extend({\n${fieldLines}\n})`;
-                    }
-                }
-                return withExtension(expr, queryArrayOverrides(type.members, modelsWithInput, models));
+            if (isExtendChain(type)) {
+                const inlineFields = (inline: InlineObjectTypeNode) =>
+                    inline.fields.map(f => renderQueryField(f, modelsWithInput, defaultMode, models));
+                const chain = renderExtendChain(type.members, inputName, inlineFields, models, modelsWithInput);
+                const object = withExtension(chain.object, queryArrayOverrides(type.members, modelsWithInput, models));
+                return joinChain({ ...chain, object }, blockMode);
             }
+            const [first, ...rest] = type.members;
             let expr = renderQueryType(first!, modelsWithInput, defaultMode, models);
             for (const member of rest) {
                 expr += `.and(${renderQueryType(member, modelsWithInput, defaultMode, models)})`;
             }
-            return expr;
+            return applyBlockMode(expr, blockMode);
         }
         case 'ref': {
-            const name = modelsWithInput?.has(type.name) ? `${type.name}Input` : type.name;
-            return withExtension(name, queryArrayOverrides([type], modelsWithInput, models));
+            const name = inputName(type.name);
+            const overrides = queryArrayOverrides([type], modelsWithInput, models);
+            if (models && compilesToPipe(type.name, models) && (blockMode || overrides.length > 0)) {
+                // The split goes on the pipe's object, as the mode does, and the result is piped back
+                // through the model's own transform: `X.in.extend({...}).strict().pipe(X.out)`.
+                return `${withExtension(`${name}.in`, overrides)}${blockMode ? `.${blockMode}()` : ''}.pipe(${name}.out)`;
+            }
+            const expr = withExtension(name, overrides);
+            return blockMode ? `${expr}.${blockMode}()` : expr;
         }
-        default:
-            return modelsWithInput ? renderInputType(type, modelsWithInput, defaultMode) : renderType(type, undefined, defaultMode);
+        default: {
+            const expr = modelsWithInput
+                ? renderInputType(type, modelsWithInput, defaultMode, undefined, models)
+                : renderType(type, undefined, defaultMode, models);
+            return applyBlockMode(expr, blockMode);
+        }
     }
 }
 
-function renderQueryField(field: FieldNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode): string {
+/** `expr` under a request block's object mode when there is one ({@link withBlockMode}), else as is. */
+function applyBlockMode(expr: string, blockMode: ObjectMode | undefined): string {
+    return blockMode ? withBlockMode(expr, blockMode) : expr;
+}
+
+function renderQueryField(field: FieldNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode, models?: Map<string, ModelNode>): string {
     let expr =
         field.type.kind === 'array'
-            ? renderQueryType(field.type, modelsWithInput, defaultMode)
+            ? renderQueryType(field.type, modelsWithInput, defaultMode, models)
             : modelsWithInput
-              ? renderInputType(field.type, modelsWithInput, defaultMode)
-              : renderType(field.type, undefined, defaultMode);
+              ? renderInputType(field.type, modelsWithInput, defaultMode, undefined, models)
+              : renderType(field.type, undefined, defaultMode, models);
 
     expr = applyFieldModifiers(expr, field);
 
@@ -1207,13 +1415,14 @@ function renderQueryField(field: FieldNode, modelsWithInput?: Set<string>, defau
 /**
  * The array fields a query schema takes from referenced models, each re-wrapped in
  * {@link queryArrayPreprocess} and read back off the model's own `.shape`, so its modifiers
- * (`.optional()`, `.default()`) come along unchanged.
+ * (`.optional()`, `.default()`) come along unchanged. A model whose schema is a pipe
+ * ({@link compilesToPipe}) has no `.shape`; its fields are read off its object's, `X.in.shape`, and
+ * keyed as that object keys them, `tag_ids` for a `format(input=snake)` model's `tagIds`.
  *
- * Each field is taken from the member that declares it last, the one `.extend()` keeps it from. A
- * field an inline member declares last already has the preprocess, from {@link renderQueryField}.
- * One absent from the schema being extended is skipped: an `Input` variant drops readonly fields and
- * a read schema drops writeonly ones, so `.shape` has nothing to wrap for them. So is every field of
- * a model whose schema is a pipe ({@link compilesToPipe}), which has no `.shape` at all.
+ * Each key is taken from the member that declares it last, the one `.extend()` keeps it from. A key
+ * an inline member declares last already has the preprocess, from {@link renderQueryField}. Only
+ * the fields on the schema being extended count: an `Input` variant leaves readonly fields out and
+ * a read schema writeonly ones ({@link schemaEntries}).
  *
  * @param members The query schema's members, in `.extend()` order.
  */
@@ -1222,35 +1431,49 @@ function queryArrayOverrides(members: readonly ContractTypeNode[], modelsWithInp
     const owners = new Map<string, string | undefined>();
     for (const member of members) {
         if (member.kind === 'ref') {
-            const isInput = modelsWithInput?.has(member.name) ?? false;
-            const schema = isInput ? `${member.name}Input` : member.name;
-            const extendable = !compilesToPipe(member.name, models);
-            for (const f of resolveEffectiveFields(member.name, models).fields) {
-                const onSchema = extendable && f.visibility !== (isInput ? 'readonly' : 'writeonly');
-                owners.set(f.name, onSchema && f.type.kind === 'array' ? schema : undefined);
+            const schema = modelsWithInput?.has(member.name) ? `${member.name}Input` : member.name;
+            const object = compilesToPipe(member.name, models) ? `${schema}.in` : schema;
+            for (const { key, field } of schemaEntries(member.name, models, modelsWithInput)) {
+                owners.set(key, field.type.kind === 'array' ? object : undefined);
             }
         } else if (member.kind === 'inlineObject') {
             for (const f of member.fields) owners.set(f.name, undefined);
         }
     }
-    return [...owners].flatMap(([name, schema]) => {
-        if (!schema) return [];
-        const shapeAccess = isValidIdentifier(name) ? `.shape.${name}` : `.shape['${escapeSingleQuoted(name)}']`;
-        return [`${quoteKey(name)}: ${queryArrayPreprocess(`${schema}${shapeAccess}`)},`];
+    return [...owners].flatMap(([key, object]) => {
+        if (!object) return [];
+        const shapeAccess = isValidIdentifier(key) ? `.shape.${key}` : `.shape['${escapeSingleQuoted(key)}']`;
+        return [`${quoteKey(key)}: ${queryArrayPreprocess(`${object}${shapeAccess}`)},`];
     });
 }
 
 /**
- * Whether the model's schema is an `object().transform()` pipe, because its own or an inherited
- * `format()` renames keys, or it is an alias of one that does. A pipe has no `.shape`, `.extend()` or
- * `.strict()`.
+ * Whether the model's schema is an `object().transform()` pipe: its own or an inherited `format()`
+ * renames keys, or it is an alias of a type that renders as one ({@link typeCompilesToPipe}). A pipe
+ * has no `.shape`, `.extend()` or `.strict()`; its object is `X.in` and its transform `X.out`.
  */
 export function compilesToPipe(name: string, models: Map<string, ModelNode>, seen = new Set<string>()): boolean {
     const model = models.get(name);
     if (!model || seen.has(name)) return false;
-    if (model.type) return model.type.kind === 'ref' && compilesToPipe(model.type.name, models, seen.add(name));
+    if (model.type) return typeCompilesToPipe(model.type, models, seen.add(name));
     const flat = flattenFormatChain(model, models);
     return renamingCase(flat.inputCase) !== undefined || renamingCase(flat.outputCase) !== undefined;
+}
+
+/**
+ * Whether `type` renders as a pipe: a ref to a model that compiles to one, or an intersection built
+ * by `.extend()` with such a member, which ends in the transform that renames its keys
+ * ({@link renderExtendChain}).
+ */
+function typeCompilesToPipe(type: ContractTypeNode, models: Map<string, ModelNode>, seen: Set<string>): boolean {
+    if (type.kind === 'ref') return compilesToPipe(type.name, models, seen);
+    if (type.kind === 'intersection' && isExtendChain(type)) return type.members.some(m => m.kind === 'ref' && compilesToPipe(m.name, models, seen));
+    return false;
+}
+
+/** A key as an object literal or a destructuring pattern writes it: bare when it is an identifier. */
+function propertyKey(name: string): string {
+    return isValidIdentifier(name) ? name : `'${escapeSingleQuoted(name)}'`;
 }
 
 /** `expr.extend({ ...fields })`, or `expr` alone when there are no fields to add. */

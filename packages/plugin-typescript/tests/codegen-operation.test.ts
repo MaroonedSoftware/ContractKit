@@ -691,13 +691,69 @@ describe('generateOperation', () => {
                 expect(output).not.toContain('Filter.shape.ids');
             });
 
-            it('leaves the array fields of a format() model alone, whose schema is a pipe with no .shape to read', () => {
+            // A format() model's schema is a pipe with no `.shape`. Its arrays are read off its object,
+            // `Snake.in.shape`, under the key that object parses, and the result is piped back through
+            // the model's own transform.
+            it('re-wraps the array fields of a format() model on its object, keyed as the object keys them', () => {
                 const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Snake' })])]);
+                const snake = model(
+                    'Snake',
+                    [field('tagIds', arrayType(scalarType('string'))), field('fromDate', scalarType('string'), { optional: true })],
+                    { inputCase: 'snake' },
+                );
+                const output = generateOp(root, { models: models(snake) });
+                expect(output).toContain(
+                    [
+                        '    const query = await parseAndValidate(',
+                        '        ctx.query,',
+                        '        Snake.in.extend({',
+                        `            tag_ids: z.preprocess(${SPLIT}, Snake.in.shape.tag_ids),`,
+                        '        }).strict().pipe(Snake.out),',
+                        '    );',
+                    ].join('\n'),
+                );
+            });
+
+            it("reads a format() model's Input variant, skipping a readonly array its object does not carry", () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Snake' })])]);
+                const snake = model(
+                    'Snake',
+                    [field('tagIds', arrayType(scalarType('string'))), field('seenIds', arrayType(scalarType('string')), { visibility: 'readonly' })],
+                    { inputCase: 'pascal' },
+                );
+                const output = generateOp(root, { models: models(snake), modelsWithInput: new Set(['Snake']) });
+                expect(output).toContain(`TagIds: z.preprocess(${SPLIT}, SnakeInput.in.shape.TagIds),`);
+                expect(output).toContain('}).strict().pipe(SnakeInput.out),');
+                expect(output).not.toContain('SeenIds');
+            });
+
+            it("re-wraps a format() member's arrays in an intersection, before the block mode and the transform", () => {
+                const query = intersectionType(refType('Snake'), inlineObjectType([field('q', scalarType('string'))]));
+                const root = opRoot([opRoute('/items', [opOperation('get', { query })])]);
                 const output = generateOp(root, {
                     models: models(model('Snake', [field('tagIds', arrayType(scalarType('string')))], { inputCase: 'snake' })),
                 });
-                expect(output).toContain('parseAndValidate(ctx.query, Snake.in.strict().pipe(Snake.out))');
-                expect(output).not.toContain('.shape');
+                expect(output).toContain(
+                    [
+                        '        Snake.in.extend({',
+                        '            q: z.string(),',
+                        '        }).extend({',
+                        `            tag_ids: z.preprocess(${SPLIT}, Snake.in.shape.tag_ids),`,
+                        '        }).strict().transform(({ tag_ids: _0, ...rest }) => ({',
+                    ].join('\n'),
+                );
+            });
+
+            it("lets an inline member take over a format() member's key, but not its declared name", () => {
+                const snake = model('Snake', [field('tagIds', arrayType(scalarType('string'))), field('seenIds', arrayType(scalarType('string')))], {
+                    inputCase: 'snake',
+                });
+                // `seen_ids` replaces the member's key on the object; `tagIds` is a key of its own.
+                const inline = inlineObjectType([field('seen_ids', scalarType('string')), field('tagIds', scalarType('string'))]);
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: intersectionType(refType('Snake'), inline) })])]);
+                const output = generateOp(root, { models: models(snake) });
+                expect(output).toContain(`tag_ids: z.preprocess(${SPLIT}, Snake.in.shape.tag_ids),`);
+                expect(output).not.toContain('Snake.in.shape.seen_ids');
             });
 
             it('leaves the model schema as-is when no models are supplied', () => {
@@ -896,6 +952,22 @@ describe('generateOperation', () => {
             expect(output).toContain('const headers = await parseAndValidate(ctx.headers, SnakeHeaders.in.strip().pipe(SnakeHeaders.out));');
         });
 
+        // Node lowercases every incoming header name, so a schema keyed `TenantId` never finds one
+        // unless it is copied over from `tenantid`. A snake_case key is lowercase already.
+        it("copies a format(input=pascal) headers model's keys from their lowercase names", () => {
+            const pascal = model('PascalHeaders', [field('tenantId', scalarType('string'))], { inputCase: 'pascal' });
+            const root = opRoot([opRoute('/reports', [opOperation('get', { headers: 'PascalHeaders' })])]);
+            const output = generateOp(root, { models: models(pascal) });
+            expect(output).toContain("        { ...ctx.headers, TenantId: ctx.headers['tenantid'] },");
+            expect(output).toContain('        PascalHeaders.in.strip().pipe(PascalHeaders.out),');
+        });
+
+        it('reads a format(input=snake) headers model straight off the request headers', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { headers: 'SnakeHeaders' })])]);
+            const output = generateOp(root, { models: models(snake('SnakeHeaders')) });
+            expect(output).toContain('parseAndValidate(ctx.headers, SnakeHeaders.in.strip().pipe(SnakeHeaders.out))');
+        });
+
         it('applies an explicit headers mode inside the pipe', () => {
             const root = opRoot([opRoute('/reports', [opOperation('get', { headers: 'SnakeHeaders', headersMode: 'strict' })])]);
             const output = generateOp(root, { models: models(snake('SnakeHeaders')) });
@@ -952,6 +1024,105 @@ describe('generateOperation', () => {
             const output = generateOp(root, { models: models(model('Plain', [field('since', scalarType('date'), { optional: true })])) });
             expect(output).toContain('parseAndValidate(ctx.query, Plain.strict())');
             expect(output).toContain('parseAndValidate(ctx.headers, Plain.strip())');
+        });
+    });
+
+    // ─── A format() model inside an intersection ────────────────
+
+    // `SnakeFilter & { q: string }` used to extend the pipe itself, `SnakeFilter.extend({...})`, which
+    // failed tsc with TS2339. The object comes from `SnakeFilter.in` now, the block's mode goes on it,
+    // and one transform renames SnakeFilter's keys through `SnakeFilter.out`.
+    describe('a format() model inside an intersection', () => {
+        const models = (...ms: ModelNode[]) => new Map(ms.map(m => [m.name, m]));
+        const snake = (name: string, fieldName = 'fromDate') =>
+            model(name, [field(fieldName, scalarType('string'), { optional: true })], { inputCase: 'snake' });
+        const withInline = (ref: string, ...fields: Parameters<typeof field>[]) =>
+            intersectionType(refType(ref), inlineObjectType(fields.map(f => field(...f))));
+
+        it('builds a query from the object, applies the query mode to it, then renames through .out', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query: withInline('SnakeFilter', ['q', scalarType('string')]) })])]);
+            const output = generateOp(root, { models: models(snake('SnakeFilter')) });
+            expect(output).toContain(
+                [
+                    '    const query = await parseAndValidate(',
+                    '        ctx.query,',
+                    '        SnakeFilter.in.extend({',
+                    '            q: z.string(),',
+                    '        }).strict().transform(({ from_date: _0, ...rest }) => ({',
+                    '            ...rest,',
+                    '            ...SnakeFilter.out.parse({ from_date: _0 }),',
+                    '        })),',
+                    '    );',
+                ].join('\n'),
+            );
+            expect(output).not.toContain('SnakeFilter.extend(');
+        });
+
+        it('applies an explicit query mode', () => {
+            const query = withInline('SnakeFilter', ['q', scalarType('string')]);
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query, queryMode: 'loose' })])]);
+            const output = generateOp(root, { models: models(snake('SnakeFilter')) });
+            expect(output).toContain('}).loose().transform(({ from_date: _0, ...rest }) => ({');
+        });
+
+        it('strips undeclared headers, and copies only the names the object keys in camelCase', () => {
+            const headers = withInline('SnakeHeaders', ['xTrace', scalarType('string'), { optional: true }]);
+            const root = opRoot([opRoute('/reports', [opOperation('get', { headers })])]);
+            const output = generateOp(root, { models: models(snake('SnakeHeaders', 'tenantId')) });
+            // `tenant_id` is already lowercase. Copying `tenantId` over would add a key the object
+            // does not declare.
+            expect(output).toContain("        { ...ctx.headers, xTrace: ctx.headers['xtrace'] },");
+            expect(output).toContain('}).strip().transform(({ tenant_id: _0, ...rest }) => ({');
+        });
+
+        it("copies a format(input=pascal) member's header keys from their lowercase names", () => {
+            const pascal = model('PascalHeaders', [field('tenantId', scalarType('string'))], { inputCase: 'pascal' });
+            const headers = withInline('PascalHeaders', ['trace', scalarType('string'), { optional: true }]);
+            const root = opRoot([opRoute('/reports', [opOperation('get', { headers })])]);
+            const output = generateOp(root, { models: models(pascal) });
+            expect(output).toContain("        { ...ctx.headers, TenantId: ctx.headers['tenantid'] },");
+        });
+
+        it('builds path params the same way, under the params mode', () => {
+            const params = intersectionType(refType('SnakeRef'), inlineObjectType([field('version', scalarType('string'))]));
+            const root = opRoot([opRoute('/reports/{report_id}/{version}', [opOperation('get')], params)]);
+            const output = generateOp(root, { models: models(model('SnakeRef', [field('reportId', scalarType('string'))], { inputCase: 'snake' })) });
+            expect(output).toContain('}).strict().transform(({ report_id: _0, ...rest }) => ({');
+            expect(output).toContain('...SnakeRef.out.parse({ report_id: _0 }),');
+        });
+
+        it('validates a query that references an alias of such an intersection through its pipe', () => {
+            const alias = model('Scoped', [], { type: intersectionType(refType('SnakeFilter'), refType('Scope')) });
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query: 'Scoped' })])]);
+            const output = generateOp(root, { models: models(snake('SnakeFilter'), model('Scope', [field('region', scalarType('string'))]), alias) });
+            expect(output).toContain('parseAndValidate(ctx.query, Scoped.in.strict().pipe(Scoped.out))');
+        });
+
+        it('builds a request body from the object', () => {
+            const body = intersectionType(refType('Scope'), refType('SnakeFilter'));
+            const root = opRoot([opRoute('/reports', [opOperation('post', { request: opRequest(body), responses: [opResponse(204)] })])]);
+            const output = generateOp(root, { models: models(snake('SnakeFilter'), model('Scope', [field('region', scalarType('string'))])) });
+            expect(output).toContain('const body = await parseAndValidate(ctx.parsedBody, Scope.extend(SnakeFilter.in.shape).transform(');
+        });
+
+        it('builds a response schema from the object, and leaves a transformed response unvalidated', () => {
+            const body = withInline('SnakeFilter', ['q', scalarType('string')]);
+            const root = opRoot([opRoute('/reports', [opOperation('get', { responses: [opResponse(200, body)] })])]);
+            const output = generateOp(root, {
+                models: models(snake('SnakeFilter')),
+                modelsWithTransform: new Set(['SnakeFilter']),
+                validateResponses: true,
+            });
+            expect(output).toContain('const resultType = SnakeFilter.in.extend({');
+            expect(output).toContain('const result: z.infer<typeof resultType> =');
+            // The service returns the renamed keys, which the schema's object would reject.
+            expect(output).not.toContain('parseAndValidate(result');
+        });
+
+        it('keeps an intersection without a format() member as it was', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query: withInline('Plain', ['q', scalarType('string')]) })])]);
+            const output = generateOp(root, { models: models(model('Plain', [field('kind', scalarType('string'))])) });
+            expect(output).toContain(['        (Plain.extend({', '            q: z.string(),', '        })).strict(),'].join('\n'));
         });
     });
 

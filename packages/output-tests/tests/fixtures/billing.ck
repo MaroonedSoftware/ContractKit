@@ -225,9 +225,11 @@ operation /sessions: {
 # ─── format() query and header models ─────────────────────────────────────────
 
 # Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
-# its own, so the router applies the block's object mode to the object inside it.
+# its own, so the router applies the block's object mode to the object inside it. A query array is
+# split on commas there too, read off the object's shape under its snake_case key.
 contract format(input=snake) SnakeFilter: {
     fromDate?: date
+    tagIds?: array(uuid)
 }
 
 contract format(input=snake) SnakeHeaders: {
@@ -242,6 +244,47 @@ operation /payments/by-date: {
         mode(loose) headers: SnakeHeaders
         response: {
             204:
+        }
+    }
+}
+
+# ─── format() models inside intersections ─────────────────────────────────────
+
+# A format() member of an intersection has no `.extend()` or `.shape`, being a pipe. The router and the
+# schemas build the object from the member's own object (`SnakeFilter.in`) and end in one transform
+# that renames the member's keys through its `.out`, passing every other key through.
+contract PaymentScope: {
+    region: string
+}
+
+# An alias of such an intersection, which is a pipe itself
+contract ScopedFilter: SnakeFilter & PaymentScope
+
+# A field typed as one
+contract SavedSearch: {
+    label: string
+    filter: SnakeFilter & { q: string }
+}
+
+operation /payments/by-date/scoped: {
+    get: { # search payments with a snake_case filter extended inline
+        sdk: searchPaymentsScoped
+        service: PaymentService.searchScoped
+        query: SnakeFilter & { q: string }
+        headers: SnakeHeaders & { xTrace?: string }
+        response: {
+            200: { application/json: SnakeFilter & { q: string } }
+        }
+    }
+    post: { # save a scoped search
+        sdk: saveScopedSearch
+        service: PaymentService.saveScopedSearch
+        query: ScopedFilter
+        request: {
+            application/json: PaymentScope & SnakeFilter
+        }
+        response: {
+            200: { application/json: SavedSearch }
         }
     }
 }

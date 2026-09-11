@@ -19,7 +19,6 @@ import {
     PATH_PARAM_RE_G,
     toIdentifier,
     classifyContentType,
-    resolveEffectiveFields,
 } from '@contractkit/core';
 import {
     renderType,
@@ -28,7 +27,8 @@ import {
     applyFieldModifiers,
     pascalToDotCase,
     modeToWrapper,
-    compilesToPipe,
+    isExtendChain,
+    typeKeys,
 } from './codegen-contract.js';
 import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
@@ -193,8 +193,10 @@ export interface OpCodegenOptions {
      * model's schema, whose array fields lack the split an inline query array gets; with the models
      * to hand the router re-wraps them. Without it those fields stay as the model declares them.
      * It is also how the router tells that a model used as `query:`, `headers:` or `params:` compiles
-     * to a `format()` pipe, whose object mode has to be applied inside it; without it the router
-     * calls the mode method on the schema itself, which only a plain object has.
+     * to a `format()` pipe, whose object mode has to be applied inside it, and how an intersection
+     * anywhere in a request or response builds a `format()` member from its object rather than its
+     * pipe. Without it the router calls the mode method on the schema itself and extends each
+     * member's `.shape`, which only a plain object has.
      */
     models?: Map<string, ModelNode>;
 }
@@ -441,20 +443,22 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
             lines.push('');
         } else if (bodies.length === 1) {
             lines.push(
-                `    const body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`,
+                `    const body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(bodies[0]!.bodyType, modelsWithInput, undefined, undefined, options.models)});`,
             );
             lines.push('');
         } else if (bodies.every(b => bodyTypesStructurallyEqual(b.bodyType, bodies[0]!.bodyType))) {
             // All declared MIMEs share the same body shape — single validation suffices
             lines.push(
-                `    const body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(bodies[0]!.bodyType, modelsWithInput)});`,
+                `    const body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(bodies[0]!.bodyType, modelsWithInput, undefined, undefined, options.models)});`,
             );
             lines.push('');
         } else {
             // Different body types per MIME — dispatch on Content-Type
             const annotation = bodies
                 .map(b =>
-                    b.contentType === 'multipart/form-data' ? 'MultipartBody' : `z.infer<typeof ${renderInputType(b.bodyType, modelsWithInput)}>`,
+                    b.contentType === 'multipart/form-data'
+                        ? 'MultipartBody'
+                        : `z.infer<typeof ${renderInputType(b.bodyType, modelsWithInput, undefined, undefined, options.models)}>`,
                 )
                 .join(' | ');
             lines.push(`    let body!: ${annotation};`);
@@ -465,7 +469,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
                     lines.push(`            body = ${framework.request.parsedBody} as MultipartBody;`);
                 } else {
                     lines.push(
-                        `            body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(b.bodyType, modelsWithInput)});`,
+                        `            body = await parseAndValidate(${framework.request.parsedBody}, ${renderInputType(b.bodyType, modelsWithInput, undefined, undefined, options.models)});`,
                     );
                 }
                 lines.push(`            break;`);
@@ -516,7 +520,7 @@ function generateSingleStatusResult(
     let bodySchema: string | undefined;
 
     if (bodies.length === 1) {
-        const { annotation, prelude } = formatTypeAnnotation(bodies[0]!.bodyType, options.modelsWithOutput);
+        const { annotation, prelude } = formatTypeAnnotation(bodies[0]!.bodyType, options);
         if (prelude) lines.push(`    ${prelude}`);
         bodySchema = responseBodySchema(bodies[0]!.bodyType, options, prelude ? 'resultType' : undefined);
         lines.push(`    const service = ${framework.resolveService(className)};`);
@@ -633,7 +637,7 @@ function renderResponseMembers(
 
     const uniform = bodies.every(b => bodyTypesStructurallyEqual(b.bodyType, bodies[0]!.bodyType));
     if (uniform) {
-        const { annotation, prelude } = formatTypeAnnotation(bodies[0]!.bodyType, options.modelsWithOutput, `${opts.varPrefix}Type`);
+        const { annotation, prelude } = formatTypeAnnotation(bodies[0]!.bodyType, options, `${opts.varPrefix}Type`);
         if (prelude) preludes.push(prelude);
         const bodySchema = responseBodySchema(bodies[0]!.bodyType, options, prelude ? `${opts.varPrefix}Type` : undefined);
         const contentType = bodies.map(b => `'${b.contentType}'`).join(' | ');
@@ -648,7 +652,7 @@ function renderResponseMembers(
     // second switch on `result.contentType` nested inside the status switch. Left unvalidated —
     // note the absent `bodySchema` in the return below.
     const members = bodies.map((b, i) => {
-        const { annotation, prelude } = formatTypeAnnotation(b.bodyType, options.modelsWithOutput, `${opts.varPrefix}Type${i}`);
+        const { annotation, prelude } = formatTypeAnnotation(b.bodyType, options, `${opts.varPrefix}Type${i}`);
         if (prelude) preludes.push(prelude);
         return `{ ${[...leading, `contentType: '${b.contentType}'`, `body: ${annotation}`, ...trailing].join('; ')} }`;
     });
@@ -842,20 +846,20 @@ function serverTsScalar(name: ScalarTypeNode['name']): string {
  */
 function formatTypeAnnotation(
     bodyType: ContractTypeNode,
-    modelsWithOutput?: Set<string>,
+    options: Pick<OpCodegenOptions, 'modelsWithOutput' | 'models'>,
     varName = 'resultType',
 ): { annotation: string; prelude?: string } {
     if (bodyType.kind === 'array') {
-        const inner = formatTypeAnnotation(bodyType.item, modelsWithOutput, varName);
+        const inner = formatTypeAnnotation(bodyType.item, options, varName);
         return { annotation: `${inner.annotation}[]`, prelude: inner.prelude };
     }
     if (bodyType.kind === 'ref') {
-        const name = modelsWithOutput?.has(bodyType.name) ? `${bodyType.name}Output` : bodyType.name;
+        const name = options.modelsWithOutput?.has(bodyType.name) ? `${bodyType.name}Output` : bodyType.name;
         return { annotation: name };
     }
     if (bodyType.kind === 'scalar') return { annotation: serverTsScalar(bodyType.name) };
     // For complex types, extract schema into a variable so the result line stays readable
-    const schema = renderType(bodyType);
+    const schema = renderType(bodyType, undefined, undefined, options.models);
     return {
         annotation: `z.infer<typeof ${varName}>`,
         prelude: `const ${varName} = ${schema};`,
@@ -887,8 +891,7 @@ function isRevalidatable(type: ContractTypeNode, modelsWithOutput?: Set<string>,
             const [first, ...rest] = type.members;
             if (!first) return true;
             if (rest.length === 0) return rec(first);
-            const usesExtendChain = first.kind === 'ref' && rest.every(m => m.kind === 'ref' || m.kind === 'inlineObject');
-            return usesExtendChain && type.members.every(rec);
+            return isExtendChain(type) && type.members.every(rec);
         }
         case 'union':
         case 'discriminatedUnion':
@@ -914,7 +917,7 @@ function isRevalidatable(type: ContractTypeNode, modelsWithOutput?: Set<string>,
 function responseBodySchema(bodyType: ContractTypeNode, options: OpCodegenOptions, preludeVar: string | undefined): string | undefined {
     if (!options.validateResponses) return undefined;
     if (!isRevalidatable(bodyType, options.modelsWithOutput, options.modelsWithTransform)) return undefined;
-    return preludeVar ?? renderType(bodyType);
+    return preludeVar ?? renderType(bodyType, undefined, undefined, options.models);
 }
 
 /**
@@ -945,17 +948,16 @@ function generateParamValidation(
     const isPathParams = kind === 'params';
     // What the block validates: the framework's own object, except that a header declared with a
     // name that is not lowercase has to be read from the lowercase key the server delivers it under.
-    const input = kind === 'headers' ? headerSource(sourceExpr, declaredHeaderNames(source, models)) : sourceExpr;
-    if (source.kind === 'ref') {
-        // Type reference — apply mode as a method call on the schema. A query goes through
-        // renderQueryType, which re-wraps the model's array fields with the split an inline query
+    const input = kind === 'headers' ? headerSource(sourceExpr, declaredHeaderNames(source, models, modelsWithInput)) : sourceExpr;
+    if (source.kind === 'ref' || source.kind === 'type') {
+        // A model reference or a type expression, validated under the block's mode, which the
+        // renderer places: on the schema, or inside a `format()` model's pipe. A query goes through
+        // renderQueryType, which re-wraps a model's array fields with the split an inline query
         // array gets; the model's own schema is shared with request bodies and has none.
-        const typeName = isQuery
-            ? renderQueryType({ kind: 'ref', name: source.name }, modelsWithInput, undefined, models)
-            : modelsWithInput?.has(source.name)
-              ? `${source.name}Input`
-              : source.name;
-        const schema = models && compilesToPipe(source.name, models) ? withPipeMode(typeName, mode) : `${typeName}.${mode}()`;
+        const node: ContractTypeNode = source.kind === 'ref' ? { kind: 'ref', name: source.name } : source.node;
+        const schema = isQuery
+            ? renderQueryType(node, modelsWithInput, undefined, models, mode)
+            : renderInputType(node, modelsWithInput, undefined, undefined, models, mode);
         lines.push(...validationCall(kind, input, schema));
         lines.push('');
     } else if (source.kind === 'params') {
@@ -986,48 +988,32 @@ function generateParamValidation(
                 // it is the same rule, and a second copy is a second thing to keep in sync. The
                 // modifier chain then comes from the shared helper, so an inline param means the
                 // same thing to the router as a model field does.
-                const base = isQuery ? renderQueryType(param.type, modelsWithInput) : renderInputType(param.type, modelsWithInput);
+                const base = isQuery
+                    ? renderQueryType(param.type, modelsWithInput, undefined, models)
+                    : renderInputType(param.type, modelsWithInput, undefined, undefined, models);
                 lines.push(`            ${key}: ${applyFieldModifiers(base, param)},`);
             }
             lines.push(`        })${suffix},`);
             lines.push(`    );`);
             lines.push('');
         }
-    } else {
-        // ContractTypeNode — use query-aware rendering for query params (coerces single string → array),
-        // otherwise use Input variant rendering; apply mode as a method call
-        const schema = isQuery ? renderQueryType(source.node, modelsWithInput, undefined, models) : renderInputType(source.node, modelsWithInput);
-        lines.push(...validationCall(kind, input, `(${schema}).${mode}()`));
-        lines.push('');
     }
     return lines;
 }
 
 /**
- * A `format()` model's schema under the block's object mode: `Schema.in.strip().pipe(Schema.out)`.
- * The schema is an object piped through the `.transform()` that renames its keys, and a pipe has no
- * `.strict()` of its own. So the mode goes on the object inside it (`.in`), and the result is piped
- * back through the same transform (`.out`). Applying it there rather than keeping the model's own
- * mode is what lets a headers block strip the headers it does not declare, as it does for any
- * other model, where the model's default strict object would reject every one of them.
+ * The names a headers block declares, as its schema keys them: a model's and a type expression's
+ * are the keys of its object ({@link typeKeys}), which for a `format()` model are the recased ones
+ * (`tenant_id`, `TenantId`). A model's come from `models`, so there are none without it.
  */
-function withPipeMode(schema: string, mode: ObjectMode): string {
-    return `${schema}.in.${mode}().pipe(${schema}.out)`;
-}
-
-/**
- * The names a headers block declares, as its schema keys them. A model's come from `models`, so
- * there are none without it. A `format()` model contributes none either: its schema is a pipe whose
- * object is keyed by the recased names, not the declared ones.
- */
-function declaredHeaderNames(source: ParamSource, models?: Map<string, ModelNode>): string[] {
+function declaredHeaderNames(source: ParamSource, models?: Map<string, ModelNode>, modelsWithInput?: Set<string>): string[] {
     switch (source.kind) {
         case 'params':
             return source.nodes.map(n => n.name);
         case 'ref':
-            return !models || compilesToPipe(source.name, models) ? [] : resolveEffectiveFields(source.name, models).fields.map(f => f.name);
+            return models ? typeKeys({ kind: 'ref', name: source.name }, models, modelsWithInput) : [];
         case 'type':
-            return resolveEffectiveFields(source.node, models ?? new Map()).fields.map(f => f.name);
+            return typeKeys(source.node, models ?? new Map(), modelsWithInput);
     }
 }
 

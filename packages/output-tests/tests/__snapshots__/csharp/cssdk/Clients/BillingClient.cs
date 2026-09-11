@@ -158,6 +158,30 @@ public sealed class BillingClient(SdkHttp http)
             headers: http.Params(customHeaders),
             cancellationToken: cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>search payments with a snake_case filter extended inline</summary>
+    public async Task<JsonElement> SearchPaymentsScopedAsync(JsonElement? query = null, JsonElement? customHeaders = null, CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Get,
+            http.Path("payments", "by-date", "scoped"),
+            query: http.Params(query),
+            headers: http.Params(customHeaders),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<JsonElement>(response);
+    }
+
+    /// <summary>save a scoped search</summary>
+    public async Task<SavedSearch> SaveScopedSearchAsync(JsonElement body, ScopedFilter? query = null, CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Post,
+            http.Path("payments", "by-date", "scoped"),
+            query: http.Params(query),
+            content: http.JsonContent(body, "application/json"),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<SavedSearch>(response);
+    }
 }
 
 /// <summary>Response headers declared on POST /payments.</summary>

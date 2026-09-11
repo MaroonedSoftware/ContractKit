@@ -1,18 +1,15 @@
 info:
-  name: /sessions
+  name: /payments/by-date/scoped
   type: http
-  seq: 14
+  seq: 11
 
 http:
   method: POST
-  url: "{{baseUrl}}/sessions"
+  url: "{{baseUrl}}/payments/by-date/scoped"
   body:
     type: json
     data: |
-      {
-        "id": "",
-        "refreshToken": ""
-      }
+      {}
 
 runtime:
   assertions:
@@ -21,4 +18,4 @@ runtime:
       value: "200"
 
 docs: |-
-  open a session
+  save a scoped search

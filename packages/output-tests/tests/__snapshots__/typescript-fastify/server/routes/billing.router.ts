@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { FastifyPluginAsync } from 'fastify';
 import { requirePolicy } from '@maroonedsoftware/fastify';
 import { PaymentService } from '#src/services/payment.service.js';
-import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm } from '../schemas/billing.schema.js';
+import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm } from '../schemas/billing.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
@@ -232,10 +232,15 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * search payments with snake_case filter and header models
-     * from [billing.ck](../../contracts/billing.ck#L238)
+     * from [billing.ck](../../contracts/billing.ck#L240)
     */
     app.get('/payments/by-date', { preHandler: [requirePolicy()] }, async (request, reply) => {
-        const query = await parseAndValidate(request.query, SnakeFilter.in.strict().pipe(SnakeFilter.out));
+        const query = await parseAndValidate(
+            request.query,
+            SnakeFilter.in.extend({
+                tag_ids: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, SnakeFilter.in.shape.tag_ids),
+            }).strict().pipe(SnakeFilter.out),
+        );
 
         const headers = await parseAndValidate(request.headers, SnakeHeaders.in.loose().pipe(SnakeHeaders.out));
 
@@ -244,6 +249,72 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
         reply.status(204);
         return reply.send();
+    });
+
+    /**
+     * search payments with a snake_case filter extended inline
+     * from [billing.ck](../../contracts/billing.ck#L270)
+    */
+    app.get('/payments/by-date/scoped', { preHandler: [requirePolicy()] }, async (request, reply) => {
+        const query = await parseAndValidate(
+            request.query,
+            SnakeFilter.in.extend({
+                q: z.string(),
+            }).extend({
+                tag_ids: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, SnakeFilter.in.shape.tag_ids),
+            }).strict().transform(({ from_date: _0, tag_ids: _1, ...rest }) => ({
+                ...rest,
+                ...SnakeFilter.out.parse({ from_date: _0, tag_ids: _1 }),
+            })),
+        );
+
+        const headers = await parseAndValidate(
+            { ...request.headers, xTrace: request.headers['xtrace'] },
+            SnakeHeaders.in.extend({
+                xTrace: z.string().optional(),
+            }).strip().transform(({ tenant_id: _0, ...rest }) => ({
+                ...rest,
+                ...SnakeHeaders.out.parse({ tenant_id: _0 }),
+            })),
+        );
+
+        const resultType = SnakeFilter.in.extend({
+    q: z.string(),
+}).transform(({ from_date: _0, tag_ids: _1, ...rest }) => ({
+    ...rest,
+    ...SnakeFilter.out.parse({ from_date: _0, tag_ids: _1 }),
+}));
+        const service = request.container.get(PaymentService);
+        const result: z.infer<typeof resultType> = await service.searchScoped(query, headers);
+
+        reply.status(200);
+        reply.type('application/json');
+        return reply.send(result);
+    });
+
+    /**
+     * save a scoped search
+     * from [billing.ck](../../contracts/billing.ck#L279)
+    */
+    app.post('/payments/by-date/scoped', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
+        const query = await parseAndValidate(
+            request.query,
+            ScopedFilter.in.extend({
+                tag_ids: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, ScopedFilter.in.shape.tag_ids),
+            }).strict().pipe(ScopedFilter.out),
+        );
+
+        const body = await parseAndValidate(request.body, PaymentScope.extend(SnakeFilter.in.shape).transform(({ from_date: _0, tag_ids: _1, ...rest }) => ({
+    ...rest,
+    ...SnakeFilter.out.parse({ from_date: _0, tag_ids: _1 }),
+})));
+
+        const service = request.container.get(PaymentService);
+        const result: SavedSearch = await service.saveScopedSearch(body, query);
+
+        reply.status(200);
+        reply.type('application/json');
+        return reply.send(result);
     });
 
 };

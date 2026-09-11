@@ -11,7 +11,7 @@
 - [Current service status](#current-service-status)
 
 <details>
-<summary><strong>Billing</strong> (12)</summary>
+<summary><strong>Billing</strong> (14)</summary>
 
 - [Create a payment](#create-a-payment)
 - [List payments](#list-payments)
@@ -25,6 +25,8 @@
 - [Store a credential](#store-a-credential)
 - [Open a session](#open-a-session)
 - [Search payments with snake_case filter and header models](#search-payments-with-snake-case-filter-and-header-models)
+- [Search payments with a snake_case filter extended inline](#search-payments-with-a-snake-case-filter-extended-inline)
+- [Save a scoped search](#save-a-scoped-search)
 
 </details>
 
@@ -50,7 +52,7 @@
 - [Heartbeat](#heartbeat)
 
 <details>
-<summary><strong>Billing</strong> (11)</summary>
+<summary><strong>Billing</strong> (14)</summary>
 
 - [Payment](#payment)
 - [Credential](#credential)
@@ -63,6 +65,9 @@
 - [TenantHeaders](#tenantheaders)
 - [SnakeFilter](#snakefilter)
 - [SnakeHeaders](#snakeheaders)
+- [PaymentScope](#paymentscope)
+- [ScopedFilter](#scopedfilter)
+- [SavedSearch](#savedsearch)
 
 </details>
 
@@ -510,11 +515,12 @@ Accepts a [Session](#session) object.
 ##### Attributes
 
 <details>
-<summary>Attributes (2)</summary>
+<summary>Attributes (3)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `fromDate` | `string` | No |  |
+| `tagIds` | `string[]` | No |  |
 | `tenantId` | `string` | No |  |
 
 </details>
@@ -522,6 +528,53 @@ Accepts a [Session](#session) object.
 ##### Response
 
 `204 No Content`
+
+
+---
+
+#### Search payments with a snake_case filter extended inline
+
+**`GET`** `/payments/by-date/scoped`
+
+> [!NOTE]
+> SDK method: `searchPaymentsScoped`
+
+##### Attributes
+
+<details>
+<summary>Attributes (5)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `q` | `string` | Yes |  |
+| `fromDate` | `string` | No |  |
+| `tagIds` | `string[]` | No |  |
+| `tenantId` | `string` | No |  |
+| `xTrace` | `string` | No |  |
+
+</details>
+
+##### Response
+
+`200 OK` — Returns `SnakeFilter & { q: string }`.
+
+
+---
+
+#### Save a scoped search
+
+**`POST`** `/payments/by-date/scoped`
+
+> [!NOTE]
+> SDK method: `saveScopedSearch`
+
+##### Request body (`application/json`)
+
+Accepts `PaymentScope & SnakeFilter`.
+
+##### Response
+
+`200 OK` — Returns a [SavedSearch](#savedsearch) object.
 
 
 ### Kitchen
@@ -908,14 +961,16 @@ Extends [`Credential`](#credential)
 #### SnakeFilter
 
 > Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
-> its own, so the router applies the block's object mode to the object inside it.
+> its own, so the router applies the block's object mode to the object inside it. A query array is
+> split on commas there too, read off the object's shape under its snake_case key.
 
 <details>
-<summary>Attributes (1)</summary>
+<summary>Attributes (2)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `fromDate` | `string` | No |  |
+| `tagIds` | `string[]` | No |  |
 
 </details>
 
@@ -927,6 +982,43 @@ Extends [`Credential`](#credential)
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `tenantId` | `string` | No |  |
+
+</details>
+
+#### PaymentScope
+
+> A format() member of an intersection has no `.extend()` or `.shape`, being a pipe. The router and the
+> schemas build the object from the member's own object (`SnakeFilter.in`) and end in one transform
+> that renames the member's keys through its `.out`, passing every other key through.
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `region` | `string` | Yes |  |
+
+</details>
+
+#### ScopedFilter
+
+> An alias of such an intersection, which is a pipe itself
+
+```typescript
+type ScopedFilter = SnakeFilter & PaymentScope
+```
+
+#### SavedSearch
+
+> A field typed as one
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `label` | `string` | Yes |  |
+| `filter` | `SnakeFilter & { q: string }` | Yes |  |
 
 </details>
 

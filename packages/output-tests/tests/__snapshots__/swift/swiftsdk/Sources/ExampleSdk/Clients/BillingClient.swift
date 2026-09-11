@@ -112,6 +112,24 @@ public final class BillingClient: Sendable {
         try http.addHeaders(&request, customHeaders)
         _ = try await http.execute(request)
     }
+
+    /// search payments with a snake_case filter extended inline
+    public func searchPaymentsScoped(query: JSONValue? = nil, customHeaders: JSONValue? = nil) async throws -> JSONValue {
+        var request = SdkRequest(method: "GET", path: ["payments", "by-date", "scoped"])
+        try http.addQuery(&request, query)
+        try http.addHeaders(&request, customHeaders)
+        let response = try await http.execute(request)
+        return try http.decodeJSON(JSONValue.self, from: response)
+    }
+
+    /// save a scoped search
+    public func saveScopedSearch(body: JSONValue, query: ScopedFilter? = nil) async throws -> SavedSearch {
+        var request = SdkRequest(method: "POST", path: ["payments", "by-date", "scoped"])
+        try http.addQuery(&request, query)
+        try http.setJSONBody(&request, body, contentType: "application/json")
+        let response = try await http.execute(request)
+        return try http.decodeJSON(SavedSearch.self, from: response)
+    }
 }
 
 /// Response headers declared on POST /payments.
