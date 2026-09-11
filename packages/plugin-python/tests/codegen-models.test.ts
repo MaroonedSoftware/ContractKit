@@ -187,6 +187,24 @@ describe('generatePydanticModels', () => {
         expect(output).toContain('from pydantic import BaseModel, ConfigDict, Field');
     });
 
+    it('gives an optional aliased field default=None, since Field() with no default is required', () => {
+        const root = contractRoot([model('Payment', [field('processingTime', scalarType('duration'), { optional: true })])]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('processing_time: timedelta | None = Field(alias="processingTime", default=None)');
+    });
+
+    it('keeps a required nullable aliased field required', () => {
+        const root = contractRoot([model('Order', [field('billTo', scalarType('string'), { nullable: true })])]);
+        const output = generatePydanticModels(root);
+        expect(output).toMatch(/^ {4}bill_to: str \| None = Field\(alias="billTo"\)$/m);
+    });
+
+    it('uses the declared default rather than None for an optional aliased field', () => {
+        const root = contractRoot([model('Order', [field('lineCount', scalarType('int'), { optional: true, default: 1 })])]);
+        const output = generatePydanticModels(root);
+        expect(output).toMatch(/^ {4}line_count: int \| None = Field\(alias="lineCount", default=1\)$/m);
+    });
+
     it('generates Input/Read split for readonly fields', () => {
         const root = contractRoot([
             model('Payment', [
