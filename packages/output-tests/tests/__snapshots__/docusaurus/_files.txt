@@ -13,6 +13,11 @@ docs/api-reference/endpoints/_category_.json
 docs/api-reference/endpoints/get-invoice.md
 docs/api-reference/endpoints/get-status.md
 docs/api-reference/index.md
+docs/api-reference/kitchen/_category_.json
+docs/api-reference/kitchen/get-folder.md
+docs/api-reference/kitchen/import.md
+docs/api-reference/kitchen/list-tokens.md
+docs/api-reference/kitchen/mint.md
 docs/api-reference/models/_category_.json
 docs/api-reference/models/billing/_category_.json
 docs/api-reference/models/billing/admin-credential.md
@@ -24,3 +29,14 @@ docs/api-reference/models/billing/update-payment-form.md
 docs/api-reference/models/billing/upload-receipt-form.md
 docs/api-reference/models/heartbeat.md
 docs/api-reference/models/invoice.md
+docs/api-reference/models/kitchen/_category_.json
+docs/api-reference/models/kitchen/bank.md
+docs/api-reference/models/kitchen/card.md
+docs/api-reference/models/kitchen/doc.md
+docs/api-reference/models/kitchen/folder.md
+docs/api-reference/models/kitchen/instrument.md
+docs/api-reference/models/kitchen/named.md
+docs/api-reference/models/kitchen/owned.md
+docs/api-reference/models/kitchen/rating.md
+docs/api-reference/models/kitchen/shared.md
+docs/api-reference/models/kitchen/token.md

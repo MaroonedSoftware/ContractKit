@@ -276,8 +276,21 @@ function literalCSharpType(value: string | number | boolean, ctx: RenderContext)
  * Render a contract default as a C# expression of the field's own type. Returns `undefined` when the
  * value cannot be expressed, so the field is emitted as `required` rather than with an initializer
  * that will not compile.
+ *
+ * `memberNames` are the property names of the record the initializer sits in. Inside that record a
+ * simple name resolves to a member before a type, so `public Rating? Rating { get; init; } =
+ * Rating.Neutral;` reads the instance property and fails with CS0236. C#'s rule that lets a member
+ * share its type's name applies only when the member's type is exactly that type, and `Rating?` is
+ * `Nullable<Rating>`. An enum a member would shadow is written from the global namespace instead.
  */
-function renderDefault(value: string | number | boolean, type: ContractTypeNode, ctx: RenderContext): string | undefined {
+function renderDefault(
+    value: string | number | boolean,
+    type: ContractTypeNode,
+    ctx: RenderContext,
+    memberNames: ReadonlySet<string> = new Set(),
+): string | undefined {
+    const enumType = (name: string): string => (memberNames.has(name) ? `global::${ctx.namespace}.Models.${name}` : name);
+
     const inner = type.kind === 'lazy' ? type.inner : type;
 
     if (typeof value === 'boolean') return String(value);
@@ -303,7 +316,7 @@ function renderDefault(value: string | number | boolean, type: ContractTypeNode,
     if (inner.kind === 'enum') {
         const decl = ctx.hoisted?.byNode.get(inner);
         if (!decl || !inner.values.includes(value)) return undefined;
-        return `${decl.name}.${enumMemberNames(inner.values).get(value)}`;
+        return `${enumType(decl.name)}.${enumMemberNames(inner.values).get(value)}`;
     }
 
     // The same default written against a NAMED enum contract — `rating: Rating = "neutral"`, where
@@ -312,7 +325,7 @@ function renderDefault(value: string | number | boolean, type: ContractTypeNode,
         const target = ctx.modelIndex.get(inner.name);
         const targetType = target?.type?.kind === 'lazy' ? target.type.inner : target?.type;
         if (targetType?.kind !== 'enum' || !targetType.values.includes(value)) return undefined;
-        return `${inner.name}.${enumMemberNames(targetType.values).get(value)}`;
+        return `${enumType(inner.name)}.${enumMemberNames(targetType.values).get(value)}`;
     }
 
     if (inner.kind === 'scalar') {
@@ -619,11 +632,12 @@ function renderRecord(
         return lines;
     }
 
+    const memberNames = new Set(fields.map(field => memberName(field, name)));
     lines.push(`public sealed record ${name}${implementsClause}`);
     lines.push('{');
     fields.forEach((field, index) => {
         if (index > 0) lines.push('');
-        lines.push(...renderField(field, ctx, forInput, name, wireCase));
+        lines.push(...renderField(field, ctx, forInput, name, memberNames, wireCase));
     });
     lines.push('}');
     return lines;
@@ -641,19 +655,31 @@ function renderRecord(
  * `#nullable enable` and the generated SDK compiles with warnings as errors. `required` is never
  * combined with `[JsonIgnore]`, which System.Text.Json rejects at run time.
  */
-function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean, ownerTypeName: string, wireCase?: WireCase): string[] {
-    const propName = safeMemberName(toCSharpPropertyName(field.name), ownerTypeName);
+/** The C# property name a field is emitted under inside `ownerTypeName`. */
+function memberName(field: FieldNode, ownerTypeName: string): string {
+    return safeMemberName(toCSharpPropertyName(field.name), ownerTypeName);
+}
+
+function renderField(
+    field: FieldNode,
+    ctx: RenderContext,
+    forInput: boolean,
+    ownerTypeName: string,
+    memberNames: ReadonlySet<string>,
+    wireCase?: WireCase,
+): string[] {
+    const propName = memberName(field, ownerTypeName);
     const wireName = applyWireCase(field.name, wireCase);
 
     let typeStr = renderCSharpType(field.type, ctx, forInput);
     if ((field.optional || field.nullable) && !typeStr.endsWith('?')) typeStr += '?';
 
-    let initializer = field.default !== undefined ? renderDefault(field.default, field.type, ctx) : undefined;
+    let initializer = field.default !== undefined ? renderDefault(field.default, field.type, ctx, memberNames) : undefined;
     // A `literal()` field carries exactly one value, so it defaults to it rather than being asked
     // for at every call site. The property is ordinary, so the value always reaches the wire.
     if (initializer === undefined && !field.optional && !field.nullable) {
         const inner = field.type.kind === 'lazy' ? field.type.inner : field.type;
-        if (inner.kind === 'literal') initializer = renderDefault(inner.value, inner, ctx);
+        if (inner.kind === 'literal') initializer = renderDefault(inner.value, inner, ctx, memberNames);
     }
 
     const isRequired = !field.optional && initializer === undefined;

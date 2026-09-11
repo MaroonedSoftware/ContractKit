@@ -1,9 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { generatePydanticModels, renderPyType, toPythonFieldName, deriveModelsModuleName } from '../src/codegen-models.js';
 import {
-    scalarType, arrayType, tupleType, recordType, enumType, literalType,
-    unionType, refType, inlineObjectType, lazyType,
-    field, model, contractRoot,
+    scalarType,
+    arrayType,
+    tupleType,
+    recordType,
+    enumType,
+    literalType,
+    unionType,
+    refType,
+    inlineObjectType,
+    lazyType,
+    field,
+    model,
+    contractRoot,
 } from './helpers.js';
 
 // ─── renderPyType ─────────────────────────────────────────────────────────
@@ -36,8 +46,7 @@ describe('renderPyType', () => {
     });
 
     it('renders enum', () => {
-        expect(renderPyType(enumType('pending', 'completed', 'failed')))
-            .toBe('Literal["pending", "completed", "failed"]');
+        expect(renderPyType(enumType('pending', 'completed', 'failed'))).toBe('Literal["pending", "completed", "failed"]');
     });
 
     it('renders literal', () => {
@@ -109,6 +118,19 @@ describe('toPythonFieldName', () => {
     it('handles mixed separators', () => {
         expect(toPythonFieldName('my.field-name')).toBe('my_field_name');
     });
+
+    it('appends an underscore to a Python keyword', () => {
+        expect(toPythonFieldName('class')).toBe('class_');
+        expect(toPythonFieldName('from')).toBe('from_');
+        expect(toPythonFieldName('import')).toBe('import_');
+    });
+
+    it('leaves soft keywords and near-misses alone', () => {
+        expect(toPythonFieldName('type')).toBe('type');
+        expect(toPythonFieldName('match')).toBe('match');
+        expect(toPythonFieldName('classes')).toBe('classes');
+        expect(toPythonFieldName('None')).toBe('none');
+    });
 });
 
 // ─── deriveModelsModuleName ───────────────────────────────────────────────
@@ -143,48 +165,41 @@ describe('generatePydanticModels', () => {
     });
 
     it('generates optional fields', () => {
-        const root = contractRoot([
-            model('User', [
-                field('id', scalarType('uuid')),
-                field('bio', scalarType('string'), { optional: true }),
-            ]),
-        ]);
+        const root = contractRoot([model('User', [field('id', scalarType('uuid')), field('bio', scalarType('string'), { optional: true })])]);
         const output = generatePydanticModels(root);
         expect(output).toContain('bio: str | None = None');
     });
 
     it('generates fields with defaults', () => {
-        const root = contractRoot([
-            model('Config', [
-                field('status', enumType('active', 'inactive'), { default: 'active' }),
-            ]),
-        ]);
+        const root = contractRoot([model('Config', [field('status', enumType('active', 'inactive'), { default: 'active' })])]);
         const output = generatePydanticModels(root);
         expect(output).toContain('default="active"');
     });
 
     it('generates nullable fields', () => {
-        const root = contractRoot([
-            model('Item', [
-                field('description', scalarType('string'), { nullable: true }),
-            ]),
-        ]);
+        const root = contractRoot([model('Item', [field('description', scalarType('string'), { nullable: true })])]);
         const output = generatePydanticModels(root);
         expect(output).toContain('description: str | None');
     });
 
     it('generates Field(alias=...) for fields with hyphens', () => {
-        const root = contractRoot([
-            model('WebhookHeaders', [
-                field('x-topic', scalarType('string')),
-                field('x-event-id', scalarType('uuid')),
-            ]),
-        ]);
+        const root = contractRoot([model('WebhookHeaders', [field('x-topic', scalarType('string')), field('x-event-id', scalarType('uuid'))])]);
         const output = generatePydanticModels(root);
         expect(output).toContain('x_topic: str = Field(alias="x-topic")');
         expect(output).toContain('x_event_id: UUID = Field(alias="x-event-id")');
         expect(output).toContain('model_config = ConfigDict(populate_by_name=True)');
         expect(output).toContain('from pydantic import BaseModel, ConfigDict, Field');
+    });
+
+    it('aliases a keyword field to its wire name, so the class body parses', () => {
+        const root = contractRoot([
+            model('Folder', [field('class', scalarType('string')), field('default', scalarType('string'), { optional: true })]),
+        ]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('class_: str = Field(alias="class")');
+        expect(output).toContain('default: str | None = None');
+        expect(output).toContain('model_config = ConfigDict(populate_by_name=True)');
+        expect(output).not.toMatch(/^\s+class:/m);
     });
 
     it('generates Input/Read split for readonly fields', () => {
@@ -209,10 +224,7 @@ describe('generatePydanticModels', () => {
 
     it('generates Input/Read split for writeonly fields', () => {
         const root = contractRoot([
-            model('UserCreate', [
-                field('username', scalarType('string')),
-                field('password', scalarType('string'), { visibility: 'writeonly' }),
-            ]),
+            model('UserCreate', [field('username', scalarType('string')), field('password', scalarType('string'), { visibility: 'writeonly' })]),
         ]);
         const output = generatePydanticModels(root);
         expect(output).toContain('class UserCreate(BaseModel):');
@@ -226,20 +238,14 @@ describe('generatePydanticModels', () => {
     });
 
     it('generates a type alias', () => {
-        const root = contractRoot([
-            model('UserId', [], { type: scalarType('uuid') }),
-        ]);
+        const root = contractRoot([model('UserId', [], { type: scalarType('uuid') })]);
         const output = generatePydanticModels(root);
         expect(output).toContain('UserId = UUID');
     });
 
     it('generates datetime imports when needed', () => {
         const root = contractRoot([
-            model('Event', [
-                field('createdAt', scalarType('datetime')),
-                field('date', scalarType('date')),
-                field('time', scalarType('time')),
-            ]),
+            model('Event', [field('createdAt', scalarType('datetime')), field('date', scalarType('date')), field('time', scalarType('time'))]),
         ]);
         const output = generatePydanticModels(root);
         expect(output).toContain('from datetime import date, datetime, time');
@@ -260,17 +266,13 @@ describe('generatePydanticModels', () => {
     });
 
     it('includes deprecation comment', () => {
-        const root = contractRoot([
-            model('OldModel', [field('id', scalarType('uuid'))], { deprecated: true }),
-        ]);
+        const root = contractRoot([model('OldModel', [field('id', scalarType('uuid'))], { deprecated: true })]);
         const output = generatePydanticModels(root);
         expect(output).toContain('# @deprecated');
     });
 
     it('includes description comment', () => {
-        const root = contractRoot([
-            model('Payment', [field('id', scalarType('uuid'))], { description: 'A payment record' }),
-        ]);
+        const root = contractRoot([model('Payment', [field('id', scalarType('uuid'))], { description: 'A payment record' })]);
         const output = generatePydanticModels(root);
         expect(output).toContain('# A payment record');
     });

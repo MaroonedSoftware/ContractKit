@@ -38,6 +38,15 @@
                         ]
                     },
                     {
+                        "group": "Kitchen",
+                        "pages": [
+                            "api-reference/kitchen/get-folder",
+                            "api-reference/kitchen/import",
+                            "api-reference/kitchen/mint",
+                            "api-reference/kitchen/list-tokens"
+                        ]
+                    },
+                    {
                         "group": "Models",
                         "pages": [
                             "api-reference/models/invoice",
@@ -52,6 +61,21 @@
                                     "api-reference/models/billing/payment-ref",
                                     "api-reference/models/billing/update-payment-form",
                                     "api-reference/models/billing/upload-receipt-form"
+                                ]
+                            },
+                            {
+                                "group": "Kitchen",
+                                "pages": [
+                                    "api-reference/models/kitchen/rating",
+                                    "api-reference/models/kitchen/folder",
+                                    "api-reference/models/kitchen/doc",
+                                    "api-reference/models/kitchen/card",
+                                    "api-reference/models/kitchen/bank",
+                                    "api-reference/models/kitchen/instrument",
+                                    "api-reference/models/kitchen/token",
+                                    "api-reference/models/kitchen/owned",
+                                    "api-reference/models/kitchen/named",
+                                    "api-reference/models/kitchen/shared"
                                 ]
                             }
                         ]

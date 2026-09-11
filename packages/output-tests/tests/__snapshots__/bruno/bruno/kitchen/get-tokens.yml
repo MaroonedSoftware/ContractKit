@@ -1,0 +1,14 @@
+info:
+  name: /tokens
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: "{{baseUrl}}/tokens"
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"

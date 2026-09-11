@@ -189,3 +189,8 @@ declare module '#src/services/status.service.js' {
         [key: string]: any;
     }
 }
+declare module '#src/services/kitchen.service.js' {
+    export class KitchenService {
+        [key: string]: any;
+    }
+}

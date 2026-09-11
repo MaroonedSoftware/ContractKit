@@ -3,8 +3,6 @@
 ContractKit's Swift SDK generator. Emits `Codable` models and an async/await client, as a SwiftPM
 package that depends on nothing but Foundation.
 
-> The emitted Swift has not been compiled against a real toolchain. See **Status** below.
-
 ## Install
 
 ```bash
@@ -250,12 +248,18 @@ building the plugin in code.
 
 ## Status and known limitations
 
-The generator is unit- and snapshot-tested, and a sanity pass asserts that every emitted file has
-balanced brackets, no unsubstituted holes, one declaration per name, and a `try` on every statement
-that can throw. None of that is a compiler. **The emitted Swift has not been built against a real
-toolchain**, and the Kotlin plugin's history says what to expect from that: its first real compile
-turned up two bugs its string assertions could not see, and the release after that fixed a third
-that compiled and then failed to decode. Build the scaffold after a generator change.
+The emitted Swift is built by a real toolchain in the test suite, in Swift 6 language mode with
+complete concurrency checking and warnings as errors. Two tests do it:
+
+- `packages/output-tests` builds the package generated from the shared cross-plugin fixtures.
+- `tests/toolchain.test.ts` builds the package generated from `tests/fixtures/stress.ck`, which
+  holds every construct the generator branches on. It then runs `tests/fixtures/probe.swift`
+  against that package. The probe decodes, encodes and round-trips through the generated types,
+  and drives the generated client over a mock transport. That catches the bug a compile cannot:
+  a struct that builds and then fails on the first real response.
+
+Both skip when `swift` is not on the `PATH`. GitHub's `ubuntu-latest` image has it, so CI runs
+them. Unit, snapshot and syntax-sanity tests run everywhere.
 
 Behavioural limitations, all deliberate:
 

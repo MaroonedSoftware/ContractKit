@@ -302,6 +302,11 @@ Compound types take arguments in parentheses. Arguments may be type expressions,
 | `lazy(T)`                          | `z.lazy(() => T)`                      |
 | `discriminated(by=k, A \| B \| C)` | `z.discriminatedUnion("k", [A, B, C])` |
 
+An object field whose type contains `lazy(T)` is emitted as a getter that names `T` directly, for
+example `get parent() { return T.optional(); }`. Zod 4 reads the getter when it parses, and TypeScript
+can infer a recursive type through it. `z.lazy` inside the schema's own initializer would leave the
+schema typed `any`.
+
 ---
 
 ## Type Constraints

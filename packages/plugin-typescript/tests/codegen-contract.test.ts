@@ -80,11 +80,15 @@ describe('renderType', () => {
         });
 
         it('renders number with min', () => {
-            expect(renderType(scalarType('number', { min: 0 }))).toBe(`z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0))`);
+            expect(renderType(scalarType('number', { min: 0 }))).toBe(
+                `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0))`,
+            );
         });
 
         it('renders number with min and max', () => {
-            expect(renderType(scalarType('number', { min: 0, max: 100 }))).toBe(`z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0).max(100))`);
+            expect(renderType(scalarType('number', { min: 0, max: 100 }))).toBe(
+                `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0).max(100))`,
+            );
         });
 
         it('coerces int from a string, rejecting what Number() would swallow', () => {
@@ -92,7 +96,9 @@ describe('renderType', () => {
         });
 
         it('renders int with constraints, chained inside the preprocess', () => {
-            expect(renderType(scalarType('int', { min: 1, max: 10 }))).toBe(`z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int().min(1).max(10))`);
+            expect(renderType(scalarType('int', { min: 1, max: 10 }))).toBe(
+                `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int().min(1).max(10))`,
+            );
         });
 
         it('renders z.bigint() with preprocess coercion from string or bigint', () => {
@@ -405,10 +411,7 @@ describe('generateContract', () => {
 
         it('guards an optional or nullable decimal instead of coercing null', () => {
             const root = contractRoot([
-                model('M', [
-                    field('a', scalarType('decimal'), { optional: true }),
-                    field('b', unionType(scalarType('decimal'), scalarType('null'))),
-                ]),
+                model('M', [field('a', scalarType('decimal'), { optional: true }), field('b', unionType(scalarType('decimal'), scalarType('null')))]),
             ]);
             const out = generateContract(root, {
                 modelOutPaths: new Map(),
@@ -1249,11 +1252,9 @@ describe('generateContract', () => {
             // optional in the inferred output type (`k?: T`) instead of widening to required-nullable
             // (`k: T | undefined`). The `!= null` guard omits the key for both null and undefined.
             const root = contractRoot([
-                model(
-                    'User',
-                    [field('firstName', scalarType('string')), field('clientId', scalarType('uuid'), { optional: true })],
-                    { inputCase: 'snake' },
-                ),
+                model('User', [field('firstName', scalarType('string')), field('clientId', scalarType('uuid'), { optional: true })], {
+                    inputCase: 'snake',
+                }),
             ]);
             const output = generateContract(root);
             expect(output).toContain('client_id: z.uuid().nullish()');
@@ -1279,13 +1280,8 @@ describe('generateContract', () => {
         });
 
         it('input=pascal: inline-object optional fields use conditional spread guarded by `!= null`', () => {
-            const dataType = inlineObjectType([
-                field('id', scalarType('uuid')),
-                field('amount', scalarType('number'), { optional: true }),
-            ]);
-            const root = contractRoot([
-                model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { inputCase: 'pascal' }),
-            ]);
+            const dataType = inlineObjectType([field('id', scalarType('uuid')), field('amount', scalarType('number'), { optional: true })]);
+            const root = contractRoot([model('Webhook', [field('event', scalarType('string')), field('data', dataType)], { inputCase: 'pascal' })]);
             const output = generateContract(root);
             // Inline object emits its own transform inside the Webhook input shape.
             expect(output).toContain(`Amount: ${NUM}.nullish()`);
@@ -1324,5 +1320,77 @@ describe('applyFieldModifiers', () => {
         // field render through exactly the same path a model field does.
         const param = opParam('limit', scalarType('int'), { optional: true, default: 20 });
         expect(applyFieldModifiers(NUM_INT, param)).toBe(`${NUM_INT}.default(20)`);
+    });
+});
+
+describe('generateContract - declaration order', () => {
+    const declaredAt = (output: string, name: string) => output.indexOf(`export const ${name} = `);
+
+    it('declares an eager dependency first even when the reverse edge is lazy', () => {
+        // Folder reads Doc when the module loads; Doc reads Folder only when it parses. Counting the
+        // lazy edge made this a cycle, which fell back to source order and put Folder first.
+        const root = contractRoot([
+            model('Folder', [field('readme', refType('Doc'), { optional: true })]),
+            model('Doc', [field('folder', lazyType(refType('Folder')), { optional: true })]),
+        ]);
+        const output = generateContract(root);
+        expect(declaredAt(output, 'Doc')).toBeGreaterThan(-1);
+        expect(declaredAt(output, 'Doc')).toBeLessThan(declaredAt(output, 'Folder'));
+    });
+
+    it('declares every base before the contract that extends it, not only the first', () => {
+        // `C = A.extend(B.shape)` reads B at load time. With only bases[0] counted, B waited on D,
+        // C became ready first, and C was emitted ahead of the base it spreads.
+        const root = contractRoot([
+            model('C', [field('c', scalarType('string'))], { bases: ['A', 'B'] }),
+            model('A', [field('a', scalarType('string'))]),
+            model('B', [field('d', refType('D'))]),
+            model('D', [field('x', scalarType('string'))]),
+        ]);
+        const output = generateContract(root);
+        expect(output).toContain('B.shape');
+        expect(declaredAt(output, 'B')).toBeLessThan(declaredAt(output, 'C'));
+    });
+
+    it('ignores a lazy reference nested inside a container', () => {
+        const root = contractRoot([
+            model('Folder', [field('docs', arrayType(refType('Doc')))]),
+            model('Doc', [field('siblings', arrayType(lazyType(refType('Folder'))))]),
+        ]);
+        const output = generateContract(root);
+        expect(declaredAt(output, 'Doc')).toBeLessThan(declaredAt(output, 'Folder'));
+    });
+});
+
+describe('generateContract - recursive members', () => {
+    it('writes a lazy member as a getter so TypeScript can infer the recursive type', () => {
+        // `parent: z.lazy(() => Folder)` inside Folder's own initializer is TS7022 under strict mode,
+        // and the schema and its z.infer type silently become `any`.
+        const root = contractRoot([
+            model('Folder', [field('id', scalarType('string')), field('parent', lazyType(refType('Folder')), { optional: true })]),
+        ]);
+        const output = generateContract(root);
+        expect(output).toContain('get parent() { return Folder.optional(); },');
+        expect(output).toContain('    id: z.string(),');
+    });
+
+    it('uses a getter when the lazy reference is nested inside a container or union', () => {
+        const root = contractRoot([
+            model('Doc', [field('id', scalarType('string'))]),
+            model('Folder', [
+                field('children', arrayType(lazyType(refType('Folder')))),
+                field('pinned', unionType(refType('Doc'), lazyType(refType('Folder'))), { nullable: true }),
+                field('byName', recordType(scalarType('string'), lazyType(refType('Folder'))), { optional: true }),
+            ]),
+        ]);
+        const output = generateContract(root);
+        expect(output).toContain('get children() { return z.array(Folder); },');
+        expect(output).toContain('get pinned() { return z.union([Doc, Folder]).nullable(); },');
+        expect(output).toContain('get byName() { return z.record(z.string(), Folder).optional(); },');
+    });
+
+    it('quotes a getter key that is not an identifier', () => {
+        const root = contractRoot([model('Node', [field('next-node', lazyType(refType('Node')), { optional: true })])]);
+        expect(generateContract(root)).toContain("get 'next-node'() { return Node.optional(); },");
     });
 });

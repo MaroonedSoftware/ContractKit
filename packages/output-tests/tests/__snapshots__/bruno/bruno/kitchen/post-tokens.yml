@@ -1,0 +1,21 @@
+info:
+  name: /tokens
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{baseUrl}}/tokens"
+  body:
+    type: json
+    data: |
+      {
+        "accessToken": "",
+        "expiresIn": 3600
+      }
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
