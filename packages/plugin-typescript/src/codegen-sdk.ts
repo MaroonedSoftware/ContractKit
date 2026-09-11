@@ -241,6 +241,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         if (sdkNeedsQueryString(root, includeInternal)) valueImports.push('buildQueryString');
         if (sdkNeedsHeaders(root, includeInternal)) valueImports.push('buildHeaders');
         if (sdkNeedsReadContentType(root, includeInternal)) valueImports.push('readContentType');
+        if (usesParseBigIntHeader(classBody)) valueImports.push('parseBigIntHeader');
         if (valueImports.length > 0) {
             lines.push(`import { ${valueImports.join(', ')} } from '${rel}';`);
         }
@@ -316,6 +317,10 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('');
         lines.push(...BUILD_HEADERS_DECL);
         lines.push('');
+        if (usesParseBigIntHeader(classBody)) {
+            lines.push(...PARSE_BIGINT_HEADER_DECL);
+            lines.push('');
+        }
         lines.push('export async function parseJson<T>(res: Response): Promise<T> {');
         lines.push(
             sdkResponsesUseBigInt(root, options, includeInternal)
@@ -831,7 +836,7 @@ function sdkHeaderEntry(h: OpResponseHeaderNode, where: string): string {
         case 'boolean':
             return `${key}: ${h.optional ? `${raw} === null ? undefined : ${raw} === 'true'` : `${raw} === 'true'`}`;
         case 'bigint':
-            return convert(v => `BigInt(${v})`);
+            return convert(v => `parseBigIntHeader('${h.name}', ${v})`);
         default:
             throw new Error(
                 `Response header '${h.name}' on ${where} is declared as ${describeHeaderType(h.type)}, which cannot be read from an HTTP header. ` +
@@ -1036,6 +1041,7 @@ const SDK_METHOD_LOCALS = [
     'buildQueryString',
     'buildHeaders',
     'readContentType',
+    'parseBigIntHeader',
 ] as const;
 
 /**
@@ -1412,6 +1418,27 @@ const BUILD_HEADERS_DECL: readonly string[] = [
     '}',
 ];
 
+/**
+ * The runtime helper that reads a `bigint` response header. The client used to call `BigInt()` on
+ * the raw value, which is looser than the wire form in one direction and stricter in the other:
+ * it took `0x10`, `''` and `' 7'` as `16n`, `0n` and `7n`, and threw an opaque SyntaxError on
+ * `123n`, which the OpenAPI output documents (`^-?\d+n?$`). This accepts exactly that pattern.
+ *
+ * Anything else throws, naming the header. A header has no validator to hand a bad value to, and
+ * no invalid `bigint` exists to stand in for one the way `NaN` does for `Number()`.
+ */
+const PARSE_BIGINT_HEADER_DECL: readonly string[] = [
+    'export function parseBigIntHeader(name: string, value: string): bigint {',
+    "    if (/^-?\\d+n?$/.test(value)) return BigInt(value.replace(/n$/, ''));",
+    "    throw new Error(`Response header '${name}' is not a bigint: ${JSON.stringify(value)}`);",
+    '}',
+];
+
+/** Whether emitted method lines read a `bigint` response header, and so import its helper. */
+function usesParseBigIntHeader(lines: readonly string[]): boolean {
+    return lines.some(l => l.includes('parseBigIntHeader('));
+}
+
 /** True if any emitted operation has query params (drives the `buildQueryString` import). */
 function sdkNeedsQueryString(root: OpRootNode, includeInternal = false): boolean {
     for (const route of root.routes) {
@@ -1711,6 +1738,8 @@ export function generateSdkOptions(): string {
         '',
         ...BUILD_HEADERS_DECL,
         '',
+        ...PARSE_BIGINT_HEADER_DECL,
+        '',
         '/**',
         ' * Read a JSON response body.',
         ' *',
@@ -1993,6 +2022,7 @@ export function generateAreaClient(input: AreaClientInput): string {
     if (needsQueryString) valueImports.push('buildQueryString');
     if (needsHeaders) valueImports.push('buildHeaders');
     if (needsReadContentType) valueImports.push('readContentType');
+    if (usesParseBigIntHeader(collectedMethodLines)) valueImports.push('parseBigIntHeader');
     if (valueImports.length > 0) {
         lines.push(`import { ${valueImports.join(', ')} } from '${sdkOptionsRel}';`);
     }

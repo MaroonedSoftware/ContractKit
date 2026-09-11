@@ -1,5 +1,5 @@
 import type { SdkFetch } from '../sdk-options.js';
-import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString, buildHeaders, readContentType } from '../sdk-options.js';
+import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString, buildHeaders, readContentType, parseBigIntHeader } from '../sdk-options.js';
 import type { Folder, Instrument, LedgerOutput, LedgerWireInput, Shared, SharedInput, StampedOutput, StampedWireInput, TokenOutput, TokenWireInput } from '../types/kitchen.types.js';
 import { reviveFolder, reviveLedgerOutput, reviveStampedOutput } from '../types/kitchen.types.js';
 import { DateTime } from 'luxon';
@@ -10,8 +10,8 @@ export class KitchenClient {
 
     /** @description several statuses, and two content types on one of them */
     async getFolder(folderId: string, query: { depth?: number; tags?: string[] }, customHeaders: { 'x-trace': string; 'x-opt'?: number }): Promise<
-        | { status: 200; contentType: 'application/json'; data: Folder; headers: { xCount: number; xWhen?: DateTime } }
-        | { status: 200; contentType: 'text/plain'; data: string; headers: { xCount: number; xWhen?: DateTime } }
+        | { status: 200; contentType: 'application/json'; data: Folder; headers: { xCount: number; xWhen?: DateTime; xSeq?: bigint } }
+        | { status: 200; contentType: 'text/plain'; data: string; headers: { xCount: number; xWhen?: DateTime; xSeq?: bigint } }
         | { status: 204 }
         | { status: 404; contentType: 'application/json'; data: Shared }
     > {
@@ -29,9 +29,9 @@ export class KitchenClient {
             default:
                 switch (readContentType(result)) {
                     case 'text/plain':
-                        return { status: 200, contentType: 'text/plain', data: await result.text(), headers: { xCount: Number(result.headers.get('x-count')), xWhen: result.headers.get('x-when') === null ? undefined : DateTime.fromISO(result.headers.get('x-when')!) } };
+                        return { status: 200, contentType: 'text/plain', data: await result.text(), headers: { xCount: Number(result.headers.get('x-count')), xWhen: result.headers.get('x-when') === null ? undefined : DateTime.fromISO(result.headers.get('x-when')!), xSeq: result.headers.get('x-seq') === null ? undefined : parseBigIntHeader('x-seq', result.headers.get('x-seq')!) } };
                     default:
-                        return { status: 200, contentType: 'application/json', data: reviveFolder(await parseJson<Folder>(result)), headers: { xCount: Number(result.headers.get('x-count')), xWhen: result.headers.get('x-when') === null ? undefined : DateTime.fromISO(result.headers.get('x-when')!) } };
+                        return { status: 200, contentType: 'application/json', data: reviveFolder(await parseJson<Folder>(result)), headers: { xCount: Number(result.headers.get('x-count')), xWhen: result.headers.get('x-when') === null ? undefined : DateTime.fromISO(result.headers.get('x-when')!), xSeq: result.headers.get('x-seq') === null ? undefined : parseBigIntHeader('x-seq', result.headers.get('x-seq')!) } };
                 }
         }
     }

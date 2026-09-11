@@ -531,6 +531,7 @@ Response headers:
 | ------ | ---- | ----------- |
 | `x-count` | `number` *(required)* |  |
 | `x-when` | `string` |  |
+| `x-seq` | `bigint` |  |
 
 `204 No Content`
 

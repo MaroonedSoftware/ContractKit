@@ -41,3 +41,4 @@ docs: |-
   
   - `x-count` (required)
   - `x-when` (optional)
+  - `x-seq` (optional)
