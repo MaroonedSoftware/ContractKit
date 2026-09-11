@@ -61,6 +61,31 @@ describe('scalarToSchema', () => {
         expect(schema).not.toHaveProperty('maximum');
     });
 
+    it('maps bigint to a digit string, never an integer', () => {
+        // No ContractKit client sends a JSON number for a bigint and the server rejects one, so
+        // `type: integer` described a request nothing generated from the spec could get accepted.
+        expect(scalarToSchema({ kind: 'scalar', name: 'bigint' })).toEqual({
+            type: 'string',
+            format: 'bigint',
+            pattern: '^-?\\d+n?$',
+        });
+    });
+
+    it('documents a pattern that matches what every ContractKit client sends and nothing else', () => {
+        // JSON Schema patterns are ECMA-262 regexes, unanchored unless the pattern anchors itself.
+        const pattern = new RegExp(scalarToSchema({ kind: 'scalar', name: 'bigint' }).pattern as string, 'u');
+        // The TypeScript SDK and server write "123n"; the Kotlin, Swift, C# and Python SDKs "123".
+        for (const sent of ['123n', '123', '-9007199254740993', '-9007199254740993n', '0']) expect(pattern.test(sent)).toBe(true);
+        for (const other of ['', 'n', '12.5', '1e3', '0x10', ' 123', '123 ', 'abc', '--1', '123nn']) expect(pattern.test(other)).toBe(false);
+    });
+
+    it('carries exact bigint bounds in extensions, beyond what a double could hold', () => {
+        const schema = scalarToSchema({ kind: 'scalar', name: 'bigint', min: -9007199254740993n, max: 9007199254740993n });
+        expect(schema).toMatchObject({ 'x-contractkit-min': '-9007199254740993', 'x-contractkit-max': '9007199254740993' });
+        expect(schema).not.toHaveProperty('minimum');
+        expect(schema).not.toHaveProperty('maximum');
+    });
+
     it('throws on an unmapped scalar name', () => {
         expect(() => scalarToSchema({ kind: 'scalar', name: 'quaternion' } as any)).toThrow(/unmapped scalar 'quaternion'/);
     });
@@ -335,6 +360,14 @@ describe('generateOpenApi', () => {
             });
             expect(output).toContain('default: true');
             expect(output).toContain('default: 25');
+        });
+
+        it('writes a bigint default as a string, so the string schema accepts its own default', () => {
+            const dto = contractRoot([model('Order', [field('quantity', scalarType('bigint'), { default: 5 })])]);
+            const doc = buildOpenApiDocument({ contractRoots: [dto], opRoots: [], config: {} }) as {
+                components: { schemas: Record<string, { properties: Record<string, Record<string, unknown>> }> };
+            };
+            expect(doc.components.schemas.Order!.properties.quantity).toMatchObject({ type: 'string', format: 'bigint', default: '5' });
         });
 
         it('generates enum schema', () => {

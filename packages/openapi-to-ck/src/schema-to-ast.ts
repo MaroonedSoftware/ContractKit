@@ -250,6 +250,16 @@ function stringSchemaToType(schema: NormalizedSchema): ContractTypeNode {
         return { kind: 'scalar', name: 'decimal', ...mods };
     }
 
+    // `bigint` is a digit string on the wire, so plugin-docs writes it as `type: string` with a
+    // `pattern` and its bounds in the same extensions `decimal` uses. Like decimal's, that pattern
+    // is implied by the scalar and must not come back as a `regex=` modifier.
+    if (schema.format === 'bigint') {
+        const mods: Partial<ScalarTypeNode> = {};
+        if (schema['x-contractkit-min'] !== undefined) mods.min = BigInt(schema['x-contractkit-min']);
+        if (schema['x-contractkit-max'] !== undefined) mods.max = BigInt(schema['x-contractkit-max']);
+        return { kind: 'scalar', name: 'bigint', ...mods };
+    }
+
     // Check format first
     if (schema.format) {
         const scalarName = FORMAT_TO_SCALAR[schema.format];
@@ -365,7 +375,7 @@ function schemaPropertiesToFields(schema: NormalizedSchema, ctx: SchemaContext):
             nullable,
             visibility,
             type: effectiveType,
-            default: propSchema.default as string | number | boolean | undefined,
+            default: fieldDefault(propSchema.default, effectiveType),
             deprecated: propSchema.deprecated,
             description: ctx.includeComments ? propSchema.description : undefined,
             loc: LOC,
@@ -376,6 +386,20 @@ function schemaPropertiesToFields(schema: NormalizedSchema, ctx: SchemaContext):
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * A property's `default`, as the `.ck` field default it came from.
+ *
+ * A `bigint` default is written as a digit string, to match the `type: string` the scalar is
+ * documented as, but a `.ck` source spells it as a bare number (`= 5`), and that is what parsing
+ * one produces. Turning it back keeps a round trip byte-stable.
+ */
+function fieldDefault(value: unknown, type: ContractTypeNode): string | number | boolean | undefined {
+    if (type.kind === 'scalar' && type.name === 'bigint' && typeof value === 'string' && /^-?\d+n?$/.test(value)) {
+        return Number(value.replace(/n$/, ''));
+    }
+    return value as string | number | boolean | undefined;
+}
 
 function normalizeTypeField(schema: NormalizedSchema): { baseType: string; nullable: boolean } | null {
     if (!schema.type) return null;

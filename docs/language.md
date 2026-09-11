@@ -216,6 +216,10 @@ contract format(input=pascal, output=snake) ExternalEvent: {
 
 This accepts `PascalCase` input keys and emits `snake_case` output keys.
 
+A contract inherits the casing of a base that sets one, and a base's fields are renamed along with the contract's own, whichever of them declares the `format()`. `contract format(input=snake) Stamped: Stamp & { stampNote: string }` accepts `stamped_by` from `Stamp` as well as `stamp_note`. A contract with `readonly` or `writeonly` fields is renamed the same way on both sides: requests are parsed from the input casing without the readonly fields, and responses carry the output casing without the writeonly ones.
+
+A generated SDK follows the same split. A request is sent in the `input` casing and a response is read in the `output` casing. In the TypeScript SDK, a request body, query or header object that carries such a contract, directly or nested, is typed with `ExternalEventWireInput`, which has the keys the server parses (`EventType`, `CreatedAt`), while the response keeps `ExternalEventOutput`.
+
 Multiple modifiers may appear in any order:
 
 ```
@@ -233,7 +237,7 @@ contract deprecated format(input=camel) mode(strip) OldWebhookPayload: {
 | `string`   | `z.string()`              |                                                                                 |
 | `number`   | `z.coerce.number()`       |                                                                                 |
 | `int`      | `z.coerce.number().int()` |                                                                                 |
-| `bigint`   | `z.coerce.bigint()`       |                                                                                 |
+| `bigint`   | `z.coerce.bigint()`       | Integer of any size, sent as a digit string (`"123"`, or `"123n"`)              |
 | `decimal`  | decimal.js `Decimal`      | Exact decimal sent as a quoted string; see below                                |
 | `boolean`  | `z.coerce.boolean()`      |                                                                                 |
 | `date`     | `z.string().date()`       | ISO 8601 date string                                                            |

@@ -4,6 +4,7 @@ import { PaymentService } from '#src/services/payment.service.js';
 import { AdminCredentialInput, Credential, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm } from '../schemas/billing.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
+import { bigIntReplacer } from '@maroonedsoftware/utilities';
 import { MultipartBody } from '@maroonedsoftware/multipart';
 
 /**
@@ -27,7 +28,7 @@ BillingRouter.post('/payments', requirePolicy(), bodyParserMiddleware(['json']),
     if (result.headers["xCacheHit"] !== undefined) ctx.set('x-cache-hit', String(result.headers["xCacheHit"]));
     if (result.headers["xExpiresAfter"] !== undefined) ctx.set('x-expires-after', String(result.headers["xExpiresAfter"]));
     ctx.type = 'application/json';
-    ctx.body = result.body;
+    ctx.body = JSON.stringify(result.body, bigIntReplacer);
 });
 
 /**
@@ -57,7 +58,7 @@ BillingRouter.get('/payments', requirePolicy(), async ctx => {
 
     ctx.status = 200;
     ctx.type = 'application/json';
-    ctx.body = result;
+    ctx.body = JSON.stringify(result, bigIntReplacer);
 });
 
 /**
@@ -72,7 +73,7 @@ BillingRouter.post('/payments/batch', requirePolicy(), bodyParserMiddleware(['js
 
     ctx.status = 200;
     ctx.type = 'application/json';
-    ctx.body = result;
+    ctx.body = JSON.stringify(result, bigIntReplacer);
 });
 
 /**
@@ -92,7 +93,7 @@ BillingRouter.get('/payments/:paymentId', requirePolicy(), async ctx => {
 
     ctx.status = 200;
     ctx.type = 'application/json';
-    ctx.body = result;
+    ctx.body = JSON.stringify(result, bigIntReplacer);
 });
 
 /**
@@ -152,7 +153,7 @@ BillingRouter.post('/payments/:paymentId/receipt', requirePolicy(), bodyParserMi
 
     ctx.status = 200;
     ctx.type = 'application/json';
-    ctx.body = result;
+    ctx.body = JSON.stringify(result, bigIntReplacer);
 });
 
 /**
@@ -168,7 +169,7 @@ BillingRouter.get('/refunds/:paymentId', requirePolicy(), async ctx => {
 
     ctx.status = 200;
     ctx.type = 'application/json';
-    ctx.body = result;
+    ctx.body = JSON.stringify(result, bigIntReplacer);
 });
 
 /**

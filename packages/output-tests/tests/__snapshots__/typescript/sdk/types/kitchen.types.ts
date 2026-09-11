@@ -101,6 +101,12 @@ export const Token = z.strictObject({
 export type Token = z.output<typeof Token>;
 export type TokenOutput = z.output<typeof Token>;
 
+/** {@link Token} as a request sends it, keyed the way the server's schema parses it. */
+export interface TokenWireInput {
+    AccessToken: string;
+    ExpiresIn?: number;
+}
+
 /**
  * generated from [Owned](../../contracts/kitchen.ck#L71)
 */
@@ -121,6 +127,102 @@ export const Named = z.strictObject({
     name: z.string(),
 });
 export type Named = z.infer<typeof Named>;
+
+/**
+ * generated from [Stamp](../../contracts/kitchen.ck#L86)
+*/
+export const Stamp = z.strictObject({
+    stampedBy: z.string(),
+    stampedAt: _ZodDatetime,
+});
+export type Stamp = z.infer<typeof Stamp>;
+
+/** Rehydrates every wire-encoded scalar in a Stamp into its runtime type. Mutates and returns `raw`. */
+export function reviveStamp(raw: Stamp): Stamp {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    __o0["stampedAt"] = __dt(__o0["stampedAt"], 'Stamp.stampedAt');
+    return raw;
+}
+
+/**
+ * A plain base under format(), which the schema inlines rather than extends
+ * generated from [Stamped](../../contracts/kitchen.ck#L92)
+*/
+export const Stamped = z.strictObject({
+    stamped_by: z.string(),
+    stamped_at: _ZodDatetime,
+    stamp_note: z.string().nullish(),
+}).transform(data => ({
+    StampedBy: data.stamped_by,
+    StampedAt: data.stamped_at,
+    ...(data.stamp_note != null ? { StampNote: data.stamp_note } : {}),
+}));
+export type Stamped = z.output<typeof Stamped>;
+export type StampedOutput = z.output<typeof Stamped>;
+
+/** {@link Stamped} as a request sends it, keyed the way the server's schema parses it. */
+export interface StampedWireInput {
+    stamped_by: string;
+    stamped_at: DateTime;
+    stamp_note?: string;
+}
+
+/** Rehydrates every wire-encoded scalar in a Stamped into its runtime type. Mutates and returns `raw`. */
+export function reviveStamped(raw: Stamped): Stamped {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    __o0["stampedAt"] = __dt(__o0["stampedAt"], 'Stamped.stampedAt');
+    return raw;
+}
+
+/** Rehydrates every wire-encoded scalar in a StampedOutput into its runtime type. Mutates and returns `raw`. */
+export function reviveStampedOutput(raw: StampedOutput): StampedOutput {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    __o0["StampedAt"] = __dt(__o0["StampedAt"], 'Stamped.StampedAt');
+    return raw;
+}
+
+/**
+ * format() on a contract split for readonly and writeonly fields, applied to both of its schemas
+ * generated from [Ledger](../../contracts/kitchen.ck#L97)
+*/
+export const Ledger = z.strictObject({
+    id: z.uuid(),
+    posted_at: _ZodDatetime,
+}).transform(data => ({
+    Id: data.id,
+    PostedAt: data.posted_at,
+}));
+export type Ledger = z.output<typeof Ledger>;
+
+export const LedgerInput = z.strictObject({
+    entry_code: z.string(),
+    posted_at: _ZodDatetime,
+}).transform(data => ({
+    EntryCode: data.entry_code,
+    PostedAt: data.posted_at,
+}));
+export type LedgerInput = z.output<typeof LedgerInput>;
+export type LedgerOutput = z.output<typeof Ledger>;
+
+/** {@link Ledger} as a request sends it, keyed the way the server's schema parses it. */
+export interface LedgerWireInput {
+    entry_code: string;
+    posted_at: DateTime;
+}
+
+/** Rehydrates every wire-encoded scalar in a Ledger into its runtime type. Mutates and returns `raw`. */
+export function reviveLedger(raw: Ledger): Ledger {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    __o0["postedAt"] = __dt(__o0["postedAt"], 'Ledger.postedAt');
+    return raw;
+}
+
+/** Rehydrates every wire-encoded scalar in a LedgerOutput into its runtime type. Mutates and returns `raw`. */
+export function reviveLedgerOutput(raw: LedgerOutput): LedgerOutput {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    __o0["PostedAt"] = __dt(__o0["PostedAt"], 'Ledger.PostedAt');
+    return raw;
+}
 
 /**
  * Self recursion through lazy(), mutual recursion through Doc, every container, both union

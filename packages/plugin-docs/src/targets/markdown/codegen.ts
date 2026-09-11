@@ -12,6 +12,7 @@ import {
     resolveModifiers,
     resolveSecurity,
     SECURITY_NONE,
+    typeHasScalar,
 } from '@contractkit/core';
 import { computePubliclyReachableModels, groupEndpoints, groupModels, humanize } from '../../naming.js';
 
@@ -100,6 +101,18 @@ export function renderTsScalar(name: ScalarTypeNode['name']): string {
             throw new Error(`plugin-docs (markdown): unmapped scalar '${String(_exhaustive)}' — add a case`);
         }
     }
+}
+
+const BIGINT_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['bigint']);
+
+/**
+ * What a reader writing their own client needs to know about a `bigint`, or undefined for a type
+ * that holds none. The type column says `bigint`, the value a generated client works with; on the
+ * wire it is a string, which the column cannot say. A `bigint` behind a model reference is noted on
+ * that model's own table, not here.
+ */
+export function bigintWireNote(type: ContractTypeNode): string | undefined {
+    return typeHasScalar(type, BIGINT_SCALARS) ? 'sent as a digit string, "123" or "123n"' : undefined;
 }
 
 function renderTsInlineObject(fields: FieldNode[]): string {
@@ -611,7 +624,9 @@ function renderAttributesTable(attrs: AttributeEntry[], _dialect: MarkdownDialec
     for (const attr of attrs) {
         const type = escapeCell(renderTsType(attr.type));
         const req = attr.required ? 'Yes' : 'No';
-        lines.push(`| \`${attr.name}\` | \`${type}\` | ${req} | ${escapeCell(attr.description)} |`);
+        const note = bigintWireNote(attr.type);
+        const desc = escapeCell([attr.description, note && `*${note}*`].filter(Boolean).join(' '));
+        lines.push(`| \`${attr.name}\` | \`${type}\` | ${req} | ${desc} |`);
     }
     return lines;
 }
@@ -637,6 +652,8 @@ function renderFieldsTable(fields: FieldNode[], opts: FieldsTableOpts, _dialect:
         if (f.visibility === 'writeonly') modifiers.push('write-only');
         if (f.nullable) modifiers.push('nullable');
         if (f.default !== undefined) modifiers.push(`default: \`${f.default}\``);
+        const note = bigintWireNote(f.type);
+        if (note) modifiers.push(note);
 
         const desc = escapeCell([f.description, ...modifiers.map(m => `*${m}*`)].filter(Boolean).join('. '));
         lines.push(`| \`${f.name}\` | \`${type}\` | ${required} | ${desc} |`);
@@ -707,6 +724,8 @@ export function renderModelBody(model: ModelNode, dialect: MarkdownDialect): str
         lines.push(`\`\`\`typescript`);
         lines.push(`type ${model.name} = ${renderTsType(model.type)}`);
         lines.push(`\`\`\``);
+        const note = bigintWireNote(model.type);
+        if (note) lines.push('', `A \`bigint\` here is ${note}.`);
         return lines;
     }
 
@@ -724,6 +743,8 @@ export function renderModelBody(model: ModelNode, dialect: MarkdownDialect): str
             if (field.visibility === 'writeonly') modifiers.push('write-only');
             if (field.nullable) modifiers.push('nullable');
             if (field.default !== undefined) modifiers.push(`default: \`${field.default}\``);
+            const note = bigintWireNote(field.type);
+            if (note) modifiers.push(note);
 
             const desc = escapeCell([field.description, ...modifiers.map(m => `*${m}*`)].filter(Boolean).join('. '));
             tableLines.push(`| \`${field.name}\` | \`${type}\` | ${required} | ${desc} |`);

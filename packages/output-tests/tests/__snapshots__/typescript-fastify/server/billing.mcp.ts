@@ -7,6 +7,7 @@ import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type Mcp
 import { PolicyService } from '@maroonedsoftware/policies';
 import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';
 import { parseAndValidate } from '@maroonedsoftware/zod';
+import { bigIntReplacer } from '@maroonedsoftware/utilities';
 import { PaymentService } from '#src/services/payment.service.js';
 import { Payment, PaymentRef } from './schemas/billing.schema.js';
 
@@ -30,7 +31,8 @@ export class GetRefundMcpTool implements McpToolHandler {
         await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
         const { params } = await parseAndValidate(args, GetRefundArgs);
         const result = await this.service.getRefund(params);
-        return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
+        const resultJson = JSON.stringify(result, bigIntReplacer);
+        return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
     }
 }
 

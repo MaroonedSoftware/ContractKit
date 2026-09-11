@@ -4,6 +4,7 @@ import { renderType, renderInputType, pascalToDotCase } from './codegen-contract
 import { inferService, deriveModulePath, buildArgs, deriveBaseName } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
+import { BIGINT_REPLACER_IMPORT, typeReachesBigInt } from './bigint-runtime.js';
 import { basename, dirname, relative } from 'node:path';
 import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
@@ -30,6 +31,11 @@ export interface McpCodegenOptions {
     servicePathTemplate?: string;
     /** Emit tools for `internal` operations. Default false. */
     includeInternal?: boolean;
+    /**
+     * Model names carrying a `bigint`, directly or through a referenced model. A tool whose result
+     * can reach one serializes it with `bigIntReplacer`: a bare `JSON.stringify` throws on a `bigint`.
+     */
+    modelsWithBigInt?: Set<string>;
 }
 
 // ─── MCP flag helpers ─────────────────────────────────────────────────────
@@ -178,6 +184,19 @@ function primaryResponseBody(op: OpOperationNode): ContractTypeNode | undefined 
         if (resp.bodies[0]) return resp.bodies[0].bodyType;
     }
     return undefined;
+}
+
+/**
+ * Whether the service result a tool reports can hold a `bigint`. Every emitted body counts, whatever
+ * its content type, and so does every response header: the tool stringifies the whole result as
+ * JSON, not just one body of it.
+ */
+function resultReachesBigInt(op: OpOperationNode, modelsWithBigInt: Set<string> | undefined): boolean {
+    return emittedResponses(op).some(
+        resp =>
+            resp.bodies.some(b => typeReachesBigInt(b.bodyType, modelsWithBigInt)) ||
+            (resp.headers ?? []).some(h => typeReachesBigInt(h.type, modelsWithBigInt)),
+    );
 }
 
 /** MCP output schemas must be objects — only model refs and inline objects qualify. */
@@ -435,10 +454,20 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
         lines.push(`        return { content: [{ type: 'text', text: 'OK' }] };`);
     } else {
         lines.push(`        const result = await this.service.${service.methodName}(${callArgs});`);
-        if (structured) {
-            lines.push(`        return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };`);
+        if (!resultReachesBigInt(op, options.modelsWithBigInt)) {
+            if (structured) {
+                lines.push(`        return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };`);
+            } else {
+                lines.push(`        return { content: [{ type: 'text', text: JSON.stringify(result) }] };`);
+            }
+        } else if (structured) {
+            // `structuredContent` is serialized again by the dispatcher (Koa's `ctx.body`, or the SDK
+            // transport), which would throw on the same `bigint`, so it is the parsed-back JSON
+            // rather than the raw result: the `"123n"` strings the text content carries.
+            lines.push(`        const resultJson = JSON.stringify(result, bigIntReplacer);`);
+            lines.push(`        return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };`);
         } else {
-            lines.push(`        return { content: [{ type: 'text', text: JSON.stringify(result) }] };`);
+            lines.push(`        return { content: [{ type: 'text', text: JSON.stringify(result, bigIntReplacer) }] };`);
         }
     }
     lines.push('    }');
@@ -505,6 +534,7 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     if (guardsItself) imports.push(`import { PolicyService } from '@maroonedsoftware/policies';`);
     if (/\bMFA_SATISFIED_POLICY\b/.test(bodyWithHelpers)) imports.push(`import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';`);
     if (needsParseAndValidate) imports.push(`import { parseAndValidate } from '@maroonedsoftware/zod';`);
+    if (/\bbigIntReplacer\b/.test(bodyWithHelpers)) imports.push(BIGINT_REPLACER_IMPORT);
 
     // Service imports (one per distinct service used by the emitted tools).
     const serviceModules = new Map<string, string>();

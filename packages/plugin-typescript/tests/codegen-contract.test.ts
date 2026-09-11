@@ -442,6 +442,26 @@ describe('generateContract', () => {
             expect(out).not.toContain('reviveMoneyOutput');
         });
 
+        it('walks the inherited fields of a flattened format() contract itself, under its output casing', () => {
+            // The response object carries Base's fields under Child's casing, so Base's reviver, which
+            // reads `paidAt`, would find nothing at `paid_at`.
+            const root = contractRoot([
+                model('Base', [field('paidAt', scalarType('datetime'))]),
+                model('Child', [field('grossPay', scalarType('decimal'))], { bases: ['Base'], outputCase: 'snake' }),
+            ]);
+            const out = generateContract(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/out/t.ts',
+                modelsWithOutput: new Set(['Child']),
+                modelsWithDecimal: new Set(['Base', 'Child']),
+                emitRevivers: true,
+            });
+            const childOutput = out.slice(out.indexOf('export function reviveChildOutput('));
+            expect(childOutput).toContain(`__o0["paid_at"] = __dt(__o0["paid_at"], 'Child.paid_at');`);
+            expect(childOutput).toContain(`__o0["gross_pay"] = __dec(__o0["gross_pay"], 'Child.gross_pay');`);
+            expect(childOutput).not.toContain('reviveBase');
+        });
+
         it('revives the fields a model inherits, so a child of a revivable base defines the reviver its callers import', () => {
             const root = contractRoot([
                 model('Summary', [field('enabledAt', scalarType('datetime'), { optional: true })]),
@@ -1245,6 +1265,179 @@ describe('generateContract', () => {
             expect(output).toContain('clientId: data.client_id,');
             expect(output).toContain('clientSecret: data.client_secret');
             expect(output).toContain('export type Child = z.output<typeof Child>');
+        });
+
+        it('a format() child keeps the fields of a base that has no format() of its own', () => {
+            // The cased branch renders one object from the model's fields, so a base it does not
+            // extend has to be inlined, or its fields silently vanish from the schema.
+            const root = contractRoot([
+                model('Base', [field('baseField', scalarType('string'))]),
+                model('Child', [field('childField', scalarType('string'))], { bases: ['Base'], inputCase: 'snake' }),
+            ]);
+            const output = generateContract(root);
+            expect(output).not.toContain('Base.extend');
+            expect(output).toMatch(
+                /export const Child = z\.strictObject\(\{\n {4}base_field: z\.string\(\),\n {4}child_field: z\.string\(\),\n\}\)\.transform/,
+            );
+            expect(output).toContain('baseField: data.base_field,');
+        });
+
+        it('flattens every base, not only the first', () => {
+            const root = contractRoot([
+                model('Plain', [field('plainField', scalarType('string'))]),
+                model('Cased', [field('casedField', scalarType('string'))], { outputCase: 'snake' }),
+                // Neither base alone would do: `Plain.extend(Cased.shape)` fails because Cased is a pipe.
+                model('Both', [field('ownField', scalarType('string'))], { bases: ['Plain', 'Cased'] }),
+            ]);
+            const both = generateContract(root).split('export const Both = ')[1]!.split('\n}));')[0]!;
+            expect(both).toContain('plainField: z.string(),');
+            expect(both).toContain('casedField: z.string(),');
+            expect(both).toContain('ownField: z.string(),');
+            // The casing comes from the base that sets one, even though it is not the first.
+            expect(both).toContain('plain_field: data.plainField,');
+        });
+
+        it('flattens a base declared in another file, importing what its fields need rather than the base', () => {
+            const base = model('Base', [field('addr', refType('Address')), field('seenAt', scalarType('datetime'))], {
+                loc: { file: 'base.ck', line: 1 },
+            });
+            const root = contractRoot(
+                [model('Child', [field('childField', scalarType('string'))], { bases: ['Base'], inputCase: 'snake' })],
+                'child.ck',
+            );
+            const output = generateContract(root, {
+                modelOutPaths: new Map([
+                    ['Base', '/out/base.ts'],
+                    ['Address', '/out/address.ts'],
+                ]),
+                currentOutPath: '/out/child.ts',
+                modelMap: new Map([['Base', base]]),
+            });
+            expect(output).toContain('addr: Address,');
+            expect(output).toContain('seen_at: _ZodDatetime,');
+            expect(output).toContain("import { Address } from './address.js';");
+            expect(output).toContain("import { DateTime } from 'luxon';");
+            // Nothing extends Base any more, and an unused import fails `noUnusedLocals`.
+            expect(output).not.toContain("from './base.js'");
+        });
+
+        describe('on a contract split for readonly/writeonly fields', () => {
+            const split = (overrides: Parameters<typeof model>[2], extra: Parameters<typeof field>[] = []) =>
+                contractRoot([
+                    model(
+                        'Split',
+                        [
+                            field('id', scalarType('uuid'), { visibility: 'readonly' }),
+                            field('userName', scalarType('string')),
+                            field('secret', scalarType('string'), { visibility: 'writeonly' }),
+                            ...extra.map(args => field(...args)),
+                        ],
+                        overrides,
+                    ),
+                ]);
+
+            /** Every schema the file exports, evaluated with real Zod. */
+            async function evaluate(output: string): Promise<Record<string, { safeParse: (v: unknown) => { success: boolean; data?: unknown } }>> {
+                const names = [...output.matchAll(/^export const (\w+)/gm)].map(m => m[1]!);
+                const body = output
+                    .split('\n')
+                    .filter(l => !l.startsWith('import ') && !l.startsWith('export type '))
+                    .join('\n')
+                    .replace(/^export const /gm, 'const ');
+                const { z } = await import('zod');
+                return new Function('z', `${body}\nreturn { ${names.join(', ')} };`)(z);
+            }
+
+            it('applies the transform to both the read schema and the Input schema', () => {
+                const output = generateContract(split({ inputCase: 'snake' }));
+                expect(output).toContain(
+                    [
+                        'export const Split = z.strictObject({',
+                        '    id: z.uuid(),',
+                        '    user_name: z.string(),',
+                        '}).transform(data => ({',
+                        '    id: data.id,',
+                        '    userName: data.user_name,',
+                        '}));',
+                        'export type Split = z.output<typeof Split>;',
+                    ].join('\n'),
+                );
+                expect(output).toContain(
+                    [
+                        'export const SplitInput = z.strictObject({',
+                        '    user_name: z.string(),',
+                        '    secret: z.string(),',
+                        '}).transform(data => ({',
+                        '    userName: data.user_name,',
+                        '    secret: data.secret,',
+                        '}));',
+                        'export type SplitInput = z.output<typeof SplitInput>;',
+                    ].join('\n'),
+                );
+            });
+
+            it('parses a request in the input casing and hands the service the declared names', async () => {
+                const { SplitInput } = await evaluate(generateContract(split({ inputCase: 'snake' })));
+                expect(SplitInput!.safeParse({ user_name: 'u', secret: 's' })).toEqual({ success: true, data: { userName: 'u', secret: 's' } });
+                expect(SplitInput!.safeParse({ userName: 'u', secret: 's' }).success).toBe(false);
+            });
+
+            it('types an output-only split like an output-only single schema, with the Output alias post-transform', () => {
+                const output = generateContract(split({ outputCase: 'snake' }), {
+                    modelOutPaths: new Map(),
+                    currentOutPath: '/out/t.ts',
+                    modelsWithOutput: new Set(['Split']),
+                });
+                expect(output).toContain('export type Split = z.input<typeof Split>;');
+                expect(output).toContain('export type SplitInput = z.input<typeof SplitInput>;');
+                expect(output).toContain('export type SplitOutput = z.output<typeof Split>;');
+                expect(output).toContain('    user_name: data.userName,');
+            });
+
+            it('re-keys anonymous objects in the Input schema and still names Input variants', () => {
+                const root = contractRoot([
+                    model('Owned', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('label', scalarType('string'))]),
+                    ...split({ inputCase: 'snake' }, [
+                        ['lineItems', arrayType(inlineObjectType([field('unitPrice', scalarType('number'))]))],
+                        ['owner', refType('Owned')],
+                    ]).models,
+                ]);
+                const input = generateContract(root).split('export const SplitInput = ')[1]!.split('export type SplitInput')[0]!;
+                expect(input).toContain('line_items: z.array(z.strictObject({\n    unit_price: ');
+                expect(input).toContain('    unitPrice: data.unit_price,');
+                expect(input).toContain('owner: OwnedInput,');
+            });
+
+            it('flattens a child of a split format() base, casing both halves and dropping what it makes readonly', async () => {
+                const root = contractRoot([
+                    model('Base', [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('baseName', scalarType('string'))], {
+                        inputCase: 'snake',
+                    }),
+                    model('Child', [field('childNote', scalarType('string')), field('baseName', scalarType('string'), { visibility: 'readonly' })], {
+                        bases: ['Base'],
+                    }),
+                ]);
+                const output = generateContract(root);
+                expect(output).not.toContain('Base.extend');
+                expect(output).not.toContain('BaseInput.omit');
+                const { ChildInput } = await evaluate(output);
+                expect(ChildInput!.safeParse({ child_note: 'n' })).toEqual({ success: true, data: { childNote: 'n' } });
+                expect(ChildInput!.safeParse({ child_note: 'n', base_name: 'b' }).success).toBe(false);
+            });
+        });
+
+        it('imports every external base a plain chain extends', () => {
+            const root = contractRoot([model('Child', [field('own', scalarType('string'))], { bases: ['A', 'B'] })], 'child.ck');
+            const output = generateContract(root, {
+                modelOutPaths: new Map([
+                    ['A', '/out/a.ts'],
+                    ['B', '/out/b.ts'],
+                ]),
+                currentOutPath: '/out/child.ts',
+            });
+            expect(output).toContain('export const Child = A.extend(B.shape).extend({');
+            expect(output).toContain("import { A } from './a.js';");
+            expect(output).toContain("import { B } from './b.js';");
         });
 
         it('input=snake: optional fields use conditional spread guarded by `!= null`', () => {

@@ -21,6 +21,8 @@ docs/api-reference/kitchen/get-folder.md
 docs/api-reference/kitchen/import.md
 docs/api-reference/kitchen/list-tokens.md
 docs/api-reference/kitchen/mint.md
+docs/api-reference/kitchen/post-ledger.md
+docs/api-reference/kitchen/stamp.md
 docs/api-reference/models/_category_.json
 docs/api-reference/models/billing/_category_.json
 docs/api-reference/models/billing/admin-credential.md
@@ -38,10 +40,13 @@ docs/api-reference/models/kitchen/card.md
 docs/api-reference/models/kitchen/doc.md
 docs/api-reference/models/kitchen/folder.md
 docs/api-reference/models/kitchen/instrument.md
+docs/api-reference/models/kitchen/ledger.md
 docs/api-reference/models/kitchen/named.md
 docs/api-reference/models/kitchen/owned.md
 docs/api-reference/models/kitchen/rating.md
 docs/api-reference/models/kitchen/shared.md
+docs/api-reference/models/kitchen/stamp.md
+docs/api-reference/models/kitchen/stamped.md
 docs/api-reference/models/kitchen/token.md
 docs/api-reference/models/seat-ref.md
 docs/api-reference/models/seat.md

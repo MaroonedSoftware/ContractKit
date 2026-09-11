@@ -27,7 +27,7 @@ mdx:
 | `pinned` | `Doc \| Folder` | Yes | *nullable* |
 | `instrument` | `Card \| Bank` | No |  |
 | `origin` | `{ x: number; y: number }` | No |  |
-| `size` | `bigint` | Yes |  |
+| `size` | `bigint` | Yes | *sent as a digit string, "123" or "123n"* |
 | `price` | `Decimal` | Yes |  |
 | `day` | `string` | No |  |
 | `at` | `string` | No |  |

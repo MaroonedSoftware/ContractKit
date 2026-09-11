@@ -331,6 +331,38 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Instrument'
+  '/ledgers':
+    post:
+      operationId: postLedger
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Ledger'
+      responses:
+        '201':
+          description: Created
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Ledger'
+  '/stamps':
+    post:
+      operationId: stamp
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Stamped'
+      responses:
+        '201':
+          description: Created
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Stamped'
   '/tokens':
     post:
       operationId: mint
@@ -437,8 +469,9 @@ components:
           pattern: '^-?\d+(\.\d{1,2})?$'
           x-contractkit-scale: 2
         quantity:
-          type: integer
-          format: int64
+          type: string
+          format: bigint
+          pattern: '^-?\d+n?$'
         createdAt:
           type: string
           format: date-time
@@ -581,8 +614,9 @@ components:
               type: number
           required: [x, y]
         size:
-          type: integer
-          format: int64
+          type: string
+          format: bigint
+          pattern: '^-?\d+n?$'
         price:
           type: string
           format: decimal
@@ -678,6 +712,37 @@ components:
               default: x
             instrument:
               '$ref': '#/components/schemas/Instrument'
+    Stamp:
+      type: object
+      properties:
+        stampedBy:
+          type: string
+        stampedAt:
+          type: string
+          format: date-time
+      required: [stampedBy, stampedAt]
+    Stamped:
+      allOf:
+        - '$ref': '#/components/schemas/Stamp'
+        - type: object
+          properties:
+            stampNote:
+              type: string
+    Ledger:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        entryCode:
+          type: string
+          writeOnly: true
+        postedAt:
+          type: string
+          format: date-time
+      required: [id, entryCode, postedAt]
+      description: 'format() on a contract split for readonly and writeonly fields, applied to both of its schemas'
     Seat:
       type: object
       properties:

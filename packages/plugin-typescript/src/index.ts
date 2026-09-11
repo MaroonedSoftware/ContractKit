@@ -46,6 +46,7 @@ import {
     type SdkScaffoldDeps,
 } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
+import { computeModelsWithWireInput, flattenFormatChain } from './codegen-wire-input.js';
 import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
 import { resolveServerFramework, SERVER_FRAMEWORK_NAMES, type ServerFrameworkName } from './server-framework.js';
 export {
@@ -59,7 +60,7 @@ export {
 export { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 export { FASTIFY_SERVER_FRAMEWORK } from './server-framework-fastify.js';
 
-/** Taint set for the SDK's bigint response reviver. */
+/** Taint set for the SDK's bigint response reviver and the server's bigint response replacer. */
 const BIGINT_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['bigint']);
 import {
     generateMcpFile,
@@ -210,7 +211,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '2';
+export const TYPESCRIPT_CODEGEN_VERSION = '3';
 
 // The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
 // temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
@@ -352,6 +353,21 @@ function collectContractRootRefs(root: ContractRootNode, modelMap: Map<string, M
     return collectTransitiveModelRefs(seeds, modelMap);
 }
 
+/**
+ * The root's `format()` contracts as their schemas flatten them, bases' fields included.
+ *
+ * For a types unit's fingerprint: flattening copies a base's fields into this file, so editing a
+ * base in another `.ck` file changes this file's output with no change to its own AST.
+ */
+function flattenedModels(root: ContractRootNode, modelMap: Map<string, ModelNode>): ModelNode[] {
+    return root.models
+        .filter(m => !m.type)
+        .flatMap(m => {
+            const flat = flattenFormatChain(m, modelMap);
+            return flat === m ? [] : [flat];
+        });
+}
+
 /** Collect every model referenced by an op root's routes/operations (transitive). */
 function collectOpRootRefs(root: OpRootNode, modelMap: Map<string, ModelNode>): Set<string> {
     const seeds: Parameters<typeof collectTypeRefs>[0][] = [];
@@ -387,7 +403,13 @@ function paramSourceTypes(src: NonNullable<OpRootNode['routes'][number]['params'
 }
 
 /** Build a sorted, JSON-stable record of (modelName -> outPath) for refs this unit depends on. */
-function sliceOutPathMap(refs: Set<string>, modelOutPaths: Map<string, string>, modelsWithInput: Set<string>, modelsWithOutput: Set<string>): Record<string, string> {
+function sliceOutPathMap(
+    refs: Set<string>,
+    modelOutPaths: Map<string, string>,
+    modelsWithInput: Set<string>,
+    modelsWithOutput: Set<string>,
+    modelsWithWireInput: Set<string> = new Set(),
+): Record<string, string> {
     const slice: Record<string, string> = {};
     for (const ref of [...refs].sort()) {
         const p = modelOutPaths.get(ref);
@@ -399,6 +421,10 @@ function sliceOutPathMap(refs: Set<string>, modelOutPaths: Map<string, string>, 
         if (modelsWithOutput.has(ref)) {
             const op = modelOutPaths.get(`${ref}Output`);
             if (op) slice[`${ref}Output`] = op;
+        }
+        if (modelsWithWireInput.has(ref)) {
+            const wp = modelOutPaths.get(`${ref}WireInput`);
+            if (wp) slice[`${ref}WireInput`] = wp;
         }
     }
     return slice;
@@ -429,6 +455,9 @@ function collectServerOutput(
     // needs an `Output` type alias. A `format(input=...)`-only model is just as untouchable for
     // response validation — its schema's input casing is not what the service hands back.
     const modelsWithTransform = computeModelsWithCaseTransform(inputs.contractRoots.flatMap(r => r.models));
+    // Which response bodies go out through `bigIntReplacer`. Cross-file for the same reason as the
+    // SDK's copy of this set: the bigint may sit in a model another .ck file declares.
+    const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
     const modelMap = buildModelMap(inputs.contractRoots);
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
@@ -460,6 +489,7 @@ function collectServerOutput(
             v: TYPESCRIPT_CODEGEN_VERSION,
             outPath: typeOutPath,
             root: ast,
+            flattened: flattenedModels(ast, modelMap),
             outPathSlice: sliceOutPathMap(refs, serverModelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
@@ -474,6 +504,7 @@ function collectServerOutput(
                     currentOutPath: typeOutPath,
                     modelsWithInput,
                     modelsWithOutput,
+                    modelMap,
                     // These types are consumed by server handlers, so `binary` is a Buffer, not a Blob.
                     target: 'server' as const,
                 };
@@ -501,6 +532,8 @@ function collectServerOutput(
             // Not covered by `sub`: adding `format(input=snake)` to a *different* .ck file changes
             // this router's output with no change to `root` or the config.
             modelsWithTransform: sliceModelSet(refs, new Set(), modelsWithTransform),
+            // Same: a bigint added to a model in another .ck file changes how this router writes it.
+            modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
             validateResponses: config.validateResponses ?? false,
             // Covered by `sub` already, which is the whole sub-config; explicit for the same reason
             // `validateResponses` is — the inputs that change a router's text read at a glance.
@@ -520,6 +553,7 @@ function collectServerOutput(
                         modelsWithInput,
                         modelsWithOutput,
                         modelsWithTransform,
+                        modelsWithBigInt,
                         includeInternal: config.includeInternal,
                         validateResponses: config.validateResponses,
                         framework,
@@ -557,6 +591,13 @@ function collectSdkOutput(
     // a referenced model counts, and cross-file, because that model may live in another .ck file —
     // which is also why it is sliced into every fingerprint below, exactly as modelsWithDecimal is.
     const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
+    // Request types that `format(input=)` re-keys. Depends on the flavour, because a Zod SDK types a
+    // model as its schema's `z.output` and a plain one as the declared interface. Cross-file for the
+    // same reason as the two sets above, and sliced into the same fingerprints.
+    const modelsWithWireInput = computeModelsWithWireInput(
+        inputs.contractRoots.flatMap(r => r.models),
+        config.zod ? 'zod' : 'plain',
+    );
     const modelMap = buildModelMap(inputs.contractRoots);
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const ckCommonRoot = commonDir(allFiles, rootDir);
@@ -579,6 +620,7 @@ function collectSdkOutput(
                 sdkModelOutPaths.set(model.name, typeOutPath);
                 if (modelsWithInput.has(model.name)) sdkModelOutPaths.set(`${model.name}Input`, typeOutPath);
                 if (modelsWithOutput.has(model.name)) sdkModelOutPaths.set(`${model.name}Output`, typeOutPath);
+                if (modelsWithWireInput.has(model.name)) sdkModelOutPaths.set(`${model.name}WireInput`, typeOutPath);
             }
         }
     }
@@ -592,9 +634,13 @@ function collectSdkOutput(
             v: TYPESCRIPT_CODEGEN_VERSION,
             outPath: typeOutPath,
             root: ast,
-            outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
+            flattened: flattenedModels(ast, modelMap),
+            outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput, modelsWithWireInput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
+            // Not covered by `root`: adding `format(input=)` to a model in a *different* .ck file
+            // changes which `WireInput` types this file declares and imports.
+            modelsWithWireInput: sliceModelSet(refs, ownNames, modelsWithWireInput),
             // Not covered by `root`: adding a decimal to a model in a *different* .ck file changes
             // this file's revivers with no change to `root` or the config.
             modelsWithDecimal: sliceModelSet(refs, ownNames, modelsWithDecimal),
@@ -615,7 +661,9 @@ function collectSdkOutput(
                         currentOutPath: typeOutPath,
                         modelsWithInput,
                         modelsWithOutput,
+                        modelsWithWireInput,
                         modelsWithDecimal,
+                        modelMap,
                         emitRevivers: true,
                         // An SDK client runs in a browser as readily as in Node, and its scaffold
                         // declares no `@types/node`.
@@ -629,7 +677,9 @@ function collectSdkOutput(
                         currentOutPath: typeOutPath,
                         modelsWithInput,
                         modelsWithOutput,
+                        modelsWithWireInput,
                         modelsWithDecimal,
+                        modelMap,
                         emitRevivers: true,
                         jsonValueImportPath: rel,
                     });
@@ -676,9 +726,10 @@ function collectSdkOutput(
                     v: TYPESCRIPT_CODEGEN_VERSION,
                     outPath: leaf.outPath,
                     root: leaf.ast,
-                    outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
+                    outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput, modelsWithWireInput),
                     modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
                     modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
+                    modelsWithWireInput: sliceModelSet(refs, new Set(), modelsWithWireInput),
                     modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
                 modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
                     sdkOptionsPath,
@@ -699,6 +750,7 @@ function collectSdkOutput(
                                 sdkOptionsPath,
                                 modelsWithInput,
                                 modelsWithOutput,
+                                modelsWithWireInput,
                                 modelsWithDecimal,
                                 modelsWithBigInt,
                                 modelMap,
@@ -721,9 +773,10 @@ function collectSdkOutput(
                 v: TYPESCRIPT_CODEGEN_VERSION,
                 outPath,
                 root: ast,
-                outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
+                outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput, modelsWithWireInput),
                 modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
                 modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
+                modelsWithWireInput: sliceModelSet(refs, new Set(), modelsWithWireInput),
                 modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
                 modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
                 sdkOptionsPath,
@@ -743,6 +796,7 @@ function collectSdkOutput(
                             sdkOptionsPath,
                             modelsWithInput,
                             modelsWithOutput,
+                            modelsWithWireInput,
                             modelsWithDecimal,
                             modelsWithBigInt,
                             modelMap,
@@ -824,9 +878,10 @@ function collectSdkOutput(
                 area,
                 inlineRoots: bucket.inlineRoots,
                 subareaClients,
-                outPathSlice: sliceOutPathMap(allInlineRefs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
+                outPathSlice: sliceOutPathMap(allInlineRefs, sdkModelOutPaths, modelsWithInput, modelsWithOutput, modelsWithWireInput),
                 modelsWithInput: sliceModelSet(allInlineRefs, new Set(), modelsWithInput),
                 modelsWithOutput: sliceModelSet(allInlineRefs, new Set(), modelsWithOutput),
+                modelsWithWireInput: sliceModelSet(allInlineRefs, new Set(), modelsWithWireInput),
                 modelsWithDecimal: sliceModelSet(allInlineRefs, new Set(), modelsWithDecimal),
                 modelsWithBigInt: sliceModelSet(allInlineRefs, new Set(), modelsWithBigInt),
                 sdkOptionsPath,
@@ -843,6 +898,7 @@ function collectSdkOutput(
                     sdkOptionsPath,
                     modelsWithInput,
                     modelsWithOutput,
+                    modelsWithWireInput,
                     modelsWithDecimal,
                     modelsWithBigInt,
                     modelMap,
@@ -966,6 +1022,7 @@ function collectZodOutput(
             v: TYPESCRIPT_CODEGEN_VERSION,
             outPath,
             root: ast,
+            flattened: flattenedModels(ast, modelMap),
             outPathSlice: sliceOutPathMap(refs, modelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
@@ -980,7 +1037,14 @@ function collectZodOutput(
                     // Server-shaped, which is what this sub-generator has always emitted. The
                     // standalone `zod:` output has no target option of its own; only the SDK's
                     // schemas are client-shaped, and they pass their own target.
-                    content: generateContract(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput, modelsWithOutput, target: 'server' }),
+                    content: generateContract(ast, {
+                        modelOutPaths,
+                        currentOutPath: outPath,
+                        modelsWithInput,
+                        modelsWithOutput,
+                        modelMap,
+                        target: 'server',
+                    }),
                 },
             ],
         });
@@ -1023,6 +1087,7 @@ function collectTypesOutput(
             v: TYPESCRIPT_CODEGEN_VERSION,
             outPath,
             root: ast,
+            flattened: flattenedModels(ast, modelMap),
             outPathSlice: sliceOutPathMap(refs, modelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
@@ -1039,6 +1104,7 @@ function collectTypesOutput(
                         currentOutPath: outPath,
                         modelsWithInput,
                         modelsWithOutput,
+                        modelMap,
                         target: config.target,
                     }),
                 },
@@ -1112,6 +1178,8 @@ function collectMcpOutput(
     const includeInternal = config.includeInternal ?? false;
 
     const modelOutPaths = resolveMcpModelOutPaths(fullConfig, rootDir, inputs.contractRoots, commonRoot, modelsWithInput, modelsWithOutput);
+    // Which tool results go out through `bigIntReplacer`; cross-file, like the router's copy.
+    const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
 
     // ── Per-op-root tool-handler units (only files with MCP-exposed ops) ──
     const entries: { outPath: string; registerFn: string }[] = [];
@@ -1127,6 +1195,7 @@ function collectMcpOutput(
             outPathSlice: sliceOutPathMap(refs, modelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
+            modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
             servicePathTemplate: config.servicePathTemplate ?? null,
             includeInternal,
             sub: subConfigKey,
@@ -1144,6 +1213,7 @@ function collectMcpOutput(
                         modelsWithOutput,
                         servicePathTemplate: config.servicePathTemplate,
                         includeInternal,
+                        modelsWithBigInt,
                     }),
                 },
             ],

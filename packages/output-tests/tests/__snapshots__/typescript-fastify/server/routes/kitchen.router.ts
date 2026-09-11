@@ -2,9 +2,10 @@ import { z } from 'zod';
 import type { FastifyPluginAsync } from 'fastify';
 import { requirePolicy } from '@maroonedsoftware/fastify';
 import { KitchenService } from '#src/services/kitchen.service.js';
-import { Folder, Instrument, Shared, SharedInput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
+import { Folder, Instrument, LedgerInput, LedgerOutput, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
+import { bigIntReplacer } from '@maroonedsoftware/utilities';
 
 /**
  * generated from [kitchen.ck](../../contracts/kitchen.ck)
@@ -13,7 +14,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * several statuses, and two content types on one of them
-     * from [kitchen.ck](../../contracts/kitchen.ck#L91)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L108)
     */
     app.get('/folders/:folderId', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(
@@ -53,7 +54,11 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
                 reply.header('x-count', String(result.headers["xCount"]));
                 if (result.headers["xWhen"] !== undefined) reply.header('x-when', String(result.headers["xWhen"]));
                 reply.type(result.contentType);
-                return reply.send(result.body);
+                if (result.contentType === 'application/json') {
+                    return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result.body);
+                } else {
+                    return reply.send(result.body);
+                }
             case 204:
                 return reply.send();
             case 404:
@@ -64,7 +69,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * a method name that is a keyword in the target languages
-     * from [kitchen.ck](../../contracts/kitchen.ck#L118)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L135)
     */
     app.put('/folders/:folderId', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(
@@ -85,7 +90,35 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L133)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L150)
+    */
+    app.post('/ledgers', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
+        const body = await parseAndValidate(request.body, LedgerInput);
+
+        const service = request.container.get(KitchenService);
+        const result: LedgerOutput = await service.postLedger(body);
+
+        reply.status(201);
+        reply.type('application/json');
+        return reply.send(result);
+    });
+
+    /**
+     * from [kitchen.ck](../../contracts/kitchen.ck#L165)
+    */
+    app.post('/stamps', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
+        const body = await parseAndValidate(request.body, Stamped);
+
+        const service = request.container.get(KitchenService);
+        const result: StampedOutput = await service.stamp(body);
+
+        reply.status(201);
+        reply.type('application/json');
+        return reply.send(result);
+    });
+
+    /**
+     * from [kitchen.ck](../../contracts/kitchen.ck#L180)
     */
     app.post('/tokens', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, Token);
@@ -99,7 +132,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L147)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L194)
     */
     app.get('/tokens', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const service = request.container.get(KitchenService);

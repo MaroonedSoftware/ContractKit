@@ -24,6 +24,8 @@ contract Pet: {
     code?: string(regex=/^[a-z]+$/)
     status: enum(available, "on hold")
     price: decimal(min=0.01, max=999999.99, scale=2)
+    serial: bigint(min=-9007199254740991, max=9007199254740991)
+    stock: bigint = 5
 }
 
 contract ApiError: {
@@ -99,7 +101,7 @@ describe('ck → openapi → ck', () => {
 
         // Models, including a regex and a quoted enum value.
         const pet = after.models.find(m => m.name === 'Pet')!;
-        expect(pet.fields.map(f => f.name)).toEqual(['id', 'name', 'code', 'status', 'price']);
+        expect(pet.fields.map(f => f.name)).toEqual(['id', 'name', 'code', 'status', 'price', 'serial', 'stock']);
         expect(pet.fields.find(f => f.name === 'code')!.type).toEqual({ kind: 'scalar', name: 'string', regex: '^[a-z]+$' });
         expect(pet.fields.find(f => f.name === 'status')!.type).toEqual({ kind: 'enum', values: ['available', 'on hold'] });
         expect(pet.fields.find(f => f.name === 'name')!.type).toEqual({ kind: 'scalar', name: 'string', min: 1, max: 64 });
@@ -113,6 +115,20 @@ describe('ck → openapi → ck', () => {
             max: '999999.99',
             scale: 2,
         });
+
+        // A bigint survives as a bigint, though it is documented as a digit string: bounds come
+        // back exact from the extensions, its pattern is not reimported as a `regex=`, and its
+        // stringified default returns to the number the source wrote.
+        const beforePet = before.models.find(m => m.name === 'Pet')!;
+        expect(pet.fields.find(f => f.name === 'serial')!.type).toEqual({
+            kind: 'scalar',
+            name: 'bigint',
+            min: -9007199254740991n,
+            max: 9007199254740991n,
+        });
+        expect(pet.fields.find(f => f.name === 'serial')!.type).toEqual(beforePet.fields.find(f => f.name === 'serial')!.type);
+        expect(pet.fields.find(f => f.name === 'stock')!.type).toEqual({ kind: 'scalar', name: 'bigint' });
+        expect(pet.fields.find(f => f.name === 'stock')!.default).toBe(beforePet.fields.find(f => f.name === 'stock')!.default);
     });
 
     it('carries the documented marker through the vendor extension, not the status heuristic', async () => {

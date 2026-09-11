@@ -5,12 +5,15 @@ import {
     collectExternalRefs,
     collectExternalInputRefs,
     computeModelsWithInput,
+    contractModelMap,
     topoSortModels,
     resolveImportPath,
     rootNeedsScalar,
 } from './codegen-contract.js';
-import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJsDocLines, sourceLink, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJsDocLines, sourceLink, withFieldJsDoc, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import type { TsRenderTarget } from './ts-render.js';
+import { collectExternalWireInputRefs, flattenFormatChain, renderWireInputModel } from './codegen-wire-input.js';
+import type { WireInputRenderContext } from './codegen-wire-input.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
 
@@ -27,8 +30,10 @@ import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-r
  */
 export function generatePlainTypes(root: ContractRootNode, context?: ContractCodegenContext): string {
     const target: TsRenderTarget = context?.target ?? 'client';
-    const externalRefs = collectExternalRefs(root);
-    const lines: string[] = [];
+    const modelMap = contractModelMap(root, context);
+    // The `XOutput`, `XWireInput` and reviver renderings flatten a `format()` contract's bases the
+    // way its schema does, so they can name types and scalars that only a base's fields bring in.
+    const effectiveRoot = { ...root, models: root.models.map(m => (m.type ? m : flattenFormatChain(m, modelMap))) };
 
     // Compute which models have Input variants (local, incl. transitive deps + external)
     const externalModelsWithInput = context?.modelsWithInput ?? new Set<string>();
@@ -40,46 +45,9 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
     const localModelsWithOutput = computeModelsWithOutput(root.models, externalModelsWithOutput);
     const allModelsWithOutput = new Set([...localModelsWithOutput, ...externalModelsWithOutput]);
 
-    // Collect additional external Input/Output refs needed for variant fields
-    const externalInputRefs = allModelsWithInput.size > 0 ? collectExternalInputRefs(root, allModelsWithInput) : [];
-    const externalOutputRefs = allModelsWithOutput.size > 0 ? collectExternalOutputRefs(root, allModelsWithOutput) : [];
-    const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs, ...externalOutputRefs])].sort();
-
-    // Not `import type`: `renderTsScalar` maps `decimal` to `Decimal` in this mode too, so the class
-    // is a real runtime dependency of any consumer holding one — same position as in
-    // `generateContract`, which emits it ahead of the external model refs.
-    const needsDecimal = rootNeedsScalar(root, 'decimal') || (context?.emitRevivers && context.modelsWithDecimal ? root.models.some(m => context.modelsWithDecimal!.has(m.name)) : false);
-    if (needsDecimal) lines.push(DECIMAL_IMPORT);
-
-    // Likewise for the temporal scalars: `renderTsScalar` maps them to Luxon classes, which are a
-    // real runtime dependency of anyone holding one. `interval` is not among them — it renders as
-    // a string, since `_ZodInterval` transforms back to ISO on output.
-    const luxonImports: string[] = [];
-    if (rootNeedsScalar(root, 'date') || rootNeedsScalar(root, 'time') || rootNeedsScalar(root, 'datetime')) luxonImports.push('DateTime');
-    if (rootNeedsScalar(root, 'duration')) luxonImports.push('Duration');
-    if (luxonImports.length > 0) lines.push(`import { ${luxonImports.join(', ')} } from 'luxon';`);
-
-    // Type-only imports for external references. A cross-file model carrying a decimal also
-    // contributes its reviver, which is a value and so needs a second, non-type import.
-    for (const ref of allExternalRefs) {
-        const importPath = resolveImportPath(ref, context);
-        lines.push(`import type { ${ref} } from '${importPath}';`);
-        if (context?.emitRevivers && context.modelsWithDecimal?.has(ref)) {
-            lines.push(`import { ${reviveFnName(ref)} } from '${importPath}';`);
-        }
-    }
-    if (allExternalRefs.length > 0) lines.push('');
-
-    if (rootNeedsScalar(root, 'json')) {
-        if (context?.jsonValueImportPath) {
-            lines.push(`import type { JsonValue } from '${context.jsonValueImportPath}';`);
-        } else {
-            lines.push(JSON_VALUE_TYPE_DECL);
-        }
-        lines.push('');
-    }
-
-    const modelMap = new Map(root.models.map(m => [m.name, m]));
+    const wireCtx: WireInputRenderContext | undefined = context?.modelsWithWireInput
+        ? { modelsWithInput: allModelsWithInput, modelsWithWireInput: context.modelsWithWireInput, modelMap, target, jsonType: 'JsonValue' }
+        : undefined;
 
     const reviveOpts =
         context?.emitRevivers && context.modelsWithDecimal
@@ -89,6 +57,10 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
     const bodyLines: string[] = [];
     for (const model of topoSortModels(root.models)) {
         bodyLines.push(...generateModel(model, target, context?.currentOutPath, allModelsWithInput, allModelsWithOutput, modelMap));
+        if (wireCtx?.modelsWithWireInput.has(model.name)) {
+            bodyLines.push('');
+            bodyLines.push(...renderWireInputModel(model, wireCtx));
+        }
         if (reviveOpts) {
             const revivers = renderReviveFunctions(model, reviveOpts);
             if (revivers.length > 0) {
@@ -97,6 +69,65 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
             }
         }
         bodyLines.push('');
+    }
+
+    // What a flattened base brings in is imported only if the body names it: whether it does
+    // depends on which of the three renderings above the contract gets, and an unused import
+    // fails `noUnusedLocals`. Everything the declared shape needs is imported unconditionally, as before.
+    const body = bodyLines.join('\n');
+    const mentions = (name: string) => new RegExp(`(?<![A-Za-z0-9_$])${name.replace(/[$]/g, '\\$&')}(?![A-Za-z0-9_$])`).test(body);
+    const needs = (scalar: string, typeName: string) =>
+        rootNeedsScalar(root, scalar) || (rootNeedsScalar(effectiveRoot, scalar) && mentions(typeName));
+
+    const lines: string[] = [];
+
+    // Collect additional external Input/Output refs needed for variant fields
+    const externalRefs = collectExternalRefs(root);
+    const externalInputRefs = allModelsWithInput.size > 0 ? collectExternalInputRefs(root, allModelsWithInput) : [];
+    const externalOutputRefs = allModelsWithOutput.size > 0 ? collectExternalOutputRefs(root, allModelsWithOutput) : [];
+    const externalWireInputRefs = wireCtx ? collectExternalWireInputRefs(root, wireCtx) : [];
+    const declaredRefs = new Set([...externalRefs, ...externalInputRefs, ...externalOutputRefs, ...externalWireInputRefs]);
+    const flattenedRefs = [
+        ...collectExternalRefs(effectiveRoot),
+        ...(allModelsWithInput.size > 0 ? collectExternalInputRefs(effectiveRoot, allModelsWithInput) : []),
+        ...(allModelsWithOutput.size > 0 ? collectExternalOutputRefs(effectiveRoot, allModelsWithOutput) : []),
+    ].filter(ref => !declaredRefs.has(ref) && mentions(ref));
+    const allExternalRefs = [...new Set([...declaredRefs, ...flattenedRefs])].sort();
+
+    // Not `import type`: `renderTsScalar` maps `decimal` to `Decimal` in this mode too, so the class
+    // is a real runtime dependency of any consumer holding one — same position as in
+    // `generateContract`, which emits it ahead of the external model refs.
+    const needsDecimal =
+        needs('decimal', 'Decimal') ||
+        (context?.emitRevivers && context.modelsWithDecimal ? root.models.some(m => context.modelsWithDecimal!.has(m.name)) : false);
+    if (needsDecimal) lines.push(DECIMAL_IMPORT);
+
+    // Likewise for the temporal scalars: `renderTsScalar` maps them to Luxon classes, which are a
+    // real runtime dependency of anyone holding one. `interval` is not among them — it renders as
+    // a string, since `_ZodInterval` transforms back to ISO on output.
+    const luxonImports: string[] = [];
+    if (needs('date', 'DateTime') || needs('time', 'DateTime') || needs('datetime', 'DateTime')) luxonImports.push('DateTime');
+    if (needs('duration', 'Duration')) luxonImports.push('Duration');
+    if (luxonImports.length > 0) lines.push(`import { ${luxonImports.join(', ')} } from 'luxon';`);
+
+    // Type-only imports for external references. A cross-file model carrying a decimal also
+    // contributes its reviver, which is a value and so needs a second, non-type import.
+    for (const ref of allExternalRefs) {
+        const importPath = resolveImportPath(ref, context);
+        lines.push(`import type { ${ref} } from '${importPath}';`);
+        if (context?.emitRevivers && context.modelsWithDecimal?.has(ref) && (declaredRefs.has(ref) || mentions(reviveFnName(ref)))) {
+            lines.push(`import { ${reviveFnName(ref)} } from '${importPath}';`);
+        }
+    }
+    if (allExternalRefs.length > 0) lines.push('');
+
+    if (needs('json', 'JsonValue')) {
+        if (context?.jsonValueImportPath) {
+            lines.push(`import type { JsonValue } from '${context.jsonValueImportPath}';`);
+        } else {
+            lines.push(JSON_VALUE_TYPE_DECL);
+        }
+        lines.push('');
     }
 
     // Global decimal.js config belongs in any file holding a `Decimal`: there is no Zod schema in
@@ -123,10 +154,10 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
 function generateModel(
     model: ModelNode,
     target: TsRenderTarget,
-    outPath?: string,
-    modelsWithInput?: Set<string>,
-    modelsWithOutput?: Set<string>,
-    modelMap?: Map<string, ModelNode>,
+    outPath: string | undefined,
+    modelsWithInput: Set<string> | undefined,
+    modelsWithOutput: Set<string> | undefined,
+    modelMap: Map<string, ModelNode>,
 ): string[] {
     // Type alias: Name : typeExpression
     if (model.type) {
@@ -143,7 +174,7 @@ function generateModel(
 
     if (modelsWithOutput?.has(model.name)) {
         lines.push('');
-        lines.push(...generateOutputModel(model, target, modelsWithOutput));
+        lines.push(...generateOutputModel(model, target, modelsWithOutput, modelMap));
     }
     return lines;
 }
@@ -272,18 +303,6 @@ function generateVisibilityModel(
 
 // ─── Field rendering ──────────────────────────────────────────────────────
 
-/** Prefix a field declaration with a JSDoc comment built from `@deprecated` / description parts,
- *  neutralizing any block-comment terminator and expanding embedded newlines into continuation lines. */
-function withFieldJsDoc(jsdocParts: string[], line: string): string {
-    if (jsdocParts.length === 0) return line;
-    const contentLines = escapeJsDocLines(jsdocParts.join(' '));
-    if (contentLines.length === 1) {
-        return `/** ${contentLines[0]} */\n    ${line}`;
-    }
-    const body = contentLines.map(l => `     * ${l}`).join('\n');
-    return `/**\n${body}\n     */\n    ${line}`;
-}
-
 function renderField(field: FieldNode, target: TsRenderTarget): string {
     const opt = field.optional || field.default !== undefined ? '?' : '';
     let typeStr = renderTsType(field.type, target);
@@ -324,35 +343,30 @@ function applyOutputCase(name: string, c: 'camel' | 'snake' | 'pascal' | undefin
 
 /**
  * Emit `${name}Output` for a model in the output transitive set.
- * - Direct hits (model.outputCase set): rename keys per the transform and substitute nested refs.
- * - Transitive hits: keep field names as-is but substitute nested refs with their Output variants.
- *
- * `extends` is dropped for direct-hit models because the Zod schema flattens fields when an
- * ancestor has format(...) (see `flattenFormatChain` in codegen-contract); we mirror that here
- * so the plain interface matches the wire shape produced by the Zod transform.
+ * - A model its schema flattens (a `format()` applies, its own or inherited): one flat interface
+ *   of every field it carries, bases included, keyed by the output casing, with nested refs
+ *   substituted. `extends` would describe the bases' keys, not the transform's.
+ * - Otherwise (transitive hits): keep field names as-is, extend each base by its Output variant
+ *   where it has one, and substitute nested refs with their Output variants.
  */
-function generateOutputModel(model: ModelNode, target: TsRenderTarget, modelsWithOutput: Set<string>): string[] {
+function generateOutputModel(model: ModelNode, target: TsRenderTarget, modelsWithOutput: Set<string>, modelMap: Map<string, ModelNode>): string[] {
     const lines: string[] = [];
-    const outputCase = model.outputCase && model.outputCase !== 'camel' ? model.outputCase : undefined;
-    const readFields = model.fields.filter(f => f.visibility !== 'writeonly');
+    const effective = flattenFormatChain(model, modelMap);
+    const readFields = effective.fields.filter(f => f.visibility !== 'writeonly');
+    const renames = (c: ModelNode['outputCase']) => c !== undefined && c !== 'camel';
 
-    // Transitive-only (no direct outputCase): preserve `extends` and original key names.
-    if (!outputCase) {
-        const baseExt =
-            model.bases?.[0] && modelsWithOutput.has(model.bases?.[0])
-                ? ` extends ${model.bases?.[0]}Output`
-                : model.bases?.[0]
-                  ? ` extends ${model.bases?.[0]}`
-                  : '';
-        lines.push(`export interface ${model.name}Output${baseExt} {`);
+    if (!renames(effective.inputCase) && !renames(effective.outputCase)) {
+        const bases = model.bases ?? [];
+        const extendsClause = buildExtendsClause(bases, computeOverrideNames(model, modelMap), b => (modelsWithOutput.has(b) ? `${b}Output` : b));
+        lines.push(`export interface ${model.name}Output${extendsClause} {`);
         for (const field of readFields) {
-            lines.push(`    ${renderOutputField(field, model.outputCase, modelsWithOutput, target)}`);
+            lines.push(`    ${renderOutputField(field, undefined, modelsWithOutput, target)}`);
         }
         lines.push('}');
         return lines;
     }
 
-    // Direct hit: emit a flat interface with renamed keys.
+    const outputCase = renames(effective.outputCase) ? effective.outputCase : undefined;
     lines.push(`export interface ${model.name}Output {`);
     for (const field of readFields) {
         lines.push(`    ${renderOutputField(field, outputCase, modelsWithOutput, target)}`);

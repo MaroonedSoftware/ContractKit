@@ -5,6 +5,7 @@ import { PaymentService } from '#src/services/payment.service.js';
 import { AdminCredentialInput, Credential, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm } from '../schemas/billing.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
+import { bigIntReplacer } from '@maroonedsoftware/utilities';
 import { MultipartBody } from '@maroonedsoftware/multipart';
 
 /**
@@ -28,7 +29,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
         if (result.headers["xCacheHit"] !== undefined) reply.header('x-cache-hit', String(result.headers["xCacheHit"]));
         if (result.headers["xExpiresAfter"] !== undefined) reply.header('x-expires-after', String(result.headers["xExpiresAfter"]));
         reply.type('application/json');
-        return reply.send(result.body);
+        return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result.body);
     });
 
     /**
@@ -58,7 +59,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
         reply.status(200);
         reply.type('application/json');
-        return reply.send(result);
+        return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result);
     });
 
     /**
@@ -73,7 +74,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
         reply.status(200);
         reply.type('application/json');
-        return reply.send(result);
+        return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result);
     });
 
     /**
@@ -93,7 +94,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
         reply.status(200);
         reply.type('application/json');
-        return reply.send(result);
+        return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result);
     });
 
     /**
@@ -155,7 +156,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
         reply.status(200);
         reply.type('application/json');
-        return reply.send(result);
+        return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result);
     });
 
     /**
@@ -171,7 +172,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
         reply.status(200);
         reply.type('application/json');
-        return reply.send(result);
+        return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result);
     });
 
     /**
