@@ -24,7 +24,7 @@ public struct Heartbeat: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(status, forKey: .status)
-        try container.encode(checkedAt, forKey: .checkedAt)
+        try container.encode(self.status, forKey: .status)
+        try container.encode(self.checkedAt, forKey: .checkedAt)
     }
 }

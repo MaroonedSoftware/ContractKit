@@ -25,7 +25,7 @@ public struct Card: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.kind = try container.decode(String.self, forKey: .kind)
-        guard kind == "card" else {
+        guard self.kind == "card" else {
             throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Expected \"card\"")
         }
         self.last4 = try container.decode(String.self, forKey: .last4)
@@ -33,8 +33,8 @@ public struct Card: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(kind, forKey: .kind)
-        try container.encode(last4, forKey: .last4)
+        try container.encode(self.kind, forKey: .kind)
+        try container.encode(self.last4, forKey: .last4)
     }
 }
 
@@ -55,7 +55,7 @@ public struct Bank: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.kind = try container.decode(String.self, forKey: .kind)
-        guard kind == "bank" else {
+        guard self.kind == "bank" else {
             throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Expected \"bank\"")
         }
         self.iban = try container.decode(String.self, forKey: .iban)
@@ -63,8 +63,8 @@ public struct Bank: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(kind, forKey: .kind)
-        try container.encode(iban, forKey: .iban)
+        try container.encode(self.kind, forKey: .kind)
+        try container.encode(self.iban, forKey: .iban)
     }
 }
 
@@ -96,8 +96,8 @@ public struct Token: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: EncodingKeys.self)
-        try container.encode(accessToken, forKey: .accessToken)
-        try container.encode(expiresIn, forKey: .expiresIn)
+        try container.encode(self.accessToken, forKey: .accessToken)
+        try container.encode(self.expiresIn, forKey: .expiresIn)
     }
 }
 
@@ -119,7 +119,7 @@ public struct Owned: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
+        try container.encode(self.id, forKey: .id)
     }
 }
 
@@ -141,7 +141,7 @@ public struct OwnedInput: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(secret, forKey: .secret)
+        try container.encode(self.secret, forKey: .secret)
     }
 }
 
@@ -163,7 +163,7 @@ public struct Named: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(name, forKey: .name)
+        try container.encode(self.name, forKey: .name)
     }
 }
 
@@ -198,10 +198,10 @@ public struct Shared: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(name, forKey: .name)
-        try container.encode(label, forKey: .label)
-        try container.encodeIfPresent(instrument, forKey: .instrument)
+        try container.encode(self.id, forKey: .id)
+        try container.encode(self.name, forKey: .name)
+        try container.encode(self.label, forKey: .label)
+        try container.encodeIfPresent(self.instrument, forKey: .instrument)
     }
 }
 
@@ -236,10 +236,10 @@ public struct SharedInput: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(secret, forKey: .secret)
-        try container.encode(name, forKey: .name)
-        try container.encode(label, forKey: .label)
-        try container.encodeIfPresent(instrument, forKey: .instrument)
+        try container.encode(self.secret, forKey: .secret)
+        try container.encode(self.name, forKey: .name)
+        try container.encode(self.label, forKey: .label)
+        try container.encodeIfPresent(self.instrument, forKey: .instrument)
     }
 }
 
@@ -355,28 +355,28 @@ public struct Folder: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(`class`, forKey: .`class`)
-        try container.encodeIfPresent(`default`, forKey: .`default`)
-        try container.encode(rating, forKey: .rating)
-        try container.encodeIfPresent(_parent, forKey: ._parent)
-        try container.encodeIfPresent(_readme, forKey: ._readme)
-        try container.encode(children, forKey: .children)
-        try container.encodeIfPresent(byName, forKey: .byName)
-        try container.encodeIfPresent(span, forKey: .span)
-        try container.encodeIfPresent(stamped, forKey: .stamped)
-        try container.encode(label, forKey: .label)
-        try container.encode(pinned, forKey: .pinned)
-        try container.encodeIfPresent(instrument, forKey: .instrument)
-        try container.encodeIfPresent(origin, forKey: .origin)
-        try container.encode(size, forKey: .size)
-        try container.encode(price, forKey: .price)
-        try container.encodeIfPresent(day, forKey: .day)
-        try container.encodeIfPresent(at, forKey: .at)
-        try container.encodeIfPresent(ttl, forKey: .ttl)
-        try container.encodeIfPresent(blob, forKey: .blob)
-        try container.encodeIfPresent(extra, forKey: .extra)
-        try container.encodeIfPresent(raw, forKey: .raw)
+        try container.encode(self.id, forKey: .id)
+        try container.encode(self.`class`, forKey: .`class`)
+        try container.encodeIfPresent(self.`default`, forKey: .`default`)
+        try container.encode(self.rating, forKey: .rating)
+        try container.encodeIfPresent(self._parent, forKey: ._parent)
+        try container.encodeIfPresent(self._readme, forKey: ._readme)
+        try container.encode(self.children, forKey: .children)
+        try container.encodeIfPresent(self.byName, forKey: .byName)
+        try container.encodeIfPresent(self.span, forKey: .span)
+        try container.encodeIfPresent(self.stamped, forKey: .stamped)
+        try container.encode(self.label, forKey: .label)
+        try container.encode(self.pinned, forKey: .pinned)
+        try container.encodeIfPresent(self.instrument, forKey: .instrument)
+        try container.encodeIfPresent(self.origin, forKey: .origin)
+        try container.encode(self.size, forKey: .size)
+        try container.encode(self.price, forKey: .price)
+        try container.encodeIfPresent(self.day, forKey: .day)
+        try container.encodeIfPresent(self.at, forKey: .at)
+        try container.encodeIfPresent(self.ttl, forKey: .ttl)
+        try container.encodeIfPresent(self.blob, forKey: .blob)
+        try container.encodeIfPresent(self.extra, forKey: .extra)
+        try container.encodeIfPresent(self.raw, forKey: .raw)
     }
 }
 
@@ -406,8 +406,8 @@ public struct Doc: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encodeIfPresent(_folder, forKey: ._folder)
+        try container.encode(self.id, forKey: .id)
+        try container.encodeIfPresent(self._folder, forKey: ._folder)
     }
 }
 
@@ -431,8 +431,8 @@ public struct FolderSpan: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.unkeyedContainer()
-        try container.encode(_0)
-        try container.encode(_1)
+        try container.encode(self._0)
+        try container.encode(self._1)
     }
 }
 
@@ -459,9 +459,9 @@ public struct FolderStamped: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.unkeyedContainer()
-        try container.encode(_0)
-        try container.encode(_1)
-        try container.encode(_2)
+        try container.encode(self._0)
+        try container.encode(self._1)
+        try container.encode(self._2)
     }
 }
 
@@ -565,8 +565,8 @@ public struct FolderOrigin: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(x, forKey: .x)
-        try container.encode(y, forKey: .y)
+        try container.encode(self.x, forKey: .x)
+        try container.encode(self.y, forKey: .y)
     }
 }
 

@@ -627,7 +627,7 @@ function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean, ow
             initDefault: explicitDefault,
             doc,
             decode: `try container.decodeIfPresent(${storageCore}.self, forKey: ${boxedKey}) ?? ${explicitDefault}`,
-            encode: `try container.encode(${storageName}, forKey: ${boxedKey})`,
+            encode: `try container.encode(self.${storageName}, forKey: ${boxedKey})`,
         };
     }
 
@@ -647,11 +647,11 @@ function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean, ow
                 doc,
                 decode: `try container.decodeIfPresent(${storageCore}.self, forKey: ${boxedKey})`,
                 guard: [
-                    `guard ${storageName} == nil || ${storageName} == ${expected} else {`,
+                    `guard self.${storageName} == nil || self.${storageName} == ${expected} else {`,
                     `    throw DecodingError.dataCorruptedError(forKey: ${boxedKey}, in: container, debugDescription: "Expected ${escapeForDebug(expected)}")`,
                     '}',
                 ],
-                encode: `try container.encodeIfPresent(${storageName}, forKey: ${boxedKey})`,
+                encode: `try container.encodeIfPresent(self.${storageName}, forKey: ${boxedKey})`,
             };
         }
         return {
@@ -666,11 +666,11 @@ function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean, ow
             doc,
             decode: `try container.decode(${storageCore}.self, forKey: ${boxedKey})`,
             guard: [
-                `guard ${storageName} == ${expected} else {`,
+                `guard self.${storageName} == ${expected} else {`,
                 `    throw DecodingError.dataCorruptedError(forKey: ${boxedKey}, in: container, debugDescription: "Expected ${escapeForDebug(expected)}")`,
                 '}',
             ],
-            encode: `try container.encode(${storageName}, forKey: ${boxedKey})`,
+            encode: `try container.encode(self.${storageName}, forKey: ${boxedKey})`,
         };
     }
 
@@ -687,7 +687,7 @@ function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean, ow
             initDefault: 'nil',
             doc,
             decode: `try container.decodeIfPresent(${storageCore}.self, forKey: ${boxedKey})`,
-            encode: `try container.encodeIfPresent(${storageName}, forKey: ${boxedKey})`,
+            encode: `try container.encodeIfPresent(self.${storageName}, forKey: ${boxedKey})`,
         };
     }
 
@@ -704,7 +704,7 @@ function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean, ow
             optional: true,
             doc,
             decode: `try container.decode(${storageCore}?.self, forKey: ${boxedKey})`,
-            encode: `try container.encode(${storageName}, forKey: ${boxedKey})`,
+            encode: `try container.encode(self.${storageName}, forKey: ${boxedKey})`,
         };
     }
 
@@ -719,7 +719,7 @@ function renderField(field: FieldNode, ctx: RenderContext, forInput: boolean, ow
         optional: false,
         doc,
         decode: `try container.decode(${storageCore}.self, forKey: ${boxedKey})`,
-        encode: `try container.encode(${storageName}, forKey: ${boxedKey})`,
+        encode: `try container.encode(self.${storageName}, forKey: ${boxedKey})`,
     };
 }
 
@@ -809,7 +809,7 @@ function renderTupleStruct(
     lines.push('');
     lines.push('    public func encode(to encoder: Encoder) throws {');
     lines.push('        var container = encoder.unkeyedContainer()');
-    for (const f of rendered) lines.push(`        try container.encode(${f.storageName})`);
+    for (const f of rendered) lines.push(`        try container.encode(self.${f.storageName})`);
     lines.push('    }');
     lines.push('}');
     return lines;
