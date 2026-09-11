@@ -147,6 +147,17 @@ public sealed class BillingClient(SdkHttp http)
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return http.ReadJson<Session>(response);
     }
+
+    /// <summary>search payments with snake_case filter and header models</summary>
+    public async Task SearchPaymentsByDateAsync(SnakeFilter? query = null, SnakeHeaders? customHeaders = null, CancellationToken cancellationToken = default)
+    {
+        await http.ExecuteAsync(
+            HttpMethod.Get,
+            http.Path("payments", "by-date"),
+            query: http.Params(query),
+            headers: http.Params(customHeaders),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
 }
 
 /// <summary>Response headers declared on POST /payments.</summary>

@@ -104,6 +104,14 @@ public final class BillingClient: Sendable {
         let response = try await http.execute(request)
         return try http.decodeJSON(Session.self, from: response)
     }
+
+    /// search payments with snake_case filter and header models
+    public func searchPaymentsByDate(query: SnakeFilter? = nil, customHeaders: SnakeHeaders? = nil) async throws {
+        var request = SdkRequest(method: "GET", path: ["payments", "by-date"])
+        try http.addQuery(&request, query)
+        try http.addHeaders(&request, customHeaders)
+        _ = try await http.execute(request)
+    }
 }
 
 /// Response headers declared on POST /payments.

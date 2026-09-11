@@ -1,6 +1,6 @@
 import { resolve, join, relative, dirname, basename } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
-import { generateContract, rootNeedsScalar } from './codegen-contract.js';
+import { compilesToPipe, generateContract, rootNeedsScalar } from './codegen-contract.js';
 import { generateOp } from './codegen-operation.js';
 import type {
     ContractKitPlugin,
@@ -8,6 +8,7 @@ import type {
     ContractRootNode,
     OpRootNode,
     ModelNode,
+    ParamSource,
     ScalarTypeNode,
     IncrementalManifest,
     IncrementalUnit,
@@ -214,7 +215,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '6';
+export const TYPESCRIPT_CODEGEN_VERSION = '7';
 
 // The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
 // temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
@@ -415,6 +416,29 @@ function paramModelFields(root: OpRootNode, modelMap: Map<string, ModelNode>): R
     return out;
 }
 
+/**
+ * The models a `params:`, `query:` or `headers:` block reads through whose schema is a `format()`
+ * pipe. The router validates one of those as `X.in.strict().pipe(X.out)` and any other as
+ * `X.strict()`, so a model in another `.ck` file gaining or losing `format()` changes the router.
+ * `modelsWithTransform` does not always see that: a model already in it for referencing a `format()`
+ * model stays in it when it gains a `format()` of its own.
+ */
+function pipeParamModels(root: OpRootNode, modelMap: Map<string, ModelNode>): string[] {
+    const names = new Set<string>();
+    const add = (source: ParamSource | undefined) => {
+        if (source?.kind === 'ref') names.add(source.name);
+        else if (source?.kind === 'type') collectTypeRefs(source.node, names);
+    };
+    for (const route of root.routes) {
+        add(route.params);
+        for (const op of route.operations) {
+            add(op.query);
+            add(op.headers);
+        }
+    }
+    return [...names].filter(name => compilesToPipe(name, modelMap)).sort();
+}
+
 function paramSourceTypes(src: NonNullable<OpRootNode['routes'][number]['params']>): Parameters<typeof collectTypeRefs>[0][] {
     const out: Parameters<typeof collectTypeRefs>[0][] = [];
     if (src.kind === 'params') {
@@ -562,6 +586,8 @@ function collectServerOutput(
             // Same: an array field added to a query model re-wraps it in this router, and a header
             // model's camelCase field is read from its lowercase key.
             paramModelFields: paramModelFields(ast, modelMap),
+            // Same: a param model gaining `format()` moves this router's mode inside the pipe.
+            pipeParamModels: pipeParamModels(ast, modelMap),
             validateResponses: config.validateResponses ?? false,
             // Covered by `sub` already, which is the whole sub-config; explicit for the same reason
             // `validateResponses` is — the inputs that change a router's text read at a glance.

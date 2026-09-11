@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createTypescriptPlugin } from '../src/index.js';
 import type { PluginContext } from '@contractkit/core';
-import { SECURITY_NONE } from '@contractkit/core';
+import { DiagnosticCollector, SECURITY_NONE, computeModelsWithInput, decomposeCk, parseCk } from '@contractkit/core';
 import {
     opRoot,
     opRoute,
@@ -850,5 +850,131 @@ describe('createTypescriptPlugin — format() across files', () => {
         const second = diskCtx(rootDir);
         await plugin.generateTargets!(contracts(rootDir, ['baseField', 'addedField']), second);
         expect(second.emitted.get(childPath)).toContain('added_field: z.string(),');
+    });
+
+    it('re-emits a router when its query model in another .ck file gains format()', async () => {
+        const rootDir = mkdtempSync(join(tmpdir(), 'ck-format-'));
+        const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } } }, rootDir);
+        // Filter already carries a transform, through Owner, so gaining its own format() changes
+        // neither the transform set nor its fields: only whether its schema is a pipe.
+        const run = (filterCase?: 'snake') => ({
+            contractRoots: [
+                contractRoot(
+                    [
+                        model('Owner', [field('ownerId', scalarType('string'))], { inputCase: 'snake' }),
+                        model('Filter', [field('owner', refType('Owner'), { optional: true })], { inputCase: filterCase }),
+                    ],
+                    join(rootDir, 'contracts/filters.ck'),
+                ),
+            ],
+            opRoots: [opRoot([opRoute('/reports', [opOperation('get', { query: 'Filter' })])], join(rootDir, 'contracts/reports.ck'))],
+            modelOutPaths: new Map<string, string>(),
+            modelsWithInput: new Set<string>(),
+            modelsWithOutput: new Set<string>(),
+        });
+        const router = (ctx: { emitted: Map<string, string> }) => [...ctx.emitted.entries()].find(([p]) => p.endsWith('.router.ts'))?.[1];
+
+        const first = diskCtx(rootDir);
+        await plugin.generateTargets!(run(), first);
+        expect(router(first)).toContain('parseAndValidate(ctx.query, Filter.strict())');
+
+        const second = diskCtx(rootDir);
+        await plugin.generateTargets!(run('snake'), second);
+        expect(router(second)).toContain('parseAndValidate(ctx.query, Filter.in.strict().pipe(Filter.out))');
+    });
+});
+
+describe('createTypescriptPlugin: a format() model as query, headers or params', () => {
+    // A format() model's schema is `z.strictObject({...}).transform(...)`, a pipe with no `.strict()`,
+    // so the router applies the block's mode to the object inside it and pipes back through `.out`.
+    /** The router and the schema file the plugin emits for `source`. */
+    async function build(source: string): Promise<{ router: string; schemas: string }> {
+        const diag = new DiagnosticCollector();
+        const { contract, op } = decomposeCk(parseCk(source, '/project/contracts/reports.ck', diag));
+        expect(diag.getAll().filter(d => d.severity === 'error')).toEqual([]);
+        const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } } }, '/project');
+        const ctx = makeCtx('/project');
+        await plugin.generateTargets!(
+            {
+                contractRoots: [contract],
+                opRoots: [op],
+                modelOutPaths: new Map<string, string>(),
+                modelsWithInput: computeModelsWithInput(contract.models),
+                modelsWithOutput: new Set<string>(),
+            },
+            ctx,
+        );
+        const emitted = [...ctx.emitted.entries()];
+        const router = emitted.find(([p]) => p.endsWith('.router.ts'))![1];
+        const schemas = emitted.find(([p]) => p.endsWith('types/reports.ts'))![1];
+        return { router, schemas };
+    }
+
+    it('validates the query of the reported contract through the pipe', async () => {
+        const { router } = await build(`
+contract format(input=snake) SnakeFilter: { fromDate?: date }
+
+operation /reports/snake: {
+    get: {
+        sdk: snakeReports
+        service: ReportService.snake
+        query: SnakeFilter
+        response: { 204: }
+    }
+}
+`);
+        expect(router).toContain('const query = await parseAndValidate(ctx.query, SnakeFilter.in.strict().pipe(SnakeFilter.out));');
+        expect(router).not.toContain('SnakeFilter.strict()');
+    });
+
+    it('parses with the block mode at run time: a strict query and params, stripped headers', async () => {
+        const { router, schemas } = await build(`
+contract format(input=snake) SnakeFilter: { fromDate?: string }
+contract format(input=snake) SnakeHeaders: { tenantId: string }
+contract format(input=snake) SnakeRef: { reportId: string }
+
+operation /reports/{report_id}: {
+    params: SnakeRef
+    get: {
+        sdk: snakeReport
+        service: ReportService.snake
+        query: SnakeFilter
+        headers: SnakeHeaders
+        response: { 204: }
+    }
+}
+`);
+        const names = [...schemas.matchAll(/^export const (\w+)/gm)].map(m => m[1]!);
+        const body = schemas
+            .split('\n')
+            .filter(l => !l.startsWith('import ') && !l.startsWith('export type '))
+            .join('\n')
+            .replace(/^export const /gm, 'const ');
+        const { z } = await import('zod');
+        const scope = new Function('z', `${body}\nreturn { ${names.join(', ')} };`)(z) as Record<string, unknown>;
+
+        // The schema argument of each `parseAndValidate(ctx.<kind>, <schema>)`, evaluated against the models.
+        const validator = (kind: string) => {
+            const expr = new RegExp(`const ${kind} = await parseAndValidate\\(ctx\\.${kind}, (.+)\\);`).exec(router)?.[1];
+            expect(expr, `no ${kind} validation in:\n${router}`).toBeDefined();
+            return new Function(...Object.keys(scope), `return ${expr};`)(...Object.values(scope)) as {
+                safeParse: (v: unknown) => { success: boolean; data?: unknown };
+            };
+        };
+
+        const query = validator('query');
+        expect(query.safeParse({ from_date: '2026-01-01' })).toMatchObject({ success: true, data: { fromDate: '2026-01-01' } });
+        expect(query.safeParse({ from_date: '2026-01-01', page: '2' }).success).toBe(false);
+
+        // Every request carries headers the block does not declare; a headers block strips them.
+        const headers = validator('headers');
+        expect(headers.safeParse({ tenant_id: 't', host: 'example.com', 'user-agent': 'x' })).toMatchObject({
+            success: true,
+            data: { tenantId: 't' },
+        });
+
+        const params = validator('params');
+        expect(params.safeParse({ report_id: 'r' })).toMatchObject({ success: true, data: { reportId: 'r' } });
+        expect(params.safeParse({ report_id: 'r', other: 'x' }).success).toBe(false);
     });
 });

@@ -252,6 +252,24 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Session'
+  '/payments/by-date':
+    get:
+      operationId: searchPaymentsByDate
+      description: 'search payments with snake_case filter and header models'
+      parameters:
+        - name: SnakeFilter
+          in: query
+          required: false
+          schema:
+            '$ref': '#/components/schemas/SnakeFilter'
+        - name: SnakeHeaders
+          in: header
+          required: false
+          schema:
+            '$ref': '#/components/schemas/SnakeHeaders'
+      responses:
+        '204':
+          description: 'No content'
   '/invoices/{invoice-id}':
     get:
       operationId: getInvoice
@@ -649,6 +667,18 @@ components:
           type: string
       required: [x-tenant]
       description: 'Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.'
+    SnakeFilter:
+      type: object
+      properties:
+        fromDate:
+          type: string
+          format: date
+      description: "Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of\nits own, so the router applies the block's object mode to the object inside it."
+    SnakeHeaders:
+      type: object
+      properties:
+        tenantId:
+          type: string
     Invoice:
       type: object
       properties:

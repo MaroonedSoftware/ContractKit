@@ -7,7 +7,7 @@ from urllib.parse import quote
 from typing import Any, Literal, NotRequired, TypedDict
 from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError  # noqa: F401
-from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, TenantHeaders, UpdatePaymentForm, UploadReceiptForm
+from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm, UploadReceiptForm
 
 
 class CreatePaymentHeaders(TypedDict, total=False):
@@ -124,3 +124,10 @@ class BillingClient(BaseClient):
         """
         result = await self._fetch("/sessions", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Session.model_validate(result)
+
+    async def search_payments_by_date(self, query: SnakeFilter | None = None, custom_headers: SnakeHeaders | None = None) -> None:
+        """
+        search payments with snake_case filter and header models
+        """
+        result = await self._fetch("/payments/by-date", method="GET", params=query, extra_headers=custom_headers)
+        return None

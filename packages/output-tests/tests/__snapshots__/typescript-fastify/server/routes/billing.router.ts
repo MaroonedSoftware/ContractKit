@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { FastifyPluginAsync } from 'fastify';
 import { requirePolicy } from '@maroonedsoftware/fastify';
 import { PaymentService } from '#src/services/payment.service.js';
-import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, TenantHeaders, UpdatePaymentForm } from '../schemas/billing.schema.js';
+import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm } from '../schemas/billing.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
@@ -228,6 +228,22 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
         reply.status(200);
         reply.type('application/json');
         return reply.send(result);
+    });
+
+    /**
+     * search payments with snake_case filter and header models
+     * from [billing.ck](../../contracts/billing.ck#L238)
+    */
+    app.get('/payments/by-date', { preHandler: [requirePolicy()] }, async (request, reply) => {
+        const query = await parseAndValidate(request.query, SnakeFilter.in.strict().pipe(SnakeFilter.out));
+
+        const headers = await parseAndValidate(request.headers, SnakeHeaders.in.loose().pipe(SnakeHeaders.out));
+
+        const service = request.container.get(PaymentService);
+        await service.searchByDate(query, headers);
+
+        reply.status(204);
+        return reply.send();
     });
 
 };

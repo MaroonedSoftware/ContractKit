@@ -39,7 +39,8 @@
                             "api-reference/billing/upload-receipt",
                             "api-reference/billing/get-refund",
                             "api-reference/billing/create-credential",
-                            "api-reference/billing/create-session"
+                            "api-reference/billing/create-session",
+                            "api-reference/billing/search-payments-by-date"
                         ]
                     },
                     {
@@ -73,7 +74,9 @@
                                     "api-reference/models/billing/update-payment-form",
                                     "api-reference/models/billing/upload-receipt-form",
                                     "api-reference/models/billing/payment-filter",
-                                    "api-reference/models/billing/tenant-headers"
+                                    "api-reference/models/billing/tenant-headers",
+                                    "api-reference/models/billing/snake-filter",
+                                    "api-reference/models/billing/snake-headers"
                                 ]
                             },
                             {

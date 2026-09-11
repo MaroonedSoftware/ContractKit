@@ -192,6 +192,9 @@ export interface OpCodegenOptions {
      * Every model, from every `.ck` file, keyed by name. A `query:` declared as a model reuses that
      * model's schema, whose array fields lack the split an inline query array gets; with the models
      * to hand the router re-wraps them. Without it those fields stay as the model declares them.
+     * It is also how the router tells that a model used as `query:`, `headers:` or `params:` compiles
+     * to a `format()` pipe, whose object mode has to be applied inside it; without it the router
+     * calls the mode method on the schema itself, which only a plain object has.
      */
     models?: Map<string, ModelNode>;
 }
@@ -395,7 +398,16 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     const pathBindings = route.params?.kind === 'params' ? bindPathParams(route.params.nodes, framework.handlerLocals) : undefined;
 
     lines.push(
-        ...generateParamValidation(route.params, 'params', framework.request.params, route.paramsMode ?? 'strict', '', modelsWithInput, pathBindings),
+        ...generateParamValidation(
+            route.params,
+            'params',
+            framework.request.params,
+            route.paramsMode ?? 'strict',
+            '',
+            modelsWithInput,
+            pathBindings,
+            options.models,
+        ),
     );
     lines.push(
         ...generateParamValidation(
@@ -943,7 +955,8 @@ function generateParamValidation(
             : modelsWithInput?.has(source.name)
               ? `${source.name}Input`
               : source.name;
-        lines.push(...validationCall(kind, input, `${typeName}.${mode}()`));
+        const schema = models && compilesToPipe(source.name, models) ? withPipeMode(typeName, mode) : `${typeName}.${mode}()`;
+        lines.push(...validationCall(kind, input, schema));
         lines.push('');
     } else if (source.kind === 'params') {
         // Inline param declarations — wrap with the appropriate z.*Object constructor
@@ -991,9 +1004,21 @@ function generateParamValidation(
 }
 
 /**
+ * A `format()` model's schema under the block's object mode: `Schema.in.strip().pipe(Schema.out)`.
+ * The schema is an object piped through the `.transform()` that renames its keys, and a pipe has no
+ * `.strict()` of its own. So the mode goes on the object inside it (`.in`), and the result is piped
+ * back through the same transform (`.out`). Applying it there rather than keeping the model's own
+ * mode is what lets a headers block strip the headers it does not declare, as it does for any
+ * other model, where the model's default strict object would reject every one of them.
+ */
+function withPipeMode(schema: string, mode: ObjectMode): string {
+    return `${schema}.in.${mode}().pipe(${schema}.out)`;
+}
+
+/**
  * The names a headers block declares, as its schema keys them. A model's come from `models`, so
- * there are none without it. A `format()` model contributes none either: its schema is a pipe keyed
- * by the recased names, and has no mode method to validate with in the first place.
+ * there are none without it. A `format()` model contributes none either: its schema is a pipe whose
+ * object is keyed by the recased names, not the declared ones.
  */
 function declaredHeaderNames(source: ParamSource, models?: Map<string, ModelNode>): string[] {
     switch (source.kind) {

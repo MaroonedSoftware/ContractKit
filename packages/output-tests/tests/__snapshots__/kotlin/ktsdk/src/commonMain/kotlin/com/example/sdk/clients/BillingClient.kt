@@ -11,6 +11,8 @@ import com.example.sdk.models.PaymentInput
 import com.example.sdk.models.PaymentRef
 import com.example.sdk.models.Session
 import com.example.sdk.models.SessionInput
+import com.example.sdk.models.SnakeFilter
+import com.example.sdk.models.SnakeHeaders
 import com.example.sdk.models.TenantHeaders
 import com.example.sdk.models.UpdatePaymentForm
 import com.example.sdk.runtime.SdkHttp
@@ -138,6 +140,15 @@ class BillingClient(private val http: SdkHttp) {
             jsonBody(body, "application/json")
         }
         return http.decodeJson(response)
+    }
+
+    /** search payments with snake_case filter and header models */
+    suspend fun searchPaymentsByDate(query: SnakeFilter? = null, customHeaders: SnakeHeaders? = null) {
+        http.execute(HttpMethod.Get) {
+            path("payments", "by-date")
+            params(query)
+            headers(customHeaders)
+        }
     }
 }
 

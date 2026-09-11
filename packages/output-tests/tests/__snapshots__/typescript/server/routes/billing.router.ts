@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';
 import { PaymentService } from '#src/services/payment.service.js';
-import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, TenantHeaders, UpdatePaymentForm } from '../schemas/billing.schema.js';
+import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm } from '../schemas/billing.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
@@ -225,4 +225,19 @@ BillingRouter.post('/sessions', requirePolicy(), bodyParserMiddleware(['json']),
     ctx.status = 200;
     ctx.type = 'application/json';
     ctx.body = result;
+});
+
+/**
+ * search payments with snake_case filter and header models
+ * from [billing.ck](../../contracts/billing.ck#L238)
+*/
+BillingRouter.get('/payments/by-date', requirePolicy(), async ctx => {
+    const query = await parseAndValidate(ctx.query, SnakeFilter.in.strict().pipe(SnakeFilter.out));
+
+    const headers = await parseAndValidate(ctx.headers, SnakeHeaders.in.loose().pipe(SnakeHeaders.out));
+
+    const service = ctx.container.get(PaymentService);
+    await service.searchByDate(query, headers);
+
+    ctx.status = 204;
 });
