@@ -402,6 +402,43 @@ describe('generateMcpFile', () => {
             expect(out).not.toContain('.transform(');
         });
     });
+
+    // An MCP output schema must be `type: 'object'`, and a client rejects the whole `tools/list`
+    // when one is not. A pipe's output side is the transform, which JSON Schema renders as `{}`.
+    describe('a format() model as the result', () => {
+        const models = (...ms: ModelNode[]) => new Map(ms.map(m => [m.name, m]));
+        const snake = model('SnakeFilter', [field('fromDate', scalarType('string'), { optional: true })], { inputCase: 'snake' });
+        const scope = model('Scope', [field('region', scalarType('string'))]);
+        const tool = (body: string) =>
+            opRoot([
+                opRoute('/reports', [opOperation('get', { sdk: 'getReport', mcp: true, responses: [opResponse(200, body, 'application/json')] })]),
+            ]);
+
+        it('publishes no output schema, and returns the result as text only', () => {
+            const out = generateMcpFile(tool('SnakeFilter'), { models: models(snake) });
+            expect(out).not.toContain('outputSchema:');
+            expect(out).toContain("return { content: [{ type: 'text', text: JSON.stringify(result) }] };");
+            expect(out).not.toContain('structuredContent');
+            // Nothing else reads the model, and an unused import fails `noUnusedLocals`.
+            expect(out).not.toContain('import { SnakeFilter }');
+        });
+
+        it('treats a format(output=) model the same way', () => {
+            const outbound = model('Outbound', [field('fromDate', scalarType('string'))], { outputCase: 'snake' });
+            expect(generateMcpFile(tool('Outbound'), { models: models(outbound) })).not.toContain('outputSchema:');
+        });
+
+        it('treats an alias of an intersection with a format() member the same way', () => {
+            const alias = model('Scoped', [], { type: intersectionType(refType('SnakeFilter'), refType('Scope')) });
+            expect(generateMcpFile(tool('Scoped'), { models: models(snake, scope, alias) })).not.toContain('outputSchema:');
+        });
+
+        it('keeps the output schema of a model without format()', () => {
+            const out = generateMcpFile(tool('Scope'), { models: models(scope) });
+            expect(out).toContain("outputSchema: z.toJSONSchema(Scope, { unrepresentable: 'any' }) as Tool['outputSchema'],");
+            expect(out).toContain('structuredContent: result');
+        });
+    });
 });
 
 describe('generateMcpAggregator', () => {

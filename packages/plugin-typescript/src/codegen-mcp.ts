@@ -7,9 +7,11 @@ import type {
     ContractTypeNode,
     SecurityNode,
     ModelNode,
+    ModelRefTypeNode,
+    InlineObjectTypeNode,
 } from '@contractkit/core';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses } from '@contractkit/core';
-import { renderType, renderInputType, pascalToDotCase } from './codegen-contract.js';
+import { renderType, renderInputType, pascalToDotCase, compilesToPipe } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
@@ -251,13 +253,26 @@ function resultReachesBigInt(op: OpOperationNode, modelsWithBigInt: Set<string> 
     );
 }
 
-/** MCP output schemas must be objects — only model refs and inline objects qualify. */
-function outputSchemaExpr(op: OpOperationNode, models?: Map<string, ModelNode>): string | undefined {
+/**
+ * The body a tool publishes an output schema for, if any. MCP requires that schema to be an object, so
+ * only a model ref or an inline object qualifies.
+ *
+ * Not a model whose schema is a `format()` pipe ({@link compilesToPipe}): its output side is the
+ * transform that renames its keys, which JSON Schema renders as `{}`, with no `type: 'object'`. A
+ * client parsing `tools/list` rejects the whole list over one such schema, so the tool publishes none
+ * and returns its result as text only.
+ */
+function outputSchemaBody(op: OpOperationNode, models?: Map<string, ModelNode>): ModelRefTypeNode | InlineObjectTypeNode | undefined {
     const body = primaryResponseBody(op);
-    if (!body) return undefined;
-    if (body.kind === 'ref') return body.name;
-    if (body.kind === 'inlineObject') return renderType(body, undefined, undefined, models);
+    if (body?.kind === 'inlineObject') return body;
+    if (body?.kind === 'ref' && !(models && compilesToPipe(body.name, models))) return body;
     return undefined;
+}
+
+function outputSchemaExpr(op: OpOperationNode, models?: Map<string, ModelNode>): string | undefined {
+    const body = outputSchemaBody(op, models);
+    if (!body) return undefined;
+    return body.kind === 'ref' ? body.name : renderType(body, undefined, undefined, models);
 }
 
 // ─── Annotations ────────────────────────────────────────────────────────────
@@ -313,7 +328,8 @@ function walkSourceRefs(src: ParamSource | undefined, ids: Set<string>, modelsWi
 }
 
 /** Collect every schema identifier the emitted tools import (input variants + read variants for output). */
-function collectSchemaIds(ops: { route: OpRouteNode; op: OpOperationNode }[], modelsWithInput?: Set<string>): Set<string> {
+function collectSchemaIds(ops: { route: OpRouteNode; op: OpOperationNode }[], options: McpCodegenOptions): Set<string> {
+    const { modelsWithInput, models } = options;
     const ids = new Set<string>();
     for (const { route, op } of ops) {
         walkSourceRefs(route.params, ids, modelsWithInput);
@@ -324,8 +340,8 @@ function collectSchemaIds(ops: { route: OpRouteNode; op: OpOperationNode }[], mo
         walkSourceRefs(op.query, ids, modelsWithInput);
         walkSourceRefs(op.headers, ids, modelsWithInput);
 
-        const body = primaryResponseBody(op);
-        if (body && (body.kind === 'ref' || body.kind === 'inlineObject')) walkTypeRefs(body, ids, 'read');
+        const body = outputSchemaBody(op, models);
+        if (body) walkTypeRefs(body, ids, 'read');
     }
     return ids;
 }
@@ -606,7 +622,7 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     }
 
     // Schema imports.
-    imports.push(...schemaImportLines(collectSchemaIds(plans, options.modelsWithInput), options));
+    imports.push(...schemaImportLines(collectSchemaIds(plans, options), options));
 
     const header = `// Auto-generated MCP tools\n// generated from ${sourceLink(basename(root.file), options.outPath, root.file)}`;
 

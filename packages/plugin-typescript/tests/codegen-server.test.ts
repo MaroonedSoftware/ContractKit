@@ -1047,6 +1047,38 @@ describe('createTypescriptPlugin — format() across files', () => {
         await plugin.generateTargets!(run(['fromDate', 'toDate']), second);
         expect(tools(second)).toContain('...Filter.out.parse({ from_date: _0, to_date: _1 }),');
     });
+
+    it('re-emits an MCP tools file when its result model in another .ck file gains format()', async () => {
+        const rootDir = mkdtempSync(join(tmpdir(), 'ck-format-'));
+        const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } }, mcp: {} }, rootDir);
+        const run = (reportCase?: 'snake') => ({
+            contractRoots: [
+                contractRoot(
+                    [model('Report', [field('fromDate', scalarType('string'))], { inputCase: reportCase })],
+                    join(rootDir, 'contracts/report.ck'),
+                ),
+            ],
+            opRoots: [
+                opRoot(
+                    [opRoute('/reports', [opOperation('get', { mcp: true, responses: [opResponse(200, 'Report', 'application/json')] })])],
+                    join(rootDir, 'contracts/reports.ck'),
+                ),
+            ],
+            modelOutPaths: new Map<string, string>(),
+            modelsWithInput: new Set<string>(),
+            modelsWithOutput: new Set<string>(),
+        });
+        const tools = (ctx: { emitted: Map<string, string> }) => [...ctx.emitted.entries()].find(([p]) => p.endsWith('.mcp.ts'))?.[1];
+
+        const first = diskCtx(rootDir);
+        await plugin.generateTargets!(run(), first);
+        expect(tools(first)).toContain('outputSchema: z.toJSONSchema(Report,');
+
+        const second = diskCtx(rootDir);
+        await plugin.generateTargets!(run('snake'), second);
+        expect(tools(second)).toBeDefined();
+        expect(tools(second)).not.toContain('outputSchema:');
+    });
 });
 
 describe('createTypescriptPlugin: a format() model as query, headers or params', () => {
@@ -1270,5 +1302,41 @@ operation /reports: {
             },
             required: ['body'],
         });
+    });
+
+    // A client parses `tools/list` against the MCP schema, which requires every output schema to be
+    // `type: 'object'`, so one that is not makes the whole list unreadable.
+    it("publishes only an object output schema, leaving a format() model's out", async () => {
+        const { tools, schemas } = await buildReports(`
+contract format(input=snake) SnakeFilter: { fromDate?: string }
+contract Scope: { region: string }
+contract Scoped: SnakeFilter & Scope
+
+operation /reports: {
+    get: {
+        sdk: getFilter
+        service: ReportService.filter
+        mcp: true
+        response: { 200: { application/json: SnakeFilter } }
+    }
+    post: {
+        sdk: getScoped
+        service: ReportService.scoped
+        mcp: true
+        response: { 200: { application/json: Scoped } }
+    }
+    put: {
+        sdk: getScope
+        service: ReportService.scope
+        mcp: true
+        response: { 200: { application/json: Scope } }
+    }
+}
+`);
+        const evaluate = await schemaEvaluator(schemas);
+        const published = [...tools!.matchAll(/outputSchema: (z\.toJSONSchema\([^\n]*\)) as Tool\['outputSchema'\],/g)].map(
+            m => evaluate(m[1]!) as Record<string, unknown>,
+        );
+        expect(published).toEqual([expect.objectContaining({ type: 'object', required: ['region'] })]);
     });
 });
