@@ -64,6 +64,7 @@ class UploadReceiptForm(BaseModel):
 class PaymentFilter(BaseModel):
     status: Literal["pending", "completed", "failed"] | None = None
     since: datetime | None = None
+    ids: list[UUID] | None = None
 
 # Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
 class TenantHeaders(BaseModel):

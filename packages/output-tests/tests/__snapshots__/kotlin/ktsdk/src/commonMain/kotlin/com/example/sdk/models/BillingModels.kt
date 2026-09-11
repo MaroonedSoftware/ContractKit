@@ -82,6 +82,7 @@ data class UploadReceiptForm(
 data class PaymentFilter(
     val status: PaymentFilterStatus? = null,
     val since: Instant? = null,
+    val ids: List<Uuid>? = null,
 )
 
 /** Request headers declared as a model. Hyphenated, because a server sees header names lowercased. */

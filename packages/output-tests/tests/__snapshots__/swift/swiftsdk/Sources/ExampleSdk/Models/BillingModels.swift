@@ -275,27 +275,32 @@ public struct UploadReceiptForm: Codable, Equatable, Sendable {
 public struct PaymentFilter: Codable, Equatable, Sendable {
     public var status: PaymentFilterStatus?
     public var since: Date?
+    public var ids: [UUID]?
 
-    public init(status: PaymentFilterStatus? = nil, since: Date? = nil) {
+    public init(status: PaymentFilterStatus? = nil, since: Date? = nil, ids: [UUID]? = nil) {
         self.status = status
         self.since = since
+        self.ids = ids
     }
 
     private enum CodingKeys: String, CodingKey {
         case status = "status"
         case since = "since"
+        case ids = "ids"
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.status = try container.decodeIfPresent(PaymentFilterStatus.self, forKey: .status)
         self.since = try container.decodeIfPresent(Date.self, forKey: .since)
+        self.ids = try container.decodeIfPresent([UUID].self, forKey: .ids)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(self.status, forKey: .status)
         try container.encodeIfPresent(self.since, forKey: .since)
+        try container.encodeIfPresent(self.ids, forKey: .ids)
     }
 }
 

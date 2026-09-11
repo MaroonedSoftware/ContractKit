@@ -634,6 +634,11 @@ components:
         since:
           type: string
           format: date-time
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
       description: 'Query params declared as a model, referenced via `query: PaymentFilter`'
     TenantHeaders:
       type: object

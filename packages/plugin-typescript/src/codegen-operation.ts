@@ -6,6 +6,7 @@ import type {
     OpResponseBodyNode,
     OpResponseHeaderNode,
     ContractTypeNode,
+    ModelNode,
     ScalarTypeNode,
     ParamSource,
     ObjectMode,
@@ -178,6 +179,12 @@ export interface OpCodegenOptions {
      * `server.framework` name via `resolveServerFramework`) to target Fastify instead.
      */
     framework?: ServerFramework;
+    /**
+     * Every model, from every `.ck` file, keyed by name. A `query:` declared as a model reuses that
+     * model's schema, whose array fields lack the split an inline query array gets; with the models
+     * to hand the router re-wraps them. Without it those fields stay as the model declares them.
+     */
+    models?: Map<string, ModelNode>;
 }
 
 /** {@link OpCodegenOptions} after {@link generateOp} has filled in the framework default. */
@@ -381,7 +388,18 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     lines.push(
         ...generateParamValidation(route.params, 'params', framework.request.params, route.paramsMode ?? 'strict', '', modelsWithInput, pathBindings),
     );
-    lines.push(...generateParamValidation(op.query, 'query', framework.request.query, op.queryMode ?? 'strict', '', modelsWithInput));
+    lines.push(
+        ...generateParamValidation(
+            op.query,
+            'query',
+            framework.request.query,
+            op.queryMode ?? 'strict',
+            '',
+            modelsWithInput,
+            undefined,
+            options.models,
+        ),
+    );
     lines.push(...generateParamValidation(op.headers, 'headers', framework.request.headers, op.headersMode ?? 'strip', '', modelsWithInput));
 
     // Body validation (request-side — use Input variants)
@@ -885,6 +903,7 @@ function generateParamValidation(
     suffix = '',
     modelsWithInput?: Set<string>,
     bindings?: Map<string, string>,
+    models?: Map<string, ModelNode>,
 ): string[] {
     if (!source) return [];
     const lines: string[] = [];
@@ -893,9 +912,15 @@ function generateParamValidation(
     // whole objects. The variable the block declares is named after the kind either way.
     const isPathParams = kind === 'params';
     if (source.kind === 'ref') {
-        // Type reference — apply mode as a method call on the schema
-        const typeName = modelsWithInput?.has(source.name) ? `${source.name}Input` : source.name;
-        lines.push(`    const ${kind} = await parseAndValidate(${sourceExpr}, ${typeName}.${mode}());`);
+        // Type reference — apply mode as a method call on the schema. A query goes through
+        // renderQueryType, which re-wraps the model's array fields with the split an inline query
+        // array gets; the model's own schema is shared with request bodies and has none.
+        const typeName = isQuery
+            ? renderQueryType({ kind: 'ref', name: source.name }, modelsWithInput, undefined, models)
+            : modelsWithInput?.has(source.name)
+              ? `${source.name}Input`
+              : source.name;
+        lines.push(...validationCall(kind, sourceExpr, `${typeName}.${mode}()`));
         lines.push('');
     } else if (source.kind === 'params') {
         // Inline param declarations — wrap with the appropriate z.*Object constructor
@@ -935,11 +960,25 @@ function generateParamValidation(
     } else {
         // ContractTypeNode — use query-aware rendering for query params (coerces single string → array),
         // otherwise use Input variant rendering; apply mode as a method call
-        const schema = isQuery ? renderQueryType(source.node, modelsWithInput) : renderInputType(source.node, modelsWithInput);
-        lines.push(`    const ${kind} = await parseAndValidate(${sourceExpr}, (${schema}).${mode}());`);
+        const schema = isQuery ? renderQueryType(source.node, modelsWithInput, undefined, models) : renderInputType(source.node, modelsWithInput);
+        lines.push(...validationCall(kind, sourceExpr, `(${schema}).${mode}()`));
         lines.push('');
     }
     return lines;
+}
+
+/**
+ * `const <kind> = await parseAndValidate(<source>, <schema>);` on one line, or with each argument on
+ * its own line when the schema spans several, indented to sit inside the call.
+ *
+ * One array element per output line, never a string with a newline in it: a framework whose routes
+ * sit inside the router's function body (Fastify) indents the handler element by element.
+ */
+function validationCall(kind: ParamKind, sourceExpr: string, schema: string): string[] {
+    const schemaLines = schema.split('\n');
+    if (schemaLines.length === 1) return [`    const ${kind} = await parseAndValidate(${sourceExpr}, ${schema});`];
+    schemaLines[schemaLines.length - 1] += ',';
+    return [`    const ${kind} = await parseAndValidate(`, `        ${sourceExpr},`, ...schemaLines.map(l => `        ${l}`), `    );`];
 }
 
 // ─── Type import resolution ────────────────────────────────────────────────

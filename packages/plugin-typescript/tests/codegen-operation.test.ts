@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { generateOp } from '../src/codegen-operation.js';
 import { SECURITY_NONE } from '@contractkit/core';
-import type { ContractTypeNode } from '@contractkit/core';
+import type { ContractTypeNode, ModelNode } from '@contractkit/core';
 import {
     scalarType,
     arrayType,
@@ -9,6 +9,7 @@ import {
     inlineObjectType,
     intersectionType,
     field,
+    model,
     opParam,
     opRequest,
     opMultiRequest,
@@ -610,6 +611,97 @@ describe('generateOperation', () => {
             expect(output).toContain("active: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean())");
             // Int should still use z.coerce
             expect(output).toContain(`page: ${NUM_INT}`);
+        });
+
+        describe('a query declared as a model', () => {
+            const SPLIT = `(v) => typeof v === 'string' ? v.split(',') : v`;
+            const models = (...ms: ModelNode[]) => new Map(ms.map(m => [m.name, m]));
+
+            it("re-wraps the model's array fields with the split an inline query array gets", () => {
+                // The model's schema is shared with request bodies, so its arrays have no split. A query
+                // string sends a one-element list as `tags=only`, which arrives as the string "only".
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Filter' })])]);
+                const output = generateOp(root, {
+                    models: models(model('Filter', [field('tags', arrayType(scalarType('string'))), field('limit', scalarType('int'))])),
+                });
+                expect(output).toContain(
+                    [
+                        '    const query = await parseAndValidate(',
+                        '        ctx.query,',
+                        '        Filter.extend({',
+                        `            tags: z.preprocess(${SPLIT}, Filter.shape.tags),`,
+                        '        }).strict(),',
+                        '    );',
+                    ].join('\n'),
+                );
+                expect(output).not.toContain('Filter.shape.limit');
+            });
+
+            it('keeps the bare schema when the model has no array field', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Pagination' })])]);
+                const output = generateOp(root, { models: models(model('Pagination', [field('page', scalarType('int'))])) });
+                expect(output).toContain('parseAndValidate(ctx.query, Pagination.strict())');
+            });
+
+            it('re-wraps an array field the model inherits from a base', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'ChildFilter' })])]);
+                const output = generateOp(root, {
+                    models: models(
+                        model('BaseFilter', [field('tags', arrayType(scalarType('string')))]),
+                        model('ChildFilter', [field('q', scalarType('string'), { optional: true })], { bases: ['BaseFilter'] }),
+                    ),
+                });
+                expect(output).toContain(`tags: z.preprocess(${SPLIT}, ChildFilter.shape.tags),`);
+            });
+
+            it('quotes a field name that is not an identifier', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Filter' })])]);
+                const output = generateOp(root, { models: models(model('Filter', [field('tag-ids', arrayType(scalarType('string')))])) });
+                expect(output).toContain(`'tag-ids': z.preprocess(${SPLIT}, Filter.shape['tag-ids']),`);
+            });
+
+            it('reads fields off the Input variant, skipping a readonly field it does not carry', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Filter' })])]);
+                const output = generateOp(root, {
+                    modelsWithInput: new Set(['Filter']),
+                    models: models(
+                        model('Filter', [
+                            field('tags', arrayType(scalarType('string'))),
+                            field('seen', arrayType(scalarType('string')), { visibility: 'readonly' }),
+                        ]),
+                    ),
+                });
+                expect(output).toContain(`tags: z.preprocess(${SPLIT}, FilterInput.shape.tags),`);
+                expect(output).not.toContain('.shape.seen');
+            });
+
+            it('re-wraps the array fields of a model in an intersection, but not one an inline member redeclares', () => {
+                const root = opRoot([
+                    opRoute('/items', [
+                        opOperation('get', {
+                            query: intersectionType(refType('Filter'), inlineObjectType([field('ids', scalarType('string'))])),
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root, {
+                    models: models(model('Filter', [field('tags', arrayType(scalarType('string'))), field('ids', arrayType(scalarType('string')))])),
+                });
+                expect(output).toContain(`tags: z.preprocess(${SPLIT}, Filter.shape.tags),`);
+                expect(output).not.toContain('Filter.shape.ids');
+            });
+
+            it('leaves a format() model alone, whose schema is a pipe with no .shape to read', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Snake' })])]);
+                const output = generateOp(root, {
+                    models: models(model('Snake', [field('tagIds', arrayType(scalarType('string')))], { inputCase: 'snake' })),
+                });
+                expect(output).toContain('parseAndValidate(ctx.query, Snake.strict())');
+            });
+
+            it('leaves the model schema as-is when no models are supplied', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Filter' })])]);
+                expect(generateOp(root)).toContain('parseAndValidate(ctx.query, Filter.strict())');
+            });
         });
     });
 

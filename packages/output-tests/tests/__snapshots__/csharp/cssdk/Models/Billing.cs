@@ -125,6 +125,10 @@ public sealed record PaymentFilter
     [JsonPropertyName("since")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTimeOffset? Since { get; init; }
+
+    [JsonPropertyName("ids")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Guid>? Ids { get; init; }
 }
 
 /// <summary>Request headers declared as a model. Hyphenated, because a server sees header names lowercased.</summary>

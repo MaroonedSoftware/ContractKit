@@ -20,8 +20,9 @@ import {
     collectTypeRefs,
     computeModelsWithOutput as ckComputeModelsWithOutput,
     collectExternalOutputRefs as ckCollectExternalOutputRefs,
+    resolveEffectiveFields,
 } from '@contractkit/core';
-import { escapeJsDocLines, sourceLink } from './ts-render.js';
+import { escapeJsDocLines, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { collectExternalWireInputRefs, flattenFormatChain, renamingCase, renderWireInputModel } from './codegen-wire-input.js';
 import type { WireInputRenderContext } from './codegen-wire-input.js';
 import type { TsRenderTarget } from './ts-render.js';
@@ -1087,15 +1088,33 @@ function renderInputFields(fields: FieldNode[], modelsWithInput: Set<string>, de
 // ─── Query type rendering ─────────────────────────────────────────────────
 
 /**
+ * Wraps a query array's schema so a bare string is split on commas before it is validated. A query
+ * string carries a one-element list as `tags=only`, which the framework parses to the string
+ * `"only"`, not `["only"]`; repeated keys already arrive as an array and pass through untouched.
+ */
+export function queryArrayPreprocess(schema: string): string {
+    return `z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, ${schema})`;
+}
+
+/**
  * Like renderType, but wraps array types with z.preprocess to handle
  * query strings where a single value arrives as a string instead of a string[].
  * Also uses Input variants for model refs when modelsWithInput is provided.
+ *
+ * @param models Every model a ref may name, across all files. A referenced model's schema is the one
+ *   request bodies validate against, so its array fields have no split; with the models to hand, each
+ *   is re-wrapped here ({@link queryArrayOverrides}). Without them a model's arrays are left as-is.
  */
-export function renderQueryType(type: ContractTypeNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode): string {
+export function renderQueryType(
+    type: ContractTypeNode,
+    modelsWithInput?: Set<string>,
+    defaultMode?: ObjectMode,
+    models?: Map<string, ModelNode>,
+): string {
     switch (type.kind) {
         case 'array': {
             const inner = modelsWithInput ? renderInputType(type, modelsWithInput, defaultMode) : renderType(type, undefined, defaultMode);
-            return `z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, ${inner})`;
+            return queryArrayPreprocess(inner);
         }
         case 'inlineObject': {
             const fields = type.fields.map(f => `    ${renderQueryField(f, modelsWithInput, defaultMode)}`).join('\n');
@@ -1116,16 +1135,18 @@ export function renderQueryType(type: ContractTypeNode, modelsWithInput?: Set<st
                         expr += `.extend({\n${fieldLines}\n})`;
                     }
                 }
-                return expr;
+                return withExtension(expr, queryArrayOverrides(type.members, modelsWithInput, models));
             }
-            let expr = renderQueryType(first!, modelsWithInput, defaultMode);
+            let expr = renderQueryType(first!, modelsWithInput, defaultMode, models);
             for (const member of rest) {
-                expr += `.and(${renderQueryType(member, modelsWithInput, defaultMode)})`;
+                expr += `.and(${renderQueryType(member, modelsWithInput, defaultMode, models)})`;
             }
             return expr;
         }
-        case 'ref':
-            return modelsWithInput?.has(type.name) ? `${type.name}Input` : type.name;
+        case 'ref': {
+            const name = modelsWithInput?.has(type.name) ? `${type.name}Input` : type.name;
+            return withExtension(name, queryArrayOverrides([type], modelsWithInput, models));
+        }
         default:
             return modelsWithInput ? renderInputType(type, modelsWithInput, defaultMode) : renderType(type, undefined, defaultMode);
     }
@@ -1142,6 +1163,61 @@ function renderQueryField(field: FieldNode, modelsWithInput?: Set<string>, defau
     expr = applyFieldModifiers(expr, field);
 
     return `${quoteKey(field.name)}: ${expr},`;
+}
+
+/**
+ * The array fields a query schema takes from referenced models, each re-wrapped in
+ * {@link queryArrayPreprocess} and read back off the model's own `.shape`, so its modifiers
+ * (`.optional()`, `.default()`) come along unchanged.
+ *
+ * Each field is taken from the member that declares it last, the one `.extend()` keeps it from. A
+ * field an inline member declares last already has the preprocess, from {@link renderQueryField}.
+ * One absent from the schema being extended is skipped: an `Input` variant drops readonly fields and
+ * a read schema drops writeonly ones, so `.shape` has nothing to wrap for them. So is every field of
+ * a model whose schema is a pipe ({@link compilesToPipe}), which has no `.shape` at all.
+ *
+ * @param members The query schema's members, in `.extend()` order.
+ */
+function queryArrayOverrides(members: readonly ContractTypeNode[], modelsWithInput?: Set<string>, models?: Map<string, ModelNode>): string[] {
+    if (!models) return [];
+    const owners = new Map<string, string | undefined>();
+    for (const member of members) {
+        if (member.kind === 'ref') {
+            const isInput = modelsWithInput?.has(member.name) ?? false;
+            const schema = isInput ? `${member.name}Input` : member.name;
+            const extendable = !compilesToPipe(member.name, models);
+            for (const f of resolveEffectiveFields(member.name, models).fields) {
+                const onSchema = extendable && f.visibility !== (isInput ? 'readonly' : 'writeonly');
+                owners.set(f.name, onSchema && f.type.kind === 'array' ? schema : undefined);
+            }
+        } else if (member.kind === 'inlineObject') {
+            for (const f of member.fields) owners.set(f.name, undefined);
+        }
+    }
+    return [...owners].flatMap(([name, schema]) => {
+        if (!schema) return [];
+        const shapeAccess = isValidIdentifier(name) ? `.shape.${name}` : `.shape['${escapeSingleQuoted(name)}']`;
+        return [`${quoteKey(name)}: ${queryArrayPreprocess(`${schema}${shapeAccess}`)},`];
+    });
+}
+
+/**
+ * Whether the model's schema is an `object().transform()` pipe, because its own or an inherited
+ * `format()` renames keys, or it is an alias of one that does. A pipe has no `.shape`, `.extend()` or
+ * `.strict()`.
+ */
+function compilesToPipe(name: string, models: Map<string, ModelNode>, seen = new Set<string>()): boolean {
+    const model = models.get(name);
+    if (!model || seen.has(name)) return false;
+    if (model.type) return model.type.kind === 'ref' && compilesToPipe(model.type.name, models, seen.add(name));
+    const flat = flattenFormatChain(model, models);
+    return renamingCase(flat.inputCase) !== undefined || renamingCase(flat.outputCase) !== undefined;
+}
+
+/** `expr.extend({ ...fields })`, or `expr` alone when there are no fields to add. */
+function withExtension(expr: string, fieldLines: readonly string[]): string {
+    if (fieldLines.length === 0) return expr;
+    return `${expr}.extend({\n${fieldLines.map(l => `    ${l}`).join('\n')}\n})`;
 }
 
 function isValidIdentifier(name: string): boolean {

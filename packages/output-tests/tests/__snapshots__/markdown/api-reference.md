@@ -284,11 +284,12 @@ Response headers:
 ##### Attributes
 
 <details>
-<summary>Attributes (3)</summary>
+<summary>Attributes (4)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `x-tenant` | `string` | Yes |  |
+| `ids` | `string[]` | No |  |
 | `since` | `string` | No |  |
 | `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
 
@@ -849,12 +850,13 @@ Extends [`Credential`](#credential)
 > Query params declared as a model, referenced via `query: PaymentFilter`
 
 <details>
-<summary>Attributes (2)</summary>
+<summary>Attributes (3)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
 | `since` | `string` | No |  |
+| `ids` | `string[]` | No |  |
 
 </details>
 

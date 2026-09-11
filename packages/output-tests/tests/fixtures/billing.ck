@@ -54,6 +54,7 @@ contract UploadReceiptForm: {
 contract PaymentFilter: {
     status?: enum(pending, completed, failed)
     since?: datetime
+    ids?: array(uuid)
 }
 
 # Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
