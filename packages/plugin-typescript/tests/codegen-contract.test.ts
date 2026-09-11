@@ -1361,3 +1361,36 @@ describe('generateContract - declaration order', () => {
         expect(declaredAt(output, 'Doc')).toBeLessThan(declaredAt(output, 'Folder'));
     });
 });
+
+describe('generateContract - recursive members', () => {
+    it('writes a lazy member as a getter so TypeScript can infer the recursive type', () => {
+        // `parent: z.lazy(() => Folder)` inside Folder's own initializer is TS7022 under strict mode,
+        // and the schema and its z.infer type silently become `any`.
+        const root = contractRoot([
+            model('Folder', [field('id', scalarType('string')), field('parent', lazyType(refType('Folder')), { optional: true })]),
+        ]);
+        const output = generateContract(root);
+        expect(output).toContain('get parent() { return Folder.optional(); },');
+        expect(output).toContain('    id: z.string(),');
+    });
+
+    it('uses a getter when the lazy reference is nested inside a container or union', () => {
+        const root = contractRoot([
+            model('Doc', [field('id', scalarType('string'))]),
+            model('Folder', [
+                field('children', arrayType(lazyType(refType('Folder')))),
+                field('pinned', unionType(refType('Doc'), lazyType(refType('Folder'))), { nullable: true }),
+                field('byName', recordType(scalarType('string'), lazyType(refType('Folder'))), { optional: true }),
+            ]),
+        ]);
+        const output = generateContract(root);
+        expect(output).toContain('get children() { return z.array(Folder); },');
+        expect(output).toContain('get pinned() { return z.union([Doc, Folder]).nullable(); },');
+        expect(output).toContain('get byName() { return z.record(z.string(), Folder).optional(); },');
+    });
+
+    it('quotes a getter key that is not an identifier', () => {
+        const root = contractRoot([model('Node', [field('next-node', lazyType(refType('Node')), { optional: true })])]);
+        expect(generateContract(root)).toContain("get 'next-node'() { return Node.optional(); },");
+    });
+});

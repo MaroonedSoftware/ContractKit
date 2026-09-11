@@ -106,7 +106,7 @@ contract Kitchen: {
         expect(output).toContain('z.literal("kitchen")');
         expect(output).toContain(`z.union([z.string(), ${NUM}])`);
         expect(output).toContain('Address');
-        expect(output).toContain('z.lazy(() => Kitchen)');
+        expect(output).toContain('get children() { return Kitchen; },');
     });
 
     it('includes DateTime import when date fields are used', () => {

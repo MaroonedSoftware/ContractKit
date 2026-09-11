@@ -513,7 +513,8 @@ function renderFields(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
 function renderFieldsAsPascalCase(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
     return fields.map(f => {
         const pascalKey = camelToPascal(f.name);
-        let expr = renderType(f.type, 'pascal', defaultMode);
+        const member = memberType(f.type);
+        let expr = renderType(member.type, 'pascal', defaultMode);
         if (f.default !== undefined) {
             if (f.nullable) expr += '.nullable()';
             const dv = typeof f.default === 'string' ? `"${escapeString(f.default)}"` : String(f.default);
@@ -524,14 +525,15 @@ function renderFieldsAsPascalCase(fields: FieldNode[], defaultMode?: ObjectMode)
             expr += '.nullable()';
         }
         if (f.description) expr += `.describe("${escapeString(f.description)}")`;
-        return `${quoteKey(pascalKey)}: ${expr},`;
+        return renderObjectMember(pascalKey, expr, member.getter);
     });
 }
 
 function renderFieldsAsSnakeCase(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
     return fields.map(f => {
         const snakeKey = camelToSnake(f.name);
-        let expr = renderType(f.type, 'snake', defaultMode);
+        const member = memberType(f.type);
+        let expr = renderType(member.type, 'snake', defaultMode);
         if (f.default !== undefined) {
             if (f.nullable) expr += '.nullable()';
             const dv = typeof f.default === 'string' ? `"${escapeString(f.default)}"` : String(f.default);
@@ -543,7 +545,7 @@ function renderFieldsAsSnakeCase(fields: FieldNode[], defaultMode?: ObjectMode):
             expr += '.nullable()';
         }
         if (f.description) expr += `.describe("${escapeString(f.description)}")`;
-        return `${quoteKey(snakeKey)}: ${expr},`;
+        return renderObjectMember(snakeKey, expr, member.getter);
     });
 }
 
@@ -572,15 +574,85 @@ export function applyFieldModifiers(expr: string, field: Pick<FieldNode, 'nullab
     return expr;
 }
 
+/** True if `type` goes through `lazy()` anywhere, including inside a container or a union. */
+function containsLazy(type: ContractTypeNode): boolean {
+    switch (type.kind) {
+        case 'lazy':
+            return true;
+        case 'array':
+            return containsLazy(type.item);
+        case 'tuple':
+            return type.items.some(containsLazy);
+        case 'record':
+            return containsLazy(type.key) || containsLazy(type.value);
+        case 'union':
+        case 'discriminatedUnion':
+        case 'intersection':
+            return type.members.some(containsLazy);
+        case 'inlineObject':
+            return type.fields.some(f => containsLazy(f.type));
+        default:
+            return false;
+    }
+}
+
+/**
+ * `type` with every `lazy()` replaced by what it wraps. Used for a member written as a getter, where
+ * the getter already defers the read. Leaving `z.lazy` in place there is not harmless:
+ * `get children() { return z.array(z.lazy(() => Folder)); }` still defeats inference, and the
+ * member fails with TS2322 against Zod's `SomeType`.
+ */
+function withoutLazy(type: ContractTypeNode): ContractTypeNode {
+    switch (type.kind) {
+        case 'lazy':
+            return withoutLazy(type.inner);
+        case 'array':
+            return { ...type, item: withoutLazy(type.item) };
+        case 'tuple':
+            return { ...type, items: type.items.map(withoutLazy) };
+        case 'record':
+            return { ...type, key: withoutLazy(type.key), value: withoutLazy(type.value) };
+        case 'union':
+            return { ...type, members: type.members.map(withoutLazy) };
+        case 'discriminatedUnion':
+            return { ...type, members: type.members.map(withoutLazy) };
+        case 'intersection':
+            return { ...type, members: type.members.map(withoutLazy) };
+        case 'inlineObject':
+            return { ...type, fields: type.fields.map(f => ({ ...f, type: withoutLazy(f.type) })) };
+        default:
+            return type;
+    }
+}
+
+/**
+ * The type to render for an object member, and whether the member is a getter.
+ *
+ * A member whose type goes through `lazy()` is written as a getter. `z.lazy(() => Folder)` inside
+ * `Folder`'s own initializer makes TypeScript infer `Folder` from itself, which it cannot, so the
+ * schema and every type derived from it came out `any` and strict mode reported TS7022. Zod 4 reads
+ * a getter's return when it parses, and TypeScript can infer a recursive type through one, provided
+ * the getter names the schema directly; see `withoutLazy`.
+ */
+function memberType(type: ContractTypeNode): { type: ContractTypeNode; getter: boolean } {
+    return containsLazy(type) ? { type: withoutLazy(type), getter: true } : { type, getter: false };
+}
+
+/** One member of an object schema's shape: `key: expr,` or, for a recursive member, a getter. */
+function renderObjectMember(key: string, expr: string, getter: boolean): string {
+    return getter ? `get ${quoteKey(key)}() { return ${expr}; },` : `${quoteKey(key)}: ${expr},`;
+}
+
 function renderField(field: FieldNode, defaultMode?: ObjectMode): string[] {
     const lines: string[] = [];
     if (field.deprecated) lines.push('/** @deprecated */');
 
-    let expr = renderType(field.type, undefined, defaultMode);
+    const member = memberType(field.type);
+    let expr = renderType(member.type, undefined, defaultMode);
 
     expr = applyFieldModifiers(expr, field);
 
-    lines.push(`${quoteKey(field.name)}: ${expr},`);
+    lines.push(renderObjectMember(field.name, expr, member.getter));
     return lines;
 }
 
@@ -952,11 +1024,12 @@ function renderInputField(field: FieldNode, modelsWithInput: Set<string>, defaul
     const lines: string[] = [];
     if (field.deprecated) lines.push('/** @deprecated */');
 
-    let expr = renderInputType(field.type, modelsWithInput, defaultMode);
+    const member = memberType(field.type);
+    let expr = renderInputType(member.type, modelsWithInput, defaultMode);
 
     expr = applyFieldModifiers(expr, field);
 
-    lines.push(`${quoteKey(field.name)}: ${expr},`);
+    lines.push(renderObjectMember(field.name, expr, member.getter));
     return lines;
 }
 
