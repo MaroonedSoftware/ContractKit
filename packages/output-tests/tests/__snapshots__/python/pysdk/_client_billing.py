@@ -30,7 +30,7 @@ ListPaymentsHeaders = TypedDict("ListPaymentsHeaders", {
 })
 
 
-_CREATE_PAYMENTS_BODY = TypeAdapter(list[PaymentInput])
+_CREATE_PAYMENTS_BODY: TypeAdapter[list[PaymentInput]] = TypeAdapter(list[PaymentInput])
 
 
 class BillingClient(BaseClient):

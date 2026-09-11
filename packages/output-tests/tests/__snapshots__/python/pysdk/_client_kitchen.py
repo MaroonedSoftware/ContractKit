@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import UUID
 from urllib.parse import quote
 from typing import Literal, NotRequired, TypedDict
+from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError  # noqa: F401
 from ._models_kitchen import Folder, Instrument, Ledger, LedgerInput, Shared, SharedInput, Stamped, Token
 
@@ -43,6 +44,9 @@ class GetFolder404Response(TypedDict):
     data: Shared
 
 
+_INSTRUMENT_ADAPTER: TypeAdapter[Instrument] = TypeAdapter(Instrument)
+
+
 class KitchenClient(BaseClient):
 
     async def get_folder(self, folder_id: UUID, query: GetFolderQuery, custom_headers: GetFolderHeaders) -> GetFolder200Response | GetFolder204Response | GetFolder404Response:
@@ -68,7 +72,7 @@ class KitchenClient(BaseClient):
         a method name that is a keyword in the target languages
         """
         result = await self._fetch(f"/folders/{quote(str(folder_id), safe='')}", method="PUT", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
-        return Instrument.model_validate(result)
+        return _INSTRUMENT_ADAPTER.validate_python(result)
 
     async def post_ledger(self, body: LedgerInput) -> Ledger:
         result = await self._fetch("/ledgers", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))

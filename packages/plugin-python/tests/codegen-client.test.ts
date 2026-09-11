@@ -306,7 +306,7 @@ describe('generatePythonClient', () => {
         // Sent raw, a list of Pydantic objects fails in httpx: "Object of type Item is not JSON
         // serializable". Built once at import, not per call.
         expect(output).toContain('from pydantic import TypeAdapter');
-        expect(output).toContain('_CREATE_ITEMS_BODY = TypeAdapter(list[ItemInput])');
+        expect(output).toContain('_CREATE_ITEMS_BODY: TypeAdapter[list[ItemInput]] = TypeAdapter(list[ItemInput])');
         expect(output).toContain('async def create_items(self, body: list[ItemInput]) -> None:');
         expect(output).toContain('body=_CREATE_ITEMS_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
     });
@@ -318,10 +318,10 @@ describe('generatePythonClient', () => {
             opRoute('/c', [opOperation('put', { sdk: 'putObject', request: opRequest(inlineObjectType([])), responses: [opResponse(204)] })]),
         ]);
         const output = generatePythonClient(root);
-        expect(output).toContain('_PUT_RECORD_BODY = TypeAdapter(dict[str, Item])');
-        expect(output).toContain('_PUT_UNION_BODY = TypeAdapter(Card | Bank)');
+        expect(output).toContain('_PUT_RECORD_BODY: TypeAdapter[dict[str, Item]] = TypeAdapter(dict[str, Item])');
+        expect(output).toContain('_PUT_UNION_BODY: TypeAdapter[Card | Bank] = TypeAdapter(Card | Bank)');
         // An inline object is `dict[str, Any]`, whose values may be dates or Decimals.
-        expect(output).toContain('_PUT_OBJECT_BODY = TypeAdapter(dict[str, Any])');
+        expect(output).toContain('_PUT_OBJECT_BODY: TypeAdapter[dict[str, Any]] = TypeAdapter(dict[str, Any])');
         expect(output).toContain('body=_PUT_UNION_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
     });
 
@@ -336,7 +336,7 @@ describe('generatePythonClient', () => {
             ]),
         ]);
         const output = generatePythonClient(root);
-        expect(output).toContain('_POST_FORM_BODY = TypeAdapter(dict[str, date])');
+        expect(output).toContain('_POST_FORM_BODY: TypeAdapter[dict[str, date]] = TypeAdapter(dict[str, date])');
         expect(output).toContain('body_kind="form"');
     });
 
@@ -350,6 +350,44 @@ describe('generatePythonClient', () => {
         const output = generatePythonClient(root);
         expect(output).not.toContain('TypeAdapter');
         expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
+    });
+
+    it('validates a response typed as a type alias through a TypeAdapter', () => {
+        const typeAliases = new Set(['Instrument']);
+        const root = opRoot([
+            opRoute('/instruments', [
+                opOperation('get', { sdk: 'getInstrument', responses: [opResponse(200, 'Instrument')] }),
+                opOperation('post', { sdk: 'listInstruments', responses: [opResponse(200, 'array(Instrument)')] }),
+            ]),
+        ]);
+        const output = generatePythonClient(root, { typeAliases });
+        // An alias such as `Annotated[Card | Bank, Field(discriminator="kind")]` has no
+        // model_validate; calling it raised AttributeError on every response.
+        expect(output).not.toContain('Instrument.model_validate');
+        expect(output).toContain('_INSTRUMENT_ADAPTER: TypeAdapter[Instrument] = TypeAdapter(Instrument)');
+        expect(output).toContain('_LIST_INSTRUMENT_ADAPTER: TypeAdapter[list[Instrument]] = TypeAdapter(list[Instrument])');
+        expect(output).toContain('return _INSTRUMENT_ADAPTER.validate_python(result)');
+        expect(output).toContain('return _LIST_INSTRUMENT_ADAPTER.validate_python(result)');
+    });
+
+    it('serializes a type-alias request body through its TypeAdapter, not model_dump', () => {
+        const typeAliases = new Set(['Amount', 'Instrument']);
+        const root = opRoot([
+            opRoute('/amounts', [opOperation('post', { sdk: 'postAmount', request: opRequest('Amount'), responses: [opResponse(204)] })]),
+            opRoute('/instruments', [opOperation('post', { sdk: 'postInstrument', request: opRequest('Instrument'), responses: [opResponse(204)] })]),
+        ]);
+        const output = generatePythonClient(root, { typeAliases });
+        // `contract Amount: decimal` is `Amount = Decimal`, which has no model_dump either.
+        expect(output).toContain('_POST_AMOUNT_BODY: TypeAdapter[Amount] = TypeAdapter(Amount)');
+        expect(output).toContain('body=_POST_INSTRUMENT_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
+        expect(output).not.toContain('body.model_dump');
+    });
+
+    it('still validates a class model with model_validate', () => {
+        const root = opRoot([opRoute('/cards', [opOperation('get', { sdk: 'getCard', responses: [opResponse(200, 'Card')] })])]);
+        const output = generatePythonClient(root, { typeAliases: new Set(['Instrument']) });
+        expect(output).toContain('return Card.model_validate(result)');
+        expect(output).not.toContain('TypeAdapter');
     });
 
     it('sends a urlencoded body as form data, not JSON', () => {

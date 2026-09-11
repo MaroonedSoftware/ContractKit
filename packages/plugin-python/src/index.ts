@@ -109,6 +109,8 @@ async function runPythonCodegen(
     // Stable, sorted view of modelsWithInput for fingerprint slicing — only the
     // intersection with each unit's referenced names ends up in its fingerprint.
     const modelsWithInputArray = [...modelsWithInput].sort();
+    /** Contracts that render as a Python type alias rather than a class; see ClientCodegenOptions. */
+    const typeAliases: ReadonlySet<string> = new Set([...modelMap.values()].filter(m => m.type).map(m => m.name));
 
     const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(manifestPath) : emptyIncrementalManifest(PYTHON_CODEGEN_VERSION);
     const units: IncrementalUnit[] = [];
@@ -185,6 +187,8 @@ async function runPythonCodegen(
             root,
             referencedModulePaths,
             modelsWithInput: relevantInputModels,
+            // Whether a referenced name is an alias decides between model_validate and a TypeAdapter.
+            typeAliases: [...referencedModels].filter(name => typeAliases.has(name)).sort(),
             includeInternal: config.includeInternal ?? false,
         });
 
@@ -198,6 +202,7 @@ async function runPythonCodegen(
                         modelModulePaths,
                         currentModule: `.${moduleName}`,
                         modelsWithInput,
+                        typeAliases,
                         includeInternal: config.includeInternal,
                     }),
                 },
