@@ -25,6 +25,14 @@ const __dt = (v: unknown, path: string): DateTime => {
     if (!d.isValid) throw new TypeError(`ContractKit: '${v}' at '${path}' is not a valid ISO 8601 datetime.`);
     return d;
 };
+const __dtf = (v: unknown, path: string, fmt: string): DateTime => {
+    if (typeof v !== 'string') {
+        throw new TypeError(`ContractKit: expected a string at '${path}' in format ${fmt}, received ${typeof v}.`);
+    }
+    const d = DateTime.fromFormat(v, fmt);
+    if (!d.isValid) throw new TypeError(`ContractKit: '${v}' at '${path}' does not match format ${fmt}.`);
+    return d;
+};
 const __dur = (v: unknown, path: string): Duration => {
     if (typeof v !== 'string') {
         throw new TypeError(`ContractKit: expected an ISO 8601 duration string at '${path}', received ${typeof v}.`);
@@ -33,6 +41,9 @@ const __dur = (v: unknown, path: string): Duration => {
     if (!d.isValid) throw new TypeError(`ContractKit: '${v}' at '${path}' is not a valid ISO 8601 duration.`);
     return d;
 };
+/** A luxon DateTime in `fmt`, as the server's `DateTime.fromFormat` reads it. Anything else is returned as it is. */
+const __wireDt = (v: unknown, fmt: string): unknown =>
+    (v as { isLuxonDateTime?: unknown } | null | undefined)?.isLuxonDateTime === true ? (v as { toFormat(fmt: string): string }).toFormat(fmt) : v;
 /** A decimal.js value in normal notation, which its `toString()` is not at every magnitude. Anything else is returned as it is. */
 const __wireDec = (v: unknown): unknown =>
     (v as { toStringTag?: unknown } | null | undefined)?.toStringTag === '[object Decimal]' ? (v as { toFixed(): string }).toFixed() : v;
@@ -164,6 +175,56 @@ export const TenantHeaders = z.strictObject({
     xCorrelationId: z.string().optional(),
 });
 export type TenantHeaders = z.infer<typeof TenantHeaders>;
+
+/**
+ * Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
+ * its own, so the router applies the block's object mode to the object inside it.
+ * generated from [SnakeFilter](../../contracts/billing.ck#L229)
+*/
+export const SnakeFilter = z.strictObject({
+    from_date: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })).nullish(),
+}).transform(data => ({
+    ...(data.from_date != null ? { fromDate: data.from_date } : {}),
+}));
+export type SnakeFilter = z.output<typeof SnakeFilter>;
+
+/** {@link SnakeFilter} as a request sends it, keyed the way the server's schema parses it. */
+export interface SnakeFilterWireInput {
+    from_date?: DateTime;
+}
+
+/** Rehydrates every wire-encoded scalar in a SnakeFilter into its runtime type. Mutates and returns `raw`. */
+export function reviveSnakeFilter(raw: SnakeFilter): SnakeFilter {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    if (__o0["fromDate"] != null) {
+        __o0["fromDate"] = __dtf(__o0["fromDate"], 'SnakeFilter.fromDate', 'yyyy-MM-dd');
+    }
+    return raw;
+}
+
+/** SnakeFilter as a request body sends it, with every `date`, `time` and `decimal` in the text the server parses. Returns a copy; `value` is not modified. */
+export function serializeSnakeFilter(value: SnakeFilterWireInput): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    if (__o0["from_date"] != null) {
+        __o0["from_date"] = __wireDt(__o0["from_date"], 'yyyy-MM-dd');
+    }
+    return __o0;
+}
+
+/**
+ * generated from [SnakeHeaders](../../contracts/billing.ck#L233)
+*/
+export const SnakeHeaders = z.strictObject({
+    tenant_id: z.string().nullish(),
+}).transform(data => ({
+    ...(data.tenant_id != null ? { tenantId: data.tenant_id } : {}),
+}));
+export type SnakeHeaders = z.output<typeof SnakeHeaders>;
+
+/** {@link SnakeHeaders} as a request sends it, keyed the way the server's schema parses it. */
+export interface SnakeHeadersWireInput {
+    tenant_id?: string;
+}
 
 /**
  * Extends a writeonly base and is itself writeonly

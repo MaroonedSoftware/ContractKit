@@ -6,6 +6,7 @@ docs/api-reference/billing/delete-payment.mdx
 docs/api-reference/billing/get-payment.mdx
 docs/api-reference/billing/get-refund.mdx
 docs/api-reference/billing/list-payments.mdx
+docs/api-reference/billing/search-payments-by-date.mdx
 docs/api-reference/billing/search-payments.mdx
 docs/api-reference/billing/update-payment-with-form.mdx
 docs/api-reference/billing/upload-receipt.mdx
@@ -27,6 +28,8 @@ docs/api-reference/models/billing/payment-filter.mdx
 docs/api-reference/models/billing/payment-ref.mdx
 docs/api-reference/models/billing/payment.mdx
 docs/api-reference/models/billing/session.mdx
+docs/api-reference/models/billing/snake-filter.mdx
+docs/api-reference/models/billing/snake-headers.mdx
 docs/api-reference/models/billing/tenant-headers.mdx
 docs/api-reference/models/billing/update-payment-form.mdx
 docs/api-reference/models/billing/upload-receipt-form.mdx

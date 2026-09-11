@@ -332,6 +332,60 @@ public struct TenantHeaders: Codable, Equatable, Sendable {
     }
 }
 
+/// Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
+/// its own, so the router applies the block's object mode to the object inside it.
+public struct SnakeFilter: Codable, Equatable, Sendable {
+    public var fromDate: LocalDate?
+
+    public init(fromDate: LocalDate? = nil) {
+        self.fromDate = fromDate
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case fromDate = "fromDate"
+    }
+
+    private enum EncodingKeys: String, CodingKey {
+        case fromDate = "from_date"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.fromDate = try container.decodeIfPresent(LocalDate.self, forKey: .fromDate)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: EncodingKeys.self)
+        try container.encodeIfPresent(self.fromDate, forKey: .fromDate)
+    }
+}
+
+public struct SnakeHeaders: Codable, Equatable, Sendable {
+    public var tenantId: String?
+
+    public init(tenantId: String? = nil) {
+        self.tenantId = tenantId
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case tenantId = "tenantId"
+    }
+
+    private enum EncodingKeys: String, CodingKey {
+        case tenantId = "tenant_id"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.tenantId = try container.decodeIfPresent(String.self, forKey: .tenantId)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: EncodingKeys.self)
+        try container.encodeIfPresent(self.tenantId, forKey: .tenantId)
+    }
+}
+
 /// Extends a writeonly base and is itself writeonly
 public struct AdminCredential: Codable, Equatable, Sendable {
     public var id: UUID

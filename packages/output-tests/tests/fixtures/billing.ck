@@ -221,3 +221,27 @@ operation /sessions: {
         }
     }
 }
+
+# ─── format() query and header models ─────────────────────────────────────────
+
+# Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
+# its own, so the router applies the block's object mode to the object inside it.
+contract format(input=snake) SnakeFilter: {
+    fromDate?: date
+}
+
+contract format(input=snake) SnakeHeaders: {
+    tenantId?: string
+}
+
+operation /payments/by-date: {
+    get: { # search payments with snake_case filter and header models
+        sdk: searchPaymentsByDate
+        service: PaymentService.searchByDate
+        query: SnakeFilter
+        mode(loose) headers: SnakeHeaders
+        response: {
+            204:
+        }
+    }
+}
