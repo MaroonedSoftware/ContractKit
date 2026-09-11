@@ -150,11 +150,57 @@ describe('generatePythonClient', () => {
         const output = generatePythonClient(root);
         // A bare `dict` told a type checker nothing about what the request accepts, while the
         // router has always validated these fields.
-        expect(output).toContain('class GetPaymentsQuery(TypedDict):');
-        expect(output).toContain('    page: int  # page');
-        expect(output).toContain('    limit: int  # limit');
+        expect(output).toContain('GetPaymentsQuery = TypedDict("GetPaymentsQuery", {');
+        expect(output).toContain('    "page": int,');
+        expect(output).toContain('    "limit": int,');
         expect(output).toContain('query: GetPaymentsQuery');
         expect(output).toContain('params=query');
+    });
+
+    it('imports every type a request TypedDict evaluates when the module loads', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', {
+                    query: [
+                        opParam('status', enumType('open', 'closed'), { optional: true }),
+                        opParam('wait', scalarType('duration'), { optional: true }),
+                        opParam('kind', {
+                            kind: 'discriminatedUnion',
+                            discriminator: 'type',
+                            members: [refType('Card'), refType('Bank')],
+                        } as never, { optional: true }),
+                    ],
+                    responses: [opResponse(200, 'array(Payment)')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // Class-syntax annotations were lazy, so these were never needed; the functional form
+        // evaluates its values at import, and a missing one is a NameError.
+        expect(output).toContain('from typing import Annotated, Literal, NotRequired, TypedDict');
+        expect(output).toContain('from datetime import timedelta');
+        expect(output).toContain('from pydantic import Field');
+        expect(output).toContain('    "kind": NotRequired[Annotated[Card | Bank, Field(discriminator="type")]],');
+    });
+
+    it('keys query and header TypedDicts by the names that go on the wire', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', {
+                    query: [opParam('pageSize', scalarType('int'), { optional: true }), opParam('from', scalarType('string'), { optional: true })],
+                    headers: [opParam('x-tenant', scalarType('string'))],
+                    responses: [opResponse(200, 'array(Payment)')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // The dict is sent as-is, so a snake_cased `x_tenant` key is a different header to the
+        // server and `page_size` an unknown query key. `from` and `x-tenant` cannot be keys in
+        // the class syntax at all.
+        expect(output).toContain('    "pageSize": NotRequired[int],');
+        expect(output).toContain('    "from": NotRequired[str],');
+        expect(output).toContain('GetPaymentsHeaders = TypedDict("GetPaymentsHeaders", {\n    "x-tenant": str,\n})');
+        expect(output).toContain('params=query, extra_headers=custom_headers');
     });
 
     it('marks omittable fields NotRequired and makes the argument optional', () => {
@@ -168,8 +214,8 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root);
         // `NotRequired` rather than `total=False`, so a required field in a mixed block stays so.
-        expect(output).toContain('    page: NotRequired[int]  # page');
-        expect(output).toContain('    limit: NotRequired[int]  # limit');
+        expect(output).toContain('    "page": NotRequired[int],');
+        expect(output).toContain('    "limit": NotRequired[int],');
         expect(output).toContain('from typing import NotRequired, TypedDict');
         expect(output).toContain('query: GetPaymentsQuery | None = None');
     });

@@ -141,6 +141,10 @@ public sealed record ListPaymentsQuery
 
     [JsonPropertyName("cursor")]
     public required string Cursor { get; init; }
+
+    [JsonPropertyName("status")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonElement? Status { get; init; }
 }
 
 /// <summary>The request headers declared on GET /payments.</summary>

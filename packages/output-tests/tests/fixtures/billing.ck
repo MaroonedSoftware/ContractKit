@@ -79,6 +79,7 @@ operation /payments: {
         query: {
             limit?: int = 20
             cursor: string
+            status?: enum(pending, completed, failed)
         }
         headers: {
             api-key?: string

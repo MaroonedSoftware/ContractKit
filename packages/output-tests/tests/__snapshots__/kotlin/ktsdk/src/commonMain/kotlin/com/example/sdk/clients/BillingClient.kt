@@ -19,6 +19,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /** Operations declared in `billing.ck`. */
 class BillingClient(private val http: SdkHttp) {
@@ -137,6 +138,7 @@ data class CreatePaymentResult(
 data class ListPaymentsQuery(
     val limit: Long? = null,
     val cursor: String,
+    val status: JsonElement? = null,
 )
 
 @Serializable

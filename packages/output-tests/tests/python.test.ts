@@ -24,6 +24,7 @@ interface Report {
     unbound: { file: string; function: string; name: string }[];
     literal: { file: string; function: string; url: string }[];
     shadowed: { file: string; class: string; field: string; name: string }[];
+    importTime: { file: string; line: number; name: string }[];
 }
 
 function runChecker(): Report {
@@ -37,14 +38,15 @@ function runChecker(): Report {
 }
 
 describe.skipIf(!hasPython3)('generated Python', () => {
-    it('parses, binds every interpolated name, and shadows no annotated type', () => {
-        const { syntax, unbound, literal, shadowed } = runChecker();
+    it('parses, binds every name it reads, and shadows no annotated type', () => {
+        const { syntax, unbound, literal, shadowed, importTime } = runChecker();
 
         const lines = [
             ...syntax.map(s => `syntax ${s.file}: ${s.message}`),
             ...unbound.map(u => `unbound ${u.file}: ${u.function}() interpolates '${u.name}', which nothing binds`),
             ...literal.map(l => `literal ${l.file}: ${l.function}() requests '${l.url}' with the placeholder unsubstituted`),
             ...shadowed.map(s => `shadowed ${s.file}: ${s.class}.${s.field} annotates with '${s.name}', which the class body assigns`),
+            ...importTime.map(i => `import-time ${i.file}:${i.line} reads '${i.name}', which the module never binds`),
         ].sort();
 
         expect(lines).toEqual([]);

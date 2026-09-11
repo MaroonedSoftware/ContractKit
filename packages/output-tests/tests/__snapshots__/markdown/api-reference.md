@@ -186,7 +186,7 @@ Response headers:
 ##### Attributes
 
 <details>
-<summary>Attributes (4)</summary>
+<summary>Attributes (5)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -194,6 +194,7 @@ Response headers:
 | `x-tenant` | `string` | Yes |  |
 | `api-key` | `string` | No |  |
 | `limit` | `number` | No |  |
+| `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
 
 </details>
 
