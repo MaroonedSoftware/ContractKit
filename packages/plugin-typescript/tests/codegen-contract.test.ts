@@ -1,4 +1,4 @@
-import { generateContract, renderType, applyFieldModifiers } from '../src/codegen-contract.js';
+import { generateContract, renderType, renderInputType, renderQueryType, applyFieldModifiers } from '../src/codegen-contract.js';
 import type { ContractCodegenContext } from '../src/codegen-contract.js';
 import {
     scalarType,
@@ -22,6 +22,8 @@ import type { ScalarTypeNode } from '@contractkit/core';
 /** The narrowed numeric coercion `renderScalar` emits — see NUMERIC_PREPROCESS in codegen-contract. */
 const NUM = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number())`;
 const NUM_INT = `z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int())`;
+/** The wire-form-only bigint coercion `renderScalar` emits — see BIGINT_PREPROCESS in codegen-contract. */
+const BIGINT_PREPROCESS = `(val) => typeof val === 'string' && /^-?\\d+n?$/.test(val) ? BigInt(val.replace(/n$/, '')) : val`;
 
 describe('renderType', () => {
     // ─── Scalar types ───────────────────────────────────────────────
@@ -101,15 +103,84 @@ describe('renderType', () => {
             );
         });
 
-        it('renders z.bigint() with preprocess coercion from string or bigint', () => {
-            expect(renderType(scalarType('bigint'))).toBe(
-                `z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint())`,
-            );
+        it('renders z.bigint() with preprocess coercion from a wire-form string', () => {
+            expect(renderType(scalarType('bigint'))).toBe(`z.preprocess(${BIGINT_PREPROCESS}, z.bigint())`);
         });
 
         it('renders z.bigint() with constraints using n suffix', () => {
             const result = renderType(scalarType('bigint', { min: 0n, max: 100n }));
-            expect(result).toBe(`z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint().min(0n).max(100n))`);
+            expect(result).toBe(`z.preprocess(${BIGINT_PREPROCESS}, z.bigint().min(0n).max(100n))`);
+        });
+
+        describe('bigint coercion, evaluated with real Zod', () => {
+            async function evaluate(expr: string) {
+                const { z } = await import('zod');
+                return new Function('z', `return ${expr}`)(z) as {
+                    safeParse: (v: unknown) => { success: boolean; data?: unknown; error?: { issues: unknown[] } };
+                };
+            }
+            const bigintSchema = (scalar: ScalarTypeNode) => evaluate(renderType(scalar));
+
+            it.each([
+                ['123', 123n],
+                ['123n', 123n],
+                ['-42', -42n],
+                ['-42n', -42n],
+                ['0', 0n],
+                ['98765432109876543210', 98765432109876543210n],
+            ])('converts the wire form %j', async (input, expected) => {
+                const result = (await bigintSchema(scalarType('bigint'))).safeParse(input);
+                expect(result).toMatchObject({ success: true, data: expected });
+            });
+
+            it('passes a bigint through unchanged', async () => {
+                expect((await bigintSchema(scalarType('bigint'))).safeParse(7n)).toMatchObject({ success: true, data: 7n });
+            });
+
+            it.each(['abc', '12abc', '1.5', '1e3', 'n', '-', '--1', '1nn'])(
+                'rejects %j with a validation issue instead of throwing from BigInt()',
+                async input => {
+                    const schema = await bigintSchema(scalarType('bigint'));
+                    // A SyntaxError out of the preprocess would escape safeParse; a 400 needs an issue.
+                    const result = schema.safeParse(input);
+                    expect(result.success).toBe(false);
+                    expect(result.error?.issues.length).toBeGreaterThan(0);
+                },
+            );
+
+            it.each(['0x10', '0b11', '0o7', '', ' 7', '7 ', '+7'])('rejects %j, which BigInt() alone would accept', async input => {
+                expect((await bigintSchema(scalarType('bigint'))).safeParse(input).success).toBe(false);
+            });
+
+            it('rejects a JSON number, which cannot carry a bigint exactly', async () => {
+                expect((await bigintSchema(scalarType('bigint'))).safeParse(123).success).toBe(false);
+            });
+
+            it('applies min/max to the converted value', async () => {
+                const schema = await bigintSchema(scalarType('bigint', { min: 5n, max: 10n }));
+                expect(schema.safeParse('5n')).toMatchObject({ success: true, data: 5n });
+                expect(schema.safeParse('10')).toMatchObject({ success: true, data: 10n });
+                expect(schema.safeParse('4').success).toBe(false);
+                expect(schema.safeParse('11n').success).toBe(false);
+            });
+
+            it('still accepts "123" as a query or header param, which arrive as text', async () => {
+                // Query params go through renderQueryType, headers through renderInputType; both end
+                // in the same scalar rendering, so the router sees the same coercion as a body field.
+                const query = await evaluate(renderQueryType(scalarType('bigint')));
+                expect(query.safeParse('123')).toMatchObject({ success: true, data: 123n });
+                expect(query.safeParse('abc').success).toBe(false);
+
+                const header = await evaluate(renderInputType(scalarType('bigint'), new Set()));
+                expect(header.safeParse('123')).toMatchObject({ success: true, data: 123n });
+                expect(header.safeParse('0x10').success).toBe(false);
+            });
+
+            it('converts each item of a comma-split bigint[] query param', async () => {
+                const query = await evaluate(renderQueryType(arrayType(scalarType('bigint'))));
+                expect(query.safeParse('1,2n,-3')).toMatchObject({ success: true, data: [1n, 2n, -3n] });
+                expect(query.safeParse('1,abc').success).toBe(false);
+            });
         });
 
         it('renders bare _ZodDecimal for an unconstrained decimal', () => {

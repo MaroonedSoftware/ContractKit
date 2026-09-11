@@ -42,7 +42,7 @@ export const Payment = z.strictObject({
     id: z.uuid(),
     amount: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0)),
     unitPrice: _ZodDecimal.refine((v) => v.decimalPlaces() <= 2, { message: 'Must be at most 2 decimal places' }),
-    quantity: z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint()),
+    quantity: z.preprocess((val) => typeof val === 'string' && /^-?\d+n?$/.test(val) ? BigInt(val.replace(/n$/, '')) : val, z.bigint()),
     createdAt: _ZodDatetime,
     processingTime: z.preprocess((val) => typeof val === 'string' ? Duration.fromISO(val) : val, z.custom<Duration>((val) => val instanceof Duration && val.isValid, { message: 'Must be an ISO 8601 duration' })).optional(),
     status: z.enum(["pending", "completed", "failed"]).default("pending"),
@@ -52,7 +52,7 @@ export type Payment = z.infer<typeof Payment>;
 export const PaymentInput = z.strictObject({
     amount: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().min(0)),
     unitPrice: _ZodDecimal.refine((v) => v.decimalPlaces() <= 2, { message: 'Must be at most 2 decimal places' }),
-    quantity: z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, z.bigint()),
+    quantity: z.preprocess((val) => typeof val === 'string' && /^-?\d+n?$/.test(val) ? BigInt(val.replace(/n$/, '')) : val, z.bigint()),
     createdAt: _ZodDatetime,
     processingTime: z.preprocess((val) => typeof val === 'string' ? Duration.fromISO(val) : val, z.custom<Duration>((val) => val instanceof Duration && val.isValid, { message: 'Must be an ISO 8601 duration' })).optional(),
     status: z.enum(["pending", "completed", "failed"]).default("pending"),
