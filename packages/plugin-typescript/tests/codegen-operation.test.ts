@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { generateOp } from '../src/codegen-operation.js';
+import { FASTIFY_SERVER_FRAMEWORK } from '../src/server-framework-fastify.js';
 import { SECURITY_NONE } from '@contractkit/core';
-import type { ContractTypeNode } from '@contractkit/core';
+import type { ContractTypeNode, ModelNode } from '@contractkit/core';
 import {
     scalarType,
     arrayType,
@@ -9,6 +10,7 @@ import {
     inlineObjectType,
     intersectionType,
     field,
+    model,
     opParam,
     opRequest,
     opMultiRequest,
@@ -611,6 +613,97 @@ describe('generateOperation', () => {
             // Int should still use z.coerce
             expect(output).toContain(`page: ${NUM_INT}`);
         });
+
+        describe('a query declared as a model', () => {
+            const SPLIT = `(v) => typeof v === 'string' ? v.split(',') : v`;
+            const models = (...ms: ModelNode[]) => new Map(ms.map(m => [m.name, m]));
+
+            it("re-wraps the model's array fields with the split an inline query array gets", () => {
+                // The model's schema is shared with request bodies, so its arrays have no split. A query
+                // string sends a one-element list as `tags=only`, which arrives as the string "only".
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Filter' })])]);
+                const output = generateOp(root, {
+                    models: models(model('Filter', [field('tags', arrayType(scalarType('string'))), field('limit', scalarType('int'))])),
+                });
+                expect(output).toContain(
+                    [
+                        '    const query = await parseAndValidate(',
+                        '        ctx.query,',
+                        '        Filter.extend({',
+                        `            tags: z.preprocess(${SPLIT}, Filter.shape.tags),`,
+                        '        }).strict(),',
+                        '    );',
+                    ].join('\n'),
+                );
+                expect(output).not.toContain('Filter.shape.limit');
+            });
+
+            it('keeps the bare schema when the model has no array field', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Pagination' })])]);
+                const output = generateOp(root, { models: models(model('Pagination', [field('page', scalarType('int'))])) });
+                expect(output).toContain('parseAndValidate(ctx.query, Pagination.strict())');
+            });
+
+            it('re-wraps an array field the model inherits from a base', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'ChildFilter' })])]);
+                const output = generateOp(root, {
+                    models: models(
+                        model('BaseFilter', [field('tags', arrayType(scalarType('string')))]),
+                        model('ChildFilter', [field('q', scalarType('string'), { optional: true })], { bases: ['BaseFilter'] }),
+                    ),
+                });
+                expect(output).toContain(`tags: z.preprocess(${SPLIT}, ChildFilter.shape.tags),`);
+            });
+
+            it('quotes a field name that is not an identifier', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Filter' })])]);
+                const output = generateOp(root, { models: models(model('Filter', [field('tag-ids', arrayType(scalarType('string')))])) });
+                expect(output).toContain(`'tag-ids': z.preprocess(${SPLIT}, Filter.shape['tag-ids']),`);
+            });
+
+            it('reads fields off the Input variant, skipping a readonly field it does not carry', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Filter' })])]);
+                const output = generateOp(root, {
+                    modelsWithInput: new Set(['Filter']),
+                    models: models(
+                        model('Filter', [
+                            field('tags', arrayType(scalarType('string'))),
+                            field('seen', arrayType(scalarType('string')), { visibility: 'readonly' }),
+                        ]),
+                    ),
+                });
+                expect(output).toContain(`tags: z.preprocess(${SPLIT}, FilterInput.shape.tags),`);
+                expect(output).not.toContain('.shape.seen');
+            });
+
+            it('re-wraps the array fields of a model in an intersection, but not one an inline member redeclares', () => {
+                const root = opRoot([
+                    opRoute('/items', [
+                        opOperation('get', {
+                            query: intersectionType(refType('Filter'), inlineObjectType([field('ids', scalarType('string'))])),
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root, {
+                    models: models(model('Filter', [field('tags', arrayType(scalarType('string'))), field('ids', arrayType(scalarType('string')))])),
+                });
+                expect(output).toContain(`tags: z.preprocess(${SPLIT}, Filter.shape.tags),`);
+                expect(output).not.toContain('Filter.shape.ids');
+            });
+
+            it('leaves a format() model alone, whose schema is a pipe with no .shape to read', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Snake' })])]);
+                const output = generateOp(root, {
+                    models: models(model('Snake', [field('tagIds', arrayType(scalarType('string')))], { inputCase: 'snake' })),
+                });
+                expect(output).toContain('parseAndValidate(ctx.query, Snake.strict())');
+            });
+
+            it('leaves the model schema as-is when no models are supplied', () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Filter' })])]);
+                expect(generateOp(root)).toContain('parseAndValidate(ctx.query, Filter.strict())');
+            });
+        });
     });
 
     // ─── Headers validation ─────────────────────────────────────
@@ -688,6 +781,75 @@ describe('generateOperation', () => {
             ]);
             const output = generateOp(root);
             expect(output).toContain('z.strictObject({');
+        });
+
+        describe('a declared name that is not lowercase', () => {
+            // Node lowercases every incoming header name, so `ctx.headers` holds `xtenant`, never `xTenant`.
+            const models = (...ms: ModelNode[]) => new Map(ms.map(m => [m.name, m]));
+
+            it('is read from its lowercase key in an inline block', () => {
+                const root = opRoot([
+                    opRoute('/users', [
+                        opOperation('get', { headers: [opParam('xTenant', scalarType('string')), opParam('x-request-id', scalarType('string'))] }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain(
+                    [
+                        '    const headers = await parseAndValidate(',
+                        "        { ...ctx.headers, xTenant: ctx.headers['xtenant'] },",
+                        '        z.object({',
+                        '            xTenant: z.string(),',
+                    ].join('\n'),
+                );
+            });
+
+            it('is read from its lowercase key in a model, its bases included', () => {
+                const root = opRoot([opRoute('/users', [opOperation('get', { headers: 'Tenant' })])]);
+                const output = generateOp(root, {
+                    models: models(
+                        model('BaseHeaders', [field('Authorization', scalarType('string'), { optional: true })]),
+                        model('Tenant', [field('xTenant', scalarType('string')), field('x-request-id', scalarType('string'))], {
+                            bases: ['BaseHeaders'],
+                        }),
+                    ),
+                });
+                expect(output).toContain(
+                    [
+                        '    const headers = await parseAndValidate(',
+                        "        { ...ctx.headers, Authorization: ctx.headers['authorization'], xTenant: ctx.headers['xtenant'] },",
+                        '        Tenant.strip(),',
+                        '    );',
+                    ].join('\n'),
+                );
+            });
+
+            it('is read from its lowercase key in a model inside an intersection', () => {
+                const root = opRoot([
+                    opRoute('/users', [
+                        opOperation('get', {
+                            headers: intersectionType(
+                                refType('Tenant'),
+                                inlineObjectType([field('xTrace', scalarType('string'), { optional: true })]),
+                            ),
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root, { models: models(model('Tenant', [field('xTenant', scalarType('string'))])) });
+                expect(output).toContain("{ ...ctx.headers, xTenant: ctx.headers['xtenant'], xTrace: ctx.headers['xtrace'] },");
+            });
+
+            it('goes through the adapter, reading request.headers on Fastify', () => {
+                const root = opRoot([opRoute('/users', [opOperation('get', { headers: [opParam('xTenant', scalarType('string'))] })])]);
+                const output = generateOp(root, { framework: FASTIFY_SERVER_FRAMEWORK });
+                expect(output).toContain("{ ...request.headers, xTenant: request.headers['xtenant'] },");
+            });
+
+            it('leaves a block whose names are all lowercase reading the headers object directly', () => {
+                const root = opRoot([opRoute('/users', [opOperation('get', { headers: 'TenantHeaders' })])]);
+                const output = generateOp(root, { models: models(model('TenantHeaders', [field('x-tenant', scalarType('string'))])) });
+                expect(output).toContain('const headers = await parseAndValidate(ctx.headers, TenantHeaders.strip());');
+            });
         });
 
         it('uses strip mode for headers when specified', () => {

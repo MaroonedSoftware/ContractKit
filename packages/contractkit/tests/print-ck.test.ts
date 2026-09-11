@@ -376,6 +376,26 @@ describe('printCk — query and headers optional, nullable, default', () => {
         expect(printCk(ast)).toContain('            limit: int = 20');
     });
 
+    it('emits a bigint default as its bare digits', () => {
+        const ast = makeRoot([
+            makeRoute('/items', [
+                makeOp('get', {
+                    query: [
+                        {
+                            name: 'after',
+                            optional: false,
+                            nullable: false,
+                            type: { kind: 'scalar', name: 'bigint' },
+                            default: 9007199254740993n,
+                            loc,
+                        },
+                    ],
+                }),
+            ]),
+        ]);
+        expect(printCk(ast)).toContain('            after: bigint = 9007199254740993');
+    });
+
     it('emits = value for boolean defaults', () => {
         const ast = makeRoot([
             makeRoute('/items', [

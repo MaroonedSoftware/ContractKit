@@ -1212,6 +1212,15 @@ describe('generateContract', () => {
             expect(output).toContain('export type User = z.output<typeof User>');
         });
 
+        it('writes a bigint default as a bigint literal under a key casing too', () => {
+            const root = contractRoot([
+                model('Counter', [field('startAt', scalarType('bigint'), { default: 9007199254740993n })], { inputCase: 'snake' }),
+            ]);
+            const output = generateContract(root);
+            expect(output).toContain('.default(9007199254740993n)');
+            expect(output).not.toContain('.default(9007199254740993)');
+        });
+
         it('input=camel: no transform (camel is identity)', () => {
             const root = contractRoot([
                 model('User', [field('firstName', scalarType('string')), field('lastName', scalarType('string'))], { inputCase: 'camel' }),
@@ -1577,6 +1586,12 @@ describe('applyFieldModifiers', () => {
 
     it('quotes and escapes a string default', () => {
         expect(applyFieldModifiers('z.string()', { default: 'a "quoted" value' })).toBe('z.string().default("a \\"quoted\\" value")');
+    });
+
+    it('writes a bigint default as a bigint literal', () => {
+        // Zod hands a default back without parsing it, so it must already be the pipe's output type:
+        // `.default(5)` on a bigint schema does not typecheck, and would give the handler a number.
+        expect(applyFieldModifiers('z.bigint()', { default: 9007199254740993n })).toBe('z.bigint().default(9007199254740993n)');
     });
 
     it('accepts an OpParamNode, which is a FieldNode without the visibility modifiers', () => {

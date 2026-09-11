@@ -116,6 +116,21 @@ describe('toYaml', () => {
         expect(toYaml('0.0.1')).toBe("'0.0.1'");
     });
 
+    it('quotes strings a YAML parser would read as a signed or dotted number', () => {
+        // A negative bigint bound written bare came back from the parser as a rounded float.
+        for (const s of ['-9007199254740993', '-0.10', '.5', '-.5', '.inf', '-.Inf', '.NaN']) {
+            const yaml = toYaml({ value: s });
+            expect(yaml).toBe(`value: '${s}'`);
+            expect(parseDocument(yaml).get('value')).toBe(s);
+        }
+    });
+
+    it('keeps strings that merely contain a dash or dot plain', () => {
+        expect(toYaml('-abc')).toBe('-abc');
+        expect(toYaml('.well-known')).toBe('.well-known');
+        expect(toYaml('.information')).toBe('.information');
+    });
+
     it('serializes flat objects', () => {
         const result = toYaml({ name: 'test', count: 5 });
         expect(result).toContain('name: test');
@@ -368,6 +383,19 @@ describe('generateOpenApi', () => {
                 components: { schemas: Record<string, { properties: Record<string, Record<string, unknown>> }> };
             };
             expect(doc.components.schemas.Order!.properties.quantity).toMatchObject({ type: 'string', format: 'bigint', default: '5' });
+        });
+
+        it('writes an exact bigint default as a string, negative ones quoted', () => {
+            const dto = contractRoot([
+                model('Order', [
+                    field('serial', scalarType('bigint'), { default: 9007199254740993n }),
+                    field('floor', scalarType('bigint'), { default: -9007199254740993n }),
+                ]),
+            ]);
+            const yaml = generateOpenApi({ contractRoots: [dto], opRoots: [], config: {} });
+            const doc = parseDocument(yaml);
+            expect(doc.getIn(['components', 'schemas', 'Order', 'properties', 'serial', 'default'])).toBe('9007199254740993');
+            expect(doc.getIn(['components', 'schemas', 'Order', 'properties', 'floor', 'default'])).toBe('-9007199254740993');
         });
 
         it('generates enum schema', () => {

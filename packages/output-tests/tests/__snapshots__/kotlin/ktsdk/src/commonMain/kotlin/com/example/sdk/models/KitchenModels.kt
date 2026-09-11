@@ -59,6 +59,7 @@ data class Bank(
 data class Token(
     @SerialName("access_token") val accessToken: String,
     @SerialName("expires_in") val expiresIn: Long? = 3600L,
+    @SerialName("refresh_after") val refreshAfter: BigInt? = BigInt("9007199254740993"),
 )
 
 @Serializable
@@ -143,6 +144,7 @@ data class Folder(
     val instrument: FolderInstrument? = null,
     val origin: FolderOrigin? = null,
     val size: BigInt,
+    val generation: BigInt? = BigInt("9007199254740993"),
     val price: Decimal,
     val day: LocalDate? = null,
     val at: LocalTime? = null,

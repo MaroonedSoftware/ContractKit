@@ -1,5 +1,23 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.38.7
+
+### Patch Changes
+
+- 72cc6ef: The `scaffold: true` SDK `package.json` now declares `luxon` and `decimal.js` when an operation needs them, not only when a model does.
+
+    The dependencies were derived from the contract models surfaced into the SDK, but a client file names `DateTime`, `Duration` or `Decimal` on its own for an inline path, query or header param, an inline request or response body, or a response header. A project whose only temporal or decimal type lived in one of those places got a `package.json` with no `luxon` or `decimal.js`, and the SDK failed to compile. The scaffold now also walks every operation a client is generated for (internal ones only with `includeInternal`). An `interval` op param still adds nothing, since a client types it as a plain string.
+
+    The scaffolded `package.json` is write-once, so an existing one is not rewritten. Add the missing dependency by hand, or delete the file and regenerate.
+
+- 1e9b6e2: The Zod schema for a `bigint` now converts only a string in the documented wire form, `^-?\d+n?$`, and rejects anything else with a validation issue.
+
+    The preprocess called `BigInt()` on every string. A value like `"abc"` made `BigInt` throw a `SyntaxError` inside the preprocess, which escaped Zod and `parseAndValidate`, so the request failed with a 500 instead of a 400. And `BigInt()` accepts more than the wire form: `"0x10"`, `""` and `" 7"` validated as `16n`, `0n` and `7n`, though the OpenAPI output documents a bigint as `type: string, pattern: '^-?\d+n?$'`. Each of these now fails validation with `Expected bigint`, the same as a JSON number already did.
+
+    The change applies everywhere the scalar is rendered: server schemas (Koa and Fastify), the SDK's Zod schemas, the standalone `zod:` output, and query and header params, which still accept `"123"` and `"123n"`. `min`/`max` bounds stay on the inner `z.bigint()`.
+
+    `TYPESCRIPT_CODEGEN_VERSION` is bumped to `4`, so an existing incremental cache regenerates every file instead of keeping the old schema.
+
 ## 0.38.6
 
 ### Patch Changes

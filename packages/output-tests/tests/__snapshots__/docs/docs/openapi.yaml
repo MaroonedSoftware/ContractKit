@@ -634,14 +634,21 @@ components:
         since:
           type: string
           format: date-time
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
       description: 'Query params declared as a model, referenced via `query: PaymentFilter`'
     TenantHeaders:
       type: object
       properties:
         x-tenant:
           type: string
+        xCorrelationId:
+          type: string
       required: [x-tenant]
-      description: 'Request headers declared as a model. Hyphenated, because a server sees header names lowercased.'
+      description: 'Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.'
     Invoice:
       type: object
       properties:
@@ -721,6 +728,13 @@ components:
           type: string
           format: bigint
           pattern: '^-?\d+n?$'
+        generation:
+          type: string
+          format: bigint
+          pattern: '^-?\d+n?$'
+          x-contractkit-min: '0'
+          x-contractkit-max: '9007199254740993'
+          default: '9007199254740993'
         price:
           type: string
           format: decimal
@@ -740,7 +754,7 @@ components:
           format: binary
         extra: {}
         raw: {}
-      required: [id, class, children, label, pinned, size, price]
+      required: [id, class, children, label, pinned, size, generation, price]
       description: "Self recursion through lazy(), mutual recursion through Doc, every container, both union\nforms, every scalar, and field names that are keywords in the target languages"
     Doc:
       type: object
@@ -786,6 +800,11 @@ components:
         expiresIn:
           type: integer
           default: 3600
+        refreshAfter:
+          type: string
+          format: bigint
+          pattern: '^-?\d+n?$'
+          default: '9007199254740993'
       required: [accessToken]
       description: 'Decodes snake_case keys and encodes PascalCase ones'
     Owned:

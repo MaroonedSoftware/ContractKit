@@ -171,6 +171,12 @@ describe('fields', () => {
         expect(out).toContain('val on: Boolean? = true,');
     });
 
+    it('renders a bigint default from its exact digits', () => {
+        // A bigint default past 2**53 is a JS bigint in the AST; a number would already be rounded.
+        const out = gen([model('M', [field('serial', scalarType('bigint'), { default: 9007199254740993n })])]);
+        expect(out).toContain('BigInt("9007199254740993")');
+    });
+
     it('renders a default against a NAMED enum contract as the member, not its wire spelling', () => {
         // `contract Rating: enum(...)` reaches the default renderer as a ref rather than as the
         // enum node, so this used to fall through to the string branch and emit

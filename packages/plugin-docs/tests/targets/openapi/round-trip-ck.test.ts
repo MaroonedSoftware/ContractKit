@@ -24,8 +24,8 @@ contract Pet: {
     code?: string(regex=/^[a-z]+$/)
     status: enum(available, "on hold")
     price: decimal(min=0.01, max=999999.99, scale=2)
-    serial: bigint(min=-9007199254740991, max=9007199254740991)
-    stock: bigint = 5
+    serial: bigint(min=-9007199254740993, max=9007199254740993)
+    stock: bigint = 9007199254740993
 }
 
 contract ApiError: {
@@ -118,16 +118,17 @@ describe('ck → openapi → ck', () => {
 
         // A bigint survives as a bigint, though it is documented as a digit string: bounds come
         // back exact from the extensions, its pattern is not reimported as a `regex=`, and its
-        // stringified default returns to the number the source wrote.
+        // stringified default returns to the exact bigint the source wrote.
         const beforePet = before.models.find(m => m.name === 'Pet')!;
         expect(pet.fields.find(f => f.name === 'serial')!.type).toEqual({
             kind: 'scalar',
             name: 'bigint',
-            min: -9007199254740991n,
-            max: 9007199254740991n,
+            min: -9007199254740993n,
+            max: 9007199254740993n,
         });
         expect(pet.fields.find(f => f.name === 'serial')!.type).toEqual(beforePet.fields.find(f => f.name === 'serial')!.type);
         expect(pet.fields.find(f => f.name === 'stock')!.type).toEqual({ kind: 'scalar', name: 'bigint' });
+        expect(pet.fields.find(f => f.name === 'stock')!.default).toBe(9007199254740993n);
         expect(pet.fields.find(f => f.name === 'stock')!.default).toBe(beforePet.fields.find(f => f.name === 'stock')!.default);
     });
 

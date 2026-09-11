@@ -8,6 +8,7 @@ import type {
     ContractRootNode,
     ModelNode,
     FieldNode,
+    FieldDefault,
     IncrementalManifest,
     IncrementalUnit,
     IncrementalResult as IncrementalResultBase,
@@ -676,7 +677,7 @@ function resolveModelFields(model: ModelNode, modelMap: Map<string, ModelNode>):
 interface ParamEntry {
     name: string;
     type: ContractTypeNode | undefined;
-    default?: string | number | boolean;
+    default?: FieldDefault;
     optional: boolean;
 }
 
@@ -718,7 +719,7 @@ function findParamType(source: ParamSource | undefined, name: string, modelMap: 
 }
 
 /** Return a YAML-quoted example value string for a param, preferring a default value when provided. */
-function paramExampleValue(type: ContractTypeNode | undefined, defaultValue?: string | number | boolean, randomExamples = false): string {
+function paramExampleValue(type: ContractTypeNode | undefined, defaultValue?: FieldDefault, randomExamples = false): string {
     if (defaultValue !== undefined) return yamlDoubleQuoted(defaultValue);
     if (!type) return '""';
     if (type.kind === 'enum') return type.values.length > 0 ? yamlDoubleQuoted(type.values[0]!) : '""';
@@ -867,7 +868,8 @@ function fieldsToExampleObject(fields: FieldNode[], modelMap: Map<string, ModelN
     for (const field of fields) {
         if (field.visibility === 'readonly') continue;
         if (field.default !== undefined) {
-            obj[field.name] = field.default;
+            // A bigint travels as a digit string, which is also all `JSON.stringify` can do with one.
+            obj[field.name] = typeof field.default === 'bigint' ? String(field.default) : field.default;
         } else if (!field.optional) {
             obj[field.name] = typeToExampleValue(field.type, modelMap, randomExamples);
         }
@@ -926,7 +928,7 @@ function deriveFolderName(file: string): string {
  * inside either quote style, so backslashes and quotes are escaped here to keep
  * the emitted YAML scalar valid.
  */
-function yamlDoubleQuoted(value: string | number | boolean): string {
+function yamlDoubleQuoted(value: string | number | boolean | bigint): string {
     return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 

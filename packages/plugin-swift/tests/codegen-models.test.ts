@@ -192,6 +192,12 @@ describe('field shapes', () => {
         expect(out).toContain('d: MD = .pending');
     });
 
+    it('renders a bigint default from its exact digits', () => {
+        // A bigint default past 2**53 is a JS bigint in the AST; a number would already be rounded.
+        const out = gen([model('M', [field('serial', scalarType('bigint'), { optional: true, default: 9007199254740993n })])]);
+        expect(out).toContain('serial: BigIntValue = BigIntValue("9007199254740993")');
+    });
+
     it('renders a default written against a named enum contract as the enum case', () => {
         const out = gen([
             model('Rating', [], { type: enumType('good', 'neutral') }),

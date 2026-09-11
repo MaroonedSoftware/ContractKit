@@ -15,9 +15,16 @@ http:
       value: "2024-01-01T00:00:00Z"
       type: query
       disabled: true
+    - name: ids
+      value: ""
+      type: query
+      disabled: true
   headers:
     - name: x-tenant
       value: ""
+    - name: xCorrelationId
+      value: ""
+      disabled: true
 
 runtime:
   assertions:

@@ -17,6 +17,7 @@ import type {
     ModelRefTypeNode,
     InlineObjectTypeNode,
     LazyTypeNode,
+    OpParamNode,
 } from '../src/ast.js';
 
 function parse(source: string, file = 'test.ck') {
@@ -182,6 +183,81 @@ contract M: {
             const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
             expect(type.min).toBe(-273.15);
             expect(type.max).toBe(100);
+        });
+
+        it('parses bigint bounds past 2**53 exactly', () => {
+            // A float rounds 9007199254740993 to ...992, the value the scalar exists to avoid.
+            const { root, diag } = parse('contract M: { serial: bigint(min=-9007199254740993, max=9007199254740993) }');
+            expect(diag.hasErrors()).toBe(false);
+            const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
+            expect(type.min).toBe(-9007199254740993n);
+            expect(type.max).toBe(9007199254740993n);
+        });
+
+        it('parses a quoted bigint bound', () => {
+            const { root, diag } = parse('contract M: { serial: bigint(max="18446744073709551615") }');
+            expect(diag.hasErrors()).toBe(false);
+            expect((root.models[0]!.fields[0]!.type as ScalarTypeNode).max).toBe(18446744073709551615n);
+        });
+
+        it('reports a non-integer bigint bound instead of throwing', () => {
+            const { root, diag } = parse('contract M: { serial: bigint(min=1.5, max=10) }');
+            expect(diag.getAll()).toEqual([
+                expect.objectContaining({ severity: 'error', line: 1, message: 'bigint min must be an integer, got 1.5' }),
+            ]);
+            const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
+            expect(type.min).toBeUndefined();
+            expect(type.max).toBe(10n);
+        });
+
+        it('keeps decimal bounds as written', () => {
+            // Neither the trailing zero nor the digits past a float's precision may be lost.
+            const { root, diag } = parse('contract M: { price: decimal(min=0.10, max=123456789012345678901.5) }');
+            expect(diag.hasErrors()).toBe(false);
+            const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
+            expect(type.min).toBe('0.10');
+            expect(type.max).toBe('123456789012345678901.5');
+        });
+    });
+
+    describe('bigint defaults', () => {
+        const defaultOf = (source: string) => {
+            const { root, diag } = parse(source);
+            return { value: root.models[0]!.fields[0]!.default, diag };
+        };
+
+        it('parses a bigint default past 2**53 exactly', () => {
+            const { value, diag } = defaultOf('contract M: { serial: bigint = 9007199254740993 }');
+            expect(diag.hasErrors()).toBe(false);
+            expect(value).toBe(9007199254740993n);
+        });
+
+        it('parses a negative bigint default, and one on a nullable field', () => {
+            expect(defaultOf('contract M: { floor: bigint = -9007199254740993 }').value).toBe(-9007199254740993n);
+            expect(defaultOf('contract M: { floor?: bigint | null = 5 }').value).toBe(5n);
+        });
+
+        it('parses a bigint default on an inline query field', () => {
+            const { root, diag } = parse(
+                'operation /items: {\n    get: {\n        query: {\n            after?: bigint = 9007199254740993\n        }\n    }\n}',
+            );
+            expect(diag.hasErrors()).toBe(false);
+            const query = root.routes[0]!.operations[0]!.query as { kind: 'params'; nodes: OpParamNode[] };
+            expect(query.nodes[0]!.default).toBe(9007199254740993n);
+        });
+
+        it('leaves other defaults on a bigint field, and number defaults elsewhere, as they were', () => {
+            expect(defaultOf('contract M: { serial: bigint = "5" }').value).toBe('5');
+            expect(defaultOf('contract M: { count: int = 5 }').value).toBe(5);
+            expect(defaultOf('contract M: { ratio: number = 1.5 }').value).toBe(1.5);
+        });
+
+        it('reports a non-integer bigint default instead of rounding or throwing', () => {
+            const { value, diag } = defaultOf('contract M: {\n    serial: bigint = 1.5\n}');
+            expect(diag.getAll()).toEqual([
+                expect.objectContaining({ severity: 'error', line: 2, message: 'bigint default must be an integer, got 1.5' }),
+            ]);
+            expect(value).toBeUndefined();
         });
     });
 

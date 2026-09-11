@@ -1,4 +1,5 @@
-import { parseCk, decomposeCk, validateOp, validateRefs, applyOptionsDefaults, DiagnosticCollector } from '@contractkit/core';
+import { parseCk, decomposeCk, validateOp, validateRefs, applyOptionsDefaults, DiagnosticCollector, buildModelIndex } from '@contractkit/core';
+import type { ZodType } from 'zod';
 import { generateContract } from '../src/codegen-contract.js';
 import { generateOp } from '../src/codegen-operation.js';
 import { generateSdk } from '../src/codegen-sdk.js';
@@ -508,5 +509,156 @@ describe('numeric scalar coercion', () => {
         const M = await schemaFor('b: boolean');
         expect(M.parse({ b: 'true' })).toEqual({ b: true });
         expect(() => M.parse({ b: 1 })).toThrow();
+    });
+});
+
+// ─── Router request parsing, as it actually behaves at runtime ────────────
+
+describe('router request parsing at runtime', () => {
+    /** How Koa 3 builds `ctx.query` (lib/search-params.js): a key given once is a string, a repeated key an array. */
+    function koaQuery(qs: string): Record<string, string | string[]> {
+        const params = new URLSearchParams(qs);
+        const out: Record<string, string | string[]> = {};
+        for (const key of params.keys()) {
+            const values = params.getAll(key);
+            out[key] = values.length <= 1 ? values[0]! : values;
+        }
+        return out;
+    }
+
+    type Handler = (ctx: unknown) => Promise<void>;
+    type Request = { query?: string; headers?: Record<string, string> };
+
+    /**
+     * Compile `source` to its schema file and Koa router and evaluate both with real Zod. ServerKit is
+     * stubbed: `ServerKitRouter` records each handler under `method path`, and `parseAndValidate` is
+     * `safeParse`, throwing on failure as ServerKit's does. The returned function drives one route
+     * with a Koa-shaped request and resolves to the arguments the service was called with.
+     */
+    async function compileRouter(source: string): Promise<(route: string, request: Request) => Promise<unknown[]>> {
+        const diag = new DiagnosticCollector();
+        const { contract, op } = decomposeCk(parseCk(source, 'items.ck', diag));
+        expect(diag.hasErrors()).toBe(false);
+        const code = [generateContract(contract), generateOp(op, { models: buildModelIndex(contract.models) })]
+            .join('\n')
+            .split('\n')
+            .filter(l => !l.startsWith('import ') && !l.startsWith('export type '))
+            .join('\n')
+            .replace(/^export const /gm, 'const ');
+
+        const handlers = new Map<string, Handler>();
+        const route =
+            (method: string) =>
+            (path: string, ...rest: unknown[]) =>
+                void handlers.set(`${method} ${path}`, rest.at(-1) as Handler);
+        const ServerKitRouter = () => ({ get: route('get'), post: route('post'), put: route('put'), patch: route('patch'), delete: route('delete') });
+        const parseAndValidate = async (data: unknown, schema: ZodType) => {
+            const result = schema.safeParse(data);
+            if (!result.success) throw new Error(result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; '));
+            return result.data;
+        };
+        const { z } = await import('zod');
+        new Function('z', 'ServerKitRouter', 'requirePolicy', 'parseAndValidate', 'ItemService', code)(
+            z,
+            ServerKitRouter,
+            () => undefined,
+            parseAndValidate,
+            class {},
+        );
+
+        return async (route, request) => {
+            let args: unknown[] = [];
+            const record = (...a: unknown[]) => void (args = a);
+            const service = new Proxy({}, { get: () => record });
+            // Node hands every incoming header name over lowercased.
+            const headers = Object.fromEntries(Object.entries(request.headers ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
+            await handlers.get(route)!({ query: koaQuery(request.query ?? ''), headers, container: { get: () => service } });
+            return args;
+        };
+    }
+
+    describe('a query declared as a model', () => {
+        const source = `
+contract Filter: {
+    tags: array(string)
+    kinds?: array(enum(a, b))
+    flags?: array(boolean)
+    limit?: int
+}
+
+operation /items: {
+    get: {
+        service: ItemService.list
+        query: Filter
+        response: { 204: }
+    }
+}
+`;
+
+        it('accepts a one-element array, which the query string delivers as a bare string', async () => {
+            const call = await compileRouter(source);
+            expect(await call('get /items', { query: 'tags=only' })).toEqual([{ tags: ['only'] }]);
+            expect(await call('get /items', { query: 'tags=x&kinds=a&flags=true' })).toEqual([{ tags: ['x'], kinds: ['a'], flags: [true] }]);
+        });
+
+        it('accepts repeated keys and a comma-separated value, as an inline query array does', async () => {
+            const call = await compileRouter(source);
+            expect(await call('get /items', { query: 'tags=a&tags=b&limit=5' })).toEqual([{ tags: ['a', 'b'], limit: 5 }]);
+            expect(await call('get /items', { query: 'tags=a,b' })).toEqual([{ tags: ['a', 'b'] }]);
+        });
+
+        it('still rejects what the model rejects', async () => {
+            const call = await compileRouter(source);
+            await expect(call('get /items', { query: 'tags=x&kinds=c' })).rejects.toThrow('kinds.0');
+            await expect(call('get /items', { query: 'tags=x&flags=yes' })).rejects.toThrow('flags.0');
+            await expect(call('get /items', { query: 'limit=5' })).rejects.toThrow('tags');
+            await expect(call('get /items', { query: 'tags=x&other=1' })).rejects.toThrow('Unrecognized key');
+        });
+    });
+
+    describe('headers declared with names that are not lowercase', () => {
+        const source = `
+contract Tenant: {
+    xTenant: string
+    x-request-id?: string
+}
+
+operation /model: {
+    get: {
+        service: ItemService.model
+        headers: Tenant
+        response: { 204: }
+    }
+}
+
+operation /inline: {
+    get: {
+        service: ItemService.inline
+        headers: {
+            xTenant: string
+            Authorization?: string
+        }
+        response: { 204: }
+    }
+}
+`;
+
+        it('finds a camelCase header however the client cased it, and hands it over under its declared name', async () => {
+            const call = await compileRouter(source);
+            for (const name of ['xTenant', 'XTENANT', 'xtenant']) {
+                expect(await call('get /model', { headers: { [name]: 't1', 'X-Request-Id': 'r1' } })).toEqual([
+                    { xTenant: 't1', 'x-request-id': 'r1' },
+                ]);
+            }
+            expect(await call('get /inline', { headers: { xTenant: 't1', Authorization: 'Bearer z' } })).toEqual([
+                { xTenant: 't1', Authorization: 'Bearer z' },
+            ]);
+        });
+
+        it('still rejects a request that leaves the header out', async () => {
+            const call = await compileRouter(source);
+            await expect(call('get /model', { headers: {} })).rejects.toThrow('xTenant');
+            await expect(call('get /inline', { headers: { Authorization: 'Bearer z' } })).rejects.toThrow('xTenant');
+        });
     });
 });
