@@ -266,7 +266,58 @@ function renderScalar(name: ScalarTypeNode['name']): string {
 
 // ─── Field name conversion ────────────────────────────────────────────────
 
-/** Convert a field name to a valid Python identifier in snake_case. */
+/**
+ * Python's hard keywords, lowercase only: a snake_cased name can never spell `True`, `False` or
+ * `None`. Soft keywords (`match`, `case`, `type`, `_`) are valid identifiers and are left alone.
+ */
+const PYTHON_KEYWORDS: ReadonlySet<string> = new Set([
+    'and',
+    'as',
+    'assert',
+    'async',
+    'await',
+    'break',
+    'class',
+    'continue',
+    'def',
+    'del',
+    'elif',
+    'else',
+    'except',
+    'finally',
+    'for',
+    'from',
+    'global',
+    'if',
+    'import',
+    'in',
+    'is',
+    'lambda',
+    'nonlocal',
+    'not',
+    'or',
+    'pass',
+    'raise',
+    'return',
+    'try',
+    'while',
+    'with',
+    'yield',
+]);
+
+/**
+ * Append an underscore to a name that is a Python keyword, the PEP 8 convention (`class_`). Every
+ * name the generator emits as an identifier goes through here: `class: str` as a model field and
+ * `async def import(...)` as a method are both syntax errors that fail the whole module on import.
+ */
+export function escapePythonKeyword(name: string): string {
+    return PYTHON_KEYWORDS.has(name) ? `${name}_` : name;
+}
+
+/**
+ * Convert a field name to a valid Python identifier in snake_case. A keyword gains a trailing
+ * underscore; the field then differs from its wire name, so it is aliased like any other rename.
+ */
 export function toPythonFieldName(name: string): string {
     // Replace hyphens and non-alphanumeric chars (except underscore) with underscore
     let result = name.replace(/[^a-zA-Z0-9_]/g, '_');
@@ -276,7 +327,7 @@ export function toPythonFieldName(name: string): string {
     result = result.replace(/_+/g, '_').replace(/^_|_$/g, '');
     // Prefix if starts with digit
     if (/^\d/.test(result)) result = 'f_' + result;
-    return result;
+    return escapePythonKeyword(result);
 }
 
 // ─── Comment emission ─────────────────────────────────────────────────────

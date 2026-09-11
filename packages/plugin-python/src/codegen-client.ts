@@ -9,7 +9,7 @@ import type {
     ParamSource,
 } from '@contractkit/core';
 import { resolveModifiers, classifyContentType, observableResponses } from '@contractkit/core';
-import { renderPyType, toPythonFieldName } from './codegen-models.js';
+import { escapePythonKeyword, renderPyType, toPythonFieldName } from './codegen-models.js';
 
 // ─── Response shape ────────────────────────────────────────────────────────
 
@@ -468,7 +468,13 @@ function buildMultiReturnLines(
 ): string[] {
     const lines: string[] = [];
 
-    const returnFor = (resp: OpResponseNode, body: OpResponseBodyNode | undefined, indent: string, includeStatus: boolean, headersVar?: string): string[] => {
+    const returnFor = (
+        resp: OpResponseNode,
+        body: OpResponseBodyNode | undefined,
+        indent: string,
+        includeStatus: boolean,
+        headersVar?: string,
+    ): string[] => {
         const entries: string[] = [];
         if (includeStatus) entries.push(`"status": ${resp.statusCode}`);
         if (body) {
@@ -573,13 +579,7 @@ function describeHeaderType(type: ContractTypeNode): string {
     return `${type.kind === 'array' || type.kind === 'inlineObject' ? 'an' : 'a'} ${type.kind}`;
 }
 
-function buildHeadersDictLines(
-    headers: OpResponseHeaderNode[],
-    typeName: string,
-    where: string,
-    indent = '        ',
-    varName = 'headers',
-): string[] {
+function buildHeadersDictLines(headers: OpResponseHeaderNode[], typeName: string, where: string, indent = '        ', varName = 'headers'): string[] {
     const lines: string[] = [];
     lines.push(`${indent}${varName}: ${typeName} = {}`);
     for (const h of headers) {
@@ -904,9 +904,10 @@ export function deriveClientPropertyName(file: string): string {
     return base.charAt(0).toLowerCase() + base.slice(1);
 }
 
+/** An inferred name always starts with the HTTP verb; only a declared `sdk:` or `name:` can be a keyword. */
 function deriveMethodName(op: OpOperationNode, route: OpRouteNode): string {
-    if (op.sdk) return toSnakeCase(op.sdk);
-    if (op.name) return toSnakeCase(op.name);
+    if (op.sdk) return escapePythonKeyword(toSnakeCase(op.sdk));
+    if (op.name) return escapePythonKeyword(toSnakeCase(op.name));
     return inferMethodName(op.method, route.path);
 }
 
