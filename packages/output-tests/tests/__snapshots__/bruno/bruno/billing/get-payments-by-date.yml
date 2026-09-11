@@ -11,6 +11,10 @@ http:
       value: "2024-01-01"
       type: query
       disabled: true
+    - name: tagIds
+      value: ""
+      type: query
+      disabled: true
   headers:
     - name: tenantId
       value: ""

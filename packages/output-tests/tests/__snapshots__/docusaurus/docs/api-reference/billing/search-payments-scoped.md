@@ -15,12 +15,13 @@ SDK method: `searchPaymentsScoped`
 ## Attributes
 
 <details>
-<summary>Attributes (4)</summary>
+<summary>Attributes (5)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `q` | `string` | Yes |  |
 | `fromDate` | `string` | No |  |
+| `tagIds` | `string[]` | No |  |
 | `tenantId` | `string` | No |  |
 | `xTrace` | `string` | No |  |
 

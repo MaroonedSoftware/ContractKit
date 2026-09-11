@@ -232,10 +232,15 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * search payments with snake_case filter and header models
-     * from [billing.ck](../../contracts/billing.ck#L238)
+     * from [billing.ck](../../contracts/billing.ck#L240)
     */
     app.get('/payments/by-date', { preHandler: [requirePolicy()] }, async (request, reply) => {
-        const query = await parseAndValidate(request.query, SnakeFilter.in.strict().pipe(SnakeFilter.out));
+        const query = await parseAndValidate(
+            request.query,
+            SnakeFilter.in.extend({
+                tag_ids: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, SnakeFilter.in.shape.tag_ids),
+            }).strict().pipe(SnakeFilter.out),
+        );
 
         const headers = await parseAndValidate(request.headers, SnakeHeaders.in.loose().pipe(SnakeHeaders.out));
 
@@ -248,16 +253,18 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * search payments with a snake_case filter extended inline
-     * from [billing.ck](../../contracts/billing.ck#L268)
+     * from [billing.ck](../../contracts/billing.ck#L270)
     */
     app.get('/payments/by-date/scoped', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const query = await parseAndValidate(
             request.query,
             SnakeFilter.in.extend({
                 q: z.string(),
-            }).strict().transform(({ from_date: _0, ...rest }) => ({
+            }).extend({
+                tag_ids: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, SnakeFilter.in.shape.tag_ids),
+            }).strict().transform(({ from_date: _0, tag_ids: _1, ...rest }) => ({
                 ...rest,
-                ...SnakeFilter.out.parse({ from_date: _0 }),
+                ...SnakeFilter.out.parse({ from_date: _0, tag_ids: _1 }),
             })),
         );
 
@@ -273,9 +280,9 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
         const resultType = SnakeFilter.in.extend({
     q: z.string(),
-}).transform(({ from_date: _0, ...rest }) => ({
+}).transform(({ from_date: _0, tag_ids: _1, ...rest }) => ({
     ...rest,
-    ...SnakeFilter.out.parse({ from_date: _0 }),
+    ...SnakeFilter.out.parse({ from_date: _0, tag_ids: _1 }),
 }));
         const service = request.container.get(PaymentService);
         const result: z.infer<typeof resultType> = await service.searchScoped(query, headers);
@@ -287,14 +294,19 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * save a scoped search
-     * from [billing.ck](../../contracts/billing.ck#L277)
+     * from [billing.ck](../../contracts/billing.ck#L279)
     */
     app.post('/payments/by-date/scoped', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
-        const query = await parseAndValidate(request.query, ScopedFilter.in.strict().pipe(ScopedFilter.out));
+        const query = await parseAndValidate(
+            request.query,
+            ScopedFilter.in.extend({
+                tag_ids: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, ScopedFilter.in.shape.tag_ids),
+            }).strict().pipe(ScopedFilter.out),
+        );
 
-        const body = await parseAndValidate(request.body, PaymentScope.extend(SnakeFilter.in.shape).transform(({ from_date: _0, ...rest }) => ({
+        const body = await parseAndValidate(request.body, PaymentScope.extend(SnakeFilter.in.shape).transform(({ from_date: _0, tag_ids: _1, ...rest }) => ({
     ...rest,
-    ...SnakeFilter.out.parse({ from_date: _0 }),
+    ...SnakeFilter.out.parse({ from_date: _0, tag_ids: _1 }),
 })));
 
         const service = request.container.get(PaymentService);

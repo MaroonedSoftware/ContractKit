@@ -225,9 +225,11 @@ operation /sessions: {
 # ─── format() query and header models ─────────────────────────────────────────
 
 # Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
-# its own, so the router applies the block's object mode to the object inside it.
+# its own, so the router applies the block's object mode to the object inside it. A query array is
+# split on commas there too, read off the object's shape under its snake_case key.
 contract format(input=snake) SnakeFilter: {
     fromDate?: date
+    tagIds?: array(uuid)
 }
 
 contract format(input=snake) SnakeHeaders: {

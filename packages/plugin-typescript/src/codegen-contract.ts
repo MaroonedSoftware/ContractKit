@@ -1153,30 +1153,53 @@ function refWithBlockMode(schema: string, name: string, blockMode: ObjectMode, m
  * @param modelsWithInput Given on the request side, where a model with an `Input` variant is read
  *   through it. Leave it out for the read side.
  */
-export function schemaKeys(name: string, models: Map<string, ModelNode>, modelsWithInput?: Set<string>, seen = new Set<string>()): string[] {
+export function schemaKeys(name: string, models: Map<string, ModelNode>, modelsWithInput?: Set<string>): string[] {
+    return schemaEntries(name, models, modelsWithInput).map(e => e.key);
+}
+
+/** {@link schemaKeys} for a type: a ref's, an inline object's declared names, or every member's. */
+export function typeKeys(type: ContractTypeNode, models: Map<string, ModelNode>, modelsWithInput?: Set<string>): string[] {
+    return typeEntries(type, models, modelsWithInput, new Set()).map(e => e.key);
+}
+
+/** One key of a schema's object, with the field it parses. */
+interface SchemaEntry {
+    key: string;
+    field: FieldNode;
+}
+
+/** {@link schemaKeys}, each key with its field. A key two members share is the later one's. */
+function schemaEntries(name: string, models: Map<string, ModelNode>, modelsWithInput?: Set<string>, seen = new Set<string>()): SchemaEntry[] {
     const model = models.get(name);
     if (!model || seen.has(name)) return [];
     const inner = new Set(seen).add(name);
     const side = modelsWithInput?.has(name) ? modelsWithInput : undefined;
-    if (model.type) return typeKeys(model.type, models, side, inner);
+    if (model.type) return typeEntries(model.type, models, side, inner);
     const keyCase = renamingCase(flattenFormatChain(model, models).inputCase);
     const dropped = side ? 'readonly' : 'writeonly';
     return resolveEffectiveFields(name, models)
         .fields.filter(f => f.visibility !== dropped)
-        .map(f => applyKeyCase(f.name, keyCase));
+        .map(field => ({ key: applyKeyCase(field.name, keyCase), field }));
 }
 
-/** {@link schemaKeys} for a type: a ref's, an inline object's declared names, or every member's. */
-export function typeKeys(type: ContractTypeNode, models: Map<string, ModelNode>, modelsWithInput?: Set<string>, seen = new Set<string>()): string[] {
+function typeEntries(
+    type: ContractTypeNode,
+    models: Map<string, ModelNode>,
+    modelsWithInput: Set<string> | undefined,
+    seen: Set<string>,
+): SchemaEntry[] {
     switch (type.kind) {
         case 'ref':
-            return schemaKeys(type.name, models, modelsWithInput, seen);
+            return schemaEntries(type.name, models, modelsWithInput, seen);
         case 'inlineObject':
-            return type.fields.map(f => f.name);
-        case 'intersection':
-            return [...new Set(type.members.flatMap(m => typeKeys(m, models, modelsWithInput, seen)))];
+            return type.fields.map(field => ({ key: field.name, field }));
+        case 'intersection': {
+            const byKey = new Map<string, SchemaEntry>();
+            for (const member of type.members) for (const e of typeEntries(member, models, modelsWithInput, seen)) byKey.set(e.key, e);
+            return [...byKey.values()];
+        }
         case 'lazy':
-            return typeKeys(type.inner, models, modelsWithInput, seen);
+            return typeEntries(type.inner, models, modelsWithInput, seen);
         default:
             return [];
     }
@@ -1352,8 +1375,15 @@ export function renderQueryType(
             return applyBlockMode(expr, blockMode);
         }
         case 'ref': {
-            const expr = withExtension(inputName(type.name), queryArrayOverrides([type], modelsWithInput, models));
-            return blockMode ? refWithBlockMode(expr, type.name, blockMode, models) : expr;
+            const name = inputName(type.name);
+            const overrides = queryArrayOverrides([type], modelsWithInput, models);
+            if (models && compilesToPipe(type.name, models) && (blockMode || overrides.length > 0)) {
+                // The split goes on the pipe's object, as the mode does, and the result is piped back
+                // through the model's own transform: `X.in.extend({...}).strict().pipe(X.out)`.
+                return `${withExtension(`${name}.in`, overrides)}${blockMode ? `.${blockMode}()` : ''}.pipe(${name}.out)`;
+            }
+            const expr = withExtension(name, overrides);
+            return blockMode ? `${expr}.${blockMode}()` : expr;
         }
         default: {
             const expr = modelsWithInput
@@ -1385,13 +1415,14 @@ function renderQueryField(field: FieldNode, modelsWithInput?: Set<string>, defau
 /**
  * The array fields a query schema takes from referenced models, each re-wrapped in
  * {@link queryArrayPreprocess} and read back off the model's own `.shape`, so its modifiers
- * (`.optional()`, `.default()`) come along unchanged.
+ * (`.optional()`, `.default()`) come along unchanged. A model whose schema is a pipe
+ * ({@link compilesToPipe}) has no `.shape`; its fields are read off its object's, `X.in.shape`, and
+ * keyed as that object keys them, `tag_ids` for a `format(input=snake)` model's `tagIds`.
  *
- * Each field is taken from the member that declares it last, the one `.extend()` keeps it from. A
- * field an inline member declares last already has the preprocess, from {@link renderQueryField}.
- * One absent from the schema being extended is skipped: an `Input` variant drops readonly fields and
- * a read schema drops writeonly ones, so `.shape` has nothing to wrap for them. So is every field of
- * a model whose schema is a pipe ({@link compilesToPipe}), which has no `.shape` at all.
+ * Each key is taken from the member that declares it last, the one `.extend()` keeps it from. A key
+ * an inline member declares last already has the preprocess, from {@link renderQueryField}. Only
+ * the fields on the schema being extended count: an `Input` variant leaves readonly fields out and
+ * a read schema writeonly ones ({@link schemaEntries}).
  *
  * @param members The query schema's members, in `.extend()` order.
  */
@@ -1400,21 +1431,19 @@ function queryArrayOverrides(members: readonly ContractTypeNode[], modelsWithInp
     const owners = new Map<string, string | undefined>();
     for (const member of members) {
         if (member.kind === 'ref') {
-            const isInput = modelsWithInput?.has(member.name) ?? false;
-            const schema = isInput ? `${member.name}Input` : member.name;
-            const extendable = !compilesToPipe(member.name, models);
-            for (const f of resolveEffectiveFields(member.name, models).fields) {
-                const onSchema = extendable && f.visibility !== (isInput ? 'readonly' : 'writeonly');
-                owners.set(f.name, onSchema && f.type.kind === 'array' ? schema : undefined);
+            const schema = modelsWithInput?.has(member.name) ? `${member.name}Input` : member.name;
+            const object = compilesToPipe(member.name, models) ? `${schema}.in` : schema;
+            for (const { key, field } of schemaEntries(member.name, models, modelsWithInput)) {
+                owners.set(key, field.type.kind === 'array' ? object : undefined);
             }
         } else if (member.kind === 'inlineObject') {
             for (const f of member.fields) owners.set(f.name, undefined);
         }
     }
-    return [...owners].flatMap(([name, schema]) => {
-        if (!schema) return [];
-        const shapeAccess = isValidIdentifier(name) ? `.shape.${name}` : `.shape['${escapeSingleQuoted(name)}']`;
-        return [`${quoteKey(name)}: ${queryArrayPreprocess(`${schema}${shapeAccess}`)},`];
+    return [...owners].flatMap(([key, object]) => {
+        if (!object) return [];
+        const shapeAccess = isValidIdentifier(key) ? `.shape.${key}` : `.shape['${escapeSingleQuoted(key)}']`;
+        return [`${quoteKey(key)}: ${queryArrayPreprocess(`${object}${shapeAccess}`)},`];
     });
 }
 

@@ -144,13 +144,18 @@ public sealed record TenantHeaders
 
 /// <summary>
 /// Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
-/// its own, so the router applies the block's object mode to the object inside it.
+/// its own, so the router applies the block's object mode to the object inside it. A query array is
+/// split on commas there too, read off the object's shape under its snake_case key.
 /// </summary>
 public sealed record SnakeFilter
 {
     [JsonPropertyName("from_date")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateOnly? FromDate { get; init; }
+
+    [JsonPropertyName("tag_ids")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Guid>? TagIds { get; init; }
 }
 
 public sealed record SnakeHeaders
@@ -211,6 +216,10 @@ public sealed record ScopedFilter
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateOnly? FromDate { get; init; }
 
+    [JsonPropertyName("tagIds")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Guid>? TagIds { get; init; }
+
     [JsonPropertyName("region")]
     public required string Region { get; init; }
 }
@@ -246,6 +255,10 @@ public sealed record SavedSearchFilter
     [JsonPropertyName("fromDate")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateOnly? FromDate { get; init; }
+
+    [JsonPropertyName("tagIds")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Guid>? TagIds { get; init; }
 
     [JsonPropertyName("q")]
     public required string Q { get; init; }

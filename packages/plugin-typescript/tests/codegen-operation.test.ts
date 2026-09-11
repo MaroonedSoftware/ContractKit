@@ -691,13 +691,69 @@ describe('generateOperation', () => {
                 expect(output).not.toContain('Filter.shape.ids');
             });
 
-            it('leaves the array fields of a format() model alone, whose schema is a pipe with no .shape to read', () => {
+            // A format() model's schema is a pipe with no `.shape`. Its arrays are read off its object,
+            // `Snake.in.shape`, under the key that object parses, and the result is piped back through
+            // the model's own transform.
+            it('re-wraps the array fields of a format() model on its object, keyed as the object keys them', () => {
                 const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Snake' })])]);
+                const snake = model(
+                    'Snake',
+                    [field('tagIds', arrayType(scalarType('string'))), field('fromDate', scalarType('string'), { optional: true })],
+                    { inputCase: 'snake' },
+                );
+                const output = generateOp(root, { models: models(snake) });
+                expect(output).toContain(
+                    [
+                        '    const query = await parseAndValidate(',
+                        '        ctx.query,',
+                        '        Snake.in.extend({',
+                        `            tag_ids: z.preprocess(${SPLIT}, Snake.in.shape.tag_ids),`,
+                        '        }).strict().pipe(Snake.out),',
+                        '    );',
+                    ].join('\n'),
+                );
+            });
+
+            it("reads a format() model's Input variant, skipping a readonly array its object does not carry", () => {
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Snake' })])]);
+                const snake = model(
+                    'Snake',
+                    [field('tagIds', arrayType(scalarType('string'))), field('seenIds', arrayType(scalarType('string')), { visibility: 'readonly' })],
+                    { inputCase: 'pascal' },
+                );
+                const output = generateOp(root, { models: models(snake), modelsWithInput: new Set(['Snake']) });
+                expect(output).toContain(`TagIds: z.preprocess(${SPLIT}, SnakeInput.in.shape.TagIds),`);
+                expect(output).toContain('}).strict().pipe(SnakeInput.out),');
+                expect(output).not.toContain('SeenIds');
+            });
+
+            it("re-wraps a format() member's arrays in an intersection, before the block mode and the transform", () => {
+                const query = intersectionType(refType('Snake'), inlineObjectType([field('q', scalarType('string'))]));
+                const root = opRoot([opRoute('/items', [opOperation('get', { query })])]);
                 const output = generateOp(root, {
                     models: models(model('Snake', [field('tagIds', arrayType(scalarType('string')))], { inputCase: 'snake' })),
                 });
-                expect(output).toContain('parseAndValidate(ctx.query, Snake.in.strict().pipe(Snake.out))');
-                expect(output).not.toContain('.shape');
+                expect(output).toContain(
+                    [
+                        '        Snake.in.extend({',
+                        '            q: z.string(),',
+                        '        }).extend({',
+                        `            tag_ids: z.preprocess(${SPLIT}, Snake.in.shape.tag_ids),`,
+                        '        }).strict().transform(({ tag_ids: _0, ...rest }) => ({',
+                    ].join('\n'),
+                );
+            });
+
+            it("lets an inline member take over a format() member's key, but not its declared name", () => {
+                const snake = model('Snake', [field('tagIds', arrayType(scalarType('string'))), field('seenIds', arrayType(scalarType('string')))], {
+                    inputCase: 'snake',
+                });
+                // `seen_ids` replaces the member's key on the object; `tagIds` is a key of its own.
+                const inline = inlineObjectType([field('seen_ids', scalarType('string')), field('tagIds', scalarType('string'))]);
+                const root = opRoot([opRoute('/items', [opOperation('get', { query: intersectionType(refType('Snake'), inline) })])]);
+                const output = generateOp(root, { models: models(snake) });
+                expect(output).toContain(`tag_ids: z.preprocess(${SPLIT}, Snake.in.shape.tag_ids),`);
+                expect(output).not.toContain('Snake.in.shape.seen_ids');
             });
 
             it('leaves the model schema as-is when no models are supplied', () => {

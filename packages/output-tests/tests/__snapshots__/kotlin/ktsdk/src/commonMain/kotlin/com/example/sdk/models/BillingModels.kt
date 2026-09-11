@@ -95,11 +95,13 @@ data class TenantHeaders(
 
 /**
  * Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
- * its own, so the router applies the block's object mode to the object inside it.
+ * its own, so the router applies the block's object mode to the object inside it. A query array is
+ * split on commas there too, read off the object's shape under its snake_case key.
  */
 @Serializable
 data class SnakeFilter(
     @SerialName("from_date") val fromDate: LocalDate? = null,
+    @SerialName("tag_ids") val tagIds: List<Uuid>? = null,
 )
 
 @Serializable
@@ -143,6 +145,7 @@ data class SavedSearch(
 @Serializable
 data class ScopedFilter(
     val fromDate: LocalDate? = null,
+    val tagIds: List<Uuid>? = null,
     val region: String,
 )
 
@@ -169,5 +172,6 @@ enum class PaymentFilterStatus {
 @Serializable
 data class SavedSearchFilter(
     val fromDate: LocalDate? = null,
+    val tagIds: List<Uuid>? = null,
     val q: String,
 )

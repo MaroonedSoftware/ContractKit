@@ -1030,6 +1030,35 @@ operation /reports/{report_id}: {
         expect(params.safeParse({ report_id: 'r' })).toMatchObject({ success: true, data: { reportId: 'r' } });
         expect(params.safeParse({ report_id: 'r', other: 'x' }).success).toBe(false);
     });
+
+    // A query string carries a one-element list as `tag_ids=only`, which the framework parses to a
+    // string. An inline query array is split on commas; a format() model's now is too.
+    it('splits a comma-joined array of a format() query model, on its own and in an intersection', async () => {
+        const source = (query: string) => `
+contract format(input=snake) TagFilter: { tagIds?: array(string), pageSizes?: array(int) }
+
+operation /reports: {
+    get: {
+        sdk: listReports
+        service: ReportService.list
+        query: ${query}
+        response: { 204: }
+    }
+}
+`;
+        for (const query of ['TagFilter', 'TagFilter & { q?: string }']) {
+            const { router, schemas } = await buildReports(source(query));
+            const validator = (await routerValidators(router, schemas))('query');
+            expect(validator.safeParse({ tag_ids: 'a,b', page_sizes: '1,2' }), query).toEqual({
+                success: true,
+                data: { tagIds: ['a', 'b'], pageSizes: [1, 2] },
+            });
+            expect(validator.safeParse({ tag_ids: 'only' }), query).toEqual({ success: true, data: { tagIds: ['only'] } });
+            expect(validator.safeParse({ tag_ids: ['a', 'b'] }), query).toEqual({ success: true, data: { tagIds: ['a', 'b'] } });
+            expect(validator.safeParse({}), query).toEqual({ success: true, data: {} });
+            expect(validator.safeParse({ tagIds: 'a' }).success, query).toBe(false);
+        }
+    });
 });
 
 describe('createTypescriptPlugin: a format() model inside an intersection', () => {

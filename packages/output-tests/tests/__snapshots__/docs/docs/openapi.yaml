@@ -719,7 +719,12 @@ components:
         fromDate:
           type: string
           format: date
-      description: "Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of\nits own, so the router applies the block's object mode to the object inside it."
+        tagIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+      description: "Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of\nits own, so the router applies the block's object mode to the object inside it. A query array is\nsplit on commas there too, read off the object's shape under its snake_case key."
     SnakeHeaders:
       type: object
       properties:

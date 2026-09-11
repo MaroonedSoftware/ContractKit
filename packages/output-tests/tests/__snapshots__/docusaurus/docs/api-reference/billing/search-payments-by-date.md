@@ -15,11 +15,12 @@ SDK method: `searchPaymentsByDate`
 ## Attributes
 
 <details>
-<summary>Attributes (2)</summary>
+<summary>Attributes (3)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `fromDate` | `string` | No |  |
+| `tagIds` | `string[]` | No |  |
 | `tenantId` | `string` | No |  |
 
 </details>

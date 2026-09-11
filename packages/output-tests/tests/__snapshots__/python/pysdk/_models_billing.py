@@ -74,11 +74,13 @@ class TenantHeaders(BaseModel):
     x_correlation_id: str | None = Field(alias="xCorrelationId", default=None)
 
 # Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
-# its own, so the router applies the block's object mode to the object inside it.
+# its own, so the router applies the block's object mode to the object inside it. A query array is
+# split on commas there too, read off the object's shape under its snake_case key.
 class SnakeFilter(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     from_date: date | None = Field(alias="fromDate", default=None)
+    tag_ids: list[UUID] | None = Field(alias="tagIds", default=None)
 
 class SnakeHeaders(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
