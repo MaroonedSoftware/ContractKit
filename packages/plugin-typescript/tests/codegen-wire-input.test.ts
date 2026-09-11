@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DiagnosticCollector, computeModelsWithInput, decomposeCk, parseCk } from '@contractkit/core';
 import type { ContractRootNode } from '@contractkit/core';
-import { computeModelsWithWireInput } from '../src/codegen-wire-input.js';
+import { computeModelsWithWireInput, requestWireFields } from '../src/codegen-wire-input.js';
 import { generateContract } from '../src/codegen-contract.js';
 import { generatePlainTypes } from '../src/codegen-plain-types.js';
 import { generateSdk } from '../src/codegen-sdk.js';
@@ -92,6 +92,38 @@ contract Tokens: array(Token)
         const source = 'contract format(output=snake) Stub: { id: readonly uuid, issuedTo: string }';
         expect(wireSet(source, 'zod')).toEqual([]);
         expect(wireSet(source, 'plain')).toEqual([]);
+    });
+});
+
+describe('requestWireFields', () => {
+    const SOURCE = `
+contract format(input=snake) Session: { userId: string, issuedAt: readonly datetime }
+contract Child: Session & { extraNote: string }
+contract Plain: { name: string }
+contract Base: { createdOn: date }
+contract Derived: Base & { name: string, name2?: string }
+contract Alias: Plain
+`;
+    const fieldsOf = (name: string) => {
+        const root = parseContracts(SOURCE);
+        const modelMap = new Map(root.models.map(m => [m.name, m]));
+        return requestWireFields(modelMap.get(name)!, modelMap).map(f => f.key);
+    };
+
+    it('keys each field the way format(input=) spells it, and leaves out readonly ones', () => {
+        expect(fieldsOf('Session')).toEqual(['user_id']);
+    });
+
+    it('carries an inherited casing onto the fields a child adds', () => {
+        expect(fieldsOf('Child')).toEqual(['user_id', 'extra_note']);
+    });
+
+    it("includes a plain model's base fields under their declared names", () => {
+        expect(fieldsOf('Derived')).toEqual(['createdOn', 'name', 'name2']);
+    });
+
+    it('has nothing to list for a type alias', () => {
+        expect(fieldsOf('Alias')).toEqual([]);
     });
 });
 

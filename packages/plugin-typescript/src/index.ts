@@ -40,6 +40,7 @@ import {
     getAreaSubarea,
     hasPublicOperations,
     opRootNeedsScalar,
+    sdkParamSerializationKey,
     generateSdkPackageJson,
     generateSdkTsconfig,
     type SdkClientInfo,
@@ -213,7 +214,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '4';
+export const TYPESCRIPT_CODEGEN_VERSION = '5';
 
 // The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
 // temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
@@ -738,6 +739,7 @@ function collectSdkOutput(
                     modelsWithWireInput: sliceModelSet(refs, new Set(), modelsWithWireInput),
                     modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
                 modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
+                    paramSerialization: sdkParamSerializationKey(leaf.ast, modelMap),
                     sdkOptionsPath,
                     className,
                     includeInternal: config.includeInternal ?? false,
@@ -785,6 +787,7 @@ function collectSdkOutput(
                 modelsWithWireInput: sliceModelSet(refs, new Set(), modelsWithWireInput),
                 modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
                 modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
+                paramSerialization: sdkParamSerializationKey(ast, modelMap),
                 sdkOptionsPath,
                 includeInternal: config.includeInternal ?? false,
                 sub: subConfigKey,
@@ -873,6 +876,7 @@ function collectSdkOutput(
             //  - subarea client metadata (className / propertyName / import path)
             //  - the modelOutPaths slice for refs across all inline roots
             //  - modelsWithInput/Output slices
+            //  - query/header serialization read off a referenced model's fields
             const allInlineRefs = new Set<string>();
             for (const r of bucket.inlineRoots) {
                 for (const ref of collectOpRootRefs(r, modelMap)) allInlineRefs.add(ref);
@@ -890,6 +894,7 @@ function collectSdkOutput(
                 modelsWithWireInput: sliceModelSet(allInlineRefs, new Set(), modelsWithWireInput),
                 modelsWithDecimal: sliceModelSet(allInlineRefs, new Set(), modelsWithDecimal),
                 modelsWithBigInt: sliceModelSet(allInlineRefs, new Set(), modelsWithBigInt),
+                paramSerialization: bucket.inlineRoots.flatMap(r => sdkParamSerializationKey(r, modelMap)),
                 sdkOptionsPath,
                 includeInternal: config.includeInternal ?? false,
                 sub: subConfigKey,
