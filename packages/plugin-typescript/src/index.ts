@@ -42,6 +42,7 @@ import {
     hasPublicOperations,
     opRootNeedsScalar,
     sdkParamSerializationKey,
+    sdkBodySerializationKey,
     generateSdkPackageJson,
     generateSdkTsconfig,
     type SdkClientInfo,
@@ -51,6 +52,7 @@ import {
 import { generatePlainTypes } from './codegen-plain-types.js';
 import { computeModelsWithWireInput, flattenFormatChain } from './codegen-wire-input.js';
 import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
+import { computeModelsWithSerializer, renderSerializeFunction, requestTypeName } from './codegen-serialize.js';
 import { resolveServerFramework, SERVER_FRAMEWORK_NAMES, type ServerFrameworkName } from './server-framework.js';
 export {
     SERVER_FRAMEWORK_NAMES,
@@ -215,7 +217,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '7';
+export const TYPESCRIPT_CODEGEN_VERSION = '8';
 
 // The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
 // temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
@@ -629,6 +631,13 @@ function collectSdkOutput(
         config.zod ? 'zod' : 'plain',
     );
     const modelMap = buildModelMap(inputs.contractRoots);
+    // Which models get a `serializeX` for request bodies. Cross-file like the sets above: a model's
+    // serializer walks the fields its bases contribute and calls those of the models it references.
+    const modelsWithSerializer = computeModelsWithSerializer(
+        inputs.contractRoots.flatMap(r => r.models),
+        modelMap,
+    );
+    const serializeOpts = { modelsWithSerializer, modelMap };
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const ckCommonRoot = commonDir(allFiles, rootDir);
 
@@ -675,6 +684,11 @@ function collectSdkOutput(
             // this file's revivers with no change to `root` or the config.
             modelsWithDecimal: sliceModelSet(refs, ownNames, modelsWithDecimal),
             modelsWithBigInt: sliceModelSet(refs, ownNames, modelsWithBigInt),
+            // Not covered by `root`: a serializer walks the fields a base in another .ck file
+            // contributes, so the rendered serializers themselves are the key.
+            serializers: ast.models.flatMap(m =>
+                renderSerializeFunction(m, requestTypeName(m.name, modelsWithInput, modelsWithWireInput), serializeOpts),
+            ),
             sdkOptionsPath,
             sub: subConfigKey,
         });
@@ -693,6 +707,7 @@ function collectSdkOutput(
                         modelsWithOutput,
                         modelsWithWireInput,
                         modelsWithDecimal,
+                        modelsWithSerializer,
                         modelMap,
                         emitRevivers: true,
                         // An SDK client runs in a browser as readily as in Node, and its scaffold
@@ -709,6 +724,7 @@ function collectSdkOutput(
                         modelsWithOutput,
                         modelsWithWireInput,
                         modelsWithDecimal,
+                        modelsWithSerializer,
                         modelMap,
                         emitRevivers: true,
                         jsonValueImportPath: rel,
@@ -767,6 +783,7 @@ function collectSdkOutput(
                     modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
                 modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
                     paramSerialization: sdkParamSerializationKey(leaf.ast, modelMap),
+                    bodySerialization: sdkBodySerializationKey(leaf.ast, { modelsWithSerializer, modelMap }),
                     sdkOptionsPath,
                     className,
                     includeInternal: config.includeInternal ?? false,
@@ -788,6 +805,7 @@ function collectSdkOutput(
                                 modelsWithWireInput,
                                 modelsWithDecimal,
                                 modelsWithBigInt,
+                                modelsWithSerializer,
                                 modelMap,
                                 includeInternal: config.includeInternal,
                                 clientClassName: className,
@@ -815,6 +833,7 @@ function collectSdkOutput(
                 modelsWithDecimal: sliceModelSet(refs, new Set(), modelsWithDecimal),
                 modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
                 paramSerialization: sdkParamSerializationKey(ast, modelMap),
+                bodySerialization: sdkBodySerializationKey(ast, { modelsWithSerializer, modelMap }),
                 sdkOptionsPath,
                 includeInternal: config.includeInternal ?? false,
                 sub: subConfigKey,
@@ -835,6 +854,7 @@ function collectSdkOutput(
                             modelsWithWireInput,
                             modelsWithDecimal,
                             modelsWithBigInt,
+                            modelsWithSerializer,
                             modelMap,
                             includeInternal: config.includeInternal,
                         }),
@@ -904,6 +924,7 @@ function collectSdkOutput(
             //  - the modelOutPaths slice for refs across all inline roots
             //  - modelsWithInput/Output slices
             //  - query/header serialization read off a referenced model's fields
+            //  - request body serialization, which depends on which models have a serializer
             const allInlineRefs = new Set<string>();
             for (const r of bucket.inlineRoots) {
                 for (const ref of collectOpRootRefs(r, modelMap)) allInlineRefs.add(ref);
@@ -922,6 +943,7 @@ function collectSdkOutput(
                 modelsWithDecimal: sliceModelSet(allInlineRefs, new Set(), modelsWithDecimal),
                 modelsWithBigInt: sliceModelSet(allInlineRefs, new Set(), modelsWithBigInt),
                 paramSerialization: bucket.inlineRoots.flatMap(r => sdkParamSerializationKey(r, modelMap)),
+                bodySerialization: bucket.inlineRoots.flatMap(r => sdkBodySerializationKey(r, { modelsWithSerializer, modelMap })),
                 sdkOptionsPath,
                 includeInternal: config.includeInternal ?? false,
                 sub: subConfigKey,
@@ -939,6 +961,7 @@ function collectSdkOutput(
                     modelsWithWireInput,
                     modelsWithDecimal,
                     modelsWithBigInt,
+                    modelsWithSerializer,
                     modelMap,
                     includeInternal: config.includeInternal,
                 },

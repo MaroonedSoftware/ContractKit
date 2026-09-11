@@ -29,6 +29,7 @@ import type { WireInputRenderContext } from './codegen-wire-input.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
+import { renderSerializeFunction, requestTypeName, serializerImportLines, wireDeclsFor } from './codegen-serialize.js';
 
 /**
  * Maps a ContractKit object mode to its Zod constructor name.
@@ -84,6 +85,12 @@ export interface ContractCodegenContext {
      * server handler receives decimals already parsed by `_ZodDecimal`, so it has nothing to revive.
      */
     emitRevivers?: boolean;
+    /**
+     * Models that get a `serializeX()` beside their schema, from `computeModelsWithSerializer`. Set
+     * for SDK type files only: it is the SDK that has to write a request body the way the router
+     * parses it.
+     */
+    modelsWithSerializer?: Set<string>;
 }
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -216,6 +223,8 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
             context?.emitRevivers && context.modelsWithDecimal?.has(ref) ? `${ref}, ${reviveFnName(ref)}` : ref;
         lines.push(`import { ${names} } from '${importPath}';`);
     }
+    // Serializer imports are read off the body, which is not rendered yet; they go here.
+    const serializerImportsAt = lines.length;
     lines.push('');
     if (needsBinary) {
         // The one scalar with no single correct runtime type, so it follows `target` here exactly
@@ -253,6 +262,7 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
         context?.emitRevivers && context.modelsWithDecimal
             ? { modelsWithDecimal: context.modelsWithDecimal, modelsWithOutput: allModelsWithOutput, modelMap }
             : undefined;
+    const serializeOpts = context?.modelsWithSerializer ? { modelsWithSerializer: context.modelsWithSerializer, modelMap } : undefined;
 
     const bodyLines: string[] = [];
     // Sorted on the effective models: a flattened contract depends on its inherited fields' types,
@@ -271,12 +281,29 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
                 bodyLines.push(...revivers);
             }
         }
+        if (serializeOpts) {
+            const serializer = renderSerializeFunction(
+                model,
+                requestTypeName(model.name, allModelsWithInput, context?.modelsWithWireInput),
+                serializeOpts,
+            );
+            if (serializer.length > 0) {
+                bodyLines.push('');
+                bodyLines.push(...serializer);
+            }
+        }
         bodyLines.push('');
     }
 
-    // Decided from the emitted revivers rather than from a predicate over the AST, so the
-    // declarations and their uses cannot drift apart and leave an unused local behind.
-    const coerceDecls = coerceDeclsFor(bodyLines);
+    if (serializeOpts) {
+        const localNames = new Set(root.models.map(m => m.name));
+        const importPath = (ref: string) => resolveImportPath(ref, context);
+        lines.splice(serializerImportsAt, 0, ...serializerImportLines(bodyLines, localNames, serializeOpts.modelsWithSerializer, importPath));
+    }
+
+    // Decided from the emitted revivers and serializers rather than from a predicate over the AST,
+    // so the declarations and their uses cannot drift apart and leave an unused local behind.
+    const coerceDecls = [...coerceDeclsFor(bodyLines), ...wireDeclsFor(bodyLines)];
     if (coerceDecls.length > 0) {
         lines.push(...coerceDecls);
         lines.push('');

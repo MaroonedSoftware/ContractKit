@@ -33,6 +33,9 @@ const __dur = (v: unknown, path: string): Duration => {
     if (!d.isValid) throw new TypeError(`ContractKit: '${v}' at '${path}' is not a valid ISO 8601 duration.`);
     return d;
 };
+/** A decimal.js value in normal notation, which its `toString()` is not at every magnitude. Anything else is returned as it is. */
+const __wireDec = (v: unknown): unknown =>
+    (v as { toStringTag?: unknown } | null | undefined)?.toStringTag === '[object Decimal]' ? (v as { toFixed(): string }).toFixed() : v;
 
 /**
  * A customer payment
@@ -68,6 +71,13 @@ export function revivePayment(raw: Payment): Payment {
         __o0["processingTime"] = __dur(__o0["processingTime"], 'Payment.processingTime');
     }
     return raw;
+}
+
+/** Payment as a request body sends it, with every `date`, `time` and `decimal` in the text the server parses. Returns a copy; `value` is not modified. */
+export function serializePayment(value: PaymentInput): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    __o0["unitPrice"] = __wireDec(__o0["unitPrice"]);
+    return __o0;
 }
 
 /**

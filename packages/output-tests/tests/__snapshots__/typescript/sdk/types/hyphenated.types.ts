@@ -14,6 +14,9 @@ const __dec = (v: unknown, path: string): Decimal => {
         throw new TypeError(`ContractKit: '${v}' at '${path}' is not a valid decimal.`);
     }
 };
+/** A decimal.js value in normal notation, which its `toString()` is not at every magnitude. Anything else is returned as it is. */
+const __wireDec = (v: unknown): unknown =>
+    (v as { toStringTag?: unknown } | null | undefined)?.toStringTag === '[object Decimal]' ? (v as { toFixed(): string }).toFixed() : v;
 
 /**
  * generated from [Invoice](../../contracts/hyphenated.ck#L12)
@@ -34,4 +37,11 @@ export function reviveInvoice(raw: Invoice): Invoice {
     const __o0 = raw as unknown as Record<string, unknown>;
     __o0["total"] = __dec(__o0["total"], 'Invoice.total');
     return raw;
+}
+
+/** Invoice as a request body sends it, with every `date`, `time` and `decimal` in the text the server parses. Returns a copy; `value` is not modified. */
+export function serializeInvoice(value: InvoiceInput): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    __o0["total"] = __wireDec(__o0["total"]);
+    return __o0;
 }

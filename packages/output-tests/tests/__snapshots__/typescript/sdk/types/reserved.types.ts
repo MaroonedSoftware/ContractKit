@@ -9,6 +9,9 @@ const __dtf = (v: unknown, path: string, fmt: string): DateTime => {
     if (!d.isValid) throw new TypeError(`ContractKit: '${v}' at '${path}' does not match format ${fmt}.`);
     return d;
 };
+/** A luxon DateTime in `fmt`, as the server's `DateTime.fromFormat` reads it. Anything else is returned as it is. */
+const __wireDt = (v: unknown, fmt: string): unknown =>
+    (v as { isLuxonDateTime?: unknown } | null | undefined)?.isLuxonDateTime === true ? (v as { toFormat(fmt: string): string }).toFormat(fmt) : v;
 
 /**
  * A seat, whose field names are all reserved somewhere
@@ -40,6 +43,19 @@ export function reviveSeat(raw: Seat): Seat {
         __o0["time"] = __dtf(__o0["time"], 'Seat.time', 'HH:mm:ss');
     }
     return raw;
+}
+
+/** Seat as a request body sends it, with every `date`, `time` and `decimal` in the text the server parses. Returns a copy; `value` is not modified. */
+export function serializeSeat(value: Seat): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    if (__o0["from"] != null) {
+        __o0["from"] = __wireDt(__o0["from"], 'yyyy-MM-dd');
+    }
+    __o0["date"] = __wireDt(__o0["date"], 'yyyy-MM-dd');
+    if (__o0["time"] != null) {
+        __o0["time"] = __wireDt(__o0["time"], 'HH:mm:ss');
+    }
+    return __o0;
 }
 
 /**
