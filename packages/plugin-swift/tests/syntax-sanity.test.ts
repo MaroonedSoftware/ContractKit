@@ -28,8 +28,9 @@ import {
 } from './helpers.js';
 
 /**
- * No Swift toolchain runs in this repository's tests, so nothing here proves the output compiles.
- * What it can prove is that the generator never emits structurally broken text: unbalanced
+ * Nothing here proves the output compiles; `toolchain.test.ts` does that, when `swift` is installed.
+ * This file runs everywhere. What it can prove is that the generator never emits structurally broken
+ * text: unbalanced
  * brackets, a stringified object, or a hole where a value should be. Those are the failures a
  * `toContain` assertion on one construct at a time would not catch.
  */
