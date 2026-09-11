@@ -77,6 +77,19 @@ data class UploadReceiptForm(
     val file: ByteArray? = null,
 )
 
+/** Query params declared as a model, referenced via `query: PaymentFilter` */
+@Serializable
+data class PaymentFilter(
+    val status: PaymentFilterStatus? = null,
+    val since: Instant? = null,
+)
+
+/** Request headers declared as a model. Hyphenated, because a server sees header names lowercased. */
+@Serializable
+data class TenantHeaders(
+    @SerialName("x-tenant") val xTenant: String,
+)
+
 /** Extends a writeonly base and is itself writeonly */
 @Serializable
 data class AdminCredential(
@@ -94,6 +107,16 @@ data class AdminCredentialInput(
 
 @Serializable
 enum class PaymentStatus {
+    @SerialName("pending")
+    PENDING,
+    @SerialName("completed")
+    COMPLETED,
+    @SerialName("failed")
+    FAILED,
+}
+
+@Serializable
+enum class PaymentFilterStatus {
     @SerialName("pending")
     PENDING,
     @SerialName("completed")

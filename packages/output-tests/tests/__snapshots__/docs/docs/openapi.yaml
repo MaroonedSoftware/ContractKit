@@ -52,6 +52,12 @@ paths:
           required: true
           schema:
             type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, completed, failed]
         - name: api-key
           in: header
           required: false
@@ -62,6 +68,51 @@ paths:
           required: true
           schema:
             type: string
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                type: array
+                items:
+                  '$ref': '#/components/schemas/Payment'
+  '/payments/search':
+    get:
+      operationId: searchPayments
+      description: 'search payments with a filter model'
+      parameters:
+        - name: PaymentFilter
+          in: query
+          required: false
+          schema:
+            '$ref': '#/components/schemas/PaymentFilter'
+        - name: TenantHeaders
+          in: header
+          required: false
+          schema:
+            '$ref': '#/components/schemas/TenantHeaders'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                type: array
+                items:
+                  '$ref': '#/components/schemas/Payment'
+  '/payments/batch':
+    post:
+      operationId: createPayments
+      description: 'create several payments at once'
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              type: array
+              items:
+                '$ref': '#/components/schemas/Payment'
       responses:
         '200':
           description: 'Successful response'
@@ -424,6 +475,29 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Seat'
+  '/notes/{body}':
+    put:
+      operationId: putNote
+      description: 'replace a note'
+      parameters:
+        - name: body
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Note'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Note'
   '/status':
     get:
       operationId: getStatus
@@ -522,6 +596,23 @@ components:
         file:
           type: string
           format: binary
+    PaymentFilter:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, completed, failed]
+        since:
+          type: string
+          format: date-time
+      description: 'Query params declared as a model, referenced via `query: PaymentFilter`'
+    TenantHeaders:
+      type: object
+      properties:
+        x-tenant:
+          type: string
+      required: [x-tenant]
+      description: 'Request headers declared as a model. Hyphenated, because a server sees header names lowercased.'
     Invoice:
       type: object
       properties:
@@ -735,6 +826,18 @@ components:
         from:
           type: string
           format: date
+        date:
+          type: string
+          format: date
+        time:
+          type: string
+          format: time
+        copy:
+          type: string
+        modelDump:
+          type: string
+        json:
+          type: string
         in:
           type: string
         is:
@@ -743,7 +846,7 @@ components:
           type: string
         default:
           type: string
-      required: [class]
+      required: [class, date]
       description: 'A seat, whose field names are all reserved somewhere'
     SeatRef:
       type: object
@@ -752,6 +855,12 @@ components:
           type: string
       required: [class]
       description: 'Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`'
+    Note:
+      type: object
+      properties:
+        text:
+          type: string
+      required: [text]
     Heartbeat:
       type: object
       properties:

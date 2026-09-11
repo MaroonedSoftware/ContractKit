@@ -18,7 +18,7 @@ import {
     collectTransitiveModelRefs,
     collectTypeRefs,
 } from '@contractkit/core';
-import { generatePydanticModels, deriveModelsModuleName } from './codegen-models.js';
+import { generatePydanticModels, deriveModelsModuleName, computeTypeAliases, SCALARS_PY } from './codegen-models.js';
 import {
     generatePythonClient,
     deriveClientClassName,
@@ -47,7 +47,7 @@ export interface PythonSdkPluginConfig {
  * `codegenVersion`, so a plugin upgrade forces full regeneration even when no
  * `.ck` files have changed.
  */
-export const PYTHON_CODEGEN_VERSION = '2';
+export const PYTHON_CODEGEN_VERSION = '4';
 
 /** Filename for the persisted Python manifest under the CLI cache directory. */
 const CACHE_MANIFEST_FILENAME = 'python-manifest.json';
@@ -109,6 +109,7 @@ async function runPythonCodegen(
     // Stable, sorted view of modelsWithInput for fingerprint slicing — only the
     // intersection with each unit's referenced names ends up in its fingerprint.
     const modelsWithInputArray = [...modelsWithInput].sort();
+    const typeAliases = computeTypeAliases(modelMap.values());
 
     const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(manifestPath) : emptyIncrementalManifest(PYTHON_CODEGEN_VERSION);
     const units: IncrementalUnit[] = [];
@@ -176,6 +177,9 @@ async function runPythonCodegen(
             if (inputPath) referencedModulePaths[`${ref}Input`] = inputPath;
         }
         const relevantInputModels = modelsWithInputArray.filter(name => referencedModels.has(name));
+        // Whether a ref is a class or an alias decides between `model_validate` and a TypeAdapter,
+        // and it is set in a contract file this op root's own hash does not cover.
+        const relevantTypeAliases = [...referencedModels].filter(name => typeAliases.has(name)).sort();
 
         const fingerprint = hashFingerprint({
             kind: 'client',
@@ -185,6 +189,7 @@ async function runPythonCodegen(
             root,
             referencedModulePaths,
             modelsWithInput: relevantInputModels,
+            typeAliases: relevantTypeAliases,
             includeInternal: config.includeInternal ?? false,
         });
 
@@ -198,6 +203,7 @@ async function runPythonCodegen(
                         modelModulePaths,
                         currentModule: `.${moduleName}`,
                         modelsWithInput,
+                        typeAliases,
                         includeInternal: config.includeInternal,
                     }),
                 },
@@ -208,7 +214,7 @@ async function runPythonCodegen(
     // ── Global files: base client, requirements, aggregator ──────────────────
     // The aggregator (__init__.py) depends on the public-clients list. Writing it
     // every run is cheap (a few imports + a class body), so we skip a separate
-    // unit for it. base_client.py and requirements.txt are constants.
+    // unit for it. base_client.py, _scalars.py and requirements.txt are constants.
     const sdkClassName = config.packageName
         ? config.packageName
               .split(/[-._\s]+/)
@@ -244,6 +250,7 @@ async function runPythonCodegen(
 
     const globalFiles = [
         { relativePath: '_base_client.py', content: BASE_CLIENT_PY },
+        { relativePath: '_scalars.py', content: SCALARS_PY },
         { relativePath: 'requirements.txt', content: 'httpx\npydantic>=2.0\n' },
         { relativePath: '__init__.py', content: initLines.join('\n') },
     ];

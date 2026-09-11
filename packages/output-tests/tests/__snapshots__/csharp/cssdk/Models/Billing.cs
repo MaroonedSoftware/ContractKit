@@ -115,6 +115,25 @@ public sealed record UploadReceiptForm
     public byte[]? File { get; init; }
 }
 
+/// <summary>Query params declared as a model, referenced via `query: PaymentFilter`</summary>
+public sealed record PaymentFilter
+{
+    [JsonPropertyName("status")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PaymentFilterStatus? Status { get; init; }
+
+    [JsonPropertyName("since")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? Since { get; init; }
+}
+
+/// <summary>Request headers declared as a model. Hyphenated, because a server sees header names lowercased.</summary>
+public sealed record TenantHeaders
+{
+    [JsonPropertyName("x-tenant")]
+    public required string XTenant { get; init; }
+}
+
 /// <summary>Extends a writeonly base and is itself writeonly</summary>
 public sealed record AdminCredential
 {
@@ -140,6 +159,19 @@ public sealed record AdminCredentialInput
 
 [JsonConverter(typeof(JsonStringEnumConverter<PaymentStatus>))]
 public enum PaymentStatus
+{
+    [JsonStringEnumMemberName("pending")]
+    Pending,
+
+    [JsonStringEnumMemberName("completed")]
+    Completed,
+
+    [JsonStringEnumMemberName("failed")]
+    Failed,
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<PaymentFilterStatus>))]
+public enum PaymentFilterStatus
 {
     [JsonStringEnumMemberName("pending")]
     Pending,

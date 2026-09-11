@@ -43,6 +43,17 @@ public sealed class ReservedClient(SdkHttp http)
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return http.ReadJson<Seat>(response);
     }
+
+    /// <summary>replace a note</summary>
+    public async Task<Note> PutNoteAsync(string body_, Note body, CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Put,
+            http.Path("notes", http.Segment(body_)),
+            content: http.JsonContent(body, "application/json"),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<Note>(response);
+    }
 }
 
 /// <summary>The query parameters declared on GET /seats/{class}.</summary>

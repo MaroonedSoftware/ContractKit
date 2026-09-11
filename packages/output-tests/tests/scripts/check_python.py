@@ -2,7 +2,7 @@
 
 Reads a JSON object of {path: source} on stdin and writes a JSON report on stdout:
 
-    {"syntax": [...], "unbound": [...]}
+    {"syntax": [...], "unbound": [...], "literal": [...], "shadowed": [...], "importTime": [...]}
 
 `syntax` holds files that do not parse at all. `unbound` holds the case that actually shipped:
 a method whose signature is snake_cased while its f-string still interpolates the raw contract
@@ -86,9 +86,74 @@ def literal_templates(tree: ast.Module, path: str) -> List[dict]:
     return findings
 
 
+def shadowed_annotations(tree: ast.Module, path: str) -> List[dict]:
+    """Class-body names that get a value while an annotation in the same class reads them as a type.
+
+    Pydantic evaluates a model's deferred annotations against the class namespace, so a field
+    `date: str | None = None` replaces the imported `date` for every annotation in its class: the
+    module fails to import, or a sibling `when: date` validates as `None`. It parses fine, so
+    `ast.parse` cannot see it, and CI has no Pydantic to import the module with.
+    """
+    findings: List[dict] = []
+    for cls in [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]:
+        fields = [s for s in cls.body if isinstance(s, ast.AnnAssign) and isinstance(s.target, ast.Name)]
+        assigned = {s.target.id for s in fields if s.value is not None}
+        for s in fields:
+            for name in [n for n in ast.walk(s.annotation) if isinstance(n, ast.Name)]:
+                if name.id in assigned:
+                    findings.append({"file": path, "class": cls.name, "field": s.target.id, "name": name.id})
+    return findings
+
+
+def unbound_at_import(tree: ast.Module, path: str) -> List[dict]:
+    """Names read by code that runs when the module is imported, which nothing in the module binds.
+
+    Annotations are skipped: `from __future__ import annotations` keeps them as strings until
+    something asks. What runs at import is everything else outside a function body: assignments
+    such as a functional `TypedDict(...)`, class bases and keywords, class-body values such as
+    `Field(alias=...)`, and parameter defaults. A type rendered there needs a real import, and a
+    missing one is a `NameError` for anyone importing the SDK, which `ast.parse` cannot see.
+    """
+    bound = set(dir(builtins))
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            bound |= {alias.asname or alias.name.split(".")[0] for alias in node.names}
+        elif isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            bound.add(node.name)
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign):
+            bound |= {t.id for t in stmt.targets if isinstance(t, ast.Name)}
+        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+            bound.add(stmt.target.id)
+
+    evaluated: List[ast.AST] = []
+
+    def collect(stmts: List[ast.stmt]) -> None:
+        for stmt in stmts:
+            if isinstance(stmt, ast.Assign):
+                evaluated.append(stmt.value)
+            elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
+                evaluated.append(stmt.value)
+            elif isinstance(stmt, ast.Expr):
+                evaluated.append(stmt.value)
+            elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                evaluated.extend([*stmt.decorator_list, *stmt.args.defaults, *[d for d in stmt.args.kw_defaults if d is not None]])
+            elif isinstance(stmt, ast.ClassDef):
+                evaluated.extend([*stmt.decorator_list, *stmt.bases, *[k.value for k in stmt.keywords]])
+                collect(stmt.body)
+
+    collect(tree.body)
+    findings: List[dict] = []
+    for expr in evaluated:
+        for name in [n for n in ast.walk(expr) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)]:
+            if name.id not in bound:
+                findings.append({"file": path, "line": name.lineno, "name": name.id})
+    return findings
+
+
 def main() -> None:
     sources = json.load(sys.stdin)
-    syntax, unbound, literal = [], [], []
+    syntax, unbound, literal, shadowed, import_time = [], [], [], [], []
 
     for path, source in sorted(sources.items()):
         try:
@@ -98,8 +163,10 @@ def main() -> None:
             continue
         unbound.extend(unbound_in_fstrings(tree, path))
         literal.extend(literal_templates(tree, path))
+        shadowed.extend(shadowed_annotations(tree, path))
+        import_time.extend(unbound_at_import(tree, path))
 
-    json.dump({"syntax": syntax, "unbound": unbound, "literal": literal}, sys.stdout)
+    json.dump({"syntax": syntax, "unbound": unbound, "literal": literal, "shadowed": shadowed, "importTime": import_time}, sys.stdout)
 
 
 main()

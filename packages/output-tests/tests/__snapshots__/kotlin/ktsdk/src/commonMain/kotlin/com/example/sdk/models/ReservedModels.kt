@@ -2,6 +2,7 @@
 package com.example.sdk.models
 
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalTime
 import kotlinx.serialization.Serializable
 
 /** A seat, whose field names are all reserved somewhere */
@@ -9,6 +10,11 @@ import kotlinx.serialization.Serializable
 data class Seat(
     val `class`: String,
     val from: LocalDate? = null,
+    val date: LocalDate,
+    val time: LocalTime? = null,
+    val copy: String? = null,
+    val modelDump: String? = null,
+    val json: String? = null,
     val `in`: String? = null,
     val `is`: Boolean? = null,
     val `object`: String? = null,
@@ -19,4 +25,9 @@ data class Seat(
 @Serializable
 data class SeatRef(
     val `class`: String,
+)
+
+@Serializable
+data class Note(
+    val text: String,
 )

@@ -1,8 +1,8 @@
-import type { Seat, SeatRef } from '../types/reserved.types.js';
+import type { Note, Seat, SeatRef } from '../types/reserved.types.js';
 import { reviveSeat } from '../types/reserved.types.js';
 import { DateTime } from 'luxon';
 import type { SdkFetch } from '../sdk-options.js';
-import { parseJson, buildQueryString, buildHeaders } from '../sdk-options.js';
+import { bigIntReplacer, parseJson, buildQueryString, buildHeaders } from '../sdk-options.js';
 
 /**
  * generated from [reserved.ck](../../contracts/reserved.ck)
@@ -25,5 +25,15 @@ export class ReservedClient {
     async getRow(params: SeatRef): Promise<Seat> {
         const result = await this.fetch(`/rows/${encodeURIComponent(String(params.class))}`, { method: 'GET' });
         return reviveSeat(await parseJson<Seat>(result));
+    }
+
+    /** @description replace a note */
+    async putNote(body_: string, body: Note): Promise<Note> {
+        const result = await this.fetch(`/notes/${encodeURIComponent(body_)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body, bigIntReplacer),
+        });
+        return await parseJson<Note>(result);
     }
 }

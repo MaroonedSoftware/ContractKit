@@ -1,7 +1,7 @@
 info:
   name: /sessions
   type: http
-  seq: 9
+  seq: 11
 
 http:
   method: POST

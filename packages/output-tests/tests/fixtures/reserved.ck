@@ -5,24 +5,24 @@ options {
 }
 
 # Names that are fine in a contract but reserved in a generated language: keywords of TypeScript,
-# Python, C#, Kotlin and Swift. Between them they land on each surface a generator names: model
-# fields, path params (inline and through a model), query params, request and response headers,
-# and MCP tool arguments.
+# Python, C#, Kotlin and Swift, the attributes of Pydantic's BaseModel, the type names a generated
+# module imports, and `body`, which every SDK method already uses for its request body. Between them
+# they land on each surface a generator names: model fields, path params (inline and through a
+# model), query params, request and response headers, and MCP tool arguments.
 #
 # Two cases here are not about reserved words, but broke the same compile checks: a `date` query
 # param, whose class a TypeScript client has to import, and an operation declaring both request and
 # response headers, whose two generated header types need distinct names.
-#
-# Left out until the Python plugin can handle them: a path param named `body`, which every SDK
-# method already uses for its request body, and fields named after a Pydantic BaseModel attribute
-# (`copy`, `modelDump`, `json`) or a type the module imports (`date`, `time`). Python's output for
-# those does not load yet, and the Python check here only parses it. The other generators cover the
-# `body` case in their unit tests.
 
 # A seat, whose field names are all reserved somewhere
 contract Seat: {
     class: string
     from?: date
+    date: date
+    time?: time
+    copy?: string
+    modelDump?: string
+    json?: string
     in?: string
     is?: boolean
     object?: string
@@ -32,6 +32,10 @@ contract Seat: {
 # Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`
 contract SeatRef: {
     class: string
+}
+
+contract Note: {
+    text: string
 }
 
 # An inline path param named after a keyword, plus a request header block and response headers on
@@ -72,6 +76,25 @@ operation /rows/{class}: {
         service: SeatService.getRow
         response: {
             200: { application/json: Seat }
+        }
+    }
+}
+
+# A path param named like the SDK method's own request-body argument
+operation /notes/{body}: {
+    params: {
+        body: string
+    }
+
+    put: { # replace a note
+        sdk: putNote
+        service: SeatService.putNote
+        mcp: true
+        request: {
+            application/json: Note
+        }
+        response: {
+            200: { application/json: Note }
         }
     }
 }

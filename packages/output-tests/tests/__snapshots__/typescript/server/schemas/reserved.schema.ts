@@ -3,11 +3,16 @@ import { DateTime } from 'luxon';
 
 /**
  * A seat, whose field names are all reserved somewhere
- * generated from [Seat](../../contracts/reserved.ck#L23)
+ * generated from [Seat](../../contracts/reserved.ck#L18)
 */
 export const Seat = z.strictObject({
     class: z.string(),
     from: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })).optional(),
+    date: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })),
+    time: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'HH:mm:ss') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a time in format HH:mm:ss' })).optional(),
+    copy: z.string().optional(),
+    modelDump: z.string().optional(),
+    json: z.string().optional(),
     in: z.string().optional(),
     is: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).optional(),
     object: z.string().optional(),
@@ -23,3 +28,11 @@ export const SeatRef = z.strictObject({
     class: z.string(),
 });
 export type SeatRef = z.infer<typeof SeatRef>;
+
+/**
+ * generated from [Note](../../contracts/reserved.ck#L37)
+*/
+export const Note = z.strictObject({
+    text: z.string(),
+});
+export type Note = z.infer<typeof Note>;

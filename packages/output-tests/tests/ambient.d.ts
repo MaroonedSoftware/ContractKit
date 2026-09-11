@@ -194,13 +194,13 @@ declare module '#src/services/status.service.js' {
         [key: string]: any;
     }
 }
-declare module '#src/services/kitchen.service.js' {
-    export class KitchenService {
+declare module '#src/services/seat.service.js' {
+    export class SeatService {
         [key: string]: any;
     }
 }
-declare module '#src/services/seat.service.js' {
-    export class SeatService {
+declare module '#src/services/kitchen.service.js' {
+    export class KitchenService {
         [key: string]: any;
     }
 }

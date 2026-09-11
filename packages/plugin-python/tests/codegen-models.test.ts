@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { generatePydanticModels, renderPyType, toPythonFieldName, deriveModelsModuleName } from '../src/codegen-models.js';
+import {
+    generatePydanticModels,
+    renderPyType,
+    toPythonFieldName,
+    deriveModelsModuleName,
+    computeTypeAliases,
+    SCALARS_PY,
+} from '../src/codegen-models.js';
 import {
     scalarType,
     arrayType,
@@ -23,7 +30,7 @@ describe('renderPyType', () => {
         expect(renderPyType(scalarType('string'))).toBe('str');
         expect(renderPyType(scalarType('number'))).toBe('float');
         expect(renderPyType(scalarType('int'))).toBe('int');
-        expect(renderPyType(scalarType('bigint'))).toBe('int');
+        expect(renderPyType(scalarType('bigint'))).toBe('BigInt');
         expect(renderPyType(scalarType('boolean'))).toBe('bool');
         expect(renderPyType(scalarType('date'))).toBe('date');
         expect(renderPyType(scalarType('time'))).toBe('time');
@@ -49,10 +56,11 @@ describe('renderPyType', () => {
         expect(renderPyType(enumType('pending', 'completed', 'failed'))).toBe('Literal["pending", "completed", "failed"]');
     });
 
-    it('renders literal', () => {
-        expect(renderPyType(literalType('hello'))).toBe('"hello"');
-        expect(renderPyType(literalType(42))).toBe('42');
-        expect(renderPyType(literalType(true))).toBe('true');
+    it('renders literal as Literal[...], with Python booleans', () => {
+        expect(renderPyType(literalType('hello'))).toBe('Literal["hello"]');
+        expect(renderPyType(literalType(42))).toBe('Literal[42]');
+        expect(renderPyType(literalType(true))).toBe('Literal[True]');
+        expect(renderPyType(literalType(false))).toBe('Literal[False]');
     });
 
     it('renders array', () => {
@@ -123,11 +131,15 @@ describe('toPythonFieldName', () => {
         expect(toPythonFieldName('class')).toBe('class_');
         expect(toPythonFieldName('from')).toBe('from_');
         expect(toPythonFieldName('import')).toBe('import_');
+        expect(toPythonFieldName('async')).toBe('async_');
+        // Keywords only once snake_cased, so the check has to come after the conversion.
+        expect(toPythonFieldName('Lambda')).toBe('lambda_');
     });
 
     it('leaves soft keywords and near-misses alone', () => {
         expect(toPythonFieldName('type')).toBe('type');
         expect(toPythonFieldName('match')).toBe('match');
+        expect(toPythonFieldName('case')).toBe('case');
         expect(toPythonFieldName('classes')).toBe('classes');
         expect(toPythonFieldName('None')).toBe('none');
     });
@@ -189,6 +201,124 @@ describe('generatePydanticModels', () => {
         expect(output).toContain('x_event_id: UUID = Field(alias="x-event-id")');
         expect(output).toContain('model_config = ConfigDict(populate_by_name=True)');
         expect(output).toContain('from pydantic import BaseModel, ConfigDict, Field');
+    });
+
+    it('gives an optional aliased field default=None, since Field() with no default is required', () => {
+        const root = contractRoot([model('Payment', [field('processingTime', scalarType('duration'), { optional: true })])]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('processing_time: timedelta | None = Field(alias="processingTime", default=None)');
+    });
+
+    it('escapes a keyword field and aliases it back to its contract name', () => {
+        const root = contractRoot([model('Seat', [field('class', scalarType('string')), field('from', scalarType('date'), { optional: true })])]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('    class_: str = Field(alias="class")');
+        expect(output).toContain('    from_: date | None = Field(alias="from", default=None)');
+        // Without it, the model could only be built from the alias: `Seat(class_=...)` would fail.
+        expect(output).toContain('model_config = ConfigDict(populate_by_name=True)');
+    });
+
+    it('escapes a field named after a BaseModel attribute', () => {
+        const root = contractRoot([
+            model('Doc', [
+                field('modelDump', scalarType('string'), { optional: true }),
+                field('modelConfig', scalarType('string')),
+                field('json', scalarType('string'), { optional: true }),
+                field('copy', scalarType('string')),
+            ]),
+        ]);
+        const output = generatePydanticModels(root);
+        // model_dump and model_config fail class creation; json and copy shadow the method.
+        expect(output).toContain('    model_dump_: str | None = Field(alias="modelDump", default=None)');
+        expect(output).toContain('    model_config_: str = Field(alias="modelConfig")');
+        expect(output).toContain('    json_: str | None = Field(alias="json", default=None)');
+        expect(output).toContain('    copy_: str = Field(alias="copy")');
+    });
+
+    it('turns off protected namespaces for a model_ field that collides with nothing', () => {
+        const root = contractRoot([model('Car', [field('modelName', scalarType('string'))])]);
+        const output = generatePydanticModels(root);
+        // Before Pydantic 2.10 any `model_` field warned; the name itself is safe to keep.
+        expect(output).toContain('model_config = ConfigDict(populate_by_name=True, protected_namespaces=())');
+        expect(output).toContain('    model_name: str = Field(alias="modelName")');
+    });
+
+    it('escapes a field that would shadow a type its class annotates with', () => {
+        const root = contractRoot([
+            model('Event', [field('date', scalarType('date'), { optional: true }), field('str', scalarType('string'), { default: 'x' })]),
+        ]);
+        const output = generatePydanticModels(root);
+        // `date: date | None = None` puts None where the annotation looks up `date`.
+        expect(output).toContain('    date_: date | None = Field(alias="date", default=None)');
+        expect(output).toContain('    str_: str | None = Field(alias="str", default="x")');
+    });
+
+    it('escapes a defaulted field whose name a sibling field annotates with', () => {
+        const root = contractRoot([model('Event', [field('date', scalarType('string'), { optional: true }), field('when', scalarType('date'))])]);
+        const output = generatePydanticModels(root);
+        // Imports fine and then validates `when` against None: the quiet version of the bug.
+        expect(output).toContain('    date_: str | None = Field(alias="date", default=None)');
+        expect(output).toContain('    when: date');
+    });
+
+    it('keeps a type-named field that puts nothing in the class namespace', () => {
+        const root = contractRoot([model('Event', [field('date', scalarType('date')), field('time', scalarType('time'), { nullable: true })])]);
+        const output = generatePydanticModels(root);
+        expect(output).toMatch(/^ {4}date: date$/m);
+        expect(output).toMatch(/^ {4}time: time \| None$/m);
+        expect(output).not.toContain('ConfigDict');
+    });
+
+    it('keeps a type-named field whose class never annotates with that type', () => {
+        const root = contractRoot([model('Note', [field('date', scalarType('string'), { optional: true })])]);
+        expect(generatePydanticModels(root)).toContain('    date: str | None = None');
+    });
+
+    it('ignores enum values when looking for shadowed type names', () => {
+        const root = contractRoot([
+            model('Filter', [field('date', scalarType('string'), { optional: true }), field('kind', enumType('date', 'time'))]),
+        ]);
+        expect(generatePydanticModels(root)).toContain('    date: str | None = None');
+    });
+
+    it('names a field the same in a model and its Input variant', () => {
+        const root = contractRoot([
+            model('Booking', [
+                field('date', scalarType('string'), { optional: true }),
+                // Only the read model carries this annotation, but both classes must agree.
+                field('when', scalarType('date'), { visibility: 'readonly' }),
+            ]),
+        ]);
+        const output = generatePydanticModels(root);
+        const [read, input] = output.split('class BookingInput(BaseModel):');
+        expect(read).toContain('    date_: str | None = Field(alias="date", default=None)');
+        expect(input).toContain('    date_: str | None = Field(alias="date", default=None)');
+    });
+
+    it('types a discriminator field as a Literal, so its union can be built', () => {
+        const root = contractRoot([
+            model('Card', [field('kind', literalType('card')), field('last4', scalarType('string'))]),
+            model('Bank', [field('kind', literalType('bank')), field('iban', scalarType('string'))]),
+            model('Method', [], {
+                type: { kind: 'discriminatedUnion', discriminator: 'kind', members: [refType('Card'), refType('Bank')] } as never,
+            }),
+        ]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('    kind: Literal["card"]');
+        expect(output).toContain('from typing import Annotated, Literal');
+        expect(output).toContain('Method = Annotated[Card | Bank, Field(discriminator="kind")]');
+    });
+
+    it('keeps a required nullable aliased field required', () => {
+        const root = contractRoot([model('Order', [field('billTo', scalarType('string'), { nullable: true })])]);
+        const output = generatePydanticModels(root);
+        expect(output).toMatch(/^ {4}bill_to: str \| None = Field\(alias="billTo"\)$/m);
+    });
+
+    it('uses the declared default rather than None for an optional aliased field', () => {
+        const root = contractRoot([model('Order', [field('lineCount', scalarType('int'), { optional: true, default: 1 })])]);
+        const output = generatePydanticModels(root);
+        expect(output).toMatch(/^ {4}line_count: int \| None = Field\(alias="lineCount", default=1\)$/m);
     });
 
     it('aliases a keyword field to its wire name, so the class body parses', () => {
@@ -256,6 +386,14 @@ describe('generatePydanticModels', () => {
         const output = generatePydanticModels(root);
         expect(output).toContain('from datetime import timedelta');
         expect(output).toContain('timeout: timedelta');
+    });
+
+    it('types a bigint field as the shared BigInt, imported after the stdlib', () => {
+        const root = contractRoot([model('Order', [field('quantity', scalarType('bigint')), field('total', scalarType('decimal'))])]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('    quantity: BigInt');
+        // Relative imports come last, so the order does not depend on which field is scanned first.
+        expect(output).toMatch(/from decimal import Decimal\nfrom \._scalars import BigInt/);
     });
 
     it('generates the Decimal import for decimal fields', () => {
@@ -350,5 +488,35 @@ describe('multi-line descriptions', () => {
         expect(output).toContain('# Lifecycle status.');
         expect(output).toContain('# Extra detail line.');
         expect(output).not.toMatch(/^Extra detail line\.$/m);
+    });
+});
+
+describe('computeTypeAliases', () => {
+    it('lists the contracts emitted as something other than a Pydantic class', () => {
+        const models = [
+            model('Card', [field('last4', scalarType('string'))]),
+            model('Tier', [], { type: enumType('free', 'pro') }),
+            model('Ids', [], { type: arrayType(scalarType('string')) }),
+            model('Method', [], { type: unionType(refType('Card'), refType('Bank')) }),
+            // A rename of a class is the class itself: `Renamed = Card` has `model_validate`.
+            model('Renamed', [], { type: refType('Card') }),
+            model('Deferred', [], { type: lazyType(refType('Renamed')) }),
+            model('OfAlias', [], { type: refType('Tier') }),
+        ];
+        expect([...computeTypeAliases(models)].sort()).toEqual(['Ids', 'Method', 'OfAlias', 'Tier']);
+    });
+
+    it('does not loop on aliases that refer to each other', () => {
+        const models = [model('A', [], { type: refType('B') }), model('B', [], { type: refType('A') })];
+        expect([...computeTypeAliases(models)].sort()).toEqual(['A', 'B']);
+    });
+});
+
+describe('SCALARS_PY', () => {
+    it('reads every form a bigint arrives in and writes a digit string in JSON mode only', () => {
+        expect(SCALARS_PY).toContain('return int(text[:-1] if text.endswith("n") else text)');
+        expect(SCALARS_PY).toContain(
+            'BigInt = Annotated[int, BeforeValidator(_parse_bigint), PlainSerializer(str, return_type=str, when_used="json")]',
+        );
     });
 });

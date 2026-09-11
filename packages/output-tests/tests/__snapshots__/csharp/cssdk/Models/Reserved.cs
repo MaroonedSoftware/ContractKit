@@ -20,6 +20,25 @@ public sealed record Seat
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateOnly? From { get; init; }
 
+    [JsonPropertyName("date")]
+    public required DateOnly Date { get; init; }
+
+    [JsonPropertyName("time")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TimeOnly? Time { get; init; }
+
+    [JsonPropertyName("copy")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Copy { get; init; }
+
+    [JsonPropertyName("modelDump")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ModelDump { get; init; }
+
+    [JsonPropertyName("json")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Json { get; init; }
+
     [JsonPropertyName("in")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? In { get; init; }
@@ -42,4 +61,10 @@ public sealed record SeatRef
 {
     [JsonPropertyName("class")]
     public required string Class { get; init; }
+}
+
+public sealed record Note
+{
+    [JsonPropertyName("text")]
+    public required string Text { get; init; }
 }

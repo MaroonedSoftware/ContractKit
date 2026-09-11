@@ -44,13 +44,13 @@ public struct Payment: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(amount, forKey: .amount)
-        try container.encode(unitPrice, forKey: .unitPrice)
-        try container.encode(quantity, forKey: .quantity)
-        try container.encode(createdAt, forKey: .createdAt)
-        try container.encodeIfPresent(processingTime, forKey: .processingTime)
-        try container.encode(status, forKey: .status)
+        try container.encode(self.id, forKey: .id)
+        try container.encode(self.amount, forKey: .amount)
+        try container.encode(self.unitPrice, forKey: .unitPrice)
+        try container.encode(self.quantity, forKey: .quantity)
+        try container.encode(self.createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(self.processingTime, forKey: .processingTime)
+        try container.encode(self.status, forKey: .status)
     }
 }
 
@@ -93,12 +93,12 @@ public struct PaymentInput: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(amount, forKey: .amount)
-        try container.encode(unitPrice, forKey: .unitPrice)
-        try container.encode(quantity, forKey: .quantity)
-        try container.encode(createdAt, forKey: .createdAt)
-        try container.encodeIfPresent(processingTime, forKey: .processingTime)
-        try container.encode(status, forKey: .status)
+        try container.encode(self.amount, forKey: .amount)
+        try container.encode(self.unitPrice, forKey: .unitPrice)
+        try container.encode(self.quantity, forKey: .quantity)
+        try container.encode(self.createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(self.processingTime, forKey: .processingTime)
+        try container.encode(self.status, forKey: .status)
     }
 }
 
@@ -121,7 +121,7 @@ public struct Credential: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
+        try container.encode(self.id, forKey: .id)
     }
 }
 
@@ -144,7 +144,7 @@ public struct CredentialInput: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(secret, forKey: .secret)
+        try container.encode(self.secret, forKey: .secret)
     }
 }
 
@@ -167,7 +167,7 @@ public struct Session: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
+        try container.encode(self.id, forKey: .id)
     }
 }
 
@@ -194,8 +194,8 @@ public struct SessionInput: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(refreshToken, forKey: .refreshToken)
+        try container.encode(self.id, forKey: .id)
+        try container.encode(self.refreshToken, forKey: .refreshToken)
     }
 }
 
@@ -218,7 +218,7 @@ public struct PaymentRef: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(paymentId, forKey: .paymentId)
+        try container.encode(self.paymentId, forKey: .paymentId)
     }
 }
 
@@ -240,7 +240,7 @@ public struct UpdatePaymentForm: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(note, forKey: .note)
+        try container.encodeIfPresent(self.note, forKey: .note)
     }
 }
 
@@ -266,8 +266,59 @@ public struct UploadReceiptForm: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(caption, forKey: .caption)
-        try container.encodeIfPresent(file, forKey: .file)
+        try container.encodeIfPresent(self.caption, forKey: .caption)
+        try container.encodeIfPresent(self.file, forKey: .file)
+    }
+}
+
+/// Query params declared as a model, referenced via `query: PaymentFilter`
+public struct PaymentFilter: Codable, Equatable, Sendable {
+    public var status: PaymentFilterStatus?
+    public var since: Date?
+
+    public init(status: PaymentFilterStatus? = nil, since: Date? = nil) {
+        self.status = status
+        self.since = since
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status = "status"
+        case since = "since"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.status = try container.decodeIfPresent(PaymentFilterStatus.self, forKey: .status)
+        self.since = try container.decodeIfPresent(Date.self, forKey: .since)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(self.status, forKey: .status)
+        try container.encodeIfPresent(self.since, forKey: .since)
+    }
+}
+
+/// Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+public struct TenantHeaders: Codable, Equatable, Sendable {
+    public var xTenant: String
+
+    public init(xTenant: String) {
+        self.xTenant = xTenant
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case xTenant = "x-tenant"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.xTenant = try container.decode(String.self, forKey: .xTenant)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.xTenant, forKey: .xTenant)
     }
 }
 
@@ -294,8 +345,8 @@ public struct AdminCredential: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(scope, forKey: .scope)
+        try container.encode(self.id, forKey: .id)
+        try container.encode(self.scope, forKey: .scope)
     }
 }
 
@@ -326,13 +377,19 @@ public struct AdminCredentialInput: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(secret, forKey: .secret)
-        try container.encode(scope, forKey: .scope)
-        try container.encode(token, forKey: .token)
+        try container.encode(self.secret, forKey: .secret)
+        try container.encode(self.scope, forKey: .scope)
+        try container.encode(self.token, forKey: .token)
     }
 }
 
 public enum PaymentStatus: String, Codable, CaseIterable, Sendable {
+    case pending = "pending"
+    case completed = "completed"
+    case failed = "failed"
+}
+
+public enum PaymentFilterStatus: String, Codable, CaseIterable, Sendable {
     case pending = "pending"
     case completed = "completed"
     case failed = "failed"

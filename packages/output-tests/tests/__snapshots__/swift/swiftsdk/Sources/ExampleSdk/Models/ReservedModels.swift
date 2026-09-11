@@ -5,14 +5,24 @@ import Foundation
 public struct Seat: Codable, Equatable, Sendable {
     public var `class`: String
     public var from: LocalDate?
+    public var date: LocalDate
+    public var time: LocalTime?
+    public var copy: String?
+    public var modelDump: String?
+    public var json: String?
     public var `in`: String?
     public var `is`: Bool?
     public var object: String?
     public var `default`: String?
 
-    public init(`class`: String, from: LocalDate? = nil, `in`: String? = nil, `is`: Bool? = nil, object: String? = nil, `default`: String? = nil) {
+    public init(`class`: String, from: LocalDate? = nil, date: LocalDate, time: LocalTime? = nil, copy: String? = nil, modelDump: String? = nil, json: String? = nil, `in`: String? = nil, `is`: Bool? = nil, object: String? = nil, `default`: String? = nil) {
         self.`class` = `class`
         self.from = from
+        self.date = date
+        self.time = time
+        self.copy = copy
+        self.modelDump = modelDump
+        self.json = json
         self.`in` = `in`
         self.`is` = `is`
         self.object = object
@@ -22,6 +32,11 @@ public struct Seat: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case `class` = "class"
         case from = "from"
+        case date = "date"
+        case time = "time"
+        case copy = "copy"
+        case modelDump = "modelDump"
+        case json = "json"
         case `in` = "in"
         case `is` = "is"
         case object = "object"
@@ -32,6 +47,11 @@ public struct Seat: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.`class` = try container.decode(String.self, forKey: .`class`)
         self.from = try container.decodeIfPresent(LocalDate.self, forKey: .from)
+        self.date = try container.decode(LocalDate.self, forKey: .date)
+        self.time = try container.decodeIfPresent(LocalTime.self, forKey: .time)
+        self.copy = try container.decodeIfPresent(String.self, forKey: .copy)
+        self.modelDump = try container.decodeIfPresent(String.self, forKey: .modelDump)
+        self.json = try container.decodeIfPresent(String.self, forKey: .json)
         self.`in` = try container.decodeIfPresent(String.self, forKey: .`in`)
         self.`is` = try container.decodeIfPresent(Bool.self, forKey: .`is`)
         self.object = try container.decodeIfPresent(String.self, forKey: .object)
@@ -40,12 +60,17 @@ public struct Seat: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(`class`, forKey: .`class`)
-        try container.encodeIfPresent(from, forKey: .from)
-        try container.encodeIfPresent(`in`, forKey: .`in`)
-        try container.encodeIfPresent(`is`, forKey: .`is`)
-        try container.encodeIfPresent(object, forKey: .object)
-        try container.encodeIfPresent(`default`, forKey: .`default`)
+        try container.encode(self.`class`, forKey: .`class`)
+        try container.encodeIfPresent(self.from, forKey: .from)
+        try container.encode(self.date, forKey: .date)
+        try container.encodeIfPresent(self.time, forKey: .time)
+        try container.encodeIfPresent(self.copy, forKey: .copy)
+        try container.encodeIfPresent(self.modelDump, forKey: .modelDump)
+        try container.encodeIfPresent(self.json, forKey: .json)
+        try container.encodeIfPresent(self.`in`, forKey: .`in`)
+        try container.encodeIfPresent(self.`is`, forKey: .`is`)
+        try container.encodeIfPresent(self.object, forKey: .object)
+        try container.encodeIfPresent(self.`default`, forKey: .`default`)
     }
 }
 
@@ -68,6 +93,28 @@ public struct SeatRef: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(`class`, forKey: .`class`)
+        try container.encode(self.`class`, forKey: .`class`)
+    }
+}
+
+public struct Note: Codable, Equatable, Sendable {
+    public var text: String
+
+    public init(text: String) {
+        self.text = text
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case text = "text"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.text = try container.decode(String.self, forKey: .text)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.text, forKey: .text)
     }
 }

@@ -10,4 +10,5 @@ pysdk/_models_hyphenated.py
 pysdk/_models_kitchen.py
 pysdk/_models_reserved.py
 pysdk/_models_simple.py
+pysdk/_scalars.py
 pysdk/requirements.txt

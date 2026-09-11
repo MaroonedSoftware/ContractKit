@@ -22,6 +22,7 @@
                             "api-reference/endpoints/get-invoice",
                             "api-reference/endpoints/get-seat",
                             "api-reference/endpoints/get-row",
+                            "api-reference/endpoints/put-note",
                             "api-reference/endpoints/get-status"
                         ]
                     },
@@ -30,6 +31,8 @@
                         "pages": [
                             "api-reference/billing/create-payment",
                             "api-reference/billing/list-payments",
+                            "api-reference/billing/search-payments",
+                            "api-reference/billing/create-payments",
                             "api-reference/billing/get-payment",
                             "api-reference/billing/update-payment-with-form",
                             "api-reference/billing/delete-payment",
@@ -56,6 +59,7 @@
                             "api-reference/models/invoice",
                             "api-reference/models/seat",
                             "api-reference/models/seat-ref",
+                            "api-reference/models/note",
                             "api-reference/models/heartbeat",
                             {
                                 "group": "Billing",
@@ -66,7 +70,9 @@
                                     "api-reference/models/billing/session",
                                     "api-reference/models/billing/payment-ref",
                                     "api-reference/models/billing/update-payment-form",
-                                    "api-reference/models/billing/upload-receipt-form"
+                                    "api-reference/models/billing/upload-receipt-form",
+                                    "api-reference/models/billing/payment-filter",
+                                    "api-reference/models/billing/tenant-headers"
                                 ]
                             },
                             {

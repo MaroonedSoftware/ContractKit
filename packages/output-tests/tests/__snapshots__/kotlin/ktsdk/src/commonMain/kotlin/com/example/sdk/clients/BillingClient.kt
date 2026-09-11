@@ -6,10 +6,12 @@ package com.example.sdk.clients
 import com.example.sdk.models.AdminCredentialInput
 import com.example.sdk.models.Credential
 import com.example.sdk.models.Payment
+import com.example.sdk.models.PaymentFilter
 import com.example.sdk.models.PaymentInput
 import com.example.sdk.models.PaymentRef
 import com.example.sdk.models.Session
 import com.example.sdk.models.SessionInput
+import com.example.sdk.models.TenantHeaders
 import com.example.sdk.models.UpdatePaymentForm
 import com.example.sdk.runtime.SdkHttp
 import io.ktor.http.HttpMethod
@@ -19,6 +21,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /** Operations declared in `billing.ck`. */
 class BillingClient(private val http: SdkHttp) {
@@ -46,6 +49,25 @@ class BillingClient(private val http: SdkHttp) {
             path("payments")
             params(query)
             headers(customHeaders)
+        }
+        return http.decodeJson(response)
+    }
+
+    /** search payments with a filter model */
+    suspend fun searchPayments(query: PaymentFilter? = null, customHeaders: TenantHeaders? = null): List<Payment> {
+        val response = http.execute(HttpMethod.Get) {
+            path("payments", "search")
+            params(query)
+            headers(customHeaders)
+        }
+        return http.decodeJson(response)
+    }
+
+    /** create several payments at once */
+    suspend fun createPayments(body: List<PaymentInput>): List<Payment> {
+        val response = http.execute(HttpMethod.Post) {
+            path("payments", "batch")
+            jsonBody(body, "application/json")
         }
         return http.decodeJson(response)
     }
@@ -137,6 +159,7 @@ data class CreatePaymentResult(
 data class ListPaymentsQuery(
     val limit: Long? = null,
     val cursor: String,
+    val status: JsonElement? = null,
 )
 
 @Serializable

@@ -6,6 +6,7 @@ from uuid import UUID
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 from decimal import Decimal
+from ._scalars import BigInt
 
 # A customer payment
 class Payment(BaseModel):
@@ -14,9 +15,9 @@ class Payment(BaseModel):
     id: UUID
     amount: float
     unit_price: Decimal = Field(alias="unitPrice")
-    quantity: int
+    quantity: BigInt
     created_at: datetime = Field(alias="createdAt")
-    processing_time: timedelta | None = Field(alias="processingTime")
+    processing_time: timedelta | None = Field(alias="processingTime", default=None)
     status: Literal["pending", "completed", "failed"] | None = Field(default="pending")
 
 class PaymentInput(BaseModel):
@@ -24,9 +25,9 @@ class PaymentInput(BaseModel):
 
     amount: float
     unit_price: Decimal = Field(alias="unitPrice")
-    quantity: int
+    quantity: BigInt
     created_at: datetime = Field(alias="createdAt")
-    processing_time: timedelta | None = Field(alias="processingTime")
+    processing_time: timedelta | None = Field(alias="processingTime", default=None)
     status: Literal["pending", "completed", "failed"] | None = Field(default="pending")
 
 # A stored credential — has a writeonly child, so its Base schema is read
@@ -58,6 +59,17 @@ class UpdatePaymentForm(BaseModel):
 class UploadReceiptForm(BaseModel):
     caption: str | None = None
     file: bytes | None = None
+
+# Query params declared as a model, referenced via `query: PaymentFilter`
+class PaymentFilter(BaseModel):
+    status: Literal["pending", "completed", "failed"] | None = None
+    since: datetime | None = None
+
+# Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+class TenantHeaders(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    x_tenant: str = Field(alias="x-tenant")
 
 # Extends a writeonly base and is itself writeonly
 class AdminCredential(Credential):

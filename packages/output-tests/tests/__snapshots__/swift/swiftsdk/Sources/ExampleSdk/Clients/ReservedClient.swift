@@ -27,6 +27,14 @@ public final class ReservedClient: Sendable {
         let response = try await http.execute(request)
         return try http.decodeJSON(Seat.self, from: response)
     }
+
+    /// replace a note
+    public func putNote(body_: String, body: Note) async throws -> Note {
+        var request = try SdkRequest(method: "PUT", path: ["notes", http.segment(body_)])
+        try http.setJSONBody(&request, body, contentType: "application/json")
+        let response = try await http.execute(request)
+        return try http.decodeJSON(Note.self, from: response)
+    }
 }
 
 /// Query parameters for GET /seats/{class}.

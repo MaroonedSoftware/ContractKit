@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { ServerKitRouter, requirePolicy } from '@maroonedsoftware/koa';
+import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';
 import { SeatService } from '#src/services/seat.service.js';
-import { Seat, SeatRef } from '../schemas/reserved.schema.js';
+import { Note, Seat, SeatRef } from '../schemas/reserved.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 
@@ -12,7 +12,7 @@ export const ReservedRouter = ServerKitRouter();
 
 /**
  * fetch one seat
- * from [reserved.ck](../../contracts/reserved.ck#L44)
+ * from [reserved.ck](../../contracts/reserved.ck#L48)
 */
 ReservedRouter.get('/seats/:class', requirePolicy(), async ctx => {
     const { class: class_ } = await parseAndValidate(
@@ -49,13 +49,35 @@ ReservedRouter.get('/seats/:class', requirePolicy(), async ctx => {
 
 /**
  * fetch a row by its seat class
- * from [reserved.ck](../../contracts/reserved.ck#L70)
+ * from [reserved.ck](../../contracts/reserved.ck#L74)
 */
 ReservedRouter.get('/rows/:class', requirePolicy(), async ctx => {
     const params = await parseAndValidate(ctx.params, SeatRef.strict());
 
     const service = ctx.container.get(SeatService);
     const result: Seat = await service.getRow(params);
+
+    ctx.status = 200;
+    ctx.type = 'application/json';
+    ctx.body = result;
+});
+
+/**
+ * replace a note
+ * from [reserved.ck](../../contracts/reserved.ck#L89)
+*/
+ReservedRouter.put('/notes/:body', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
+    const { body: body_ } = await parseAndValidate(
+        ctx.params,
+        z.strictObject({
+            body: z.string(),
+        }),
+    );
+
+    const body = await parseAndValidate(ctx.parsedBody, Note);
+
+    const service = ctx.container.get(SeatService);
+    const result: Note = await service.putNote(body_, body);
 
     ctx.status = 200;
     ctx.type = 'application/json';

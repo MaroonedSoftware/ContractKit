@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { FastifyPluginAsync } from 'fastify';
 import { requirePolicy } from '@maroonedsoftware/fastify';
 import { SeatService } from '#src/services/seat.service.js';
-import { Seat, SeatRef } from '../schemas/reserved.schema.js';
+import { Note, Seat, SeatRef } from '../schemas/reserved.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 
@@ -13,7 +13,7 @@ export const ReservedRoutes: FastifyPluginAsync = async app => {
 
     /**
      * fetch one seat
-     * from [reserved.ck](../../contracts/reserved.ck#L44)
+     * from [reserved.ck](../../contracts/reserved.ck#L48)
     */
     app.get('/seats/:class', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { class: class_ } = await parseAndValidate(
@@ -50,13 +50,35 @@ export const ReservedRoutes: FastifyPluginAsync = async app => {
 
     /**
      * fetch a row by its seat class
-     * from [reserved.ck](../../contracts/reserved.ck#L70)
+     * from [reserved.ck](../../contracts/reserved.ck#L74)
     */
     app.get('/rows/:class', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const params = await parseAndValidate(request.params, SeatRef.strict());
 
         const service = request.container.get(SeatService);
         const result: Seat = await service.getRow(params);
+
+        reply.status(200);
+        reply.type('application/json');
+        return reply.send(result);
+    });
+
+    /**
+     * replace a note
+     * from [reserved.ck](../../contracts/reserved.ck#L89)
+    */
+    app.put('/notes/:body', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
+        const { body: body_ } = await parseAndValidate(
+            request.params,
+            z.strictObject({
+                body: z.string(),
+            }),
+        );
+
+        const body = await parseAndValidate(request.body, Note);
+
+        const service = request.container.get(SeatService);
+        const result: Note = await service.putNote(body_, body);
 
         reply.status(200);
         reply.type('application/json');

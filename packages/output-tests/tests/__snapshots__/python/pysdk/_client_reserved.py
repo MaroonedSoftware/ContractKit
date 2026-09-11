@@ -5,21 +5,23 @@ from datetime import date
 from urllib.parse import quote
 from typing import NotRequired, TypedDict
 from ._base_client import BaseClient, SdkError  # noqa: F401
-from ._models_reserved import Seat, SeatRef
+from ._models_reserved import Note, Seat, SeatRef
 
 
 class GetSeatResponseHeaders(TypedDict, total=False):
     from_: str  # from (optional)
 
 
-class GetSeatQuery(TypedDict):
-    from_: NotRequired[date]  # from
-    in_: NotRequired[str]  # in
-    page_size: NotRequired[int]  # pageSize
+GetSeatQuery = TypedDict("GetSeatQuery", {
+    "from": NotRequired[date],
+    "in": NotRequired[str],
+    "pageSize": NotRequired[int],
+})
 
 
-class GetSeatHeaders(TypedDict):
-    from_: NotRequired[str]  # from
+GetSeatHeaders = TypedDict("GetSeatHeaders", {
+    "from": NotRequired[str],
+})
 
 
 class ReservedClient(BaseClient):
@@ -38,5 +40,12 @@ class ReservedClient(BaseClient):
         """
         fetch a row by its seat class
         """
-        result = await self._fetch(f"/rows/{quote(str(params.class_), safe='')}", method="GET")
+        result = await self._fetch(f"/rows/{quote(str(params.model_dump(by_alias=True)['class']), safe='')}", method="GET")
         return Seat.model_validate(result)
+
+    async def put_note(self, body_: str, body: Note) -> Note:
+        """
+        replace a note
+        """
+        result = await self._fetch(f"/notes/{quote(str(body_), safe='')}", method="PUT", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
+        return Note.model_validate(result)

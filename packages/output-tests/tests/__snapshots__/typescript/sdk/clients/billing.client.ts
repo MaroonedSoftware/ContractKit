@@ -1,6 +1,6 @@
 import type { SdkFetch } from '../sdk-options.js';
 import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString, buildHeaders } from '../sdk-options.js';
-import type { AdminCredentialInput, Credential, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm } from '../types/billing.types.js';
+import type { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, TenantHeaders, UpdatePaymentForm } from '../types/billing.types.js';
 import { revivePayment } from '../types/billing.types.js';
 import { DateTime } from 'luxon';
 
@@ -20,11 +20,31 @@ export class BillingClient {
     }
 
     /** @description list payments */
-    async listPayments(query: { limit?: number; cursor: string }, customHeaders: { 'api-key'?: string; 'x-tenant': string }): Promise<Payment[]> {
+    async listPayments(query: { limit?: number; cursor: string; status?: 'pending' | 'completed' | 'failed' }, customHeaders: { 'api-key'?: string; 'x-tenant': string }): Promise<Payment[]> {
         const qs = buildQueryString(query);
         const result = await this.fetch(`/payments${qs}`, {
             method: 'GET',
             headers: buildHeaders(customHeaders),
+        });
+        return (await parseJson<Payment[]>(result)).map(revivePayment);
+    }
+
+    /** @description search payments with a filter model */
+    async searchPayments(query?: PaymentFilter, customHeaders?: TenantHeaders): Promise<Payment[]> {
+        const qs = buildQueryString(query);
+        const result = await this.fetch(`/payments/search${qs}`, {
+            method: 'GET',
+            headers: buildHeaders(customHeaders),
+        });
+        return (await parseJson<Payment[]>(result)).map(revivePayment);
+    }
+
+    /** @description create several payments at once */
+    async createPayments(body: PaymentInput[]): Promise<Payment[]> {
+        const result = await this.fetch(`/payments/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body, bigIntReplacer),
         });
         return (await parseJson<Payment[]>(result)).map(revivePayment);
     }

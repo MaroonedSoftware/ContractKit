@@ -62,6 +62,16 @@ contract Bank: {
 
 contract Method: discriminated(by=kind, Card | Bank)
 
+# Fields named after the generated coder's own locals. `encode(to:)` holds a `container` beside its
+# `encoder` parameter and `init(from:)` one beside `decoder`, so a property read there without
+# `self.` resolves to the local: a compile error in `encode`, and a literal's guard comparing the
+# wrong thing in `init`. Found against a real contract whose model had a `container` field.
+contract Shadow: {
+    container: string
+    encoder?: int
+    decoder: literal("d")
+}
+
 # Decodes snake_case keys and encodes PascalCase ones. The nested object is hoisted into a struct
 # that keeps its declared keys, which the generator warns about.
 contract format(output=snake, input=pascal) Token: {
