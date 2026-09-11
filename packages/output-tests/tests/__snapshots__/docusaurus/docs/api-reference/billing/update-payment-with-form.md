@@ -1,7 +1,7 @@
 ---
 title: "Update a payment with form data"
 sidebar_label: "Update a payment with form data"
-sidebar_position: 5
+sidebar_position: 6
 mdx:
     format: "md"
 ---

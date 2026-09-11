@@ -937,4 +937,29 @@ describe('BASE_CLIENT_PY', () => {
         // can parse that. Every other body kind still gets its declared content type.
         expect(BASE_CLIENT_PY).toContain('if body is not None and body_kind != "multipart":');
     });
+
+    it('dumps a model-ref query or headers by contract name, like a request body', () => {
+        // Passed straight through, httpx raised on a model query and the header merge on a model.
+        expect(BASE_CLIENT_PY).toContain('data = values.model_dump(mode="json", by_alias=True, exclude_unset=True)');
+        expect(BASE_CLIENT_PY).toContain('"params": _wire_values(params)');
+    });
+
+    it('converts inline query and header values to the forms the router parses', () => {
+        // httpx str()s a datetime with a space, which Luxon's fromISO rejects.
+        expect(BASE_CLIENT_PY).toContain('data = to_jsonable_python(dict(values))');
+        // A None became an empty value, which a numeric schema rejects.
+        expect(BASE_CLIENT_PY).toContain('if value is not None}');
+    });
+
+    it('sends every header value as text, since httpx rejects anything else', () => {
+        expect(BASE_CLIENT_PY).toContain('**{key: _header_text(value) for key, value in _wire_values(extra_headers).items()}');
+        expect(BASE_CLIENT_PY).toContain('return "true" if value else "false"');
+    });
+
+    it('accepts a TypedDict or a model wherever query or headers are passed', () => {
+        // A TypedDict is a Mapping but not a dict to a type checker.
+        expect(BASE_CLIENT_PY).not.toContain('params: dict | None');
+        expect(BASE_CLIENT_PY.match(/params: Mapping\[str, Any\] \| BaseModel \| None = None/g)).toHaveLength(3);
+        expect(BASE_CLIENT_PY.match(/extra_headers: Mapping\[str, Any\] \| BaseModel \| None = None/g)).toHaveLength(3);
+    });
 });

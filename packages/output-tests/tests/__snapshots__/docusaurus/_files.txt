@@ -8,6 +8,7 @@ docs/api-reference/billing/delete-payment.md
 docs/api-reference/billing/get-payment.md
 docs/api-reference/billing/get-refund.md
 docs/api-reference/billing/list-payments.md
+docs/api-reference/billing/search-payments.md
 docs/api-reference/billing/update-payment-with-form.md
 docs/api-reference/billing/upload-receipt.md
 docs/api-reference/endpoints/_category_.json
@@ -27,9 +28,11 @@ docs/api-reference/models/_category_.json
 docs/api-reference/models/billing/_category_.json
 docs/api-reference/models/billing/admin-credential.md
 docs/api-reference/models/billing/credential.md
+docs/api-reference/models/billing/payment-filter.md
 docs/api-reference/models/billing/payment-ref.md
 docs/api-reference/models/billing/payment.md
 docs/api-reference/models/billing/session.md
+docs/api-reference/models/billing/tenant-headers.md
 docs/api-reference/models/billing/update-payment-form.md
 docs/api-reference/models/billing/upload-receipt-form.md
 docs/api-reference/models/heartbeat.md

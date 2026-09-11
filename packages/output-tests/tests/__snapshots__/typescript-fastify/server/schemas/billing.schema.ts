@@ -88,6 +88,25 @@ export const UploadReceiptForm = z.strictObject({
 export type UploadReceiptForm = z.infer<typeof UploadReceiptForm>;
 
 /**
+ * Query params declared as a model, referenced via `query: PaymentFilter`
+ * generated from [PaymentFilter](../../contracts/billing.ck#L54)
+*/
+export const PaymentFilter = z.strictObject({
+    status: z.enum(["pending", "completed", "failed"]).optional(),
+    since: _ZodDatetime.optional(),
+});
+export type PaymentFilter = z.infer<typeof PaymentFilter>;
+
+/**
+ * Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+ * generated from [TenantHeaders](../../contracts/billing.ck#L60)
+*/
+export const TenantHeaders = z.strictObject({
+    'x-tenant': z.string(),
+});
+export type TenantHeaders = z.infer<typeof TenantHeaders>;
+
+/**
  * Extends a writeonly base and is itself writeonly
  * generated from [AdminCredential](../../contracts/billing.ck#L28)
 */

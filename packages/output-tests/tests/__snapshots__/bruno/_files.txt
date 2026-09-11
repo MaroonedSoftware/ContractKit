@@ -1,6 +1,7 @@
 bruno/billing/delete-payments-paymentId.yml
 bruno/billing/folder.yml
 bruno/billing/get-payments-paymentId.yml
+bruno/billing/get-payments-search.yml
 bruno/billing/get-payments.yml
 bruno/billing/get-refunds-paymentId.yml
 bruno/billing/post-credentials.yml

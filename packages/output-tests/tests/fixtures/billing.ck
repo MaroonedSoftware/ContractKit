@@ -50,6 +50,17 @@ contract UploadReceiptForm: {
     file?: binary
 }
 
+# Query params declared as a model, referenced via `query: PaymentFilter`
+contract PaymentFilter: {
+    status?: enum(pending, completed, failed)
+    since?: datetime
+}
+
+# Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+contract TenantHeaders: {
+    x-tenant: string
+}
+
 # ─── Payment endpoints ────────────────────────────────────────────────────────
 
 operation /payments: {
@@ -85,6 +96,18 @@ operation /payments: {
             api-key?: string
             x-tenant: string
         }
+        response: {
+            200: { application/json: array(Payment) }
+        }
+    }
+}
+
+operation /payments/search: {
+    get: { # search payments with a filter model
+        sdk: searchPayments
+        service: PaymentService.search
+        query: PaymentFilter
+        headers: TenantHeaders
         response: {
             200: { application/json: array(Payment) }
         }

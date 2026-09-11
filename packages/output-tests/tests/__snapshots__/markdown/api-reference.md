@@ -10,10 +10,11 @@
 - [Current service status](#current-service-status)
 
 <details>
-<summary><strong>Billing</strong> (10)</summary>
+<summary><strong>Billing</strong> (11)</summary>
 
 - [Create a payment](#create-a-payment)
 - [List payments](#list-payments)
+- [Search payments with a filter model](#search-payments-with-a-filter-model)
 - [Create several payments at once](#create-several-payments-at-once)
 - [Fetch one payment](#fetch-one-payment)
 - [Update a payment with form data](#update-a-payment-with-form-data)
@@ -45,7 +46,7 @@
 - [Heartbeat](#heartbeat)
 
 <details>
-<summary><strong>Billing</strong> (7)</summary>
+<summary><strong>Billing</strong> (9)</summary>
 
 - [Payment](#payment)
 - [Credential](#credential)
@@ -54,6 +55,8 @@
 - [PaymentRef](#paymentref)
 - [UpdatePaymentForm](#updatepaymentform)
 - [UploadReceiptForm](#uploadreceiptform)
+- [PaymentFilter](#paymentfilter)
+- [TenantHeaders](#tenantheaders)
 
 </details>
 
@@ -226,6 +229,33 @@ Response headers:
 | `x-tenant` | `string` | Yes |  |
 | `api-key` | `string` | No |  |
 | `limit` | `number` | No |  |
+| `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
+
+</details>
+
+##### Response
+
+`200 OK` — Returns a list of [Payment](#payment) objects.
+
+
+---
+
+#### Search payments with a filter model
+
+**`GET`** `/payments/search`
+
+> [!NOTE]
+> SDK method: `searchPayments`
+
+##### Attributes
+
+<details>
+<summary>Attributes (3)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `x-tenant` | `string` | Yes |  |
+| `since` | `string` | No |  |
 | `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
 
 </details>
@@ -728,6 +758,33 @@ Extends [`Credential`](#credential)
 | --- | --- | --- | --- |
 | `caption` | `string` | No |  |
 | `file` | `Blob` | No |  |
+
+</details>
+
+#### PaymentFilter
+
+> Query params declared as a model, referenced via `query: PaymentFilter`
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
+| `since` | `string` | No |  |
+
+</details>
+
+#### TenantHeaders
+
+> Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `x-tenant` | `string` | Yes |  |
 
 </details>
 

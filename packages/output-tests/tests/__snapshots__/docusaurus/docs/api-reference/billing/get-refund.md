@@ -1,7 +1,7 @@
 ---
 title: "Look up a refund by its originating payment"
 sidebar_label: "Look up a refund by its originating payment"
-sidebar_position: 8
+sidebar_position: 9
 mdx:
     format: "md"
 ---
