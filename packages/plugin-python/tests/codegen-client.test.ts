@@ -573,6 +573,55 @@ describe('generatePythonClient', () => {
             expect(output).toContain('return Transfer.model_validate(result), headers');
         });
 
+        it('gives the response side its own TypedDict when the operation also declares request headers', () => {
+            const root = opRoot([
+                opRoute('/transfers', [
+                    opOperation('get', {
+                        sdk: 'getTransfer',
+                        headers: [opParam('from', scalarType('string'), { optional: true })],
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Transfer' } }],
+                                headers: [{ name: 'etag', optional: false, type: scalarType('string') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            // Both used to be `GetTransferHeaders`: Python keeps the later definition without a word,
+            // so the returned headers were typed as the request's.
+            expect(output.match(/^(class )?GetTransferHeaders\b/gm)).toHaveLength(1);
+            expect(output).toContain('class GetTransferHeaders(TypedDict):');
+            expect(output).toContain('class GetTransferResponseHeaders(TypedDict, total=False):');
+            expect(output).toContain('custom_headers: GetTransferHeaders | None = None');
+            expect(output).toContain('-> tuple[Transfer, GetTransferResponseHeaders]:');
+            expect(output).toContain('headers: GetTransferResponseHeaders = {}');
+        });
+
+        it('keeps <Method>Headers for the response side when the operation declares no request headers', () => {
+            const root = opRoot([
+                opRoute('/transfers', [
+                    opOperation('get', {
+                        sdk: 'getTransfer',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Transfer' } }],
+                                headers: [{ name: 'etag', optional: false, type: scalarType('string') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('class GetTransferHeaders(TypedDict, total=False):');
+            expect(output).not.toContain('GetTransferResponseHeaders');
+        });
+
         it('annotates and coerces each header to its declared type', () => {
             const root = opRoot([
                 opRoute('/things', [
