@@ -118,6 +118,11 @@ declare module '@maroonedsoftware/zod' {
     export function parseAndValidate<T>(value: unknown, schema: { parse(input: unknown): T }): Promise<T>;
 }
 
+declare module '@maroonedsoftware/utilities' {
+    /** ServerKit's own signature, so passing it to `JSON.stringify` is checked against the real one. */
+    export const bigIntReplacer: (_: string, value: unknown) => unknown;
+}
+
 declare module '@maroonedsoftware/multipart' {
     export class MultipartBody {
         [key: string]: any;

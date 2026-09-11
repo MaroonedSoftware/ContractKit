@@ -123,6 +123,11 @@ export const KOA_SERVER_FRAMEWORK: ServerFramework = {
             // headers say once the handler resolves.
             return bodyExpr === undefined ? [] : [`ctx.body = ${bodyExpr};`];
         },
+        sendBigIntJson(bodyExpr) {
+            // Koa has no serializer hook: an object body goes to `JSON.stringify` in its respond
+            // step. A string body is written as-is, and keeps the JSON `ctx.type` set before it.
+            return [`ctx.body = JSON.stringify(${bodyExpr}, bigIntReplacer);`];
+        },
         caseEnd() {
             return ['break;'];
         },

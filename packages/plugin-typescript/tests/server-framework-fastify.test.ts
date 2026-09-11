@@ -148,6 +148,12 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
             expect(fastify.response.send(undefined)).toEqual(['return reply.send();']);
         });
 
+        it('sends a bigint JSON body through a per-reply serializer using the replacer', () => {
+            expect(fastify.response.sendBigIntJson('result')).toEqual([
+                'return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result);',
+            ]);
+        });
+
         it('closes a status case with nothing, since the case already returned', () => {
             expect(fastify.response.caseEnd()).toEqual([]);
         });

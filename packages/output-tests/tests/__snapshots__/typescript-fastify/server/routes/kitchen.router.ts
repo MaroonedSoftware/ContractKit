@@ -5,6 +5,7 @@ import { KitchenService } from '#src/services/kitchen.service.js';
 import { Folder, Instrument, Shared, SharedInput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
+import { bigIntReplacer } from '@maroonedsoftware/utilities';
 
 /**
  * generated from [kitchen.ck](../../contracts/kitchen.ck)
@@ -53,7 +54,11 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
                 reply.header('x-count', String(result.headers["xCount"]));
                 if (result.headers["xWhen"] !== undefined) reply.header('x-when', String(result.headers["xWhen"]));
                 reply.type(result.contentType);
-                return reply.send(result.body);
+                if (result.contentType === 'application/json') {
+                    return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result.body);
+                } else {
+                    return reply.send(result.body);
+                }
             case 204:
                 return reply.send();
             case 404:

@@ -1,6 +1,13 @@
 import type { ContractTypeNode } from '@contractkit/core';
 
 /**
+ * Where generated server code takes `bigIntReplacer` from: ServerKit's own, the counterpart of the
+ * `bigIntReviver` its JSON body parser already applies to requests. Reusing it keeps the `"123n"`
+ * convention defined in one place for both directions.
+ */
+export const BIGINT_REPLACER_IMPORT = `import { bigIntReplacer } from '@maroonedsoftware/utilities';`;
+
+/**
  * Whether a value of `type` can carry a `bigint` once parsed, which is what decides whether its
  * JSON needs the `"123n"` encoding: the SDK's reviver on the way in, and `bigIntReplacer` wherever
  * one is written out.

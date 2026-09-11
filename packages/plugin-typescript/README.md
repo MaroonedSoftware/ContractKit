@@ -160,6 +160,8 @@ Each operation file generates one router, targeting the framework named by `fram
 
 Responses are only type-annotated by default. With `validateResponses: true` (which requires `zod: true`) the service's return value is re-parsed against its declared response schema and the parsed value is written to `ctx.body`, so a service returning a shape the contract does not allow fails with a 500 instead of shipping it. See [docs/config.md](../../docs/config.md#validateresponses) for the caveats — notably that models using `format(input=…)`/`format(output=…)` are skipped.
 
+A JSON response body whose type can carry a `bigint`, directly or through a referenced contract, is serialized with `bigIntReplacer` from `@maroonedsoftware/utilities`, since both frameworks otherwise hand the body to a bare `JSON.stringify`, which throws on a `bigint`. The value goes out as `"123n"`, the form the SDK's reviver reads and the counterpart of the `bigIntReviver` ServerKit's JSON body parser applies to requests. Koa writes `ctx.body = JSON.stringify(body, bigIntReplacer)`; Fastify sets a per-reply `reply.serializer(...)`. A server whose contracts put a `bigint` in a response needs `@maroonedsoftware/utilities` as a dependency. Routes that never reach one are unchanged.
+
 ### SDK client shape (from `operation`)
 
 Operation files cluster on the SDK based on `keys.area` and `keys.subarea` (set in each file's `options { keys: { ... } }` block):

@@ -4,6 +4,7 @@ import { KitchenService } from '#src/services/kitchen.service.js';
 import { Folder, Instrument, Shared, SharedInput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
+import { bigIntReplacer } from '@maroonedsoftware/utilities';
 
 /**
  * generated from [kitchen.ck](../../contracts/kitchen.ck)
@@ -52,7 +53,11 @@ KitchenRouter.get('/folders/:folderId', requirePolicy(), async ctx => {
             ctx.set('x-count', String(result.headers["xCount"]));
             if (result.headers["xWhen"] !== undefined) ctx.set('x-when', String(result.headers["xWhen"]));
             ctx.type = result.contentType;
-            ctx.body = result.body;
+            if (result.contentType === 'application/json') {
+                ctx.body = JSON.stringify(result.body, bigIntReplacer);
+            } else {
+                ctx.body = result.body;
+            }
             break;
         case 204:
             break;

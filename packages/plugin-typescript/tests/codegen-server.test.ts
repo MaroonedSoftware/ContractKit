@@ -281,6 +281,39 @@ describe('createTypescriptPlugin (server)', () => {
         });
     });
 
+    describe('bigint responses', () => {
+        // The bigint sits two models down, in a different .ck file from the operation, so only the
+        // cross-file transitive set can tell the router that `Statement` needs the replacer.
+        const contractRoots = [
+            contractRoot([model('Ledger', [field('total', scalarType('bigint'))])], '/project/contracts/ledger.ck'),
+            contractRoot(
+                [model('Statement', [field('ledger', refType('Ledger'))]), model('Note', [field('text', scalarType('string'))])],
+                '/project/contracts/statement.ck',
+            ),
+        ];
+        const render = async (responseType: string) => {
+            const root = opRoot(
+                [opRoute('/statements', [opOperation('get', { responses: [opResponse(200, responseType, 'application/json')] })])],
+                '/project/contracts/statements.ck',
+            );
+            const ctx = makeCtx('/project');
+            await createTypescriptPlugin({ server: {} }, '/project').generateTargets!(inputs([root], contractRoots as any), ctx);
+            return [...ctx.emitted.entries()].find(([p]) => p.endsWith('.router.ts'))?.[1] ?? '';
+        };
+
+        it('writes a body reaching a bigint in another file through bigIntReplacer', async () => {
+            const router = await render('Statement');
+            expect(router).toContain('ctx.body = JSON.stringify(result, bigIntReplacer);');
+            expect(router).toContain("import { bigIntReplacer } from '@maroonedsoftware/utilities';");
+        });
+
+        it('leaves a body with no bigint below it alone', async () => {
+            const router = await render('Note');
+            expect(router).toContain('ctx.body = result;');
+            expect(router).not.toContain('bigIntReplacer');
+        });
+    });
+
     describe('mcp.security', () => {
         const renderRouter = async (mcp: Record<string, unknown>, mcpRoots = mcpInputs()) => {
             const ctx = makeCtx('/project');
