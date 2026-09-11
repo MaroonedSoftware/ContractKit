@@ -42,6 +42,13 @@ public final class KitchenClient: Sendable {
         return try http.decodeJSON(Instrument.self, from: response)
     }
 
+    public func postLedger(body: LedgerInput) async throws -> Ledger {
+        var request = SdkRequest(method: "POST", path: ["ledgers"])
+        try http.setJSONBody(&request, body, contentType: "application/json")
+        let response = try await http.execute(request)
+        return try http.decodeJSON(Ledger.self, from: response)
+    }
+
     public func stamp(body: Stamped) async throws -> Stamped {
         var request = SdkRequest(method: "POST", path: ["stamps"])
         try http.setJSONBody(&request, body, contentType: "application/json")

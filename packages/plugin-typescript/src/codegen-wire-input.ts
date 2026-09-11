@@ -22,7 +22,7 @@ import type { TsRenderTarget } from './ts-render.js';
 type KeyCase = NonNullable<ModelNode['inputCase']>;
 
 /** A case that actually renames something. `camel` is the identity and is treated as absent. */
-function renamingCase(keyCase: KeyCase | undefined): 'snake' | 'pascal' | undefined {
+export function renamingCase(keyCase: KeyCase | undefined): 'snake' | 'pascal' | undefined {
     return keyCase && keyCase !== 'camel' ? keyCase : undefined;
 }
 
@@ -94,17 +94,12 @@ function inheritedFields(model: ModelNode, modelMap: Map<string, ModelNode>, cha
 /**
  * The key casings a model's request schema actually applies.
  *
- * Mirrors which schema `generateContract` emits. Only the single-schema path honours `format()`: a
- * type alias ignores it, and so does a model split into a read schema and an `Input` schema, whose
- * generator renders every key as declared. The SDK has to send what the server parses, so it
- * follows the same rule rather than the contract text.
+ * Mirrors `generateContract`: a contract's own or inherited `format()` applies to its single schema,
+ * or to both the read and the `Input` schema of one split for readonly/writeonly fields. A type alias
+ * ignores it. The SDK has to send what the server parses, so it follows the same rule.
  */
-function appliedCasing(
-    model: ModelNode,
-    modelMap: Map<string, ModelNode>,
-    modelsWithInput: Set<string>,
-): { input?: 'snake' | 'pascal'; output?: 'snake' | 'pascal' } {
-    if (model.type || modelsWithInput.has(model.name)) return {};
+function appliedCasing(model: ModelNode, modelMap: Map<string, ModelNode>): { input?: 'snake' | 'pascal'; output?: 'snake' | 'pascal' } {
+    if (model.type) return {};
     const effective = flattenFormatChain(model, modelMap);
     return { input: renamingCase(effective.inputCase), output: renamingCase(effective.outputCase) };
 }
@@ -148,12 +143,14 @@ function closeOverRefs(models: ModelNode[], seed: Set<string>): Set<string> {
  *   one that only has `format(output=)`. The exception is a model whose only transform is its own
  *   `format(output=)`: its type is already `z.input`, which is the wire shape.
  *
+ * A model split for readonly/writeonly fields follows the same rule, applied to its `Input` type,
+ * which is what a request sends.
+ *
  * @param models Every model in scope, across all files, so a reference into another file counts.
- * @param modelsWithInput Models split into a read and an `Input` schema.
  */
-export function computeModelsWithWireInput(models: ModelNode[], modelsWithInput: Set<string>, flavor: 'zod' | 'plain'): Set<string> {
+export function computeModelsWithWireInput(models: ModelNode[], flavor: 'zod' | 'plain'): Set<string> {
     const modelMap = new Map(models.map(m => [m.name, m]));
-    const casing = new Map(models.map(m => [m.name, appliedCasing(m, modelMap, modelsWithInput)]));
+    const casing = new Map(models.map(m => [m.name, appliedCasing(m, modelMap)]));
 
     const inputKeyed = new Set(models.filter(m => casing.get(m.name)!.input).map(m => m.name));
     if (flavor === 'plain') return closeOverRefs(models, inputKeyed);
@@ -260,10 +257,12 @@ function shadowedNames(fields: FieldNode[], bases: string[], modelMap: Map<strin
  * Emit `export interface XWireInput` (or `export type` for a type alias) for one model.
  *
  * The shape follows the schema the server parses the request with:
- * - A model with an applied `format()` is one flat object of its (flattened) own fields, keyed by
- *   `format(input=)`. Its bases are not extended, because the schema generator does not extend them.
+ * - A model with an applied `format()` is one flat object of every field it carries, its bases'
+ *   included, keyed by `format(input=)`. Its bases are not extended, because its schema, a pipe,
+ *   cannot extend them either.
  * - Any other model extends its bases, each resolved to its request-side name.
- * - A model split for `readonly`/`writeonly` leaves out its readonly fields, as its `Input` schema does.
+ * - A model split for `readonly`/`writeonly` leaves out its readonly fields, as its `Input` schema
+ *   does, and is keyed by `format(input=)` like any other.
  */
 export function renderWireInputModel(model: ModelNode, ctx: WireInputRenderContext): string[] {
     const name = `${model.name}WireInput`;
@@ -276,7 +275,7 @@ export function renderWireInputModel(model: ModelNode, ctx: WireInputRenderConte
 
     const split = ctx.modelsWithInput.has(model.name);
     const effective = flattenFormatChain(model, ctx.modelMap);
-    const { input, output } = appliedCasing(model, ctx.modelMap, ctx.modelsWithInput);
+    const { input, output } = appliedCasing(model, ctx.modelMap);
     const bases = input || output ? [] : (effective.bases ?? []);
     const fields = split ? effective.fields.filter(f => f.visibility !== 'readonly') : effective.fields;
 

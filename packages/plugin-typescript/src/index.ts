@@ -590,7 +590,6 @@ function collectSdkOutput(
     // same reason as the two sets above, and sliced into the same fingerprints.
     const modelsWithWireInput = computeModelsWithWireInput(
         inputs.contractRoots.flatMap(r => r.models),
-        modelsWithInput,
         config.zod ? 'zod' : 'plain',
     );
     const modelMap = buildModelMap(inputs.contractRoots);

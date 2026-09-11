@@ -194,6 +194,62 @@ public struct Stamp: Codable, Equatable, Sendable {
     }
 }
 
+/// format() on a contract split for readonly and writeonly fields, applied to both of its schemas
+public struct Ledger: Codable, Equatable, Sendable {
+    public var id: UUID
+    public var postedAt: Date
+
+    public init(id: UUID, postedAt: Date) {
+        self.id = id
+        self.postedAt = postedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id = "Id"
+        case postedAt = "PostedAt"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.postedAt = try container.decode(Date.self, forKey: .postedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(postedAt, forKey: .postedAt)
+    }
+}
+
+/// format() on a contract split for readonly and writeonly fields, applied to both of its schemas
+public struct LedgerInput: Codable, Equatable, Sendable {
+    public var entryCode: String
+    public var postedAt: Date
+
+    public init(entryCode: String, postedAt: Date) {
+        self.entryCode = entryCode
+        self.postedAt = postedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case entryCode = "entry_code"
+        case postedAt = "posted_at"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.entryCode = try container.decode(String.self, forKey: .entryCode)
+        self.postedAt = try container.decode(Date.self, forKey: .postedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(entryCode, forKey: .entryCode)
+        try container.encode(postedAt, forKey: .postedAt)
+    }
+}
+
 /// A plain base under format(), which the schema inlines rather than extends
 public struct Stamped: Codable, Equatable, Sendable {
     public var stampedBy: String

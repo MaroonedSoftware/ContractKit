@@ -5,6 +5,8 @@ package com.example.sdk.clients
 
 import com.example.sdk.models.Folder
 import com.example.sdk.models.Instrument
+import com.example.sdk.models.Ledger
+import com.example.sdk.models.LedgerInput
 import com.example.sdk.models.Shared
 import com.example.sdk.models.SharedInput
 import com.example.sdk.models.Stamped
@@ -50,6 +52,14 @@ class KitchenClient(private val http: SdkHttp) {
     suspend fun import(folderId: Uuid, body: SharedInput): Instrument {
         val response = http.execute(HttpMethod.Put) {
             path("folders", segment(folderId))
+            jsonBody(body, "application/json")
+        }
+        return http.decodeJson(response)
+    }
+
+    suspend fun postLedger(body: LedgerInput): Ledger {
+        val response = http.execute(HttpMethod.Post) {
+            path("ledgers")
             jsonBody(body, "application/json")
         }
         return http.decodeJson(response)

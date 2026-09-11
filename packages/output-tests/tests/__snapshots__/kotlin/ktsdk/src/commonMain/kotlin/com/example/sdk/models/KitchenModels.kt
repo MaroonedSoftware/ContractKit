@@ -82,6 +82,20 @@ data class Stamp(
     val stampedAt: Instant,
 )
 
+/** format() on a contract split for readonly and writeonly fields, applied to both of its schemas */
+@Serializable
+data class Ledger(
+    @SerialName("Id") val id: Uuid,
+    @SerialName("PostedAt") val postedAt: Instant,
+)
+
+/** format() on a contract split for readonly and writeonly fields, applied to both of its schemas */
+@Serializable
+data class LedgerInput(
+    @SerialName("entry_code") val entryCode: String,
+    @SerialName("posted_at") val postedAt: Instant,
+)
+
 /** A plain base under format(), which the schema inlines rather than extends */
 @Serializable
 data class Stamped(

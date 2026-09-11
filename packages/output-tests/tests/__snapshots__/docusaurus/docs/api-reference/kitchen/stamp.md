@@ -1,7 +1,7 @@
 ---
 title: "Stamp"
 sidebar_label: "Stamp"
-sidebar_position: 3
+sidebar_position: 4
 mdx:
     format: "md"
 ---

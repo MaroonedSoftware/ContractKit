@@ -23,10 +23,11 @@
 </details>
 
 <details>
-<summary><strong>Kitchen</strong> (5)</summary>
+<summary><strong>Kitchen</strong> (6)</summary>
 
 - [Several statuses, and two content types on one of them](#several-statuses-and-two-content-types-on-one-of-them)
 - [A method name that is a keyword in the target languages](#a-method-name-that-is-a-keyword-in-the-target-languages)
+- [Post ledger](#post-ledger)
 - [Stamp](#stamp)
 - [Mint](#mint)
 - [List tokens](#list-tokens)
@@ -52,7 +53,7 @@
 </details>
 
 <details>
-<summary><strong>Kitchen</strong> (12)</summary>
+<summary><strong>Kitchen</strong> (13)</summary>
 
 - [Rating](#rating)
 - [Folder](#folder)
@@ -66,6 +67,7 @@
 - [Shared](#shared)
 - [Stamp](#stamp)
 - [Stamped](#stamped)
+- [Ledger](#ledger)
 
 </details>
 
@@ -418,6 +420,24 @@ Accepts a [Shared](#shared) object.
 
 ---
 
+#### Post ledger
+
+**`POST`** `/ledgers`
+
+> [!NOTE]
+> SDK method: `postLedger`
+
+##### Request body (`application/json`)
+
+Accepts a [Ledger](#ledger) object.
+
+##### Response
+
+`201 Created` — Returns a [Ledger](#ledger) object.
+
+
+---
+
 #### Stamp
 
 **`POST`** `/stamps`
@@ -761,5 +781,20 @@ Extends [`Stamp`](#stamp)
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `stampNote` | `string` | No |  |
+
+</details>
+
+#### Ledger
+
+> format() on a contract split for readonly and writeonly fields, applied to both of its schemas
+
+<details>
+<summary>Attributes (3)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | *read-only* |
+| `entryCode` | `string` | Yes | *write-only* |
+| `postedAt` | `string` | Yes |  |
 
 </details>

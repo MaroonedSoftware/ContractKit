@@ -98,9 +98,17 @@ model nesting an output-only model, since `z.infer` gives the nested model's out
 not `z.input<typeof X>`: that types every coercing scalar (`int`, `datetime`, `decimal`) as
 `unknown`.
 
-Only the single-schema path applies `format()` on the server. A model split for
-`readonly`/`writeonly` renders its `Input` schema with declared keys, and so does a type alias.
-`ModelWireInput` mirrors what the server parses, not what the contract says.
+A model split for `readonly`/`writeonly` applies its `format()` to both schemas: `Model` is the
+transform over the readable fields and `ModelInput` over the writable ones, each typed by the same
+rule as a single schema (`z.input` when only `output=` is set, else `z.output`), and `ModelOutput`
+is `z.output<typeof Model>`. That is what the Swift, Kotlin and C# SDKs expect of the Input twin.
+A type alias ignores `format()`. `ModelWireInput` mirrors what the server parses, so it follows
+the same rules; `appliedCasing` in `codegen-wire-input.ts` is where the two must agree.
+
+Known gap: an intersection type (a field typed `A & B`, or `contract X: A & B` with no
+trailing inline block, which is a type alias rather than inheritance) still renders
+`A.extend(B.shape)`, which fails when either side is a `format()` pipe. Inheritance is
+flattened; an intersection type is not.
 
 ## Discriminated unions
 

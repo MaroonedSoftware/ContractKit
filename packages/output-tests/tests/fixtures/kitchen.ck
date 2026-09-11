@@ -93,6 +93,13 @@ contract format(input=snake, output=pascal) Stamped: Stamp & {
     stampNote?: string
 }
 
+# format() on a contract split for readonly and writeonly fields, applied to both of its schemas
+contract format(input=snake, output=pascal) Ledger: {
+    id: readonly uuid
+    entryCode: writeonly string
+    postedAt: datetime
+}
+
 operation /folders/{folder-id}: {
     params: {
         folder-id: uuid
@@ -134,6 +141,21 @@ operation /folders/{folder-id}: {
         response: {
             200: {
                 application/json: Instrument
+            }
+        }
+    }
+}
+
+operation /ledgers: {
+    post: {
+        sdk: postLedger
+        service: KitchenService.postLedger
+        request: {
+            application/json: Ledger
+        }
+        response: {
+            201: {
+                application/json: Ledger
             }
         }
     }

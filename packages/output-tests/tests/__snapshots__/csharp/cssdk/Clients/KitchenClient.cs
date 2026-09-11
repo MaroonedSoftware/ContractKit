@@ -69,6 +69,16 @@ public sealed class KitchenClient(SdkHttp http)
         return http.ReadJson<Instrument>(response);
     }
 
+    public async Task<Ledger> PostLedgerAsync(LedgerInput body, CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Post,
+            http.Path("ledgers"),
+            content: http.JsonContent(body, "application/json"),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<Ledger>(response);
+    }
+
     public async Task<Stamped> StampAsync(Stamped body, CancellationToken cancellationToken = default)
     {
         var response = await http.ExecuteAsync(

@@ -104,6 +104,29 @@ export type Stamped = z.output<typeof Stamped>;
 export type StampedOutput = z.output<typeof Stamped>;
 
 /**
+ * format() on a contract split for readonly and writeonly fields, applied to both of its schemas
+ * generated from [Ledger](../../contracts/kitchen.ck#L97)
+*/
+export const Ledger = z.strictObject({
+    id: z.uuid(),
+    posted_at: _ZodDatetime,
+}).transform(data => ({
+    Id: data.id,
+    PostedAt: data.posted_at,
+}));
+export type Ledger = z.output<typeof Ledger>;
+
+export const LedgerInput = z.strictObject({
+    entry_code: z.string(),
+    posted_at: _ZodDatetime,
+}).transform(data => ({
+    EntryCode: data.entry_code,
+    PostedAt: data.posted_at,
+}));
+export type LedgerInput = z.output<typeof LedgerInput>;
+export type LedgerOutput = z.output<typeof Ledger>;
+
+/**
  * Self recursion through lazy(), mutual recursion through Doc, every container, both union
  * forms, every scalar, and field names that are keywords in the target languages
  * generated from [Folder](../../contracts/kitchen.ck#L20)

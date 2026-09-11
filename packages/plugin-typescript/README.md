@@ -154,6 +154,8 @@ Contracts with `readonly` or `writeonly` fields generate up to three schemas:
 
 Contracts without visibility modifiers generate a single `Model` schema.
 
+A `format(input=…)`/`format(output=…)` contract's schema carries a key-renaming `.transform()`. When the contract is split, both `Model` and `ModelInput` carry it, so a request body is parsed in the input casing whichever schema parses it.
+
 A contract with `format(output=…)` also gets **`ModelOutput`**, the response shape in the output casing. In SDK type files, a contract whose request keys `format(input=…)` renames, directly or through a contract it references, also gets **`ModelWireInput`**: the request shape with the keys the server's schema parses. SDK methods type request bodies, query objects and header objects with it. Server type files do not get it, since the server parses requests with the schema itself.
 
 ### Router shape (from `operation`)

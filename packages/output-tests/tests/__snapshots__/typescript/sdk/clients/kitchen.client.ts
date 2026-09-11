@@ -1,7 +1,7 @@
 import type { SdkFetch } from '../sdk-options.js';
 import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString, buildHeaders, readContentType } from '../sdk-options.js';
-import type { Folder, Instrument, Shared, SharedInput, StampedOutput, StampedWireInput, TokenOutput, TokenWireInput } from '../types/kitchen.types.js';
-import { reviveFolder, reviveStampedOutput } from '../types/kitchen.types.js';
+import type { Folder, Instrument, LedgerOutput, LedgerWireInput, Shared, SharedInput, StampedOutput, StampedWireInput, TokenOutput, TokenWireInput } from '../types/kitchen.types.js';
+import { reviveFolder, reviveLedgerOutput, reviveStampedOutput } from '../types/kitchen.types.js';
 import { DateTime } from 'luxon';
 
 export class KitchenClient {
@@ -44,6 +44,15 @@ export class KitchenClient {
             body: JSON.stringify(body, bigIntReplacer),
         });
         return await parseJson<Instrument>(result);
+    }
+
+    async postLedger(body: LedgerWireInput): Promise<LedgerOutput> {
+        const result = await this.fetch(`/ledgers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body, bigIntReplacer),
+        });
+        return reviveLedgerOutput(await parseJson<LedgerOutput>(result));
     }
 
     async stamp(body: StampedWireInput): Promise<StampedOutput> {

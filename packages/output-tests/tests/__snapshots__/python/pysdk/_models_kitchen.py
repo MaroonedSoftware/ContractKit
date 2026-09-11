@@ -40,6 +40,19 @@ class Stamp(BaseModel):
     stamped_by: str = Field(alias="stampedBy")
     stamped_at: datetime = Field(alias="stampedAt")
 
+# format() on a contract split for readonly and writeonly fields, applied to both of its schemas
+class Ledger(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: UUID
+    posted_at: datetime = Field(alias="postedAt")
+
+class LedgerInput(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    entry_code: str = Field(alias="entryCode")
+    posted_at: datetime = Field(alias="postedAt")
+
 Instrument = Annotated[Card | Bank, Field(discriminator="kind")]
 
 # A plain base under format(), which the schema inlines rather than extends

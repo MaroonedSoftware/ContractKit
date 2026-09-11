@@ -22,7 +22,7 @@ import {
     collectExternalOutputRefs as ckCollectExternalOutputRefs,
 } from '@contractkit/core';
 import { escapeJsDocLines, sourceLink } from './ts-render.js';
-import { collectExternalWireInputRefs, flattenFormatChain, renderWireInputModel } from './codegen-wire-input.js';
+import { collectExternalWireInputRefs, flattenFormatChain, renamingCase, renderWireInputModel } from './codegen-wire-input.js';
 import type { WireInputRenderContext } from './codegen-wire-input.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
@@ -337,41 +337,14 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
 
     const wrapper = modeToWrapper(model.mode ?? 'strict');
 
-    const { inputCase, outputCase } = model;
-    const hasInputTransform = !!inputCase && inputCase !== 'camel';
-    const hasOutputTransform = !!outputCase && outputCase !== 'camel';
+    const inputCase = renamingCase(model.inputCase);
+    const outputCase = renamingCase(model.outputCase);
 
-    if (hasInputTransform || hasOutputTransform) {
-        const inputBody =
-            inputCase === 'snake'
-                ? renderFieldsAsSnakeCase(model.fields, model.mode)
-                : inputCase === 'pascal'
-                  ? renderFieldsAsPascalCase(model.fields, model.mode)
-                  : renderFields(model.fields, model.mode);
-        lines.push(`export const ${model.name} = ${wrapper}({`);
-        lines.push(...inputBody.map(l => `    ${l}`));
-        lines.push(`}).transform(data => ({`);
-        for (const field of model.fields) {
-            const inputKey = applyCase(field.name, inputCase);
-            const outputKey = applyCase(field.name, outputCase);
-            if (field.optional) {
-                // Conditional spread keeps the field optional (`k?: T`) in the inferred
-                // z.output / z.input type, instead of widening to required-nullable (`k: T | undefined`).
-                // Consumer code built with `...(x ? { k: x } : {})` is only assignable to the optional form.
-                // When inputCase is set, the input schema uses `.nullish()` so the guard must reject both
-                // null and undefined; otherwise `.optional()` only allows undefined.
-                const guard = hasInputTransform ? `data.${inputKey} != null` : `data.${inputKey} !== undefined`;
-                lines.push(`    ...(${guard} ? { ${quoteKey(outputKey)}: data.${inputKey} } : {}),`);
-            } else {
-                lines.push(`    ${quoteKey(outputKey)}: data.${inputKey},`);
-            }
-        }
-        lines.push(`}));`);
-        // When only outputCase is set, the developer-facing type is the schema's
-        // pre-transform shape (camelCase). With inputCase, the post-transform
-        // shape is what consumers work with.
-        const typeSource = hasOutputTransform && !hasInputTransform ? 'input' : 'output';
-        lines.push(`export type ${model.name} = z.${typeSource}<typeof ${model.name}>;`);
+    if (inputCase || outputCase) {
+        const body = inputCase
+            ? renderCasedFields(model.fields, inputCase, model.mode, t => renderType(t, inputCase, model.mode))
+            : renderFields(model.fields, model.mode);
+        lines.push(...renderCasedSchema(model.name, model.fields, wrapper, inputCase, outputCase, body));
         return lines;
     }
 
@@ -440,6 +413,31 @@ function generateThreeSchemaModel(
 
     // Read schema — omit writeonly fields; extends parent read schema
     const readFields = allFields.filter(f => f.visibility !== 'writeonly');
+    const writeFields = allFields.filter(f => f.visibility !== 'readonly');
+
+    // A format() applies to both halves, the same transform the single-schema path emits: the read
+    // schema over the readable fields and the Input schema over the writable ones. Each is a pipe,
+    // so neither can be extended, which is why `flattenFormatChain` has already inlined the bases.
+    const inputCase = renamingCase(model.inputCase);
+    const outputCase = renamingCase(model.outputCase);
+    if (inputCase || outputCase) {
+        const mode = model.mode;
+        const renderWrite = (t: ContractTypeNode) =>
+            modelsWithInput ? renderInputType(t, modelsWithInput, mode, inputCase) : renderType(t, inputCase, mode);
+        const readBody = inputCase
+            ? renderCasedFields(readFields, inputCase, mode, t => renderType(t, inputCase, mode))
+            : renderFields(readFields, mode);
+        const writeBody = inputCase
+            ? renderCasedFields(writeFields, inputCase, mode, renderWrite)
+            : modelsWithInput
+              ? renderInputFields(writeFields, modelsWithInput, mode)
+              : renderFields(writeFields, mode);
+        lines.push(...renderCasedSchema(name, readFields, wrapper, inputCase, outputCase, readBody));
+        lines.push('');
+        lines.push(...renderCasedSchema(`${name}Input`, writeFields, wrapper, inputCase, outputCase, writeBody));
+        return lines;
+    }
+
     const readBody = renderFields(readFields, model.mode);
     if (bases.length > 0) {
         const { head, tail } = buildExtendChain(bases, b => b);
@@ -454,7 +452,6 @@ function generateThreeSchemaModel(
 
     // Write schema — omit readonly fields (use Input variants for sub-type refs);
     // extends ParentInput if parent has an Input variant, else extends parent read schema
-    const writeFields = allFields.filter(f => f.visibility !== 'readonly');
     const writeBody = modelsWithInput ? renderInputFields(writeFields, modelsWithInput, model.mode) : renderFields(writeFields, model.mode);
     // Fields that become readonly in this model but were writable in a base must be omitted from
     // the base Input schema — Zod's .extend() cannot remove inherited fields.
@@ -508,30 +505,19 @@ function renderFields(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
     return fields.flatMap(f => renderField(f, defaultMode));
 }
 
-function renderFieldsAsPascalCase(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
+/**
+ * A `format(input=)` object's members, keyed in `keyCase`. `renderMember` renders each field's type,
+ * which is where a read schema and an Input schema differ: the Input one names `XInput` variants.
+ */
+function renderCasedFields(
+    fields: FieldNode[],
+    keyCase: 'snake' | 'pascal',
+    defaultMode: ObjectMode | undefined,
+    renderMember: (type: ContractTypeNode) => string,
+): string[] {
     return fields.map(f => {
-        const pascalKey = camelToPascal(f.name);
         const member = memberType(f.type);
-        let expr = renderType(member.type, 'pascal', defaultMode);
-        if (f.default !== undefined) {
-            if (f.nullable) expr += '.nullable()';
-            const dv = typeof f.default === 'string' ? `"${escapeString(f.default)}"` : String(f.default);
-            expr += `.default(${dv})`;
-        } else if (f.optional) {
-            expr += '.nullish()';
-        } else if (f.nullable) {
-            expr += '.nullable()';
-        }
-        if (f.description) expr += `.describe("${escapeString(f.description)}")`;
-        return renderObjectMember(pascalKey, expr, member.getter);
-    });
-}
-
-function renderFieldsAsSnakeCase(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
-    return fields.map(f => {
-        const snakeKey = camelToSnake(f.name);
-        const member = memberType(f.type);
-        let expr = renderType(member.type, 'snake', defaultMode);
+        let expr = renderMember(member.type);
         if (f.default !== undefined) {
             if (f.nullable) expr += '.nullable()';
             const dv = typeof f.default === 'string' ? `"${escapeString(f.default)}"` : String(f.default);
@@ -543,8 +529,78 @@ function renderFieldsAsSnakeCase(fields: FieldNode[], defaultMode?: ObjectMode):
             expr += '.nullable()';
         }
         if (f.description) expr += `.describe("${escapeString(f.description)}")`;
-        return renderObjectMember(snakeKey, expr, member.getter);
+        return renderObjectMember(applyCase(f.name, keyCase), expr, member.getter);
     });
+}
+
+/**
+ * One `format()` schema and its type: `wrapper({ …body })` piped through a `.transform()` from the
+ * `inputCase` keys to the `outputCase` ones. Shared by the single-schema path and both halves of a
+ * model split for readonly/writeonly fields, so the three cannot drift apart.
+ */
+function renderCasedSchema(
+    name: string,
+    fields: FieldNode[],
+    wrapper: string,
+    inputCase: 'snake' | 'pascal' | undefined,
+    outputCase: 'snake' | 'pascal' | undefined,
+    body: string[],
+): string[] {
+    const lines: string[] = [];
+    lines.push(`export const ${name} = ${wrapper}({`);
+    lines.push(...body.map(l => `    ${l}`));
+    lines.push(`}).transform(data => ({`);
+    for (const field of fields) {
+        const inputKey = applyCase(field.name, inputCase);
+        const outputKey = applyCase(field.name, outputCase);
+        if (field.optional) {
+            // Conditional spread keeps the field optional (`k?: T`) in the inferred
+            // z.output / z.input type, instead of widening to required-nullable (`k: T | undefined`).
+            // Consumer code built with `...(x ? { k: x } : {})` is only assignable to the optional form.
+            // When inputCase is set, the input schema uses `.nullish()` so the guard must reject both
+            // null and undefined; otherwise `.optional()` only allows undefined.
+            const guard = inputCase ? `data.${inputKey} != null` : `data.${inputKey} !== undefined`;
+            lines.push(`    ...(${guard} ? { ${quoteKey(outputKey)}: data.${inputKey} } : {}),`);
+        } else {
+            lines.push(`    ${quoteKey(outputKey)}: data.${inputKey},`);
+        }
+    }
+    lines.push(`}));`);
+    // When only outputCase is set, the developer-facing type is the schema's
+    // pre-transform shape (camelCase). With inputCase, the post-transform
+    // shape is what consumers work with.
+    const typeSource = outputCase && !inputCase ? 'input' : 'output';
+    lines.push(`export type ${name} = z.${typeSource}<typeof ${name}>;`);
+    return lines;
+}
+
+/**
+ * An anonymous object under a `format(input=)` model: keyed in `keyCase` on the way in and
+ * transformed back to its declared camelCase names, which is what the enclosing transform reads.
+ */
+function renderCasedInlineObject(
+    o: InlineObjectTypeNode,
+    keyCase: 'snake' | 'pascal',
+    defaultMode: ObjectMode | undefined,
+    renderMember: (type: ContractTypeNode) => string,
+): string {
+    const wrapper = modeToWrapper(o.mode ?? defaultMode ?? 'strict');
+    const joined = renderCasedFields(o.fields, keyCase, defaultMode, renderMember)
+        .map(l => `    ${l}`)
+        .join('\n');
+    const transformEntries = o.fields
+        .map(f => {
+            const casedKey = applyCase(f.name, keyCase);
+            // Optional fields use .nullish() on input. Conditional spread (instead of `?? undefined`)
+            // keeps the key optional in the inferred output type (`k?: T`) rather than widening to
+            // required-nullable (`k: T | undefined`).
+            if (f.optional) {
+                return `    ...(data.${casedKey} != null ? { ${quoteKey(f.name)}: data.${casedKey} } : {}),`;
+            }
+            return `    ${quoteKey(f.name)}: data.${casedKey},`;
+        })
+        .join('\n');
+    return `${wrapper}({\n${joined}\n}).transform(data => ({\n${transformEntries}\n}))`;
 }
 
 /**
@@ -872,19 +928,13 @@ function renderIntersection(i: IntersectionTypeNode, parseCaseTransform?: 'snake
                 expr += `.extend(${member.name}.shape)`;
             } else {
                 const m = member as InlineObjectTypeNode;
-                const fieldLines =
-                    parseCaseTransform === 'snake'
-                        ? renderFieldsAsSnakeCase(m.fields, defaultMode)
-                              .map(l => `    ${l}`)
-                              .join('\n')
-                        : parseCaseTransform === 'pascal'
-                          ? renderFieldsAsPascalCase(m.fields, defaultMode)
-                                .map(l => `    ${l}`)
-                                .join('\n')
-                          : m.fields
-                                .flatMap(f => renderField(f, defaultMode))
-                                .map(l => `    ${l}`)
-                                .join('\n');
+                const fieldLines = (
+                    parseCaseTransform
+                        ? renderCasedFields(m.fields, parseCaseTransform, defaultMode, t => renderType(t, parseCaseTransform, defaultMode))
+                        : m.fields.flatMap(f => renderField(f, defaultMode))
+                )
+                    .map(l => `    ${l}`)
+                    .join('\n');
                 expr += `.extend({\n${fieldLines}\n})`;
             }
         }
@@ -899,37 +949,7 @@ function renderIntersection(i: IntersectionTypeNode, parseCaseTransform?: 'snake
 
 function renderInlineObject(o: InlineObjectTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
     const wrapper = modeToWrapper(o.mode ?? defaultMode ?? 'strict');
-    if (parseCaseTransform === 'snake') {
-        const snakeLines = renderFieldsAsSnakeCase(o.fields, defaultMode);
-        const joined = snakeLines.map(l => `    ${l}`).join('\n');
-        const transformEntries = o.fields
-            .map(f => {
-                const snakeKey = camelToSnake(f.name);
-                // Optional fields use .nullish() on input. Conditional spread (instead of `?? undefined`)
-                // keeps the key optional in the inferred output type (`k?: T`) rather than widening to
-                // required-nullable (`k: T | undefined`).
-                if (f.optional) {
-                    return `    ...(data.${snakeKey} != null ? { ${quoteKey(f.name)}: data.${snakeKey} } : {}),`;
-                }
-                return `    ${quoteKey(f.name)}: data.${snakeKey},`;
-            })
-            .join('\n');
-        return `${wrapper}({\n${joined}\n}).transform(data => ({\n${transformEntries}\n}))`;
-    }
-    if (parseCaseTransform === 'pascal') {
-        const pascalLines = renderFieldsAsPascalCase(o.fields, defaultMode);
-        const joined = pascalLines.map(l => `    ${l}`).join('\n');
-        const transformEntries = o.fields
-            .map(f => {
-                const pascalKey = camelToPascal(f.name);
-                if (f.optional) {
-                    return `    ...(data.${pascalKey} != null ? { ${quoteKey(f.name)}: data.${pascalKey} } : {}),`;
-                }
-                return `    ${quoteKey(f.name)}: data.${pascalKey},`;
-            })
-            .join('\n');
-        return `${wrapper}({\n${joined}\n}).transform(data => ({\n${transformEntries}\n}))`;
-    }
+    if (parseCaseTransform) return renderCasedInlineObject(o, parseCaseTransform, defaultMode, t => renderType(t, parseCaseTransform, defaultMode));
     const fields = o.fields
         .flatMap(f => renderField(f, defaultMode))
         .map(l => `    ${l}`)
@@ -961,15 +981,25 @@ function renderInputScalar(s: ScalarTypeNode): string {
  * when the model has visibility modifiers, and coerces scalars from strings.
  * Used for Input (write) schema fields so that sub-type references also
  * point to their Input variants.
+ *
+ * @param parseCaseTransform - An enclosing `format(input=)`, which re-keys anonymous objects below it
+ *   exactly as {@link renderType} does: through arrays, unions, intersections and `lazy()`, but not
+ *   into a tuple or a record.
  */
-export function renderInputType(type: ContractTypeNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode): string {
+export function renderInputType(
+    type: ContractTypeNode,
+    modelsWithInput?: Set<string>,
+    defaultMode?: ObjectMode,
+    parseCaseTransform?: 'snake' | 'pascal',
+): string {
+    const recurse = (t: ContractTypeNode) => renderInputType(t, modelsWithInput, defaultMode, parseCaseTransform);
     switch (type.kind) {
         case 'scalar':
             return renderInputScalar(type);
         case 'ref':
             return modelsWithInput?.has(type.name) ? `${type.name}Input` : type.name;
         case 'array': {
-            let e = `z.array(${renderInputType(type.item, modelsWithInput, defaultMode)})`;
+            let e = `z.array(${recurse(type.item)})`;
             if (type.min !== undefined) e += `.min(${type.min})`;
             if (type.max !== undefined) e += `.max(${type.max})`;
             return e;
@@ -979,9 +1009,9 @@ export function renderInputType(type: ContractTypeNode, modelsWithInput?: Set<st
         case 'record':
             return `z.record(${renderInputType(type.key, modelsWithInput, defaultMode)}, ${renderInputType(type.value, modelsWithInput, defaultMode)})`;
         case 'union':
-            return `z.union([${type.members.map(m => renderInputType(m, modelsWithInput, defaultMode)).join(', ')}])`;
+            return `z.union([${type.members.map(recurse).join(', ')}])`;
         case 'discriminatedUnion':
-            return `z.discriminatedUnion("${escapeString(type.discriminator)}", [${type.members.map(m => renderInputType(m, modelsWithInput, defaultMode)).join(', ')}])`;
+            return `z.discriminatedUnion("${escapeString(type.discriminator)}", [${type.members.map(recurse).join(', ')}])`;
         case 'intersection': {
             const [first, ...rest] = type.members;
             if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'ref' || m.kind === 'inlineObject')) {
@@ -991,23 +1021,29 @@ export function renderInputType(type: ContractTypeNode, modelsWithInput?: Set<st
                         const name = modelsWithInput?.has(member.name) ? `${member.name}Input` : member.name;
                         expr += `.extend(${name}.shape)`;
                     } else {
-                        const fieldLines = (member as InlineObjectTypeNode).fields
-                            .map(f => `    ${renderInputField(f, modelsWithInput ?? new Set(), defaultMode)}`)
+                        const inline = member as InlineObjectTypeNode;
+                        const fieldLines = (
+                            parseCaseTransform
+                                ? renderCasedFields(inline.fields, parseCaseTransform, defaultMode, recurse)
+                                : inline.fields.map(f => renderInputField(f, modelsWithInput ?? new Set(), defaultMode))
+                        )
+                            .map(l => `    ${l}`)
                             .join('\n');
                         expr += `.extend({\n${fieldLines}\n})`;
                     }
                 }
                 return expr;
             }
-            let expr = renderInputType(first!, modelsWithInput, defaultMode);
+            let expr = recurse(first!);
             for (const member of rest) {
-                expr += `.and(${renderInputType(member, modelsWithInput, defaultMode)})`;
+                expr += `.and(${recurse(member)})`;
             }
             return expr;
         }
         case 'lazy':
-            return `z.lazy(() => ${renderInputType(type.inner, modelsWithInput, defaultMode)})`;
+            return `z.lazy(() => ${recurse(type.inner)})`;
         case 'inlineObject': {
+            if (parseCaseTransform) return renderCasedInlineObject(type, parseCaseTransform, defaultMode, recurse);
             const fields = type.fields
                 .flatMap(f => renderInputField(f, modelsWithInput ?? new Set(), defaultMode))
                 .map(l => `    ${l}`)

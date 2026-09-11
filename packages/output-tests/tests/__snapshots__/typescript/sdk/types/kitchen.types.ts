@@ -182,6 +182,49 @@ export function reviveStampedOutput(raw: StampedOutput): StampedOutput {
 }
 
 /**
+ * format() on a contract split for readonly and writeonly fields, applied to both of its schemas
+ * generated from [Ledger](../../contracts/kitchen.ck#L97)
+*/
+export const Ledger = z.strictObject({
+    id: z.uuid(),
+    posted_at: _ZodDatetime,
+}).transform(data => ({
+    Id: data.id,
+    PostedAt: data.posted_at,
+}));
+export type Ledger = z.output<typeof Ledger>;
+
+export const LedgerInput = z.strictObject({
+    entry_code: z.string(),
+    posted_at: _ZodDatetime,
+}).transform(data => ({
+    EntryCode: data.entry_code,
+    PostedAt: data.posted_at,
+}));
+export type LedgerInput = z.output<typeof LedgerInput>;
+export type LedgerOutput = z.output<typeof Ledger>;
+
+/** {@link Ledger} as a request sends it, keyed the way the server's schema parses it. */
+export interface LedgerWireInput {
+    entry_code: string;
+    posted_at: DateTime;
+}
+
+/** Rehydrates every wire-encoded scalar in a Ledger into its runtime type. Mutates and returns `raw`. */
+export function reviveLedger(raw: Ledger): Ledger {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    __o0["postedAt"] = __dt(__o0["postedAt"], 'Ledger.postedAt');
+    return raw;
+}
+
+/** Rehydrates every wire-encoded scalar in a LedgerOutput into its runtime type. Mutates and returns `raw`. */
+export function reviveLedgerOutput(raw: LedgerOutput): LedgerOutput {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    __o0["PostedAt"] = __dt(__o0["PostedAt"], 'Ledger.PostedAt');
+    return raw;
+}
+
+/**
  * Self recursion through lazy(), mutual recursion through Doc, every container, both union
  * forms, every scalar, and field names that are keywords in the target languages
  * generated from [Folder](../../contracts/kitchen.ck#L20)

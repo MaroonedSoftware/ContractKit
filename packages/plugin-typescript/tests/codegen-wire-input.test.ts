@@ -21,14 +21,14 @@ function parseContracts(source: string): ContractRootNode {
 
 function wireSet(source: string, flavor: 'zod' | 'plain'): string[] {
     const root = parseContracts(source);
-    return [...computeModelsWithWireInput(root.models, computeModelsWithInput(root.models), flavor)].sort();
+    return [...computeModelsWithWireInput(root.models, flavor)].sort();
 }
 
 /** The SDK types file for `source`, rendered the way the plugin renders it for `flavor`. */
 function sdkTypes(source: string, flavor: 'zod' | 'plain'): string {
     const root = parseContracts(source);
     const modelsWithInput = computeModelsWithInput(root.models);
-    const modelsWithWireInput = computeModelsWithWireInput(root.models, modelsWithInput, flavor);
+    const modelsWithWireInput = computeModelsWithWireInput(root.models, flavor);
     const context = { modelOutPaths: new Map<string, string>(), currentOutPath: '/out/test.types.ts', modelsWithInput, modelsWithWireInput };
     return flavor === 'zod' ? generateContract(root, context) : generatePlainTypes(root, context);
 }
@@ -76,15 +76,22 @@ contract Tokens: array(Token)
 
     it('plain types: every model format(input=) re-keys, directly or through a reference', () => {
         // Receipt, Holds: output casing only, and a plain interface already carries declared keys.
-        // Secret: the server's split schema does not apply format() at all, so neither does the SDK.
-        expect(wireSet(SOURCE, 'plain')).toEqual(['Account', 'Child', 'Deep', 'ReceiptOfSession', 'Session', 'Token', 'Tokens', 'Wrapper']);
+        // Secret is split for its readonly field, and its Input schema applies format() like any other.
+        expect(wireSet(SOURCE, 'plain')).toEqual(['Account', 'Child', 'Deep', 'ReceiptOfSession', 'Secret', 'Session', 'Token', 'Tokens', 'Wrapper']);
     });
 
     it('zod: also a model nesting an output-cased schema, whose z.output keys differ from the wire', () => {
         // Holds is `z.infer<typeof Holds>`, so its `receipt` is typed in snake_case, but the server
         // parses the nested Receipt from camelCase. ReceiptOfSession drops out: a model whose own
         // transform is format(output=) is typed `z.input`, which is already the wire shape.
-        expect(wireSet(SOURCE, 'zod')).toEqual(['Account', 'Child', 'Deep', 'Holds', 'Session', 'Token', 'Tokens', 'Wrapper']);
+        expect(wireSet(SOURCE, 'zod')).toEqual(['Account', 'Child', 'Deep', 'Holds', 'Secret', 'Session', 'Token', 'Tokens', 'Wrapper']);
+    });
+
+    it('treats a split output-only contract like any output-only one', () => {
+        // Its Input type is `z.input` of an output-only pipe, so the declared keys are already the wire's.
+        const source = 'contract format(output=snake) Stub: { id: readonly uuid, issuedTo: string }';
+        expect(wireSet(source, 'zod')).toEqual([]);
+        expect(wireSet(source, 'plain')).toEqual([]);
     });
 });
 
@@ -107,6 +114,7 @@ contract Child: Order & { extraNote: string }
 contract Stamp: { stampedBy: string }
 contract format(input=snake) Stamped: Stamp & { stampNote: string }
 contract Account: { id: readonly uuid, secret: writeonly string, token: Token }
+contract format(input=snake) Ledger: { id: readonly uuid, entryCode: writeonly string, lineItems: array({ unitPrice: number }) }
 contract Tokens: array(Token)
 `;
 
@@ -170,6 +178,12 @@ contract Tokens: array(Token)
                 expect(decl).toContain('token: TokenWireInput;');
             });
 
+            it('keys a split contract by its format(input=), readonly fields left out', () => {
+                expect(wireDecl(out, 'Ledger')).toBe(
+                    ['export interface LedgerWireInput {', '    entry_code: string;', '    line_items: { unit_price: number }[];', '}'].join('\n'),
+                );
+            });
+
             it('renders a type alias over a WireInput type', () => {
                 expect(wireDecl(out, 'Tokens')).toBe('export type TokensWireInput = TokenWireInput[];');
             });
@@ -191,7 +205,7 @@ contract Tokens: array(Token)
     it('imports a WireInput type from the file that declares it', () => {
         const token = model('Token', [field('accessToken', scalarType('string'))], { inputCase: 'pascal' });
         const wrapper = model('Wrapper', [field('token', refType('Token'))]);
-        const modelsWithWireInput = computeModelsWithWireInput([token, wrapper], new Set(), 'plain');
+        const modelsWithWireInput = computeModelsWithWireInput([token, wrapper], 'plain');
         const context = {
             modelOutPaths: new Map([
                 ['Token', '/out/token.types.ts'],
@@ -225,6 +239,7 @@ contract Holds: { receipt: Receipt }
 contract Child: Order & { extraNote: string }
 contract Stamp: { stampedBy: string }
 contract format(input=snake) Stamped: Stamp & { stampNote: string }
+contract format(input=snake) Ledger: { id: readonly uuid, entryCode: writeonly string, lineItems: array({ unitPrice: number }) }
 `;
 
     const wireBodies: Record<string, unknown> = {
@@ -234,6 +249,8 @@ contract format(input=snake) Stamped: Stamp & { stampNote: string }
         Holds: { receipt: { issuedTo: 'me' } },
         Child: { line_items: [], span: [{ fromDay: 1 }, 2], by_code: {}, extra_note: 'n' },
         Stamped: { stamped_by: 'me', stamp_note: 'n' },
+        // A split contract's request is parsed by its Input schema.
+        LedgerInput: { entry_code: 'c', line_items: [{ unit_price: 2 }] },
     };
 
     it.each(Object.entries(wireBodies))('%s parses in its wire casing', async (name, body) => {
@@ -246,6 +263,7 @@ contract format(input=snake) Stamped: Stamp & { stampNote: string }
         expect(schemas.Token!.safeParse({ access_token: 'a' }).success).toBe(false);
         expect(schemas.Wrapper!.safeParse({ token: { access_token: 'a' } }).success).toBe(false);
         expect(schemas.Holds!.safeParse({ receipt: { issued_to: 'me' } }).success).toBe(false);
+        expect(schemas.LedgerInput!.safeParse({ entryCode: 'c', lineItems: [] }).success).toBe(false);
     });
 });
 
