@@ -304,6 +304,38 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Instrument'
+  '/ledgers':
+    post:
+      operationId: postLedger
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Ledger'
+      responses:
+        '201':
+          description: Created
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Ledger'
+  '/stamps':
+    post:
+      operationId: stamp
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Stamped'
+      responses:
+        '201':
+          description: Created
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Stamped'
   '/tokens':
     post:
       operationId: mint
@@ -603,6 +635,37 @@ components:
               default: x
             instrument:
               '$ref': '#/components/schemas/Instrument'
+    Stamp:
+      type: object
+      properties:
+        stampedBy:
+          type: string
+        stampedAt:
+          type: string
+          format: date-time
+      required: [stampedBy, stampedAt]
+    Stamped:
+      allOf:
+        - '$ref': '#/components/schemas/Stamp'
+        - type: object
+          properties:
+            stampNote:
+              type: string
+    Ledger:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        entryCode:
+          type: string
+          writeOnly: true
+        postedAt:
+          type: string
+          format: date-time
+      required: [id, entryCode, postedAt]
+      description: 'format() on a contract split for readonly and writeonly fields, applied to both of its schemas'
     Heartbeat:
       type: object
       properties:

@@ -6,7 +6,7 @@ from uuid import UUID
 from urllib.parse import quote
 from typing import Literal, NotRequired, TypedDict
 from ._base_client import BaseClient, SdkError  # noqa: F401
-from ._models_kitchen import Folder, Instrument, Shared, SharedInput, Token
+from ._models_kitchen import Folder, Instrument, Ledger, LedgerInput, Shared, SharedInput, Stamped, Token
 
 
 class GetFolder200Headers(TypedDict, total=False):
@@ -67,6 +67,14 @@ class KitchenClient(BaseClient):
         """
         result = await self._fetch(f"/folders/{quote(str(folder_id), safe='')}", method="PUT", body=body.model_dump(mode="json"))
         return Instrument.model_validate(result)
+
+    async def post_ledger(self, body: LedgerInput) -> Ledger:
+        result = await self._fetch("/ledgers", method="POST", body=body.model_dump(mode="json"))
+        return Ledger.model_validate(result)
+
+    async def stamp(self, body: Stamped) -> Stamped:
+        result = await self._fetch("/stamps", method="POST", body=body.model_dump(mode="json"))
+        return Stamped.model_validate(result)
 
     async def mint(self, body: Token) -> Token:
         result = await self._fetch("/tokens", method="POST", body=body.model_dump(mode="json"))

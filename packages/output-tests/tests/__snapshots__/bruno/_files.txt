@@ -14,6 +14,8 @@ bruno/hyphenated/get-invoices-invoice-id.yml
 bruno/kitchen/folder.yml
 bruno/kitchen/get-folders-folder-id.yml
 bruno/kitchen/get-tokens.yml
+bruno/kitchen/post-ledgers.yml
+bruno/kitchen/post-stamps.yml
 bruno/kitchen/post-tokens.yml
 bruno/kitchen/put-folders-folder-id.yml
 bruno/opencollection.yml

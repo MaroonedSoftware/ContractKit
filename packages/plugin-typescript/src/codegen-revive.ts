@@ -1,4 +1,5 @@
 import type { ContractTypeNode, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
+import { flattenFormatChain } from './codegen-wire-input.js';
 
 /**
  * Emitters for the `reviveX` functions that rehydrate `decimal` fields in an SDK response.
@@ -32,7 +33,10 @@ export interface ReviveCodegenOptions {
     revivableScalars?: ReadonlySet<ScalarTypeNode['name']>;
     /** Models with an `Output` variant, which need a second reviver keyed by the output casing. */
     modelsWithOutput?: Set<string>;
-    /** Every model in scope, for resolving discriminated-union members to their literal tag. */
+    /**
+     * Every model in scope, for resolving discriminated-union members to their literal tag and for
+     * flattening a `format()` contract's bases the way its schema does.
+     */
     modelMap?: Map<string, ModelNode>;
 }
 
@@ -408,6 +412,9 @@ function renderOne(model: ModelNode, opts: ReviveCodegenOptions, variant: 'base'
     }
 
     const obj = scope.next('o');
+    // A `format()` contract is one flat schema carrying its bases' fields under its own casing, so
+    // its reviver walks those fields itself: a base's reviver would read them under the base's keys.
+    const effective = opts.modelMap ? flattenFormatChain(model, opts.modelMap) : model;
     // The fields a model inherits arrive on the same wire object as its own, so every base that
     // carries a revivable scalar is revived in place first, through its own reviver. Core's taint
     // set follows `bases`, so a child whose only revivable field is inherited is in
@@ -415,9 +422,11 @@ function renderOne(model: ModelNode, opts: ReviveCodegenOptions, variant: 'base'
     // `model.fields` alone never emitted, leaving the client importing a name the types file did
     // not define. The reviver is reached by name for the same reason a `ref` field's is: a
     // cross-file base is imported alongside its type, so the call resolves either way.
-    const inherited = (model.bases ?? []).filter(b => opts.modelsWithDecimal.has(b)).map(b => `${reviveRefName(b, opts, variant)}(raw as never);`);
-    const own = model.fields.flatMap(f =>
-        typeReachesDecimal(f.type, opts) ? fieldStatements(obj, f, model.name, opts, scope, variant, model.outputCase) : [],
+    const inherited = (effective.bases ?? [])
+        .filter(b => opts.modelsWithDecimal.has(b))
+        .map(b => `${reviveRefName(b, opts, variant)}(raw as never);`);
+    const own = effective.fields.flatMap(f =>
+        typeReachesDecimal(f.type, opts) ? fieldStatements(obj, f, model.name, opts, scope, variant, effective.outputCase) : [],
     );
     const body = [...inherited, ...own];
     if (body.length === 0) return [];

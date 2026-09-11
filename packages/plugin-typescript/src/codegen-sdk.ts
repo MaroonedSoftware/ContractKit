@@ -103,6 +103,11 @@ export interface SdkCodegenOptions {
     modelsWithInput?: Set<string>;
     /** Set of model names that have Output variants (models with format(output=...)) */
     modelsWithOutput?: Set<string>;
+    /**
+     * Models whose request keys `format(input=)` renames, directly or below them. A request body,
+     * query or header object referencing one is typed with its `WireInput` type.
+     */
+    modelsWithWireInput?: Set<string>;
     /** Model names carrying a `decimal`, whose response bodies need rehydrating client-side. */
     modelsWithDecimal?: Set<string>;
     /** Model names carrying a `bigint`, directly or transitively. Selects the JSON reviver. */
@@ -147,7 +152,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     const lines: string[] = [];
     const includeInternal = options.includeInternal ?? false;
 
-    const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput, includeInternal);
+    const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput, includeInternal, options.modelsWithWireInput);
     const clientClassName = options.clientClassName ?? deriveClientClassName(root.file);
 
     // The method bodies are generated first so the imports can be read off them, the same way
@@ -447,8 +452,8 @@ function generateMethod(
     const httpMethod = op.method.toUpperCase();
     const { modelsWithInput, modelsWithOutput } = options;
 
-    // Build method parameters (request-side — use Input variants)
-    const params = buildMethodParams(route, op, modelsWithInput);
+    // Build method parameters (request-side — use Input variants, and WireInput where format(input=) re-keys)
+    const params = buildMethodParams(route, op, modelsWithInput, options.modelsWithWireInput);
     const paramStr = params.map(p => `${p.name}${p.optional ? '?' : ''}: ${p.type}`).join(', ');
 
     // Determine return type — response side uses Output variants (post-transform wire shape).
@@ -970,8 +975,11 @@ interface MethodParam {
     optional: boolean;
 }
 
-function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithInput?: Set<string>): MethodParam[] {
+function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithInput?: Set<string>, modelsWithWireInput?: Set<string>): MethodParam[] {
     const params: MethodParam[] = [];
+    // Path params are interpolated value by value, so their keys never reach the wire and they keep
+    // the declared names. Everything serialized as an object below uses `wire`.
+    const wire = (type: ContractTypeNode) => renderInputTsType(type, modelsWithInput, 'client', modelsWithWireInput);
 
     // Path params — always first, always required (request-side — use Input variants)
     if (route.params) {
@@ -999,31 +1007,27 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
         } else if (cat === 'binary') {
             params.push({ name: 'body', type: 'Blob | ArrayBuffer | Uint8Array | string', optional: false });
         } else {
-            params.push({ name: 'body', type: renderInputTsType(body.bodyType, modelsWithInput), optional: false });
+            params.push({ name: 'body', type: wire(body.bodyType), optional: false });
         }
     } else if (strategy.kind === 'multi-equal') {
         const bodies = strategy.bodies;
-        const bodyType = renderInputTsType(bodies[0]!.bodyType, modelsWithInput);
+        const bodyType = wire(bodies[0]!.bodyType);
         params.push({ name: 'body', type: bodyType, optional: false });
         const ctUnion = bodies.map(b => `'${b.contentType}'`).join(' | ');
         params.push({ name: 'options', type: `{ contentType?: ${ctUnion} }`, optional: true });
     } else if (strategy.kind === 'multi-formdata-detect') {
-        const types = strategy.bodies
-            .map(b => (b.contentType === 'multipart/form-data' ? 'FormData' : renderInputTsType(b.bodyType, modelsWithInput)))
-            .join(' | ');
+        const types = strategy.bodies.map(b => (b.contentType === 'multipart/form-data' ? 'FormData' : wire(b.bodyType))).join(' | ');
         params.push({ name: 'body', type: types, optional: false });
     } else if (strategy.kind === 'multi-required-arg') {
-        const types = strategy.bodies
-            .map(b => (b.contentType === 'multipart/form-data' ? 'FormData' : renderInputTsType(b.bodyType, modelsWithInput)))
-            .join(' | ');
+        const types = strategy.bodies.map(b => (b.contentType === 'multipart/form-data' ? 'FormData' : wire(b.bodyType))).join(' | ');
         params.push({ name: 'body', type: types, optional: false });
         const ctUnion = strategy.bodies.map(b => `'${b.contentType}'`).join(' | ');
         params.push({ name: 'options', type: `{ contentType: ${ctUnion} }`, optional: false });
     }
 
     // Query and custom headers (request-side — use Input variants)
-    if (op.query) params.push(inlineArgParam('query', op.query, modelsWithInput));
-    if (op.headers) params.push(inlineArgParam('customHeaders', op.headers, modelsWithInput));
+    if (op.query) params.push(inlineArgParam('query', op.query, modelsWithInput, modelsWithWireInput));
+    if (op.headers) params.push(inlineArgParam('customHeaders', op.headers, modelsWithInput, modelsWithWireInput));
 
     return normaliseOptionalOrder(params);
 }
@@ -1040,19 +1044,22 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
  * A `ref` or a whole type node stays optional. Deciding needs the model's own fields, which
  * `buildMethodParams` has no access to.
  */
-function inlineArgParam(name: string, source: ParamSource, modelsWithInput?: Set<string>): MethodParam {
+function inlineArgParam(name: string, source: ParamSource, modelsWithInput?: Set<string>, modelsWithWireInput?: Set<string>): MethodParam {
+    const wire = (type: ContractTypeNode) => renderInputTsType(type, modelsWithInput, 'client', modelsWithWireInput);
     if (source.kind === 'params') {
         const isOptional = (p: OpParamNode) => Boolean(p.optional) || p.default !== undefined;
-        const fields = source.nodes
-            .map(p => `${quoteKey(p.name)}${isOptional(p) ? '?' : ''}: ${renderInputTsType(p.type, modelsWithInput)}`)
-            .join('; ');
+        const fields = source.nodes.map(p => `${quoteKey(p.name)}${isOptional(p) ? '?' : ''}: ${wire(p.type)}`).join('; ');
         return { name, type: `{ ${fields} }`, optional: source.nodes.every(isOptional) };
     }
     if (source.kind === 'ref') {
-        const typeName = modelsWithInput?.has(source.name) ? `${source.name}Input` : source.name;
+        const typeName = modelsWithWireInput?.has(source.name)
+            ? `${source.name}WireInput`
+            : modelsWithInput?.has(source.name)
+              ? `${source.name}Input`
+              : source.name;
         return { name, type: typeName, optional: true };
     }
-    return { name, type: renderInputTsType(source.node, modelsWithInput), optional: true };
+    return { name, type: wire(source.node), optional: true };
 }
 
 /**
@@ -1141,7 +1148,13 @@ export function deriveSubareaPropertyName(subarea: string): string {
 
 // ─── Type collection ──────────────────────────────────────────────────────
 
-function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWithOutput?: Set<string>, includeInternal = false): string[] {
+function collectTypes(
+    root: OpRootNode,
+    modelsWithInput?: Set<string>,
+    modelsWithOutput?: Set<string>,
+    includeInternal = false,
+    modelsWithWireInput?: Set<string>,
+): string[] {
     const types = new Set<string>();
     for (const route of root.routes) {
         const publicOps = route.operations.filter(op => includeInternal || !resolveModifiers(route, op).includes('internal'));
@@ -1154,6 +1167,7 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWit
                 for (const body of op.request.bodies) {
                     collectTypeNodeRefs(body.bodyType, types);
                     collectInputTypeNodeRefs(body.bodyType, types, modelsWithInput);
+                    collectWireInputTypeNodeRefs(body.bodyType, types, modelsWithWireInput);
                 }
             }
             for (const resp of op.responses) {
@@ -1170,8 +1184,10 @@ function collectTypes(root: OpRootNode, modelsWithInput?: Set<string>, modelsWit
             }
             collectParamSourceRefs(op.query, types);
             collectParamSourceInputRefs(op.query, types, modelsWithInput);
+            collectParamSourceWireInputRefs(op.query, types, modelsWithWireInput);
             collectParamSourceRefs(op.headers, types);
             collectParamSourceInputRefs(op.headers, types, modelsWithInput);
+            collectParamSourceWireInputRefs(op.headers, types, modelsWithWireInput);
         }
     }
     return [...types].sort();
@@ -1235,6 +1251,42 @@ function collectInputTypeNodeRefs(type: ContractTypeNode, out: Set<string>, mode
             break;
         case 'lazy':
             collectInputTypeNodeRefs(type.inner, out, modelsWithInput);
+            break;
+    }
+}
+
+/** Collect WireInput refs for a request-side query or header object. */
+function collectParamSourceWireInputRefs(source: ParamSource | undefined, out: Set<string>, modelsWithWireInput?: Set<string>): void {
+    if (!source || !modelsWithWireInput) return;
+    if (source.kind === 'ref') {
+        if (modelsWithWireInput.has(source.name)) out.add(`${source.name}WireInput`);
+    } else if (source.kind === 'params') {
+        for (const param of source.nodes) collectWireInputTypeNodeRefs(param.type, out, modelsWithWireInput);
+    } else {
+        collectWireInputTypeNodeRefs(source.node, out, modelsWithWireInput);
+    }
+}
+
+/** Collect WireInput refs for request-side ContractTypeNode types, over the nodes `renderInputTsType` substitutes in. */
+function collectWireInputTypeNodeRefs(type: ContractTypeNode, out: Set<string>, modelsWithWireInput?: Set<string>): void {
+    if (!modelsWithWireInput) return;
+    switch (type.kind) {
+        case 'ref':
+            if (modelsWithWireInput.has(type.name)) out.add(`${type.name}WireInput`);
+            break;
+        case 'array':
+            collectWireInputTypeNodeRefs(type.item, out, modelsWithWireInput);
+            break;
+        case 'intersection':
+        case 'union':
+        case 'discriminatedUnion':
+            type.members.forEach(m => collectWireInputTypeNodeRefs(m, out, modelsWithWireInput));
+            break;
+        case 'inlineObject':
+            type.fields.forEach(f => collectWireInputTypeNodeRefs(f.type, out, modelsWithWireInput));
+            break;
+        case 'lazy':
+            collectWireInputTypeNodeRefs(type.inner, out, modelsWithWireInput);
             break;
     }
 }
@@ -1837,7 +1889,13 @@ export function generateAreaClient(input: AreaClientInput): string {
         // Filtered against this file's own emitted text for the same reason `generateSdk` filters
         // its own — a multipart body's model is collected but never named in the output.
         const typesForFile = referencedTypes(
-            collectTypes(inline.root, inline.codegenOptions.modelsWithInput, inline.codegenOptions.modelsWithOutput, includeInternal),
+            collectTypes(
+                inline.root,
+                inline.codegenOptions.modelsWithInput,
+                inline.codegenOptions.modelsWithOutput,
+                includeInternal,
+                inline.codegenOptions.modelsWithWireInput,
+            ),
             [...methodLines, ...generateErrorBodyAliases(inline.root, inline.codegenOptions), ...preludeLines],
         );
         const { modelOutPaths } = inline.codegenOptions;

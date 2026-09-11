@@ -154,6 +154,10 @@ Contracts with `readonly` or `writeonly` fields generate up to three schemas:
 
 Contracts without visibility modifiers generate a single `Model` schema.
 
+A `format(input=…)`/`format(output=…)` contract's schema carries a key-renaming `.transform()`. When the contract is split, both `Model` and `ModelInput` carry it, so a request body is parsed in the input casing whichever schema parses it.
+
+A contract with `format(output=…)` also gets **`ModelOutput`**, the response shape in the output casing. In SDK type files, a contract whose request keys `format(input=…)` renames, directly or through a contract it references, also gets **`ModelWireInput`**: the request shape with the keys the server's schema parses. SDK methods type request bodies, query objects and header objects with it. Server type files do not get it, since the server parses requests with the schema itself.
+
 ### Router shape (from `operation`)
 
 Each operation file generates one router, targeting the framework named by `framework`. On Koa this is a `@maroonedsoftware/koa` `ServerKitRouter()` instance, with each handler `async ctx => {}` writing `ctx.status` / `ctx.type` / `ctx.body`. On Fastify it is a `FastifyPluginAsync` — an ordinary route plugin for `@maroonedsoftware/fastify`'s native-Fastify API, registered through `builder.setupRoutes([...])` — with each handler `async (request, reply) => {}` reading `request.body` and returning `reply.send(...)`; guards go in the route's `preHandler` and a declared request body becomes `config.body`, a literal list of the accepted content types, rather than a middleware call. Validation, service dispatch and the response shape are otherwise identical either way. Request bodies and path/query params are validated against the Zod schemas (when `zod: true`) or plain types. Handlers are expected to be exported from the service module specified by `servicePathTemplate`.

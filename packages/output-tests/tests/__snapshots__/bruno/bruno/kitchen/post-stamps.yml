@@ -1,17 +1,17 @@
 info:
-  name: /tokens
+  name: /stamps
   type: http
-  seq: 5
+  seq: 4
 
 http:
   method: POST
-  url: "{{baseUrl}}/tokens"
+  url: "{{baseUrl}}/stamps"
   body:
     type: json
     data: |
       {
-        "accessToken": "",
-        "expiresIn": 3600
+        "stampedBy": "",
+        "stampedAt": "2024-01-01T00:00:00Z"
       }
 
 runtime:

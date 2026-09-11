@@ -22,6 +22,8 @@ import {
     collectExternalOutputRefs as ckCollectExternalOutputRefs,
 } from '@contractkit/core';
 import { escapeJsDocLines, sourceLink } from './ts-render.js';
+import { collectExternalWireInputRefs, flattenFormatChain, renamingCase, renderWireInputModel } from './codegen-wire-input.js';
+import type { WireInputRenderContext } from './codegen-wire-input.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
@@ -54,8 +56,19 @@ export interface ContractCodegenContext {
     modelsWithInput?: Set<string>;
     /** Set of model names that have Output variants (models with format(output=...)) */
     modelsWithOutput?: Set<string>;
+    /**
+     * Models that get an `XWireInput` type, the shape a request sends (see `codegen-wire-input`).
+     * Set for SDK type files only: a server parses requests through the schema itself.
+     */
+    modelsWithWireInput?: Set<string>;
     /** If set, import JsonValue from this path instead of re-declaring it (avoids barrel re-export conflicts) */
     jsonValueImportPath?: string;
+    /**
+     * Every model across all contract files. A `format()` contract is flattened rather than
+     * extended (see `flattenFormatChain`), so its bases' fields are needed even when a base lives
+     * in another file. Without it, only this file's models can be flattened.
+     */
+    modelMap?: Map<string, ModelNode>;
     /**
      * Runtime the emitted types describe. Only affects scalars whose TypeScript type differs per
      * runtime: `binary` is a `Buffer` on a Node server and a `Blob` in a fetch client, and
@@ -146,14 +159,18 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
  * @returns The full TypeScript source as a string.
  */
 export function generateContract(root: ContractRootNode, context?: ContractCodegenContext): string {
-    const needsDateTime = rootNeedsDateTime(root);
-    const needsDuration = rootNeedsScalar(root, 'duration');
-    const needsInterval = rootNeedsScalar(root, 'interval');
-    const needsBinary = rootNeedsScalar(root, 'binary');
-    const needsDatetime = rootNeedsScalar(root, 'datetime');
-    const needsJson = rootNeedsScalar(root, 'json');
-    const needsDecimal = rootNeedsScalar(root, 'decimal');
-    const externalRefs = collectExternalRefs(root);
+    const modelMap = contractModelMap(root, context);
+    // What the file actually declares: a flattened `format()` contract carries its bases' fields and
+    // no longer names the bases, so scalars and imports are decided from these, not from `root`.
+    const effectiveRoot = { ...root, models: root.models.map(m => (m.type ? m : flattenFormatChain(m, modelMap))) };
+    const needsDateTime = rootNeedsDateTime(effectiveRoot);
+    const needsDuration = rootNeedsScalar(effectiveRoot, 'duration');
+    const needsInterval = rootNeedsScalar(effectiveRoot, 'interval');
+    const needsBinary = rootNeedsScalar(effectiveRoot, 'binary');
+    const needsDatetime = rootNeedsScalar(effectiveRoot, 'datetime');
+    const needsJson = rootNeedsScalar(effectiveRoot, 'json');
+    const needsDecimal = rootNeedsScalar(effectiveRoot, 'decimal');
+    const externalRefs = collectExternalRefs(effectiveRoot);
     const lines: string[] = [];
 
     // Compute which models have Input variants (local, incl. transitive deps + external)
@@ -166,10 +183,21 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     const localModelsWithOutput = ckComputeModelsWithOutput(root.models, externalModelsWithOutput);
     const allModelsWithOutput = new Set([...localModelsWithOutput, ...externalModelsWithOutput]);
 
+    const wireCtx: WireInputRenderContext | undefined = context?.modelsWithWireInput
+        ? {
+              modelsWithInput: allModelsWithInput,
+              modelsWithWireInput: context.modelsWithWireInput,
+              modelMap,
+              target: context.target ?? 'client',
+              jsonType: '_JsonValue',
+          }
+        : undefined;
+
     // Collect additional external Input refs needed for Input schema fields
-    const externalInputRefs = allModelsWithInput.size > 0 ? collectExternalInputRefs(root, allModelsWithInput) : [];
-    const externalOutputRefs = allModelsWithOutput.size > 0 ? ckCollectExternalOutputRefs(root, allModelsWithOutput) : [];
-    const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs, ...externalOutputRefs])].sort();
+    const externalInputRefs = allModelsWithInput.size > 0 ? collectExternalInputRefs(effectiveRoot, allModelsWithInput) : [];
+    const externalOutputRefs = allModelsWithOutput.size > 0 ? ckCollectExternalOutputRefs(effectiveRoot, allModelsWithOutput) : [];
+    const externalWireInputRefs = wireCtx ? collectExternalWireInputRefs(root, wireCtx) : [];
+    const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs, ...externalOutputRefs, ...externalWireInputRefs])].sort();
 
     lines.push(`import { z } from 'zod';`);
     const luxonImports: string[] = [];
@@ -219,17 +247,21 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     }
     if (needsBinary || needsDatetime || needsInterval || needsDecimal || needsJson) lines.push('');
 
-    const modelMap = new Map(root.models.map(m => [m.name, m]));
-
-
     const reviveOpts =
         context?.emitRevivers && context.modelsWithDecimal
             ? { modelsWithDecimal: context.modelsWithDecimal, modelsWithOutput: allModelsWithOutput, modelMap }
             : undefined;
 
     const bodyLines: string[] = [];
-    for (const model of topoSortModels(root.models)) {
+    // Sorted on the effective models: a flattened contract depends on its inherited fields' types,
+    // which may be declared in this file even when the base that brought them is not.
+    const rawByName = new Map(root.models.map(m => [m.name, m]));
+    for (const model of topoSortModels(effectiveRoot.models).map(m => rawByName.get(m.name)!)) {
         bodyLines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelMap, allModelsWithOutput));
+        if (wireCtx?.modelsWithWireInput.has(model.name)) {
+            bodyLines.push('');
+            bodyLines.push(...renderWireInputModel(model, wireCtx));
+        }
         if (reviveOpts) {
             const revivers = renderReviveFunctions(model, reviveOpts);
             if (revivers.length > 0) {
@@ -253,40 +285,6 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
 }
 
 // ─── Model ─────────────────────────────────────────────────────────────────
-
-/**
- * If any ancestor in the base chain has a format(input=)/format(output=) transform,
- * the parent schema compiles to a `ZodPipe` (object().transform()) which has no `.extend()`.
- * To keep extension working, inline the parent's fields into the child and inherit format/mode
- * so the child re-applies the transform on the merged shape. Returns the model unchanged when
- * no ancestor has format, preserving the existing `.extend()`-based output.
- */
-function flattenFormatChain(model: ModelNode, modelMap: Map<string, ModelNode>): ModelNode {
-    if (!model.bases || model.bases.length === 0) return model;
-    // TODO(multi-base): currently only the first base is followed for format inheritance.
-    // Multi-base format flattening will need a topological merge across all bases.
-    const firstBase = model.bases[0]!;
-    const parent = modelMap.get(firstBase);
-    if (!parent) return model;
-    const flatParent = flattenFormatChain(parent, modelMap);
-    const parentHasFormat =
-        (flatParent.inputCase !== undefined && flatParent.inputCase !== 'camel') ||
-        (flatParent.outputCase !== undefined && flatParent.outputCase !== 'camel');
-    if (!parentHasFormat) return model;
-
-    const merged = new Map<string, FieldNode>();
-    for (const f of flatParent.fields) merged.set(f.name, f);
-    for (const f of model.fields) merged.set(f.name, f);
-
-    return {
-        ...model,
-        bases: undefined,
-        fields: [...merged.values()],
-        inputCase: model.inputCase ?? flatParent.inputCase,
-        outputCase: model.outputCase ?? flatParent.outputCase,
-        mode: model.mode ?? flatParent.mode,
-    };
-}
 
 function generateModel(
     model: ModelNode,
@@ -339,41 +337,14 @@ function generateSimpleModel(model: ModelNode, outPath?: string): string[] {
 
     const wrapper = modeToWrapper(model.mode ?? 'strict');
 
-    const { inputCase, outputCase } = model;
-    const hasInputTransform = !!inputCase && inputCase !== 'camel';
-    const hasOutputTransform = !!outputCase && outputCase !== 'camel';
+    const inputCase = renamingCase(model.inputCase);
+    const outputCase = renamingCase(model.outputCase);
 
-    if (hasInputTransform || hasOutputTransform) {
-        const inputBody =
-            inputCase === 'snake'
-                ? renderFieldsAsSnakeCase(model.fields, model.mode)
-                : inputCase === 'pascal'
-                  ? renderFieldsAsPascalCase(model.fields, model.mode)
-                  : renderFields(model.fields, model.mode);
-        lines.push(`export const ${model.name} = ${wrapper}({`);
-        lines.push(...inputBody.map(l => `    ${l}`));
-        lines.push(`}).transform(data => ({`);
-        for (const field of model.fields) {
-            const inputKey = applyCase(field.name, inputCase);
-            const outputKey = applyCase(field.name, outputCase);
-            if (field.optional) {
-                // Conditional spread keeps the field optional (`k?: T`) in the inferred
-                // z.output / z.input type, instead of widening to required-nullable (`k: T | undefined`).
-                // Consumer code built with `...(x ? { k: x } : {})` is only assignable to the optional form.
-                // When inputCase is set, the input schema uses `.nullish()` so the guard must reject both
-                // null and undefined; otherwise `.optional()` only allows undefined.
-                const guard = hasInputTransform ? `data.${inputKey} != null` : `data.${inputKey} !== undefined`;
-                lines.push(`    ...(${guard} ? { ${quoteKey(outputKey)}: data.${inputKey} } : {}),`);
-            } else {
-                lines.push(`    ${quoteKey(outputKey)}: data.${inputKey},`);
-            }
-        }
-        lines.push(`}));`);
-        // When only outputCase is set, the developer-facing type is the schema's
-        // pre-transform shape (camelCase). With inputCase, the post-transform
-        // shape is what consumers work with.
-        const typeSource = hasOutputTransform && !hasInputTransform ? 'input' : 'output';
-        lines.push(`export type ${model.name} = z.${typeSource}<typeof ${model.name}>;`);
+    if (inputCase || outputCase) {
+        const body = inputCase
+            ? renderCasedFields(model.fields, inputCase, model.mode, t => renderType(t, inputCase, model.mode))
+            : renderFields(model.fields, model.mode);
+        lines.push(...renderCasedSchema(model.name, model.fields, wrapper, inputCase, outputCase, body));
         return lines;
     }
 
@@ -442,6 +413,31 @@ function generateThreeSchemaModel(
 
     // Read schema — omit writeonly fields; extends parent read schema
     const readFields = allFields.filter(f => f.visibility !== 'writeonly');
+    const writeFields = allFields.filter(f => f.visibility !== 'readonly');
+
+    // A format() applies to both halves, the same transform the single-schema path emits: the read
+    // schema over the readable fields and the Input schema over the writable ones. Each is a pipe,
+    // so neither can be extended, which is why `flattenFormatChain` has already inlined the bases.
+    const inputCase = renamingCase(model.inputCase);
+    const outputCase = renamingCase(model.outputCase);
+    if (inputCase || outputCase) {
+        const mode = model.mode;
+        const renderWrite = (t: ContractTypeNode) =>
+            modelsWithInput ? renderInputType(t, modelsWithInput, mode, inputCase) : renderType(t, inputCase, mode);
+        const readBody = inputCase
+            ? renderCasedFields(readFields, inputCase, mode, t => renderType(t, inputCase, mode))
+            : renderFields(readFields, mode);
+        const writeBody = inputCase
+            ? renderCasedFields(writeFields, inputCase, mode, renderWrite)
+            : modelsWithInput
+              ? renderInputFields(writeFields, modelsWithInput, mode)
+              : renderFields(writeFields, mode);
+        lines.push(...renderCasedSchema(name, readFields, wrapper, inputCase, outputCase, readBody));
+        lines.push('');
+        lines.push(...renderCasedSchema(`${name}Input`, writeFields, wrapper, inputCase, outputCase, writeBody));
+        return lines;
+    }
+
     const readBody = renderFields(readFields, model.mode);
     if (bases.length > 0) {
         const { head, tail } = buildExtendChain(bases, b => b);
@@ -456,7 +452,6 @@ function generateThreeSchemaModel(
 
     // Write schema — omit readonly fields (use Input variants for sub-type refs);
     // extends ParentInput if parent has an Input variant, else extends parent read schema
-    const writeFields = allFields.filter(f => f.visibility !== 'readonly');
     const writeBody = modelsWithInput ? renderInputFields(writeFields, modelsWithInput, model.mode) : renderFields(writeFields, model.mode);
     // Fields that become readonly in this model but were writable in a base must be omitted from
     // the base Input schema — Zod's .extend() cannot remove inherited fields.
@@ -510,30 +505,19 @@ function renderFields(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
     return fields.flatMap(f => renderField(f, defaultMode));
 }
 
-function renderFieldsAsPascalCase(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
+/**
+ * A `format(input=)` object's members, keyed in `keyCase`. `renderMember` renders each field's type,
+ * which is where a read schema and an Input schema differ: the Input one names `XInput` variants.
+ */
+function renderCasedFields(
+    fields: FieldNode[],
+    keyCase: 'snake' | 'pascal',
+    defaultMode: ObjectMode | undefined,
+    renderMember: (type: ContractTypeNode) => string,
+): string[] {
     return fields.map(f => {
-        const pascalKey = camelToPascal(f.name);
         const member = memberType(f.type);
-        let expr = renderType(member.type, 'pascal', defaultMode);
-        if (f.default !== undefined) {
-            if (f.nullable) expr += '.nullable()';
-            const dv = typeof f.default === 'string' ? `"${escapeString(f.default)}"` : String(f.default);
-            expr += `.default(${dv})`;
-        } else if (f.optional) {
-            expr += '.nullish()';
-        } else if (f.nullable) {
-            expr += '.nullable()';
-        }
-        if (f.description) expr += `.describe("${escapeString(f.description)}")`;
-        return renderObjectMember(pascalKey, expr, member.getter);
-    });
-}
-
-function renderFieldsAsSnakeCase(fields: FieldNode[], defaultMode?: ObjectMode): string[] {
-    return fields.map(f => {
-        const snakeKey = camelToSnake(f.name);
-        const member = memberType(f.type);
-        let expr = renderType(member.type, 'snake', defaultMode);
+        let expr = renderMember(member.type);
         if (f.default !== undefined) {
             if (f.nullable) expr += '.nullable()';
             const dv = typeof f.default === 'string' ? `"${escapeString(f.default)}"` : String(f.default);
@@ -545,8 +529,78 @@ function renderFieldsAsSnakeCase(fields: FieldNode[], defaultMode?: ObjectMode):
             expr += '.nullable()';
         }
         if (f.description) expr += `.describe("${escapeString(f.description)}")`;
-        return renderObjectMember(snakeKey, expr, member.getter);
+        return renderObjectMember(applyCase(f.name, keyCase), expr, member.getter);
     });
+}
+
+/**
+ * One `format()` schema and its type: `wrapper({ …body })` piped through a `.transform()` from the
+ * `inputCase` keys to the `outputCase` ones. Shared by the single-schema path and both halves of a
+ * model split for readonly/writeonly fields, so the three cannot drift apart.
+ */
+function renderCasedSchema(
+    name: string,
+    fields: FieldNode[],
+    wrapper: string,
+    inputCase: 'snake' | 'pascal' | undefined,
+    outputCase: 'snake' | 'pascal' | undefined,
+    body: string[],
+): string[] {
+    const lines: string[] = [];
+    lines.push(`export const ${name} = ${wrapper}({`);
+    lines.push(...body.map(l => `    ${l}`));
+    lines.push(`}).transform(data => ({`);
+    for (const field of fields) {
+        const inputKey = applyCase(field.name, inputCase);
+        const outputKey = applyCase(field.name, outputCase);
+        if (field.optional) {
+            // Conditional spread keeps the field optional (`k?: T`) in the inferred
+            // z.output / z.input type, instead of widening to required-nullable (`k: T | undefined`).
+            // Consumer code built with `...(x ? { k: x } : {})` is only assignable to the optional form.
+            // When inputCase is set, the input schema uses `.nullish()` so the guard must reject both
+            // null and undefined; otherwise `.optional()` only allows undefined.
+            const guard = inputCase ? `data.${inputKey} != null` : `data.${inputKey} !== undefined`;
+            lines.push(`    ...(${guard} ? { ${quoteKey(outputKey)}: data.${inputKey} } : {}),`);
+        } else {
+            lines.push(`    ${quoteKey(outputKey)}: data.${inputKey},`);
+        }
+    }
+    lines.push(`}));`);
+    // When only outputCase is set, the developer-facing type is the schema's
+    // pre-transform shape (camelCase). With inputCase, the post-transform
+    // shape is what consumers work with.
+    const typeSource = outputCase && !inputCase ? 'input' : 'output';
+    lines.push(`export type ${name} = z.${typeSource}<typeof ${name}>;`);
+    return lines;
+}
+
+/**
+ * An anonymous object under a `format(input=)` model: keyed in `keyCase` on the way in and
+ * transformed back to its declared camelCase names, which is what the enclosing transform reads.
+ */
+function renderCasedInlineObject(
+    o: InlineObjectTypeNode,
+    keyCase: 'snake' | 'pascal',
+    defaultMode: ObjectMode | undefined,
+    renderMember: (type: ContractTypeNode) => string,
+): string {
+    const wrapper = modeToWrapper(o.mode ?? defaultMode ?? 'strict');
+    const joined = renderCasedFields(o.fields, keyCase, defaultMode, renderMember)
+        .map(l => `    ${l}`)
+        .join('\n');
+    const transformEntries = o.fields
+        .map(f => {
+            const casedKey = applyCase(f.name, keyCase);
+            // Optional fields use .nullish() on input. Conditional spread (instead of `?? undefined`)
+            // keeps the key optional in the inferred output type (`k?: T`) rather than widening to
+            // required-nullable (`k: T | undefined`).
+            if (f.optional) {
+                return `    ...(data.${casedKey} != null ? { ${quoteKey(f.name)}: data.${casedKey} } : {}),`;
+            }
+            return `    ${quoteKey(f.name)}: data.${casedKey},`;
+        })
+        .join('\n');
+    return `${wrapper}({\n${joined}\n}).transform(data => ({\n${transformEntries}\n}))`;
 }
 
 /**
@@ -874,19 +928,13 @@ function renderIntersection(i: IntersectionTypeNode, parseCaseTransform?: 'snake
                 expr += `.extend(${member.name}.shape)`;
             } else {
                 const m = member as InlineObjectTypeNode;
-                const fieldLines =
-                    parseCaseTransform === 'snake'
-                        ? renderFieldsAsSnakeCase(m.fields, defaultMode)
-                              .map(l => `    ${l}`)
-                              .join('\n')
-                        : parseCaseTransform === 'pascal'
-                          ? renderFieldsAsPascalCase(m.fields, defaultMode)
-                                .map(l => `    ${l}`)
-                                .join('\n')
-                          : m.fields
-                                .flatMap(f => renderField(f, defaultMode))
-                                .map(l => `    ${l}`)
-                                .join('\n');
+                const fieldLines = (
+                    parseCaseTransform
+                        ? renderCasedFields(m.fields, parseCaseTransform, defaultMode, t => renderType(t, parseCaseTransform, defaultMode))
+                        : m.fields.flatMap(f => renderField(f, defaultMode))
+                )
+                    .map(l => `    ${l}`)
+                    .join('\n');
                 expr += `.extend({\n${fieldLines}\n})`;
             }
         }
@@ -901,37 +949,7 @@ function renderIntersection(i: IntersectionTypeNode, parseCaseTransform?: 'snake
 
 function renderInlineObject(o: InlineObjectTypeNode, parseCaseTransform?: 'snake' | 'pascal', defaultMode?: ObjectMode): string {
     const wrapper = modeToWrapper(o.mode ?? defaultMode ?? 'strict');
-    if (parseCaseTransform === 'snake') {
-        const snakeLines = renderFieldsAsSnakeCase(o.fields, defaultMode);
-        const joined = snakeLines.map(l => `    ${l}`).join('\n');
-        const transformEntries = o.fields
-            .map(f => {
-                const snakeKey = camelToSnake(f.name);
-                // Optional fields use .nullish() on input. Conditional spread (instead of `?? undefined`)
-                // keeps the key optional in the inferred output type (`k?: T`) rather than widening to
-                // required-nullable (`k: T | undefined`).
-                if (f.optional) {
-                    return `    ...(data.${snakeKey} != null ? { ${quoteKey(f.name)}: data.${snakeKey} } : {}),`;
-                }
-                return `    ${quoteKey(f.name)}: data.${snakeKey},`;
-            })
-            .join('\n');
-        return `${wrapper}({\n${joined}\n}).transform(data => ({\n${transformEntries}\n}))`;
-    }
-    if (parseCaseTransform === 'pascal') {
-        const pascalLines = renderFieldsAsPascalCase(o.fields, defaultMode);
-        const joined = pascalLines.map(l => `    ${l}`).join('\n');
-        const transformEntries = o.fields
-            .map(f => {
-                const pascalKey = camelToPascal(f.name);
-                if (f.optional) {
-                    return `    ...(data.${pascalKey} != null ? { ${quoteKey(f.name)}: data.${pascalKey} } : {}),`;
-                }
-                return `    ${quoteKey(f.name)}: data.${pascalKey},`;
-            })
-            .join('\n');
-        return `${wrapper}({\n${joined}\n}).transform(data => ({\n${transformEntries}\n}))`;
-    }
+    if (parseCaseTransform) return renderCasedInlineObject(o, parseCaseTransform, defaultMode, t => renderType(t, parseCaseTransform, defaultMode));
     const fields = o.fields
         .flatMap(f => renderField(f, defaultMode))
         .map(l => `    ${l}`)
@@ -950,8 +968,9 @@ function renderInlineObject(o: InlineObjectTypeNode, parseCaseTransform?: 'snake
  * branch uses that same schema for `query: X` that the body path uses for
  * `request: { application/json: X }`. Making it strict would break query-by-model; leaving it
  * coercing leaves a JSON body accepting string-shaped numbers. A real split needs a second emitted
- * variant (`XInputWire`) plus the import plumbing to reach it, which is separate work — the
- * narrowed coercion in `renderScalar` closes the soundness hole in the meantime.
+ * schema variant plus the import plumbing to reach it, which is separate work — the narrowed
+ * coercion in `renderScalar` closes the soundness hole in the meantime. (Not to be confused with the
+ * SDK's `XWireInput`, a type-only variant for `format(input=)` key casing; see `codegen-wire-input`.)
  */
 function renderInputScalar(s: ScalarTypeNode): string {
     return renderScalar(s);
@@ -962,15 +981,25 @@ function renderInputScalar(s: ScalarTypeNode): string {
  * when the model has visibility modifiers, and coerces scalars from strings.
  * Used for Input (write) schema fields so that sub-type references also
  * point to their Input variants.
+ *
+ * @param parseCaseTransform - An enclosing `format(input=)`, which re-keys anonymous objects below it
+ *   exactly as {@link renderType} does: through arrays, unions, intersections and `lazy()`, but not
+ *   into a tuple or a record.
  */
-export function renderInputType(type: ContractTypeNode, modelsWithInput?: Set<string>, defaultMode?: ObjectMode): string {
+export function renderInputType(
+    type: ContractTypeNode,
+    modelsWithInput?: Set<string>,
+    defaultMode?: ObjectMode,
+    parseCaseTransform?: 'snake' | 'pascal',
+): string {
+    const recurse = (t: ContractTypeNode) => renderInputType(t, modelsWithInput, defaultMode, parseCaseTransform);
     switch (type.kind) {
         case 'scalar':
             return renderInputScalar(type);
         case 'ref':
             return modelsWithInput?.has(type.name) ? `${type.name}Input` : type.name;
         case 'array': {
-            let e = `z.array(${renderInputType(type.item, modelsWithInput, defaultMode)})`;
+            let e = `z.array(${recurse(type.item)})`;
             if (type.min !== undefined) e += `.min(${type.min})`;
             if (type.max !== undefined) e += `.max(${type.max})`;
             return e;
@@ -980,9 +1009,9 @@ export function renderInputType(type: ContractTypeNode, modelsWithInput?: Set<st
         case 'record':
             return `z.record(${renderInputType(type.key, modelsWithInput, defaultMode)}, ${renderInputType(type.value, modelsWithInput, defaultMode)})`;
         case 'union':
-            return `z.union([${type.members.map(m => renderInputType(m, modelsWithInput, defaultMode)).join(', ')}])`;
+            return `z.union([${type.members.map(recurse).join(', ')}])`;
         case 'discriminatedUnion':
-            return `z.discriminatedUnion("${escapeString(type.discriminator)}", [${type.members.map(m => renderInputType(m, modelsWithInput, defaultMode)).join(', ')}])`;
+            return `z.discriminatedUnion("${escapeString(type.discriminator)}", [${type.members.map(recurse).join(', ')}])`;
         case 'intersection': {
             const [first, ...rest] = type.members;
             if (first && first.kind === 'ref' && rest.length > 0 && rest.every(m => m.kind === 'ref' || m.kind === 'inlineObject')) {
@@ -992,23 +1021,29 @@ export function renderInputType(type: ContractTypeNode, modelsWithInput?: Set<st
                         const name = modelsWithInput?.has(member.name) ? `${member.name}Input` : member.name;
                         expr += `.extend(${name}.shape)`;
                     } else {
-                        const fieldLines = (member as InlineObjectTypeNode).fields
-                            .map(f => `    ${renderInputField(f, modelsWithInput ?? new Set(), defaultMode)}`)
+                        const inline = member as InlineObjectTypeNode;
+                        const fieldLines = (
+                            parseCaseTransform
+                                ? renderCasedFields(inline.fields, parseCaseTransform, defaultMode, recurse)
+                                : inline.fields.map(f => renderInputField(f, modelsWithInput ?? new Set(), defaultMode))
+                        )
+                            .map(l => `    ${l}`)
                             .join('\n');
                         expr += `.extend({\n${fieldLines}\n})`;
                     }
                 }
                 return expr;
             }
-            let expr = renderInputType(first!, modelsWithInput, defaultMode);
+            let expr = recurse(first!);
             for (const member of rest) {
-                expr += `.and(${renderInputType(member, modelsWithInput, defaultMode)})`;
+                expr += `.and(${recurse(member)})`;
             }
             return expr;
         }
         case 'lazy':
-            return `z.lazy(() => ${renderInputType(type.inner, modelsWithInput, defaultMode)})`;
+            return `z.lazy(() => ${recurse(type.inner)})`;
         case 'inlineObject': {
+            if (parseCaseTransform) return renderCasedInlineObject(type, parseCaseTransform, defaultMode, recurse);
             const fields = type.fields
                 .flatMap(f => renderInputField(f, modelsWithInput ?? new Set(), defaultMode))
                 .map(l => `    ${l}`)
@@ -1168,13 +1203,22 @@ export function typeNeedsDateTime(type: ContractTypeNode): boolean {
     }
 }
 
+/**
+ * The models `generateContract` and `generatePlainTypes` resolve bases against: every file's, from
+ * the context, with this file's own winning.
+ */
+export function contractModelMap(root: ContractRootNode, context?: ContractCodegenContext): Map<string, ModelNode> {
+    return new Map([...(context?.modelMap ?? []), ...root.models.map(m => [m.name, m] as const)]);
+}
+
 /** Collect model names referenced in `root` that are not defined locally (need to be imported). */
 export function collectExternalRefs(root: ContractRootNode): string[] {
     const localNames = new Set(root.models.map(m => m.name));
     const refs = new Set<string>();
 
     for (const model of root.models) {
-        if (model.bases?.[0] && !localNames.has(model.bases?.[0])) refs.add(model.bases?.[0]);
+        // Every base: `C: A & B` emits `A.extend(B.shape)` and `interface C extends A, B`.
+        for (const base of model.bases ?? []) if (!localNames.has(base)) refs.add(base);
         if (model.type) collectTypeRefs(model.type, refs);
         for (const field of model.fields) {
             collectTypeRefs(field.type, refs);
@@ -1197,10 +1241,10 @@ export function collectExternalInputRefs(root: ContractRootNode, modelsWithInput
             collectInputTypeRefs(model.type, refs, modelsWithInput);
             continue;
         }
-        // When a model extends an external parent that has an Input variant,
-        // the write schema extends ParentInput — so we need to import it.
-        if (model.bases?.[0] && modelsWithInput.has(model.bases?.[0]) && !localNames.has(model.bases?.[0])) {
-            refs.add(`${model.bases?.[0]}Input`);
+        // When a model extends an external parent that has an Input variant, the write schema
+        // extends ParentInput (every base, via `buildExtendChain`) — so we need to import it.
+        for (const base of model.bases ?? []) {
+            if (modelsWithInput.has(base) && !localNames.has(base)) refs.add(`${base}Input`);
         }
         const writeFields = model.fields.filter(f => f.visibility !== 'readonly');
         for (const field of writeFields) {

@@ -1,17 +1,17 @@
 info:
-  name: /tokens
+  name: /ledgers
   type: http
-  seq: 5
+  seq: 3
 
 http:
   method: POST
-  url: "{{baseUrl}}/tokens"
+  url: "{{baseUrl}}/ledgers"
   body:
     type: json
     data: |
       {
-        "accessToken": "",
-        "expiresIn": 3600
+        "entryCode": "",
+        "postedAt": "2024-01-01T00:00:00Z"
       }
 
 runtime:
