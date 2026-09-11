@@ -14,6 +14,7 @@ contract Seat: {
     class: string
     from?: date
     date: date
+    time?: time
     copy?: string
     modelDump?: string
     json?: string

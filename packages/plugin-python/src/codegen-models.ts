@@ -340,26 +340,15 @@ function generateSimpleModel(model: ModelNode, allModelsWithInput: Set<string>, 
 
     const baseList = model.bases && model.bases.length > 0 ? model.bases.join(', ') : 'BaseModel';
     lines.push(`class ${model.name}(${baseList}):`);
-
-    const fieldLines = renderFields(model.fields, allModelsWithInput, imports, false);
-    const needsConfig = model.fields.some(f => toPythonFieldName(f.name) !== f.name);
-    if (needsConfig) {
-        imports.add('pydantic', 'ConfigDict');
-        lines.push(`    model_config = ConfigDict(populate_by_name=True)`);
-        lines.push('');
-    }
-
-    if (fieldLines.length === 0) {
-        lines.push('    pass');
-    } else {
-        lines.push(...fieldLines);
-    }
+    lines.push(...renderClassBody(model.fields, modelFieldNames(model, allModelsWithInput), allModelsWithInput, imports, false));
 
     return lines;
 }
 
 function generateSplitModel(model: ModelNode, allModelsWithInput: Set<string>, imports: ImportTracker): string[] {
     const lines: string[] = [];
+    // One set of names for both classes, so `Payment` and `PaymentInput` agree on every field.
+    const names = modelFieldNames(model, allModelsWithInput);
 
     // Read model — omit writeonly fields
     const readFields = model.fields.filter(f => f.visibility !== 'writeonly');
@@ -368,18 +357,7 @@ function generateSplitModel(model: ModelNode, allModelsWithInput: Set<string>, i
 
     const readBaseList = model.bases && model.bases.length > 0 ? model.bases.join(', ') : 'BaseModel';
     lines.push(`class ${model.name}(${readBaseList}):`);
-    const readNeedsConfig = readFields.some(f => toPythonFieldName(f.name) !== f.name);
-    if (readNeedsConfig) {
-        imports.add('pydantic', 'ConfigDict');
-        lines.push(`    model_config = ConfigDict(populate_by_name=True)`);
-        lines.push('');
-    }
-    const readFieldLines = renderFields(readFields, allModelsWithInput, imports, false);
-    if (readFieldLines.length === 0) {
-        lines.push('    pass');
-    } else {
-        lines.push(...readFieldLines);
-    }
+    lines.push(...renderClassBody(readFields, names, allModelsWithInput, imports, false));
 
     lines.push('');
 
@@ -388,33 +366,88 @@ function generateSplitModel(model: ModelNode, allModelsWithInput: Set<string>, i
     const inputBaseList =
         model.bases && model.bases.length > 0 ? model.bases.map(b => (allModelsWithInput.has(b) ? `${b}Input` : b)).join(', ') : 'BaseModel';
     lines.push(`class ${model.name}Input(${inputBaseList}):`);
-    const writeNeedsConfig = writeFields.some(f => toPythonFieldName(f.name) !== f.name);
-    if (writeNeedsConfig) {
+    lines.push(...renderClassBody(writeFields, names, allModelsWithInput, imports, true));
+
+    return lines;
+}
+
+/**
+ * Public attributes of Pydantic's `BaseModel` (as of 2.13). A field named after one either fails
+ * class creation (`model_config`, and the `model_dump` and `model_validate` families, which are
+ * protected namespaces) or shadows the method with a `UserWarning` at import, which a test suite
+ * running with `-W error` turns into a failure. The client also calls `model_dump` and
+ * `model_validate` on these models itself.
+ */
+const BASE_MODEL_ATTRIBUTES: ReadonlySet<string> = new Set(
+    (
+        'construct copy dict from_orm json model_computed_fields model_config model_construct model_copy model_dump ' +
+        'model_dump_json model_extra model_fields model_fields_set model_json_schema model_parametrized_name ' +
+        'model_post_init model_rebuild model_validate model_validate_json model_validate_strings parse_file ' +
+        'parse_obj parse_raw schema schema_json update_forward_refs validate'
+    ).split(' '),
+);
+
+/**
+ * The Python attribute name of each of a model's fields.
+ *
+ * On top of `toPythonFieldName`, a name gets a trailing underscore when it is one of
+ * `BASE_MODEL_ATTRIBUTES`, or when it would shadow a type its own class annotates with. The second
+ * case is narrower than it sounds, and deliberately so. Pydantic evaluates the deferred annotations
+ * against the class namespace, so a field that puts a value there (`date: str | None = None`)
+ * replaces the imported `date` for every annotation in the class: the module fails to import, or
+ * a sibling `when: date` silently validates as `None`. A field with no right-hand side puts nothing
+ * in the namespace, so `date: date` works as it is and keeps its name.
+ */
+function modelFieldNames(model: ModelNode, allModelsWithInput: Set<string>): Map<FieldNode, string> {
+    // Every identifier either class's annotations read. Quoted literals are dropped first, since
+    // `Literal["date"]` names no type.
+    const annotationNames = new Set<string>();
+    for (const f of model.fields) {
+        for (const forInput of [false, true]) {
+            const rendered = renderPyType(f.type, allModelsWithInput, forInput).replace(/"(?:[^"\\]|\\.)*"/g, '');
+            for (const id of rendered.match(/[A-Za-z_]\w*/g) ?? []) annotationNames.add(id);
+        }
+    }
+
+    const names = new Map<FieldNode, string>();
+    for (const f of model.fields) {
+        let pyName = toPythonFieldName(f.name);
+        const hasRightHandSide = f.optional || f.default !== undefined || pyName !== f.name;
+        if (BASE_MODEL_ATTRIBUTES.has(pyName) || (hasRightHandSide && annotationNames.has(pyName))) pyName += '_';
+        names.set(f, pyName);
+    }
+    return names;
+}
+
+/** A class's `model_config`, if it needs one, then its fields, or `pass` when it has none. */
+function renderClassBody(
+    fields: FieldNode[],
+    names: Map<FieldNode, string>,
+    allModelsWithInput: Set<string>,
+    imports: ImportTracker,
+    forInput: boolean,
+): string[] {
+    const settings: string[] = [];
+    // Any field whose name differs from the contract's is aliased, and without this the model
+    // could only be built from the alias: `Seat(class_=...)` would be rejected.
+    if (fields.some(f => names.get(f) !== f.name)) settings.push('populate_by_name=True');
+    // Pydantic reserves `model_` names for its own methods: 2.10 and later warn on the
+    // `model_dump` and `model_validate` prefixes, earlier releases on any `model_` name. The
+    // names that actually collide are escaped by `modelFieldNames`, so `model_name` is safe.
+    if (fields.some(f => names.get(f)!.startsWith('model_'))) settings.push('protected_namespaces=()');
+
+    const lines: string[] = [];
+    if (settings.length > 0) {
         imports.add('pydantic', 'ConfigDict');
-        lines.push(`    model_config = ConfigDict(populate_by_name=True)`);
-        lines.push('');
+        lines.push(`    model_config = ConfigDict(${settings.join(', ')})`, '');
     }
-    const writeFieldLines = renderFields(writeFields, allModelsWithInput, imports, true);
-    if (writeFieldLines.length === 0) {
-        lines.push('    pass');
-    } else {
-        lines.push(...writeFieldLines);
-    }
-
+    const fieldLines = fields.flatMap(f => renderField(f, names.get(f)!, allModelsWithInput, imports, forInput));
+    lines.push(...(fieldLines.length > 0 ? fieldLines : ['    pass']));
     return lines;
 }
 
-function renderFields(fields: FieldNode[], allModelsWithInput: Set<string>, imports: ImportTracker, forInput: boolean): string[] {
+function renderField(field: FieldNode, pyName: string, allModelsWithInput: Set<string>, imports: ImportTracker, forInput: boolean): string[] {
     const lines: string[] = [];
-    for (const f of fields) {
-        lines.push(...renderField(f, allModelsWithInput, imports, forInput));
-    }
-    return lines;
-}
-
-function renderField(field: FieldNode, allModelsWithInput: Set<string>, imports: ImportTracker, forInput: boolean): string[] {
-    const lines: string[] = [];
-    const pyName = toPythonFieldName(field.name);
     const needsAlias = pyName !== field.name;
 
     let typeStr = renderPyType(field.type, allModelsWithInput, forInput);

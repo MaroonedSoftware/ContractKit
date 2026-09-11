@@ -84,7 +84,7 @@ class BillingClient(BaseClient):
         """
         look up a refund by its originating payment
         """
-        result = await self._fetch(f"/refunds/{quote(str(params.payment_id), safe='')}", method="GET")
+        result = await self._fetch(f"/refunds/{quote(str(params.model_dump(by_alias=True)['paymentId']), safe='')}", method="GET")
         return Payment.model_validate(result)
 
     async def create_credential(self, body: AdminCredentialInput) -> Credential:

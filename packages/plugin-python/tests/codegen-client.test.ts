@@ -306,7 +306,7 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('async def get_payments_by_payment_id(self, params: PaymentRef)');
-        expect(output).toContain("f\"/payments/{quote(str(params.payment_id), safe='')}\"");
+        expect(output).toContain("f\"/payments/{quote(str(params.model_dump(by_alias=True)['paymentId']), safe='')}\"");
     });
 
     it('escapes a path param named after a Python keyword, in the signature and the URL', () => {
@@ -321,14 +321,16 @@ describe('generatePythonClient', () => {
         expect(output).toContain("f\"/seats/{quote(str(class_), safe='')}\"");
     });
 
-    it('reads a keyword field off a params model by its escaped name', () => {
+    it('reads a params model by contract name, whatever the model calls the attribute', () => {
         const root = opRoot([
             opRoute('/rows/{class}', [
                 opOperation('get', { sdk: 'getRow', responses: [opResponse(200, 'Seat')] }),
             ], paramRef('SeatRef')),
         ]);
         const output = generatePythonClient(root);
-        expect(output).toContain("f\"/rows/{quote(str(params.class_), safe='')}\"");
+        // The model names the field `class_`, and would name a defaulted `date` field `date_`,
+        // decisions that depend on fields this generator never sees.
+        expect(output).toContain("f\"/rows/{quote(str(params.model_dump(by_alias=True)['class']), safe='')}\"");
     });
 
     it('keeps a path param clear of the arguments and functions the method already uses', () => {

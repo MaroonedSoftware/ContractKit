@@ -32,5 +32,5 @@ class ReservedClient(BaseClient):
         """
         fetch a row by its seat class
         """
-        result = await self._fetch(f"/rows/{quote(str(params.class_), safe='')}", method="GET")
+        result = await self._fetch(f"/rows/{quote(str(params.model_dump(by_alias=True)['class']), safe='')}", method="GET")
         return Seat.model_validate(result)

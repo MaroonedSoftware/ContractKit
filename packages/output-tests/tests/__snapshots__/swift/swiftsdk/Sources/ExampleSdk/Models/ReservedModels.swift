@@ -6,14 +6,16 @@ public struct Seat: Codable, Equatable, Sendable {
     public var `class`: String
     public var from: LocalDate?
     public var date: LocalDate
+    public var time: LocalTime?
     public var copy: String?
     public var modelDump: String?
     public var json: String?
 
-    public init(`class`: String, from: LocalDate? = nil, date: LocalDate, copy: String? = nil, modelDump: String? = nil, json: String? = nil) {
+    public init(`class`: String, from: LocalDate? = nil, date: LocalDate, time: LocalTime? = nil, copy: String? = nil, modelDump: String? = nil, json: String? = nil) {
         self.`class` = `class`
         self.from = from
         self.date = date
+        self.time = time
         self.copy = copy
         self.modelDump = modelDump
         self.json = json
@@ -23,6 +25,7 @@ public struct Seat: Codable, Equatable, Sendable {
         case `class` = "class"
         case from = "from"
         case date = "date"
+        case time = "time"
         case copy = "copy"
         case modelDump = "modelDump"
         case json = "json"
@@ -33,6 +36,7 @@ public struct Seat: Codable, Equatable, Sendable {
         self.`class` = try container.decode(String.self, forKey: .`class`)
         self.from = try container.decodeIfPresent(LocalDate.self, forKey: .from)
         self.date = try container.decode(LocalDate.self, forKey: .date)
+        self.time = try container.decodeIfPresent(LocalTime.self, forKey: .time)
         self.copy = try container.decodeIfPresent(String.self, forKey: .copy)
         self.modelDump = try container.decodeIfPresent(String.self, forKey: .modelDump)
         self.json = try container.decodeIfPresent(String.self, forKey: .json)
@@ -43,6 +47,7 @@ public struct Seat: Codable, Equatable, Sendable {
         try container.encode(`class`, forKey: .`class`)
         try container.encodeIfPresent(from, forKey: .from)
         try container.encode(date, forKey: .date)
+        try container.encodeIfPresent(time, forKey: .time)
         try container.encodeIfPresent(copy, forKey: .copy)
         try container.encodeIfPresent(modelDump, forKey: .modelDump)
         try container.encodeIfPresent(json, forKey: .json)

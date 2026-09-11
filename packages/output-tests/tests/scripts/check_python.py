@@ -2,7 +2,7 @@
 
 Reads a JSON object of {path: source} on stdin and writes a JSON report on stdout:
 
-    {"syntax": [...], "unbound": [...]}
+    {"syntax": [...], "unbound": [...], "literal": [...], "shadowed": [...]}
 
 `syntax` holds files that do not parse at all. `unbound` holds the case that actually shipped:
 a method whose signature is snake_cased while its f-string still interpolates the raw contract
@@ -86,9 +86,28 @@ def literal_templates(tree: ast.Module, path: str) -> List[dict]:
     return findings
 
 
+def shadowed_annotations(tree: ast.Module, path: str) -> List[dict]:
+    """Class-body names that get a value while an annotation in the same class reads them as a type.
+
+    Pydantic evaluates a model's deferred annotations against the class namespace, so a field
+    `date: str | None = None` replaces the imported `date` for every annotation in its class: the
+    module fails to import, or a sibling `when: date` validates as `None`. It parses fine, so
+    `ast.parse` cannot see it, and CI has no Pydantic to import the module with.
+    """
+    findings: List[dict] = []
+    for cls in [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]:
+        fields = [s for s in cls.body if isinstance(s, ast.AnnAssign) and isinstance(s.target, ast.Name)]
+        assigned = {s.target.id for s in fields if s.value is not None}
+        for s in fields:
+            for name in [n for n in ast.walk(s.annotation) if isinstance(n, ast.Name)]:
+                if name.id in assigned:
+                    findings.append({"file": path, "class": cls.name, "field": s.target.id, "name": name.id})
+    return findings
+
+
 def main() -> None:
     sources = json.load(sys.stdin)
-    syntax, unbound, literal = [], [], []
+    syntax, unbound, literal, shadowed = [], [], [], []
 
     for path, source in sorted(sources.items()):
         try:
@@ -98,8 +117,9 @@ def main() -> None:
             continue
         unbound.extend(unbound_in_fstrings(tree, path))
         literal.extend(literal_templates(tree, path))
+        shadowed.extend(shadowed_annotations(tree, path))
 
-    json.dump({"syntax": syntax, "unbound": unbound, "literal": literal}, sys.stdout)
+    json.dump({"syntax": syntax, "unbound": unbound, "literal": literal, "shadowed": shadowed}, sys.stdout)
 
 
 main()
