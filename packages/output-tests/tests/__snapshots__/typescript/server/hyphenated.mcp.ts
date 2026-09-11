@@ -20,7 +20,7 @@ export class GetInvoiceMcpTool implements McpToolHandler {
     readonly definition: Tool = {
         name: 'get_invoice',
         description: 'fetch an invoice',
-        inputSchema: z.toJSONSchema(GetInvoiceArgs, { unrepresentable: 'any' }) as Tool['inputSchema'],
+        inputSchema: z.toJSONSchema(GetInvoiceArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Invoice, { unrepresentable: 'any' }) as Tool['outputSchema'],
     };
 

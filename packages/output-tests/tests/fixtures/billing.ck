@@ -240,6 +240,7 @@ operation /payments/by-date: {
     get: { # search payments with snake_case filter and header models
         sdk: searchPaymentsByDate
         service: PaymentService.searchByDate
+        mcp: true
         query: SnakeFilter
         mode(loose) headers: SnakeHeaders
         response: {
@@ -270,6 +271,7 @@ operation /payments/by-date/scoped: {
     get: { # search payments with a snake_case filter extended inline
         sdk: searchPaymentsScoped
         service: PaymentService.searchScoped
+        mcp: true
         query: SnakeFilter & { q: string }
         headers: SnakeHeaders & { xTrace?: string }
         response: {
@@ -279,6 +281,7 @@ operation /payments/by-date/scoped: {
     post: { # save a scoped search
         sdk: saveScopedSearch
         service: PaymentService.saveScopedSearch
+        mcp: true
         query: ScopedFilter
         request: {
             application/json: PaymentScope & SnakeFilter

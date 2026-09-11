@@ -253,7 +253,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * search payments with a snake_case filter extended inline
-     * from [billing.ck](../../contracts/billing.ck#L270)
+     * from [billing.ck](../../contracts/billing.ck#L271)
     */
     app.get('/payments/by-date/scoped', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const query = await parseAndValidate(
@@ -294,7 +294,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * save a scoped search
-     * from [billing.ck](../../contracts/billing.ck#L279)
+     * from [billing.ck](../../contracts/billing.ck#L281)
     */
     app.post('/payments/by-date/scoped', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const query = await parseAndValidate(

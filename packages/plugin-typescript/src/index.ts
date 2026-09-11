@@ -217,7 +217,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '10';
+export const TYPESCRIPT_CODEGEN_VERSION = '11';
 
 // The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
 // temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
@@ -1296,6 +1296,9 @@ function collectMcpOutput(
             modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
             modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
+            // Not covered by `root`: a tool's args build an intersection with a `format()` model from
+            // another .ck file out of that model's object, and rename its keys one by one.
+            pipeModels: pipeModelKeys(refs, modelMap, modelsWithInput),
             servicePathTemplate: config.servicePathTemplate ?? null,
             includeInternal,
             sub: subConfigKey,
@@ -1314,6 +1317,7 @@ function collectMcpOutput(
                         servicePathTemplate: config.servicePathTemplate,
                         includeInternal,
                         modelsWithBigInt,
+                        models: modelMap,
                     }),
                 },
             ],

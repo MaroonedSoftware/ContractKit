@@ -22,7 +22,7 @@ export class GetSeatMcpTool implements McpToolHandler {
     readonly definition: Tool = {
         name: 'get_seat',
         description: 'fetch one seat',
-        inputSchema: z.toJSONSchema(GetSeatArgs, { unrepresentable: 'any' }) as Tool['inputSchema'],
+        inputSchema: z.toJSONSchema(GetSeatArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Seat, { unrepresentable: 'any' }) as Tool['outputSchema'],
     };
 
@@ -44,7 +44,7 @@ export class PutNoteMcpTool implements McpToolHandler {
     readonly definition: Tool = {
         name: 'put_note',
         description: 'replace a note',
-        inputSchema: z.toJSONSchema(PutNoteArgs, { unrepresentable: 'any' }) as Tool['inputSchema'],
+        inputSchema: z.toJSONSchema(PutNoteArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Note, { unrepresentable: 'any' }) as Tool['outputSchema'],
     };
 
