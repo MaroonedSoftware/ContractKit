@@ -93,6 +93,11 @@ export function buildHeaders(headers: object | undefined): Record<string, string
     return out;
 }
 
+export function parseBigIntHeader(name: string, value: string): bigint {
+    if (/^-?\d+n?$/.test(value)) return BigInt(value.replace(/n$/, ''));
+    throw new Error(`Response header '${name}' is not a bigint: ${JSON.stringify(value)}`);
+}
+
 /**
  * Read a JSON response body.
  *

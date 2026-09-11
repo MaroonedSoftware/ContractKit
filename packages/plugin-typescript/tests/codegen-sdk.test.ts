@@ -465,10 +465,12 @@ describe('generateSdk', () => {
             expect(out).toContain("xRatio: result.headers.get('x-ratio') === null ? undefined : Number(result.headers.get('x-ratio'))");
             expect(out).toContain("xCached: result.headers.get('x-cached') === 'true'");
             expect(out).toContain("xFresh: result.headers.get('x-fresh') === null ? undefined : result.headers.get('x-fresh') === 'true'");
-            expect(out).toContain("xSeq: BigInt(result.headers.get('x-seq')!)");
+            expect(out).toContain("xSeq: parseBigIntHeader('x-seq', result.headers.get('x-seq')!)");
             // Asserted in both branches: TS does not carry the null narrowing across a second
-            // `get()` call, and `BigInt` takes no null.
-            expect(out).toContain("xPrev: result.headers.get('x-prev') === null ? undefined : BigInt(result.headers.get('x-prev')!)");
+            // `get()` call, and `parseBigIntHeader` takes no null.
+            expect(out).toContain(
+                "xPrev: result.headers.get('x-prev') === null ? undefined : parseBigIntHeader('x-prev', result.headers.get('x-prev')!)",
+            );
             // Temporals are Luxon objects since the SDK started reviving them, so a raw string no
             // longer satisfies the shape `renderOutputTsType` produces.
             expect(out).toContain(
@@ -2471,6 +2473,79 @@ describe('generateSdk — bigint reviver gating', () => {
         expect(runtime).toContain('export async function parseJsonWithBigInt<T>(res: Response): Promise<T> {');
         expect(runtime).toContain('return JSON.parse(await res.text()) as T;');
         expect(runtime).toContain('return JSON.parse(await res.text(), bigIntReviver) as T;');
+    });
+});
+
+// ─── bigint response headers ──────────────────────────────────────────────
+
+describe('generateSdk — bigint response headers', () => {
+    const withHeader = (type: ReturnType<typeof scalarType>) =>
+        opRoot([
+            opRoute('/things', [
+                opOperation('get', {
+                    sdk: 'getThing',
+                    responses: [
+                        {
+                            statusCode: 200,
+                            hasBlock: true,
+                            bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Thing' } }],
+                            headers: [{ name: 'x-total', optional: false, type }],
+                        },
+                    ],
+                }),
+            ]),
+        ]);
+
+    const opts = { outPath: '/sdk/src/things.client.ts', sdkOptionsPath: '/sdk/sdk-options.ts' };
+
+    /** The helper the shared runtime emits, run for real. Its three annotations are the only TS in it. */
+    function runtimeParseBigIntHeader(): (name: string, value: string) => bigint {
+        const decl = generateSdkOptions()
+            .match(/export function parseBigIntHeader[\s\S]*?\n}/)![0]
+            .replace('export ', '')
+            .replace('(name: string, value: string): bigint', '(name, value)');
+        return new Function(`${decl}\nreturn parseBigIntHeader;`)();
+    }
+
+    it.each([
+        ['123', 123n],
+        ['123n', 123n],
+        ['-42', -42n],
+        ['98765432109876543210', 98765432109876543210n],
+    ])('reads the wire form %j', (value, expected) => {
+        expect(runtimeParseBigIntHeader()('x-total', value)).toBe(expected);
+    });
+
+    it.each(['abc', '0x10', '', ' 7', '7 ', '+7', '1.5', '1nn'])('rejects %j, naming the header, instead of letting BigInt() decide', value => {
+        // BigInt() took "0x10", "" and " 7" as 16n, 0n and 7n, and threw an opaque SyntaxError on
+        // "abc" and on the documented "123n" form alike.
+        expect(() => runtimeParseBigIntHeader()('x-total', value)).toThrow(`Response header 'x-total' is not a bigint: ${JSON.stringify(value)}`);
+    });
+
+    it('imports parseBigIntHeader only into a client that reads a bigint header', () => {
+        expect(generateSdk(withHeader(scalarType('bigint')), opts)).toMatch(
+            /import \{[^}]*\bparseBigIntHeader\b[^}]*\} from '\.\.\/sdk-options\.js';/,
+        );
+        expect(generateSdk(withHeader(scalarType('int')), opts)).not.toContain('parseBigIntHeader');
+    });
+
+    it('defines parseBigIntHeader inline when there is no shared sdk-options file', () => {
+        const out = generateSdk(withHeader(scalarType('bigint')));
+        expect(out).toContain('export function parseBigIntHeader(name: string, value: string): bigint {');
+        expect(out).not.toMatch(/import \{[^}]*parseBigIntHeader/);
+    });
+
+    it('imports parseBigIntHeader into an area client whose inlined method reads one', () => {
+        const root = withHeader(scalarType('bigint'));
+        const out = generateAreaClient({
+            area: 'things',
+            outPath: '/out/things/things.client.ts',
+            inlineFiles: [{ root, codegenOptions: { outPath: '/out/things/things.client.ts', sdkOptionsPath: '/out/sdk-options.ts' } }],
+            subareaClients: [],
+            sdkOptionsPath: '/out/sdk-options.ts',
+        });
+        expect(out).toContain("parseBigIntHeader('x-total', result.headers.get('x-total')!)");
+        expect(out).toMatch(/import \{[^}]*\bparseBigIntHeader\b[^}]*\} from '\.\.\/sdk-options\.js';/);
     });
 });
 

@@ -42,8 +42,8 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
         const service = request.container.get(KitchenService);
         const result:
-            | { status: 200; contentType: 'application/json'; body: Folder; headers: { xCount: number; xWhen?: DateTime } }
-            | { status: 200; contentType: 'text/plain'; body: string; headers: { xCount: number; xWhen?: DateTime } }
+            | { status: 200; contentType: 'application/json'; body: Folder; headers: { xCount: number; xWhen?: DateTime; xSeq?: bigint } }
+            | { status: 200; contentType: 'text/plain'; body: string; headers: { xCount: number; xWhen?: DateTime; xSeq?: bigint } }
             | { status: 204 }
             | { status: 404; contentType: 'application/json'; body: Shared }
             = await service.getFolder(folderId, query, headers);
@@ -53,6 +53,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
             case 200:
                 reply.header('x-count', String(result.headers["xCount"]));
                 if (result.headers["xWhen"] !== undefined) reply.header('x-when', String(result.headers["xWhen"]));
+                if (result.headers["xSeq"] !== undefined) reply.header('x-seq', String(result.headers["xSeq"]));
                 reply.type(result.contentType);
                 if (result.contentType === 'application/json') {
                     return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result.body);
@@ -69,7 +70,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * a method name that is a keyword in the target languages
-     * from [kitchen.ck](../../contracts/kitchen.ck#L136)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L137)
     */
     app.put('/folders/:folderId', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(
@@ -90,7 +91,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L151)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L152)
     */
     app.post('/ledgers', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, LedgerInput);
@@ -104,7 +105,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L166)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L167)
     */
     app.post('/stamps', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, Stamped);
@@ -118,7 +119,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L181)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L182)
     */
     app.post('/tokens', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, Token);
@@ -132,7 +133,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L195)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L196)
     */
     app.get('/tokens', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const service = request.container.get(KitchenService);
@@ -145,7 +146,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * one status with two content types and response headers, so the headers are read before the mime dispatch
-     * from [kitchen.ck](../../contracts/kitchen.ck#L211)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L212)
     */
     app.get('/folders/:folderId/export', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(

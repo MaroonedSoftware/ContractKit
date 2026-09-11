@@ -7,12 +7,14 @@ from urllib.parse import quote
 from typing import Literal, NotRequired, TypedDict
 from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError  # noqa: F401
+from ._scalars import BigInt
 from ._models_kitchen import Folder, Instrument, Ledger, LedgerInput, Shared, SharedInput, Stamped, Token
 
 
 class GetFolder200Headers(TypedDict, total=False):
     x_count: int  # x-count (required)
     x_when: datetime  # x-when (optional)
+    x_seq: int  # x-seq (optional)
 
 
 class ExportFolderHeaders(TypedDict, total=False):
@@ -75,6 +77,8 @@ class KitchenClient(BaseClient):
             headers_200["x_count"] = int(_response_headers["x-count"])
         if "x-when" in _response_headers:
             headers_200["x_when"] = datetime.fromisoformat(_response_headers["x-when"])
+        if "x-seq" in _response_headers:
+            headers_200["x_seq"] = int(_response_headers["x-seq"])
         if _content_type == "text/plain":
             return { "status": 200, "content_type": "text/plain", "data": result, "headers": headers_200 }
         return { "status": 200, "content_type": "application/json", "data": Folder.model_validate(result), "headers": headers_200 }
