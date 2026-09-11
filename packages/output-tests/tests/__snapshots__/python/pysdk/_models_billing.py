@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from uuid import UUID
-from typing import Literal
+from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 from decimal import Decimal
 from ._scalars import BigInt
@@ -85,6 +85,12 @@ class SnakeHeaders(BaseModel):
 
     tenant_id: str | None = Field(alias="tenantId", default=None)
 
+# A format() member of an intersection has no `.extend()` or `.shape`, being a pipe. The router and the
+# schemas build the object from the member's own object (`SnakeFilter.in`) and end in one transform
+# that renames the member's keys through its `.out`, passing every other key through.
+class PaymentScope(BaseModel):
+    region: str
+
 # Extends a writeonly base and is itself writeonly
 class AdminCredential(Credential):
     scope: str
@@ -92,3 +98,11 @@ class AdminCredential(Credential):
 class AdminCredentialInput(CredentialInput):
     scope: str
     token: str
+
+# A field typed as one
+class SavedSearch(BaseModel):
+    label: str
+    filter: dict[str, Any]
+
+# An alias of such an intersection, which is a pipe itself
+ScopedFilter = dict[str, Any]

@@ -61,6 +61,54 @@ function mcpInputs() {
     ]);
 }
 
+/** The router and the schema file the plugin emits for one `.ck` source. */
+async function buildReports(source: string): Promise<{ router: string; schemas: string }> {
+    const diag = new DiagnosticCollector();
+    const { contract, op } = decomposeCk(parseCk(source, '/project/contracts/reports.ck', diag));
+    expect(diag.getAll().filter(d => d.severity === 'error')).toEqual([]);
+    const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } } }, '/project');
+    const ctx = makeCtx('/project');
+    await plugin.generateTargets!(
+        {
+            contractRoots: [contract],
+            opRoots: [op],
+            modelOutPaths: new Map<string, string>(),
+            modelsWithInput: computeModelsWithInput(contract.models),
+            modelsWithOutput: new Set<string>(),
+        },
+        ctx,
+    );
+    const emitted = [...ctx.emitted.entries()];
+    const router = emitted.find(([p]) => p.endsWith('.router.ts'))![1];
+    const schemas = emitted.find(([p]) => p.endsWith('types/reports.ts'))![1];
+    return { router, schemas };
+}
+
+type Validator = { safeParse: (v: unknown) => { success: boolean; data?: unknown } };
+
+/**
+ * The schema each `const <name> = await parseAndValidate(<source>, <schema>)` in the router
+ * validates with, evaluated with real Zod against the models the schema file exports. Reads the
+ * call on one line, and spread over several with the source and the schema each on their own.
+ */
+async function routerValidators(router: string, schemas: string): Promise<(name: string) => Validator> {
+    const names = [...schemas.matchAll(/^export const (\w+)/gm)].map(m => m[1]!);
+    const body = schemas
+        .split('\n')
+        .filter(l => !l.startsWith('import ') && !l.startsWith('export type '))
+        .join('\n')
+        .replace(/^export const /gm, 'const ');
+    const { z } = await import('zod');
+    const scope = new Function('z', `${body}\nreturn { ${names.join(', ')} };`)(z) as Record<string, unknown>;
+    return (name: string) => {
+        const expr =
+            new RegExp(`const ${name} = await parseAndValidate\\(\\n[^\\n]*,\\n([\\s\\S]*?),\\n    \\);`).exec(router)?.[1] ??
+            new RegExp(`const ${name} = await parseAndValidate\\([^,\\n]+, ([\\s\\S]*?)\\);\\n`).exec(router)?.[1];
+        expect(expr, `no ${name} validation in:\n${router}`).toBeDefined();
+        return new Function('z', ...Object.keys(scope), `return ${expr};`)(z, ...Object.values(scope)) as Validator;
+    };
+}
+
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe('createTypescriptPlugin (server)', () => {
@@ -882,36 +930,57 @@ describe('createTypescriptPlugin — format() across files', () => {
         await plugin.generateTargets!(run('snake'), second);
         expect(router(second)).toContain('parseAndValidate(ctx.query, Filter.in.strict().pipe(Filter.out))');
     });
+
+    // An intersection names each key of a format() member in its transform, so a member in another
+    // .ck file gaining a field changes the router and the schema file with no change to their own AST.
+    it('re-emits a router and a schema file whose intersection holds a format() model from another .ck file that gains a field', async () => {
+        const rootDir = mkdtempSync(join(tmpdir(), 'ck-format-'));
+        const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } } }, rootDir);
+        const withQ = { kind: 'intersection' as const, members: [refType('Filter'), inlineObjectType([field('q', scalarType('string'))])] };
+        const run = (filterFields: string[]) => ({
+            contractRoots: [
+                contractRoot(
+                    [
+                        model(
+                            'Filter',
+                            filterFields.map(n => field(n, scalarType('string'), { optional: true })),
+                            { inputCase: 'snake' },
+                        ),
+                    ],
+                    join(rootDir, 'contracts/filters.ck'),
+                ),
+                contractRoot([model('Saved', [field('filter', withQ)])], join(rootDir, 'contracts/saved.ck')),
+            ],
+            // A request body: no param block, so neither of the router's param-model inputs sees Filter.
+            opRoots: [
+                opRoot(
+                    [opRoute('/reports', [opOperation('post', { request: opRequest(withQ), responses: [opResponse(204)] })])],
+                    join(rootDir, 'contracts/reports.ck'),
+                ),
+            ],
+            modelOutPaths: new Map<string, string>(),
+            modelsWithInput: new Set<string>(),
+            modelsWithOutput: new Set<string>(),
+        });
+        const emitted = (ctx: { emitted: Map<string, string> }, suffix: string) => [...ctx.emitted.entries()].find(([p]) => p.endsWith(suffix))?.[1];
+
+        const first = diskCtx(rootDir);
+        await plugin.generateTargets!(run(['fromDate']), first);
+        expect(emitted(first, '.router.ts')).toContain('...Filter.out.parse({ from_date: _0 }),');
+        expect(emitted(first, 'types/saved.ts')).toContain('...Filter.out.parse({ from_date: _0 }),');
+
+        const second = diskCtx(rootDir);
+        await plugin.generateTargets!(run(['fromDate', 'toDate']), second);
+        expect(emitted(second, '.router.ts')).toContain('...Filter.out.parse({ from_date: _0, to_date: _1 }),');
+        expect(emitted(second, 'types/saved.ts')).toContain('...Filter.out.parse({ from_date: _0, to_date: _1 }),');
+    });
 });
 
 describe('createTypescriptPlugin: a format() model as query, headers or params', () => {
     // A format() model's schema is `z.strictObject({...}).transform(...)`, a pipe with no `.strict()`,
     // so the router applies the block's mode to the object inside it and pipes back through `.out`.
-    /** The router and the schema file the plugin emits for `source`. */
-    async function build(source: string): Promise<{ router: string; schemas: string }> {
-        const diag = new DiagnosticCollector();
-        const { contract, op } = decomposeCk(parseCk(source, '/project/contracts/reports.ck', diag));
-        expect(diag.getAll().filter(d => d.severity === 'error')).toEqual([]);
-        const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } } }, '/project');
-        const ctx = makeCtx('/project');
-        await plugin.generateTargets!(
-            {
-                contractRoots: [contract],
-                opRoots: [op],
-                modelOutPaths: new Map<string, string>(),
-                modelsWithInput: computeModelsWithInput(contract.models),
-                modelsWithOutput: new Set<string>(),
-            },
-            ctx,
-        );
-        const emitted = [...ctx.emitted.entries()];
-        const router = emitted.find(([p]) => p.endsWith('.router.ts'))![1];
-        const schemas = emitted.find(([p]) => p.endsWith('types/reports.ts'))![1];
-        return { router, schemas };
-    }
-
     it('validates the query of the reported contract through the pipe', async () => {
-        const { router } = await build(`
+        const { router } = await buildReports(`
 contract format(input=snake) SnakeFilter: { fromDate?: date }
 
 operation /reports/snake: {
@@ -928,7 +997,7 @@ operation /reports/snake: {
     });
 
     it('parses with the block mode at run time: a strict query and params, stripped headers', async () => {
-        const { router, schemas } = await build(`
+        const { router, schemas } = await buildReports(`
 contract format(input=snake) SnakeFilter: { fromDate?: string }
 contract format(input=snake) SnakeHeaders: { tenantId: string }
 contract format(input=snake) SnakeRef: { reportId: string }
@@ -944,23 +1013,7 @@ operation /reports/{report_id}: {
     }
 }
 `);
-        const names = [...schemas.matchAll(/^export const (\w+)/gm)].map(m => m[1]!);
-        const body = schemas
-            .split('\n')
-            .filter(l => !l.startsWith('import ') && !l.startsWith('export type '))
-            .join('\n')
-            .replace(/^export const /gm, 'const ');
-        const { z } = await import('zod');
-        const scope = new Function('z', `${body}\nreturn { ${names.join(', ')} };`)(z) as Record<string, unknown>;
-
-        // The schema argument of each `parseAndValidate(ctx.<kind>, <schema>)`, evaluated against the models.
-        const validator = (kind: string) => {
-            const expr = new RegExp(`const ${kind} = await parseAndValidate\\(ctx\\.${kind}, (.+)\\);`).exec(router)?.[1];
-            expect(expr, `no ${kind} validation in:\n${router}`).toBeDefined();
-            return new Function(...Object.keys(scope), `return ${expr};`)(...Object.values(scope)) as {
-                safeParse: (v: unknown) => { success: boolean; data?: unknown };
-            };
-        };
+        const validator = await routerValidators(router, schemas);
 
         const query = validator('query');
         expect(query.safeParse({ from_date: '2026-01-01' })).toMatchObject({ success: true, data: { fromDate: '2026-01-01' } });
@@ -976,5 +1029,70 @@ operation /reports/{report_id}: {
         const params = validator('params');
         expect(params.safeParse({ report_id: 'r' })).toMatchObject({ success: true, data: { reportId: 'r' } });
         expect(params.safeParse({ report_id: 'r', other: 'x' }).success).toBe(false);
+    });
+});
+
+describe('createTypescriptPlugin: a format() model inside an intersection', () => {
+    // `SnakeFilter & { q: string }` is built from SnakeFilter's object and renamed through its `.out`,
+    // so a request carries the member's keys as the SDK sends them and the service gets the declared names.
+    it('parses a query and headers extended inline, strict and stripped', async () => {
+        const { router, schemas } = await buildReports(`
+contract format(input=snake) SnakeFilter: { fromDate?: string }
+contract format(input=snake) SnakeHeaders: { tenantId: string }
+
+operation /reports: {
+    get: {
+        sdk: listReports
+        service: ReportService.list
+        query: SnakeFilter & { q: string }
+        headers: SnakeHeaders & { xTrace?: string }
+        response: { 204: }
+    }
+}
+`);
+        const validator = await routerValidators(router, schemas);
+
+        const query = validator('query');
+        expect(query.safeParse({ from_date: '2026-01-01', q: 'x' })).toEqual({ success: true, data: { q: 'x', fromDate: '2026-01-01' } });
+        expect(query.safeParse({ q: 'x' })).toEqual({ success: true, data: { q: 'x' } });
+        // The member's keys as the service names them are not what a request sends.
+        expect(query.safeParse({ fromDate: '2026-01-01', q: 'x' }).success).toBe(false);
+        // Strict: an undeclared key is rejected, and the inline member's key is still required.
+        expect(query.safeParse({ q: 'x', page: '2' }).success).toBe(false);
+        expect(query.safeParse({ from_date: '2026-01-01' }).success).toBe(false);
+
+        const headers = validator('headers');
+        expect(headers.safeParse({ tenant_id: 't', xTrace: 'abc', host: 'example.com' })).toEqual({
+            success: true,
+            data: { xTrace: 'abc', tenantId: 't' },
+        });
+    });
+
+    it('parses a request body, and a query that references an alias of such an intersection', async () => {
+        const { router, schemas } = await buildReports(`
+contract format(input=snake) SnakeFilter: { fromDate?: string }
+contract Scope: { region: string }
+contract Scoped: SnakeFilter & Scope
+
+operation /reports: {
+    post: {
+        sdk: saveReport
+        service: ReportService.save
+        query: Scoped
+        request: { application/json: Scope & SnakeFilter }
+        response: { 204: }
+    }
+}
+`);
+        expect(schemas).toContain('export const Scoped = SnakeFilter.in.extend(Scope.shape).transform(');
+        const validator = await routerValidators(router, schemas);
+
+        const body = validator('body');
+        expect(body.safeParse({ region: 'eu', from_date: '2026-01-01' })).toEqual({ success: true, data: { region: 'eu', fromDate: '2026-01-01' } });
+        expect(body.safeParse({ region: 'eu', fromDate: '2026-01-01' }).success).toBe(false);
+
+        const query = validator('query');
+        expect(query.safeParse({ region: 'eu', from_date: '2026-01-01' })).toEqual({ success: true, data: { region: 'eu', fromDate: '2026-01-01' } });
+        expect(query.safeParse({ region: 'eu', page: '2' }).success).toBe(false);
     });
 });

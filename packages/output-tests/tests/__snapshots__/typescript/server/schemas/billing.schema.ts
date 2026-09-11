@@ -131,6 +131,17 @@ export const SnakeHeaders = z.strictObject({
 export type SnakeHeaders = z.output<typeof SnakeHeaders>;
 
 /**
+ * A format() member of an intersection has no `.extend()` or `.shape`, being a pipe. The router and the
+ * schemas build the object from the member's own object (`SnakeFilter.in`) and end in one transform
+ * that renames the member's keys through its `.out`, passing every other key through.
+ * generated from [PaymentScope](../../contracts/billing.ck#L254)
+*/
+export const PaymentScope = z.strictObject({
+    region: z.string(),
+});
+export type PaymentScope = z.infer<typeof PaymentScope>;
+
+/**
  * Extends a writeonly base and is itself writeonly
  * generated from [AdminCredential](../../contracts/billing.ck#L28)
 */
@@ -144,3 +155,28 @@ export const AdminCredentialInput = CredentialInput.extend({
     token: z.string(),
 });
 export type AdminCredentialInput = z.infer<typeof AdminCredentialInput>;
+
+/**
+ * A field typed as one
+ * generated from [SavedSearch](../../contracts/billing.ck#L262)
+*/
+export const SavedSearch = z.strictObject({
+    label: z.string(),
+    filter: SnakeFilter.in.extend({
+    q: z.string(),
+}).transform(({ from_date: _0, ...rest }) => ({
+    ...rest,
+    ...SnakeFilter.out.parse({ from_date: _0 }),
+})),
+});
+export type SavedSearch = z.infer<typeof SavedSearch>;
+
+/**
+ * An alias of such an intersection, which is a pipe itself
+ * generated from [ScopedFilter](../../contracts/billing.ck#L259)
+*/
+export const ScopedFilter = SnakeFilter.in.extend(PaymentScope.shape).transform(({ from_date: _0, ...rest }) => ({
+    ...rest,
+    ...SnakeFilter.out.parse({ from_date: _0 }),
+}));
+export type ScopedFilter = z.infer<typeof ScopedFilter>;

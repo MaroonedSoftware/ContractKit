@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';
 import { PaymentService } from '#src/services/payment.service.js';
-import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm } from '../schemas/billing.schema.js';
+import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm } from '../schemas/billing.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
@@ -240,4 +240,63 @@ BillingRouter.get('/payments/by-date', requirePolicy(), async ctx => {
     await service.searchByDate(query, headers);
 
     ctx.status = 204;
+});
+
+/**
+ * search payments with a snake_case filter extended inline
+ * from [billing.ck](../../contracts/billing.ck#L268)
+*/
+BillingRouter.get('/payments/by-date/scoped', requirePolicy(), async ctx => {
+    const query = await parseAndValidate(
+        ctx.query,
+        SnakeFilter.in.extend({
+            q: z.string(),
+        }).strict().transform(({ from_date: _0, ...rest }) => ({
+            ...rest,
+            ...SnakeFilter.out.parse({ from_date: _0 }),
+        })),
+    );
+
+    const headers = await parseAndValidate(
+        { ...ctx.headers, xTrace: ctx.headers['xtrace'] },
+        SnakeHeaders.in.extend({
+            xTrace: z.string().optional(),
+        }).strip().transform(({ tenant_id: _0, ...rest }) => ({
+            ...rest,
+            ...SnakeHeaders.out.parse({ tenant_id: _0 }),
+        })),
+    );
+
+    const resultType = SnakeFilter.in.extend({
+    q: z.string(),
+}).transform(({ from_date: _0, ...rest }) => ({
+    ...rest,
+    ...SnakeFilter.out.parse({ from_date: _0 }),
+}));
+    const service = ctx.container.get(PaymentService);
+    const result: z.infer<typeof resultType> = await service.searchScoped(query, headers);
+
+    ctx.status = 200;
+    ctx.type = 'application/json';
+    ctx.body = result;
+});
+
+/**
+ * save a scoped search
+ * from [billing.ck](../../contracts/billing.ck#L277)
+*/
+BillingRouter.post('/payments/by-date/scoped', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
+    const query = await parseAndValidate(ctx.query, ScopedFilter.in.strict().pipe(ScopedFilter.out));
+
+    const body = await parseAndValidate(ctx.parsedBody, PaymentScope.extend(SnakeFilter.in.shape).transform(({ from_date: _0, ...rest }) => ({
+    ...rest,
+    ...SnakeFilter.out.parse({ from_date: _0 }),
+})));
+
+    const service = ctx.container.get(PaymentService);
+    const result: SavedSearch = await service.saveScopedSearch(body, query);
+
+    ctx.status = 200;
+    ctx.type = 'application/json';
+    ctx.body = result;
 });

@@ -9,6 +9,8 @@ import com.example.sdk.models.Payment
 import com.example.sdk.models.PaymentFilter
 import com.example.sdk.models.PaymentInput
 import com.example.sdk.models.PaymentRef
+import com.example.sdk.models.SavedSearch
+import com.example.sdk.models.ScopedFilter
 import com.example.sdk.models.Session
 import com.example.sdk.models.SessionInput
 import com.example.sdk.models.SnakeFilter
@@ -149,6 +151,26 @@ class BillingClient(private val http: SdkHttp) {
             params(query)
             headers(customHeaders)
         }
+    }
+
+    /** search payments with a snake_case filter extended inline */
+    suspend fun searchPaymentsScoped(query: JsonElement? = null, customHeaders: JsonElement? = null): JsonElement {
+        val response = http.execute(HttpMethod.Get) {
+            path("payments", "by-date", "scoped")
+            params(query)
+            headers(customHeaders)
+        }
+        return http.decodeJson(response)
+    }
+
+    /** save a scoped search */
+    suspend fun saveScopedSearch(body: JsonElement, query: ScopedFilter? = null): SavedSearch {
+        val response = http.execute(HttpMethod.Post) {
+            path("payments", "by-date", "scoped")
+            params(query)
+            jsonBody(body, "application/json")
+        }
+        return http.decodeJson(response)
     }
 }
 

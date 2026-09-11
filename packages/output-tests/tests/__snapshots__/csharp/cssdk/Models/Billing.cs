@@ -160,6 +160,17 @@ public sealed record SnakeHeaders
     public string? TenantId { get; init; }
 }
 
+/// <summary>
+/// A format() member of an intersection has no `.extend()` or `.shape`, being a pipe. The router and the
+/// schemas build the object from the member's own object (`SnakeFilter.in`) and end in one transform
+/// that renames the member's keys through its `.out`, passing every other key through.
+/// </summary>
+public sealed record PaymentScope
+{
+    [JsonPropertyName("region")]
+    public required string Region { get; init; }
+}
+
 /// <summary>Extends a writeonly base and is itself writeonly</summary>
 public sealed record AdminCredential
 {
@@ -181,6 +192,27 @@ public sealed record AdminCredentialInput
 
     [JsonPropertyName("token")]
     public required string Token { get; init; }
+}
+
+/// <summary>A field typed as one</summary>
+public sealed record SavedSearch
+{
+    [JsonPropertyName("label")]
+    public required string Label { get; init; }
+
+    [JsonPropertyName("filter")]
+    public required SavedSearchFilter Filter { get; init; }
+}
+
+/// <summary>An alias of such an intersection, which is a pipe itself</summary>
+public sealed record ScopedFilter
+{
+    [JsonPropertyName("fromDate")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateOnly? FromDate { get; init; }
+
+    [JsonPropertyName("region")]
+    public required string Region { get; init; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PaymentStatus>))]
@@ -207,4 +239,14 @@ public enum PaymentFilterStatus
 
     [JsonStringEnumMemberName("failed")]
     Failed,
+}
+
+public sealed record SavedSearchFilter
+{
+    [JsonPropertyName("fromDate")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateOnly? FromDate { get; init; }
+
+    [JsonPropertyName("q")]
+    public required string Q { get; init; }
 }

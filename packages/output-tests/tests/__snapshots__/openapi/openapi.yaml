@@ -270,6 +270,47 @@ paths:
       responses:
         '204':
           description: 'No content'
+  '/payments/by-date/scoped':
+    get:
+      operationId: searchPaymentsScoped
+      description: 'search payments with a snake_case filter extended inline'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                allOf:
+                  - '$ref': '#/components/schemas/SnakeFilter'
+                  - type: object
+                    properties:
+                      q:
+                        type: string
+                    required: [q]
+    post:
+      operationId: saveScopedSearch
+      description: 'save a scoped search'
+      parameters:
+        - name: ScopedFilter
+          in: query
+          required: false
+          schema:
+            '$ref': '#/components/schemas/ScopedFilter'
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              allOf:
+                - '$ref': '#/components/schemas/PaymentScope'
+                - '$ref': '#/components/schemas/SnakeFilter'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/SavedSearch'
   '/invoices/{invoice-id}':
     get:
       operationId: getInvoice
@@ -684,6 +725,33 @@ components:
       properties:
         tenantId:
           type: string
+    PaymentScope:
+      type: object
+      properties:
+        region:
+          type: string
+      required: [region]
+      description: "A format() member of an intersection has no `.extend()` or `.shape`, being a pipe. The router and the\nschemas build the object from the member's own object (`SnakeFilter.in`) and end in one transform\nthat renames the member's keys through its `.out`, passing every other key through."
+    ScopedFilter:
+      allOf:
+        - '$ref': '#/components/schemas/SnakeFilter'
+        - '$ref': '#/components/schemas/PaymentScope'
+      description: 'An alias of such an intersection, which is a pipe itself'
+    SavedSearch:
+      type: object
+      properties:
+        label:
+          type: string
+        filter:
+          allOf:
+            - '$ref': '#/components/schemas/SnakeFilter'
+            - type: object
+              properties:
+                q:
+                  type: string
+              required: [q]
+      required: [label, filter]
+      description: 'A field typed as one'
     Invoice:
       type: object
       properties:

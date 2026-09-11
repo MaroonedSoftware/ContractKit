@@ -1,6 +1,6 @@
 import { resolve, join, relative, dirname, basename } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, rmdirSync } from 'node:fs';
-import { compilesToPipe, generateContract, rootNeedsScalar } from './codegen-contract.js';
+import { compilesToPipe, generateContract, rootNeedsScalar, schemaKeys } from './codegen-contract.js';
 import { generateOp } from './codegen-operation.js';
 import type {
     ContractKitPlugin,
@@ -8,7 +8,6 @@ import type {
     ContractRootNode,
     OpRootNode,
     ModelNode,
-    ParamSource,
     ScalarTypeNode,
     IncrementalManifest,
     IncrementalUnit,
@@ -420,26 +419,26 @@ function paramModelFields(root: OpRootNode, modelMap: Map<string, ModelNode>): R
 }
 
 /**
- * The models a `params:`, `query:` or `headers:` block reads through whose schema is a `format()`
- * pipe. The router validates one of those as `X.in.strict().pipe(X.out)` and any other as
- * `X.strict()`, so a model in another `.ck` file gaining or losing `format()` changes the router.
- * `modelsWithTransform` does not always see that: a model already in it for referencing a `format()`
- * model stays in it when it gains a `format()` of its own.
+ * The models among `names` whose schema is a `format()` pipe, each with the keys its object parses
+ * on the read side and on the request side.
+ *
+ * A request block validates a pipe as `X.in.strict().pipe(X.out)` where it validates any other model
+ * as `X.strict()`, and an intersection builds a pipe member from `X.in` and ends in a transform that
+ * names each of that member's keys. So a model in another `.ck` file gaining or losing `format()`,
+ * changing its casing, or gaining a field changes the output of every unit reading through it, with
+ * no change to the unit's own AST. `modelsWithTransform` does not always see that: a model already in
+ * it for referencing a `format()` model stays in it when it gains a `format()` of its own.
  */
-function pipeParamModels(root: OpRootNode, modelMap: Map<string, ModelNode>): string[] {
-    const names = new Set<string>();
-    const add = (source: ParamSource | undefined) => {
-        if (source?.kind === 'ref') names.add(source.name);
-        else if (source?.kind === 'type') collectTypeRefs(source.node, names);
-    };
-    for (const route of root.routes) {
-        add(route.params);
-        for (const op of route.operations) {
-            add(op.query);
-            add(op.headers);
-        }
+function pipeModelKeys(
+    names: Iterable<string>,
+    modelMap: Map<string, ModelNode>,
+    modelsWithInput: Set<string>,
+): Record<string, [string[], string[]]> {
+    const out: Record<string, [string[], string[]]> = {};
+    for (const name of [...names].sort()) {
+        if (compilesToPipe(name, modelMap)) out[name] = [schemaKeys(name, modelMap), schemaKeys(name, modelMap, modelsWithInput)];
     }
-    return [...names].filter(name => compilesToPipe(name, modelMap)).sort();
+    return out;
 }
 
 function paramSourceTypes(src: NonNullable<OpRootNode['routes'][number]['params']>): Parameters<typeof collectTypeRefs>[0][] {
@@ -545,6 +544,9 @@ function collectServerOutput(
             outPathSlice: sliceOutPathMap(refs, serverModelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
+            // Not covered by `root`: an intersection with a model from another .ck file is built from
+            // that model's object and keys once it compiles to a `format()` pipe.
+            pipeModels: pipeModelKeys(refs, modelMap, modelsWithInput),
             sub: subConfigKey,
         });
         units.push({
@@ -589,8 +591,9 @@ function collectServerOutput(
             // Same: an array field added to a query model re-wraps it in this router, and a header
             // model's camelCase field is read from its lowercase key.
             paramModelFields: paramModelFields(ast, modelMap),
-            // Same: a param model gaining `format()` moves this router's mode inside the pipe.
-            pipeParamModels: pipeParamModels(ast, modelMap),
+            // Same: a param model gaining `format()` moves this router's mode inside the pipe, and a
+            // `format()` member of an intersection, in any block or body, is renamed key by key.
+            pipeModels: pipeModelKeys(refs, modelMap, modelsWithInput),
             validateResponses: config.validateResponses ?? false,
             // Covered by `sub` already, which is the whole sub-config; explicit for the same reason
             // `validateResponses` is — the inputs that change a router's text read at a glance.
@@ -715,6 +718,8 @@ function collectSdkOutput(
             serializers: ast.models.flatMap(m =>
                 renderSerializeFunction(m, requestTypeName(m.name, modelsWithInput, modelsWithWireInput), serializeOpts),
             ),
+            // Same: a cross-file `format()` model in an intersection is built from its object and keys.
+            pipeModels: pipeModelKeys(refs, modelMap, modelsWithInput),
             sdkOptionsPath,
             sub: subConfigKey,
         });
@@ -1118,6 +1123,9 @@ function collectZodOutput(
             outPathSlice: sliceOutPathMap(refs, modelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
+            // Not covered by `root`: a cross-file `format()` model in an intersection is built from
+            // its object and keys.
+            pipeModels: pipeModelKeys(refs, modelMap, modelsWithInput),
             sub: subConfigKey,
         });
         units.push({

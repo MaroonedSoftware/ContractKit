@@ -227,6 +227,17 @@ export interface SnakeHeadersWireInput {
 }
 
 /**
+ * A format() member of an intersection has no `.extend()` or `.shape`, being a pipe. The router and the
+ * schemas build the object from the member's own object (`SnakeFilter.in`) and end in one transform
+ * that renames the member's keys through its `.out`, passing every other key through.
+ * generated from [PaymentScope](../../contracts/billing.ck#L254)
+*/
+export const PaymentScope = z.strictObject({
+    region: z.string(),
+});
+export type PaymentScope = z.infer<typeof PaymentScope>;
+
+/**
  * Extends a writeonly base and is itself writeonly
  * generated from [AdminCredential](../../contracts/billing.ck#L28)
 */
@@ -240,3 +251,65 @@ export const AdminCredentialInput = CredentialInput.extend({
     token: z.string(),
 });
 export type AdminCredentialInput = z.infer<typeof AdminCredentialInput>;
+
+/**
+ * A field typed as one
+ * generated from [SavedSearch](../../contracts/billing.ck#L262)
+*/
+export const SavedSearch = z.strictObject({
+    label: z.string(),
+    filter: SnakeFilter.in.extend({
+    q: z.string(),
+}).transform(({ from_date: _0, ...rest }) => ({
+    ...rest,
+    ...SnakeFilter.out.parse({ from_date: _0 }),
+})),
+});
+export type SavedSearch = z.infer<typeof SavedSearch>;
+
+/** {@link SavedSearch} as a request sends it, keyed the way the server's schema parses it. */
+export interface SavedSearchWireInput {
+    label: string;
+    filter: SnakeFilterWireInput & { q: string };
+}
+
+/** Rehydrates every wire-encoded scalar in a SavedSearch into its runtime type. Mutates and returns `raw`. */
+export function reviveSavedSearch(raw: SavedSearch): SavedSearch {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    reviveSnakeFilter(__o0["filter"] as never);
+    return raw;
+}
+
+/** SavedSearch as a request body sends it, with every `date`, `time` and `decimal` in the text the server parses. Returns a copy; `value` is not modified. */
+export function serializeSavedSearch(value: SavedSearchWireInput): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    __o0["filter"] = serializeSnakeFilter(__o0["filter"] as never);
+    return __o0;
+}
+
+/**
+ * An alias of such an intersection, which is a pipe itself
+ * generated from [ScopedFilter](../../contracts/billing.ck#L259)
+*/
+export const ScopedFilter = SnakeFilter.in.extend(PaymentScope.shape).transform(({ from_date: _0, ...rest }) => ({
+    ...rest,
+    ...SnakeFilter.out.parse({ from_date: _0 }),
+}));
+export type ScopedFilter = z.infer<typeof ScopedFilter>;
+
+/** {@link ScopedFilter} as a request sends it, keyed the way the server's schema parses it. */
+export type ScopedFilterWireInput = SnakeFilterWireInput & PaymentScope;
+
+/** Rehydrates every wire-encoded scalar in a ScopedFilter into its runtime type. Mutates and returns `raw`. */
+export function reviveScopedFilter(raw: ScopedFilter): ScopedFilter {
+    const __v = [raw] as unknown[];
+    reviveSnakeFilter(__v[0] as never);
+    return __v[0] as ScopedFilter;
+}
+
+/** ScopedFilter as a request body sends it, with every `date`, `time` and `decimal` in the text the server parses. Returns a copy; `value` is not modified. */
+export function serializeScopedFilter(value: ScopedFilterWireInput): unknown {
+    let __v: unknown = value;
+    __v = serializeSnakeFilter(__v as never);
+    return __v;
+}

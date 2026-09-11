@@ -7,7 +7,7 @@ from urllib.parse import quote
 from typing import Any, Literal, NotRequired, TypedDict
 from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError  # noqa: F401
-from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm, UploadReceiptForm
+from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentFilter, PaymentInput, PaymentRef, SavedSearch, ScopedFilter, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm, UploadReceiptForm
 
 
 class CreatePaymentHeaders(TypedDict, total=False):
@@ -34,6 +34,8 @@ _LIST_PAYMENTS_RESPONSE: TypeAdapter[list[Payment]] = TypeAdapter(list[Payment])
 _SEARCH_PAYMENTS_RESPONSE: TypeAdapter[list[Payment]] = TypeAdapter(list[Payment])
 _CREATE_PAYMENTS_BODY: TypeAdapter[list[PaymentInput]] = TypeAdapter(list[PaymentInput])
 _CREATE_PAYMENTS_RESPONSE: TypeAdapter[list[Payment]] = TypeAdapter(list[Payment])
+_SEARCH_PAYMENTS_SCOPED_RESPONSE: TypeAdapter[dict[str, Any]] = TypeAdapter(dict[str, Any])
+_SAVE_SCOPED_SEARCH_BODY: TypeAdapter[dict[str, Any]] = TypeAdapter(dict[str, Any])
 
 
 class BillingClient(BaseClient):
@@ -131,3 +133,17 @@ class BillingClient(BaseClient):
         """
         result = await self._fetch("/payments/by-date", method="GET", params=query, extra_headers=custom_headers)
         return None
+
+    async def search_payments_scoped(self, query: dict[str, Any] | None = None, custom_headers: dict[str, Any] | None = None) -> dict[str, Any]:
+        """
+        search payments with a snake_case filter extended inline
+        """
+        result = await self._fetch("/payments/by-date/scoped", method="GET", params=query, extra_headers=custom_headers)
+        return _SEARCH_PAYMENTS_SCOPED_RESPONSE.validate_python(result)
+
+    async def save_scoped_search(self, body: dict[str, Any], query: ScopedFilter | None = None) -> SavedSearch:
+        """
+        save a scoped search
+        """
+        result = await self._fetch("/payments/by-date/scoped", method="POST", body=_SAVE_SCOPED_SEARCH_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True), params=query)
+        return SavedSearch.model_validate(result)

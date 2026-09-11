@@ -1,8 +1,23 @@
 import type { SdkFetch } from '../sdk-options.js';
 import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString, buildHeaders } from '../sdk-options.js';
-import type { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, SnakeFilterWireInput, SnakeHeadersWireInput, TenantHeaders, UpdatePaymentForm } from '../types/billing.types.js';
-import { revivePayment, serializePayment } from '../types/billing.types.js';
+import type { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, PaymentScope, SavedSearch, ScopedFilterWireInput, Session, SessionInput, SnakeFilter, SnakeFilterWireInput, SnakeHeadersWireInput, TenantHeaders, UpdatePaymentForm } from '../types/billing.types.js';
+import { revivePayment, reviveSavedSearch, reviveSnakeFilter, serializePayment, serializeSnakeFilter } from '../types/billing.types.js';
 import { DateTime } from 'luxon';
+
+
+/** Rehydrates the `decimal` fields of one response body. Mutates and returns `raw`. */
+function __reviveSearchPaymentsScoped200(raw: SnakeFilter & { q: string }): SnakeFilter & { q: string } {
+    const __v = [raw] as unknown[];
+    reviveSnakeFilter(__v[0] as never);
+    return __v[0] as SnakeFilter & { q: string };
+}
+
+/** One request body as it is sent, with every `date`, `time` and `decimal` in the text the server parses. Returns a copy. */
+function __serializeSaveScopedSearchBody(value: PaymentScope & SnakeFilterWireInput): unknown {
+    let __v: unknown = value;
+    __v = serializeSnakeFilter(__v as never);
+    return __v;
+}
 
 export class BillingClient {
     constructor(private fetch: SdkFetch) {
@@ -114,5 +129,26 @@ export class BillingClient {
             method: 'GET',
             headers: buildHeaders(customHeaders),
         });
+    }
+
+    /** @description search payments with a snake_case filter extended inline */
+    async searchPaymentsScoped(query?: SnakeFilterWireInput & { q: string }, customHeaders?: SnakeHeadersWireInput & { xTrace?: string }): Promise<SnakeFilter & { q: string }> {
+        const qs = buildQueryString({ ...query, from_date: query?.from_date?.toFormat('yyyy-MM-dd') });
+        const result = await this.fetch(`/payments/by-date/scoped${qs}`, {
+            method: 'GET',
+            headers: buildHeaders(customHeaders),
+        });
+        return __reviveSearchPaymentsScoped200(await parseJson<SnakeFilter & { q: string }>(result));
+    }
+
+    /** @description save a scoped search */
+    async saveScopedSearch(body: PaymentScope & SnakeFilterWireInput, query?: ScopedFilterWireInput): Promise<SavedSearch> {
+        const qs = buildQueryString({ ...query, from_date: query?.from_date?.toFormat('yyyy-MM-dd') });
+        const result = await this.fetch(`/payments/by-date/scoped${qs}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(__serializeSaveScopedSearchBody(body), bigIntReplacer),
+        });
+        return reviveSavedSearch(await parseJson<SavedSearch>(result));
     }
 }

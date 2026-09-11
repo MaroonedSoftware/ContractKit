@@ -6,7 +6,9 @@ docs/api-reference/billing/delete-payment.mdx
 docs/api-reference/billing/get-payment.mdx
 docs/api-reference/billing/get-refund.mdx
 docs/api-reference/billing/list-payments.mdx
+docs/api-reference/billing/save-scoped-search.mdx
 docs/api-reference/billing/search-payments-by-date.mdx
+docs/api-reference/billing/search-payments-scoped.mdx
 docs/api-reference/billing/search-payments.mdx
 docs/api-reference/billing/update-payment-with-form.mdx
 docs/api-reference/billing/upload-receipt.mdx
@@ -26,7 +28,10 @@ docs/api-reference/models/billing/admin-credential.mdx
 docs/api-reference/models/billing/credential.mdx
 docs/api-reference/models/billing/payment-filter.mdx
 docs/api-reference/models/billing/payment-ref.mdx
+docs/api-reference/models/billing/payment-scope.mdx
 docs/api-reference/models/billing/payment.mdx
+docs/api-reference/models/billing/saved-search.mdx
+docs/api-reference/models/billing/scoped-filter.mdx
 docs/api-reference/models/billing/session.mdx
 docs/api-reference/models/billing/snake-filter.mdx
 docs/api-reference/models/billing/snake-headers.mdx

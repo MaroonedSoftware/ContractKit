@@ -40,7 +40,9 @@
                             "api-reference/billing/get-refund",
                             "api-reference/billing/create-credential",
                             "api-reference/billing/create-session",
-                            "api-reference/billing/search-payments-by-date"
+                            "api-reference/billing/search-payments-by-date",
+                            "api-reference/billing/search-payments-scoped",
+                            "api-reference/billing/save-scoped-search"
                         ]
                     },
                     {
@@ -76,7 +78,10 @@
                                     "api-reference/models/billing/payment-filter",
                                     "api-reference/models/billing/tenant-headers",
                                     "api-reference/models/billing/snake-filter",
-                                    "api-reference/models/billing/snake-headers"
+                                    "api-reference/models/billing/snake-headers",
+                                    "api-reference/models/billing/payment-scope",
+                                    "api-reference/models/billing/scoped-filter",
+                                    "api-reference/models/billing/saved-search"
                                 ]
                             },
                             {

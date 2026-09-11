@@ -386,6 +386,31 @@ public struct SnakeHeaders: Codable, Equatable, Sendable {
     }
 }
 
+/// A format() member of an intersection has no `.extend()` or `.shape`, being a pipe. The router and the
+/// schemas build the object from the member's own object (`SnakeFilter.in`) and end in one transform
+/// that renames the member's keys through its `.out`, passing every other key through.
+public struct PaymentScope: Codable, Equatable, Sendable {
+    public var region: String
+
+    public init(region: String) {
+        self.region = region
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case region = "region"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.region = try container.decode(String.self, forKey: .region)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.region, forKey: .region)
+    }
+}
+
 /// Extends a writeonly base and is itself writeonly
 public struct AdminCredential: Codable, Equatable, Sendable {
     public var id: UUID
@@ -447,6 +472,62 @@ public struct AdminCredentialInput: Codable, Equatable, Sendable {
     }
 }
 
+/// A field typed as one
+public struct SavedSearch: Codable, Equatable, Sendable {
+    public var label: String
+    public var filter: SavedSearchFilter
+
+    public init(label: String, filter: SavedSearchFilter) {
+        self.label = label
+        self.filter = filter
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case label = "label"
+        case filter = "filter"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.label = try container.decode(String.self, forKey: .label)
+        self.filter = try container.decode(SavedSearchFilter.self, forKey: .filter)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.label, forKey: .label)
+        try container.encode(self.filter, forKey: .filter)
+    }
+}
+
+/// An alias of such an intersection, which is a pipe itself
+public struct ScopedFilter: Codable, Equatable, Sendable {
+    public var fromDate: LocalDate?
+    public var region: String
+
+    public init(fromDate: LocalDate? = nil, region: String) {
+        self.fromDate = fromDate
+        self.region = region
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case fromDate = "fromDate"
+        case region = "region"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.fromDate = try container.decodeIfPresent(LocalDate.self, forKey: .fromDate)
+        self.region = try container.decode(String.self, forKey: .region)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(self.fromDate, forKey: .fromDate)
+        try container.encode(self.region, forKey: .region)
+    }
+}
+
 public enum PaymentStatus: String, Codable, CaseIterable, Sendable {
     case pending = "pending"
     case completed = "completed"
@@ -457,4 +538,31 @@ public enum PaymentFilterStatus: String, Codable, CaseIterable, Sendable {
     case pending = "pending"
     case completed = "completed"
     case failed = "failed"
+}
+
+public struct SavedSearchFilter: Codable, Equatable, Sendable {
+    public var fromDate: LocalDate?
+    public var q: String
+
+    public init(fromDate: LocalDate? = nil, q: String) {
+        self.fromDate = fromDate
+        self.q = q
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case fromDate = "fromDate"
+        case q = "q"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.fromDate = try container.decodeIfPresent(LocalDate.self, forKey: .fromDate)
+        self.q = try container.decode(String.self, forKey: .q)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(self.fromDate, forKey: .fromDate)
+        try container.encode(self.q, forKey: .q)
+    }
 }
