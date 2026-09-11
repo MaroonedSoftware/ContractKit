@@ -68,6 +68,12 @@ export interface ClientCodegenOptions {
     /** Set of model names that have Input variants */
     modelsWithInput?: Set<string>;
     /**
+     * Contracts emitted as a type alias rather than a Pydantic class (see `computeTypeAliases`).
+     * They have no `model_validate` or `model_dump`, so a body of one goes through a
+     * `TypeAdapter` instead. Any other capitalised ref is taken to be a model class.
+     */
+    typeAliases?: Set<string>;
+    /**
      * Whether to emit client methods for operations marked `internal`. Defaults to `false` —
      * internal ops are omitted so consumers don't pick them up. Set to `true` for an
      * internal-use SDK that should expose them.
@@ -94,7 +100,7 @@ export function hasPublicOperations(root: OpRootNode, includeInternal = false): 
  */
 export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOptions = {}): string {
     const clientClassName = deriveClientClassName(root.file);
-    const { modelsWithInput } = opts;
+    const { modelsWithInput, typeAliases } = opts;
     const includeInternal = opts.includeInternal ?? false;
 
     // Collect all model types referenced in public ops
@@ -169,7 +175,7 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     // Request bodies that are neither a single model nor sent raw, each serialized by a
     // module-level TypeAdapter built once at import rather than on every call.
     const bodyAdapters = publicOps.flatMap(({ route, op }) => {
-        const name = bodyAdapterName(route, op, modelsWithInput);
+        const name = bodyAdapterName(route, op, typeAliases);
         return name ? [{ name, type: renderInputPyType(op.request!.bodies[0]!.bodyType, modelsWithInput) }] : [];
     });
 
@@ -317,13 +323,13 @@ interface MethodParam {
 
 function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCodegenOptions): string[] {
     const lines: string[] = [];
-    const { modelsWithInput } = opts;
+    const { modelsWithInput, typeAliases } = opts;
     const methodName = deriveMethodName(op, route);
     const httpMethod = op.method.toUpperCase();
     /** Identifies the operation in a codegen rejection, which the CLI scopes to this plugin. */
     const where = `${httpMethod} ${route.path}`;
 
-    const params = buildMethodParams(route, op, modelsWithInput);
+    const params = buildMethodParams(route, op, modelsWithInput, typeAliases);
     const selfParam = 'self';
     const allParams = params.map(p => {
         if (p.optional) return `${p.name}: ${p.type} | None = None`;
@@ -342,8 +348,8 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
     const isVoid = primaryBodies.length === 0;
     const respCategory = primaryBodies[0] ? classifyContentType(primaryBodies[0].contentType) : 'json';
     const dataType = isVoid ? 'None' : pyBodyType(primaryBodies[0]!, modelsWithInput);
-    const isModelReturn = !isVoid && respCategory === 'json' && isModelRef(primaryBodies[0]!.bodyType, modelsWithInput);
-    const isListModelReturn = !isVoid && respCategory === 'json' && isListModelRef(primaryBodies[0]!.bodyType, modelsWithInput);
+    const isModelReturn = !isVoid && respCategory === 'json' && isModelRef(primaryBodies[0]!.bodyType, typeAliases);
+    const isListModelReturn = !isVoid && respCategory === 'json' && isListModelRef(primaryBodies[0]!.bodyType, typeAliases);
     const respHeaders = primaryResponse?.headers ?? [];
     const hasRespHeaders = respHeaders.length > 0;
     const headersTypeName = hasRespHeaders ? headersClassName(methodBase) : '';
@@ -402,7 +408,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
             // Anything else: a list, record, tuple or union of models, or a type holding values
             // httpx cannot encode itself (`date`, `Decimal`, `UUID`). The same flags, so models
             // inside it go out exactly as a lone model would.
-            fetchKwargs.push(`body=${bodyAdapterName(route, op, modelsWithInput)}.dump_python(body, mode="json", by_alias=True, exclude_unset=True)`);
+            fetchKwargs.push(`body=${bodyAdapterName(route, op, typeAliases)}.dump_python(body, mode="json", by_alias=True, exclude_unset=True)`);
         }
         // Forward the declared content-type so `_fetch` sets the correct Content-Type header
         // (vendor JSON types like `application/vnd.api+json` still serialize as JSON but need
@@ -444,7 +450,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
 
     if (shape.kind !== 'simple') {
         lines.push(`        _status, _content_type, result, _response_headers = await self._fetch_full(${urlExpr}, ${kwargsStr})`);
-        lines.push(...buildMultiReturnLines(shape, methodBase, where, modelsWithInput));
+        lines.push(...buildMultiReturnLines(shape, methodBase, where, modelsWithInput, typeAliases));
         return lines;
     }
 
@@ -482,12 +488,12 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
 }
 
 /** The expression that turns a decoded body into the declared type, validating models. */
-function pyDataExpr(body: OpResponseBodyNode, modelsWithInput?: Set<string>): string {
+function pyDataExpr(body: OpResponseBodyNode, modelsWithInput?: Set<string>, typeAliases?: Set<string>): string {
     if (classifyContentType(body.contentType) !== 'json') return 'result';
-    if (isListModelRef(body.bodyType, modelsWithInput)) {
+    if (isListModelRef(body.bodyType, typeAliases)) {
         return `[${getListItemType(body.bodyType, modelsWithInput)}.model_validate(item) for item in result]`;
     }
-    if (isModelRef(body.bodyType, modelsWithInput)) {
+    if (isModelRef(body.bodyType, typeAliases)) {
         return `${renderPyType(body.bodyType, modelsWithInput)}.model_validate(result)`;
     }
     return 'result';
@@ -504,6 +510,7 @@ function buildMultiReturnLines(
     methodBase: string,
     where: string,
     modelsWithInput?: Set<string>,
+    typeAliases?: Set<string>,
 ): string[] {
     const lines: string[] = [];
 
@@ -512,7 +519,7 @@ function buildMultiReturnLines(
         if (includeStatus) entries.push(`"status": ${resp.statusCode}`);
         if (body) {
             entries.push(`"content_type": ${JSON.stringify(body.contentType)}`);
-            entries.push(`"data": ${pyDataExpr(body, modelsWithInput)}`);
+            entries.push(`"data": ${pyDataExpr(body, modelsWithInput, typeAliases)}`);
         }
         if (headersVar) entries.push(`"headers": ${headersVar}`);
         return [`${indent}return {${entries.length > 0 ? ` ${entries.join(', ')} ` : ''}}`];
@@ -710,7 +717,7 @@ function toPathParamName(name: string): string {
 
 // ─── Parameter building ───────────────────────────────────────────────────
 
-function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithInput?: Set<string>): MethodParam[] {
+function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithInput?: Set<string>, typeAliases?: Set<string>): MethodParam[] {
     const params: MethodParam[] = [];
 
     // Path params
@@ -748,7 +755,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
             params.push({ name: 'body', type: 'str', optional: false, isModel: false });
         } else {
             const bodyType = renderInputPyType(primaryBody.bodyType, modelsWithInput);
-            const isModel = isModelRef(primaryBody.bodyType, modelsWithInput);
+            const isModel = isModelRef(primaryBody.bodyType, typeAliases);
             params.push({ name: 'body', type: bodyType, optional: false, isModel });
         }
     }
@@ -805,9 +812,13 @@ function renderInputPyType(type: ContractTypeNode, modelsWithInput?: Set<string>
 
 // ─── Model reference detection ────────────────────────────────────────────
 
-function isModelRef(type: ContractTypeNode, modelsWithInput?: Set<string>): boolean {
-    if (type.kind === 'ref') return /^[A-Z]/.test(type.name);
-    if (type.kind === 'lazy') return isModelRef(type.inner, modelsWithInput);
+/**
+ * Whether a type is a single Pydantic class, which validates and dumps itself. A contract emitted
+ * as a type alias (`Tier = Literal[...]`) is not one, whatever its name looks like.
+ */
+function isModelRef(type: ContractTypeNode, typeAliases?: Set<string>): boolean {
+    if (type.kind === 'ref') return /^[A-Z]/.test(type.name) && !typeAliases?.has(type.name);
+    if (type.kind === 'lazy') return isModelRef(type.inner, typeAliases);
     return false;
 }
 
@@ -819,18 +830,18 @@ function isModelRef(type: ContractTypeNode, modelsWithInput?: Set<string>): bool
  * Before this, any body that was not a single model went out raw, so `array(Item)` handed httpx a
  * list of Pydantic objects and failed with "Object of type Item is not JSON serializable".
  */
-function bodyAdapterName(route: OpRouteNode, op: OpOperationNode, modelsWithInput?: Set<string>): string | undefined {
+function bodyAdapterName(route: OpRouteNode, op: OpOperationNode, typeAliases?: Set<string>): string | undefined {
     const body = op.request?.bodies[0];
     if (!body) return undefined;
     const category = classifyContentType(body.contentType);
     if (category !== 'json' && category !== 'urlencoded') return undefined;
-    if (isModelRef(body.bodyType, modelsWithInput)) return undefined;
+    if (isModelRef(body.bodyType, typeAliases)) return undefined;
     return `_${deriveMethodName(op, route).toUpperCase()}_BODY`;
 }
 
-function isListModelRef(type: ContractTypeNode, modelsWithInput?: Set<string>): boolean {
-    if (type.kind === 'array') return isModelRef(type.item, modelsWithInput);
-    if (type.kind === 'lazy') return isListModelRef(type.inner, modelsWithInput);
+function isListModelRef(type: ContractTypeNode, typeAliases?: Set<string>): boolean {
+    if (type.kind === 'array') return isModelRef(type.item, typeAliases);
+    if (type.kind === 'lazy') return isListModelRef(type.inner, typeAliases);
     return false;
 }
 

@@ -324,6 +324,28 @@ describe('generatePythonClient', () => {
         expect(output).toContain('body_kind="form"');
     });
 
+    it('sends a body typed by a type-alias contract through an adapter, not model_dump', () => {
+        const root = opRoot([
+            opRoute('/tier', [opOperation('put', { sdk: 'putTier', request: opRequest('Tier'), responses: [opResponse(204)] })]),
+            opRoute('/card', [opOperation('put', { sdk: 'putCard', request: opRequest('Card'), responses: [opResponse(204)] })]),
+        ]);
+        const output = generatePythonClient(root, { typeAliases: new Set(['Tier']) });
+        // `Tier = Literal["free", "pro"]`: the caller passes a str, which has no `model_dump`.
+        expect(output).toContain('_PUT_TIER_BODY = TypeAdapter(Tier)');
+        expect(output).toContain('body=_PUT_TIER_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
+        expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
+        expect(output).not.toContain('_PUT_CARD_BODY');
+    });
+
+    it('never calls model_validate on a type-alias contract', () => {
+        const root = opRoot([
+            opRoute('/tier', [opOperation('get', { sdk: 'getTier', responses: [opResponse(200, 'Tier')] })]),
+            opRoute('/tiers', [opOperation('get', { sdk: 'listTiers', responses: [opResponse(200, 'array(Tier)')] })]),
+        ]);
+        const output = generatePythonClient(root, { typeAliases: new Set(['Tier']) });
+        expect(output).not.toContain('Tier.model_validate');
+    });
+
     it('leaves single-model, multipart, text and binary bodies without an adapter', () => {
         const root = opRoot([
             opRoute('/m', [opOperation('post', { sdk: 'postModel', request: opRequest('Item'), responses: [opResponse(204)] })]),

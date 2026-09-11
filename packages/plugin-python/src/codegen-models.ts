@@ -368,6 +368,27 @@ function generateModel(model: ModelNode, allModelsWithInput: Set<string>, import
     return generateSimpleModel(model, allModelsWithInput, imports);
 }
 
+/**
+ * Contracts that `generateTypeAlias` emits as something other than a Pydantic class: `Tier =
+ * Literal[...]`, `Method = Annotated[Card | Bank, ...]`, `Ids = list[str]`. A contract that only
+ * renames a model (`B = A`, directly or through `lazy`) is still a class, and is left out.
+ *
+ * The client uses this to tell which refs have `model_validate` and `model_dump`. A capitalised
+ * name does not say, and calling either on one of these is an `AttributeError`.
+ */
+export function computeTypeAliases(models: Iterable<ModelNode>): Set<string> {
+    const byName = new Map([...models].map(m => [m.name, m]));
+    const isClass = (name: string, seen: Set<string>): boolean => {
+        const model = byName.get(name);
+        if (!model?.type) return true;
+        let type = model.type;
+        while (type.kind === 'lazy') type = type.inner;
+        if (type.kind !== 'ref' || seen.has(type.name)) return false;
+        return isClass(type.name, new Set([...seen, name]));
+    };
+    return new Set([...byName.keys()].filter(name => !isClass(name, new Set())));
+}
+
 function generateTypeAlias(model: ModelNode, allModelsWithInput: Set<string>, _: ImportTracker): string[] {
     const lines: string[] = [];
     if (model.description) lines.push(...commentLines(model.description, ''));

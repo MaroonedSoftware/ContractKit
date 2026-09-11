@@ -18,7 +18,7 @@ import {
     collectTransitiveModelRefs,
     collectTypeRefs,
 } from '@contractkit/core';
-import { generatePydanticModels, deriveModelsModuleName, SCALARS_PY } from './codegen-models.js';
+import { generatePydanticModels, deriveModelsModuleName, computeTypeAliases, SCALARS_PY } from './codegen-models.js';
 import {
     generatePythonClient,
     deriveClientClassName,
@@ -109,6 +109,7 @@ async function runPythonCodegen(
     // Stable, sorted view of modelsWithInput for fingerprint slicing — only the
     // intersection with each unit's referenced names ends up in its fingerprint.
     const modelsWithInputArray = [...modelsWithInput].sort();
+    const typeAliases = computeTypeAliases(modelMap.values());
 
     const prevManifest: IncrementalManifest = ctx.cacheEnabled ? readManifest(manifestPath) : emptyIncrementalManifest(PYTHON_CODEGEN_VERSION);
     const units: IncrementalUnit[] = [];
@@ -176,6 +177,9 @@ async function runPythonCodegen(
             if (inputPath) referencedModulePaths[`${ref}Input`] = inputPath;
         }
         const relevantInputModels = modelsWithInputArray.filter(name => referencedModels.has(name));
+        // Whether a ref is a class or an alias decides between `model_validate` and a TypeAdapter,
+        // and it is set in a contract file this op root's own hash does not cover.
+        const relevantTypeAliases = [...referencedModels].filter(name => typeAliases.has(name)).sort();
 
         const fingerprint = hashFingerprint({
             kind: 'client',
@@ -185,6 +189,7 @@ async function runPythonCodegen(
             root,
             referencedModulePaths,
             modelsWithInput: relevantInputModels,
+            typeAliases: relevantTypeAliases,
             includeInternal: config.includeInternal ?? false,
         });
 
@@ -198,6 +203,7 @@ async function runPythonCodegen(
                         modelModulePaths,
                         currentModule: `.${moduleName}`,
                         modelsWithInput,
+                        typeAliases,
                         includeInternal: config.includeInternal,
                     }),
                 },

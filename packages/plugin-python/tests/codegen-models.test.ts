@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generatePydanticModels, renderPyType, toPythonFieldName, deriveModelsModuleName, SCALARS_PY } from '../src/codegen-models.js';
+import { generatePydanticModels, renderPyType, toPythonFieldName, deriveModelsModuleName, computeTypeAliases, SCALARS_PY } from '../src/codegen-models.js';
 import {
     scalarType, arrayType, tupleType, recordType, enumType, literalType,
     unionType, refType, inlineObjectType, lazyType,
@@ -494,6 +494,27 @@ describe('multi-line descriptions', () => {
         expect(output).toContain('# Lifecycle status.');
         expect(output).toContain('# Extra detail line.');
         expect(output).not.toMatch(/^Extra detail line\.$/m);
+    });
+});
+
+describe('computeTypeAliases', () => {
+    it('lists the contracts emitted as something other than a Pydantic class', () => {
+        const models = [
+            model('Card', [field('last4', scalarType('string'))]),
+            model('Tier', [], { type: enumType('free', 'pro') }),
+            model('Ids', [], { type: arrayType(scalarType('string')) }),
+            model('Method', [], { type: unionType(refType('Card'), refType('Bank')) }),
+            // A rename of a class is the class itself: `Renamed = Card` has `model_validate`.
+            model('Renamed', [], { type: refType('Card') }),
+            model('Deferred', [], { type: lazyType(refType('Renamed')) }),
+            model('OfAlias', [], { type: refType('Tier') }),
+        ];
+        expect([...computeTypeAliases(models)].sort()).toEqual(['Ids', 'Method', 'OfAlias', 'Tier']);
+    });
+
+    it('does not loop on aliases that refer to each other', () => {
+        const models = [model('A', [], { type: refType('B') }), model('B', [], { type: refType('A') })];
+        expect([...computeTypeAliases(models)].sort()).toEqual(['A', 'B']);
     });
 });
 
