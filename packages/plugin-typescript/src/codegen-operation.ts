@@ -19,7 +19,6 @@ import {
     PATH_PARAM_RE_G,
     toIdentifier,
     classifyContentType,
-    resolveEffectiveFields,
 } from '@contractkit/core';
 import {
     renderType,
@@ -28,7 +27,6 @@ import {
     applyFieldModifiers,
     pascalToDotCase,
     modeToWrapper,
-    compilesToPipe,
     isExtendChain,
     typeKeys,
 } from './codegen-contract.js';
@@ -1004,17 +1002,16 @@ function generateParamValidation(
 }
 
 /**
- * The names a headers block declares, as its schema keys them. A model's come from `models`, so
- * there are none without it. A `format()` model referenced as the whole block contributes none
- * either: its schema is a pipe whose object is keyed by the recased names, not the declared ones.
- * A type expression's are its object's keys, a `format()` member's recased ({@link typeKeys}).
+ * The names a headers block declares, as its schema keys them: a model's and a type expression's
+ * are the keys of its object ({@link typeKeys}), which for a `format()` model are the recased ones
+ * (`tenant_id`, `TenantId`). A model's come from `models`, so there are none without it.
  */
 function declaredHeaderNames(source: ParamSource, models?: Map<string, ModelNode>, modelsWithInput?: Set<string>): string[] {
     switch (source.kind) {
         case 'params':
             return source.nodes.map(n => n.name);
         case 'ref':
-            return !models || compilesToPipe(source.name, models) ? [] : resolveEffectiveFields(source.name, models).fields.map(f => f.name);
+            return models ? typeKeys({ kind: 'ref', name: source.name }, models, modelsWithInput) : [];
         case 'type':
             return typeKeys(source.node, models ?? new Map(), modelsWithInput);
     }

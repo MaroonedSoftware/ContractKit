@@ -952,6 +952,22 @@ describe('generateOperation', () => {
             expect(output).toContain('const headers = await parseAndValidate(ctx.headers, SnakeHeaders.in.strip().pipe(SnakeHeaders.out));');
         });
 
+        // Node lowercases every incoming header name, so a schema keyed `TenantId` never finds one
+        // unless it is copied over from `tenantid`. A snake_case key is lowercase already.
+        it("copies a format(input=pascal) headers model's keys from their lowercase names", () => {
+            const pascal = model('PascalHeaders', [field('tenantId', scalarType('string'))], { inputCase: 'pascal' });
+            const root = opRoot([opRoute('/reports', [opOperation('get', { headers: 'PascalHeaders' })])]);
+            const output = generateOp(root, { models: models(pascal) });
+            expect(output).toContain("        { ...ctx.headers, TenantId: ctx.headers['tenantid'] },");
+            expect(output).toContain('        PascalHeaders.in.strip().pipe(PascalHeaders.out),');
+        });
+
+        it('reads a format(input=snake) headers model straight off the request headers', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { headers: 'SnakeHeaders' })])]);
+            const output = generateOp(root, { models: models(snake('SnakeHeaders')) });
+            expect(output).toContain('parseAndValidate(ctx.headers, SnakeHeaders.in.strip().pipe(SnakeHeaders.out))');
+        });
+
         it('applies an explicit headers mode inside the pipe', () => {
             const root = opRoot([opRoute('/reports', [opOperation('get', { headers: 'SnakeHeaders', headersMode: 'strict' })])]);
             const output = generateOp(root, { models: models(snake('SnakeHeaders')) });
