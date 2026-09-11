@@ -245,9 +245,7 @@ describe('generatePydanticModels', () => {
     });
 
     it('escapes a defaulted field whose name a sibling field annotates with', () => {
-        const root = contractRoot([
-            model('Event', [field('date', scalarType('string'), { optional: true }), field('when', scalarType('date'))]),
-        ]);
+        const root = contractRoot([model('Event', [field('date', scalarType('string'), { optional: true }), field('when', scalarType('date'))])]);
         const output = generatePydanticModels(root);
         // Imports fine and then validates `when` against None: the quiet version of the bug.
         expect(output).toContain('    date_: str | None = Field(alias="date", default=None)');
@@ -255,9 +253,7 @@ describe('generatePydanticModels', () => {
     });
 
     it('keeps a type-named field that puts nothing in the class namespace', () => {
-        const root = contractRoot([
-            model('Event', [field('date', scalarType('date')), field('time', scalarType('time'), { nullable: true })]),
-        ]);
+        const root = contractRoot([model('Event', [field('date', scalarType('date')), field('time', scalarType('time'), { nullable: true })])]);
         const output = generatePydanticModels(root);
         expect(output).toMatch(/^ {4}date: date$/m);
         expect(output).toMatch(/^ {4}time: time \| None$/m);
@@ -294,7 +290,9 @@ describe('generatePydanticModels', () => {
         const root = contractRoot([
             model('Card', [field('kind', literalType('card')), field('last4', scalarType('string'))]),
             model('Bank', [field('kind', literalType('bank')), field('iban', scalarType('string'))]),
-            model('Method', [], { type: { kind: 'discriminatedUnion', discriminator: 'kind', members: [refType('Card'), refType('Bank')] } as never }),
+            model('Method', [], {
+                type: { kind: 'discriminatedUnion', discriminator: 'kind', members: [refType('Card'), refType('Bank')] } as never,
+            }),
         ]);
         const output = generatePydanticModels(root);
         expect(output).toContain('    kind: Literal["card"]');
@@ -476,6 +474,8 @@ describe('multi-line descriptions', () => {
 describe('SCALARS_PY', () => {
     it('reads every form a bigint arrives in and writes a digit string in JSON mode only', () => {
         expect(SCALARS_PY).toContain('return int(text[:-1] if text.endswith("n") else text)');
-        expect(SCALARS_PY).toContain('BigInt = Annotated[int, BeforeValidator(_parse_bigint), PlainSerializer(str, return_type=str, when_used="json")]');
+        expect(SCALARS_PY).toContain(
+            'BigInt = Annotated[int, BeforeValidator(_parse_bigint), PlainSerializer(str, return_type=str, when_used="json")]',
+        );
     });
 });

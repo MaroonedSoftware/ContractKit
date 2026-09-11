@@ -182,11 +182,15 @@ describe('generatePythonClient', () => {
                     query: [
                         opParam('status', enumType('open', 'closed'), { optional: true }),
                         opParam('wait', scalarType('duration'), { optional: true }),
-                        opParam('kind', {
-                            kind: 'discriminatedUnion',
-                            discriminator: 'type',
-                            members: [refType('Card'), refType('Bank')],
-                        } as never, { optional: true }),
+                        opParam(
+                            'kind',
+                            {
+                                kind: 'discriminatedUnion',
+                                discriminator: 'type',
+                                members: [refType('Card'), refType('Bank')],
+                            } as never,
+                            { optional: true },
+                        ),
                     ],
                     responses: [opResponse(200, 'array(Payment)')],
                 }),
@@ -313,8 +317,20 @@ describe('generatePythonClient', () => {
 
     it('serializes record, union and inline-object bodies the same way', () => {
         const root = opRoot([
-            opRoute('/a', [opOperation('put', { sdk: 'putRecord', request: opRequest(recordType(scalarType('string'), refType('Item'))), responses: [opResponse(204)] })]),
-            opRoute('/b', [opOperation('put', { sdk: 'putUnion', request: opRequest(unionType(refType('Card'), refType('Bank'))), responses: [opResponse(204)] })]),
+            opRoute('/a', [
+                opOperation('put', {
+                    sdk: 'putRecord',
+                    request: opRequest(recordType(scalarType('string'), refType('Item'))),
+                    responses: [opResponse(204)],
+                }),
+            ]),
+            opRoute('/b', [
+                opOperation('put', {
+                    sdk: 'putUnion',
+                    request: opRequest(unionType(refType('Card'), refType('Bank'))),
+                    responses: [opResponse(204)],
+                }),
+            ]),
             opRoute('/c', [opOperation('put', { sdk: 'putObject', request: opRequest(inlineObjectType([])), responses: [opResponse(204)] })]),
         ]);
         const output = generatePythonClient(root);
@@ -343,9 +359,19 @@ describe('generatePythonClient', () => {
     it('leaves single-model, multipart, text and binary bodies without an adapter', () => {
         const root = opRoot([
             opRoute('/m', [opOperation('post', { sdk: 'postModel', request: opRequest('Item'), responses: [opResponse(204)] })]),
-            opRoute('/f', [opOperation('post', { sdk: 'postFile', request: opRequest('Upload', 'multipart/form-data'), responses: [opResponse(204)] })]),
-            opRoute('/t', [opOperation('post', { sdk: 'postText', request: opRequest(scalarType('string'), 'text/plain'), responses: [opResponse(204)] })]),
-            opRoute('/b', [opOperation('post', { sdk: 'postBytes', request: opRequest(scalarType('binary'), 'application/octet-stream'), responses: [opResponse(204)] })]),
+            opRoute('/f', [
+                opOperation('post', { sdk: 'postFile', request: opRequest('Upload', 'multipart/form-data'), responses: [opResponse(204)] }),
+            ]),
+            opRoute('/t', [
+                opOperation('post', { sdk: 'postText', request: opRequest(scalarType('string'), 'text/plain'), responses: [opResponse(204)] }),
+            ]),
+            opRoute('/b', [
+                opOperation('post', {
+                    sdk: 'postBytes',
+                    request: opRequest(scalarType('binary'), 'application/octet-stream'),
+                    responses: [opResponse(204)],
+                }),
+            ]),
         ]);
         const output = generatePythonClient(root);
         expect(output).not.toContain('TypeAdapter');
@@ -495,9 +521,7 @@ describe('generatePythonClient', () => {
 
     it('reads a params model by contract name, whatever the model calls the attribute', () => {
         const root = opRoot([
-            opRoute('/rows/{class}', [
-                opOperation('get', { sdk: 'getRow', responses: [opResponse(200, 'Seat')] }),
-            ], paramRef('SeatRef')),
+            opRoute('/rows/{class}', [opOperation('get', { sdk: 'getRow', responses: [opResponse(200, 'Seat')] })], paramRef('SeatRef')),
         ]);
         const output = generatePythonClient(root);
         // The model names the field `class_`, and would name a defaulted `date` field `date_`,
@@ -507,9 +531,11 @@ describe('generatePythonClient', () => {
 
     it('keeps a path param clear of the arguments and functions the method already uses', () => {
         const root = opRoot([
-            opRoute('/notes/{body}/{quote}', [
-                opOperation('post', { sdk: 'postNote', request: opRequest('Note'), responses: [opResponse(204)] }),
-            ], paramNodes([opParam('body', scalarType('string')), opParam('quote', scalarType('string'))])),
+            opRoute(
+                '/notes/{body}/{quote}',
+                [opOperation('post', { sdk: 'postNote', request: opRequest('Note'), responses: [opResponse(204)] })],
+                paramNodes([opParam('body', scalarType('string')), opParam('quote', scalarType('string'))]),
+            ),
         ]);
         const output = generatePythonClient(root);
         // A second `body` is a duplicate-argument SyntaxError; a `quote` argument shadows
@@ -520,9 +546,11 @@ describe('generatePythonClient', () => {
 
     it('leaves a path param named after a soft keyword alone', () => {
         const root = opRoot([
-            opRoute('/kinds/{type}', [
-                opOperation('get', { sdk: 'getKind', responses: [opResponse(200, 'Kind')] }),
-            ], paramNodes([opParam('type', scalarType('string'))])),
+            opRoute(
+                '/kinds/{type}',
+                [opOperation('get', { sdk: 'getKind', responses: [opResponse(200, 'Kind')] })],
+                paramNodes([opParam('type', scalarType('string'))]),
+            ),
         ]);
         expect(generatePythonClient(root)).toContain('async def get_kind(self, type: str)');
     });
