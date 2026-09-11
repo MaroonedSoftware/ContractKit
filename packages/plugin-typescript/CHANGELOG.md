@@ -1,5 +1,25 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.38.9
+
+### Patch Changes
+
+- d56bc36: The generated router now compiles and validates when a `query:`, `headers:` or `params:` block references a `format()` model.
+
+    A model such as `contract format(input=snake) SnakeFilter: { fromDate?: date }` compiles to `z.strictObject({ from_date: ... }).transform(...)`, a `ZodPipe`. The router applied the block's object mode as a method on that schema, `parseAndValidate(ctx.query, SnakeFilter.strict())`, but a pipe has no `.strict()`, `.strip()` or `.loose()`. The router failed `tsc` with TS2339 ("Property 'strict' does not exist on type 'ZodPipe<...>'") and threw at run time. This hit Koa and Fastify alike, and `format(output=)` models, models that inherit `format()` from a base, and aliases of such models too.
+
+    The mode now goes on the object inside the pipe, and the result is piped back through the model's own transform: `SnakeFilter.in.strict().pipe(SnakeFilter.out)`. The block's mode wins over the model's own, as it does for any other model, so a `headers:` block still strips the headers it does not declare (`SnakeHeaders.in.strip().pipe(SnakeHeaders.out)`) instead of the model's strict object rejecting every one of them. A model without `format()` is validated exactly as before.
+
+    `TYPESCRIPT_CODEGEN_VERSION` is bumped to `8`, so an existing incremental cache regenerates its routers. A router's cache fingerprint now also covers which of its param models compile to a pipe, so a model in another `.ck` file gaining or losing `format()` regenerates the router.
+
+- b415131: The SDK now sends `date`, `time` and `decimal` values in a JSON or urlencoded request body in the text the generated router parses.
+
+    A body went out through `JSON.stringify(body, bigIntReplacer)` (or `new URLSearchParams(body)`), and a `date` or `time` field is a luxon `DateTime`, whose `toJSON()` is `toISO()`. So `{ day: DateTime.fromISO('2026-09-11') }` was sent as `{"day":"2026-09-11T00:00:00.000-04:00"}`, and the router, which parses these with `DateTime.fromFormat` against the contract's format, rejected every such request with a 400. A `decimal` went out in exponential notation (`1e-8`) whenever decimal.js had not been configured in that module.
+
+    SDK type files now declare a `serializeX()` beside each contract whose request shape holds one of these scalars, directly, through a base, or through a contract it references. It writes a `date` or `time` with `toFormat()` in the field's format (`yyyy-MM-dd` and `HH:mm:ss` by default) and a `decimal` with `toFixed()`, walking nested contracts, arrays, records, tuples, inline objects, discriminated unions (by tag) and nullable members, under the `format(input=)` key casing the server parses. It returns a copy and never modifies the caller's object. A value that is already a string passes through unchanged, so a plain JavaScript caller sending `'2026-09-11'` keeps working. SDK methods pass the body through it before stringifying; a body that is not a plain contract reference, such as an inline object, gets an equivalent function in the client file. A plain union with more than one member of the same runtime class (`date | time`, or two contracts) is left as `toJSON` writes it, since there is no way to tell which member a value is. Bodies with nothing to rewrite are generated unchanged.
+
+    `TYPESCRIPT_CODEGEN_VERSION` is bumped to `9`, so an existing incremental cache regenerates its clients and type files.
+
 ## 0.38.8
 
 ### Patch Changes
