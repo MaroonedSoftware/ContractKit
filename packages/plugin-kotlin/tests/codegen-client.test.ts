@@ -375,3 +375,69 @@ describe('multi-mime responses', () => {
         expect(out).toContain('        else -> OpResponse.ApplicationJson(http.decodeJson(response))');
     });
 });
+
+describe('path params that would not bind', () => {
+    it('backticks a path param named after a Kotlin keyword, in the signature and the path alike', () => {
+        const out = client([opRoute('/seats/{class}', [opOperation('get', { sdk: 'getSeat' })], [opParam('class', scalarType('string'))])]);
+        expect(out).toContain('suspend fun getSeat(`class`: String) {');
+        expect(out).toContain('path("seats", segment(`class`))');
+    });
+
+    it('suffixes a path param named like the request body argument, which would be a redeclaration', () => {
+        const out = client([
+            opRoute('/notes/{body}', [opOperation('put', { sdk: 'putNote', request: opRequest('Form') })], [opParam('body', scalarType('string'))]),
+        ]);
+        expect(out).toContain('suspend fun putNote(body_: String, body: Form) {');
+        expect(out).toContain('path("notes", segment(body_))');
+        expect(out).toContain('jsonBody(body, "application/json")');
+    });
+
+    it.each(['query', 'customHeaders', 'response', 'headers', 'http', 'params'])(
+        'suffixes a path param named `%s`, which the method already binds or reads',
+        name => {
+            const out = client([opRoute(`/things/{${name}}`, [opOperation('get', { sdk: 'getThing' })], [opParam(name, scalarType('string'))])]);
+            expect(out).toContain(`suspend fun getThing(${name}_: String) {`);
+            expect(out).toContain(`segment(${name}_)`);
+        },
+    );
+});
+
+describe('request and response headers on one operation', () => {
+    const requestHeaders = [opParam('from', scalarType('string'), { optional: true })];
+
+    it('gives the response side its own class name, so the package does not declare OpHeaders twice', () => {
+        const out = client([
+            opRoute('/a', [
+                opOperation('get', {
+                    sdk: 'op',
+                    headers: requestHeaders,
+                    responses: [{ ...opResponse(200, 'Payment'), headers: [header('x-request-id', 'string')] }] as never,
+                }),
+            ]),
+        ]);
+        expect(out.match(/data class OpHeaders\(/g)).toHaveLength(1);
+        expect(out).toContain('customHeaders: OpHeaders? = null');
+        expect(out).toContain('data class OpResponseHeaders(');
+        expect(out).toContain('    val headers: OpResponseHeaders,');
+        expect(out).toContain('val headers = OpResponseHeaders(');
+    });
+
+    it('returns the renamed class when the status carries headers and no body', () => {
+        const out = client([
+            opRoute('/a', [
+                opOperation('get', {
+                    sdk: 'op',
+                    headers: requestHeaders,
+                    responses: [{ statusCode: 204, bodies: [], headers: [header('x-request-id', 'string')] }] as never,
+                }),
+            ]),
+        ]);
+        expect(out).toContain('): OpResponseHeaders {');
+    });
+
+    it('keeps OpHeaders for the response side when the operation declares no request headers', () => {
+        const out = withResponses([{ ...opResponse(200, 'Payment'), headers: [header('x-request-id', 'string')] }]);
+        expect(out).toContain('data class OpHeaders(');
+        expect(out).not.toContain('OpResponseHeaders');
+    });
+});

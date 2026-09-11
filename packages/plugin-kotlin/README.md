@@ -175,7 +175,8 @@ shapes change it.
 
 **Declared response headers** pair the body with a typed class. Values arrive as text and are
 converted to the type the contract declares. A required header the service omits raises `SdkError`,
-because the caller was promised a value.
+because the caller was promised a value. The class is `<Method>Headers`, or `<Method>ResponseHeaders`
+when the operation also declares request `headers:`, which keep `<Method>Headers`.
 
 ```kotlin
 val result = sdk.billing.createPayment(payment)
