@@ -12,7 +12,16 @@ import type {
     ParamSource,
     ScalarTypeNode,
 } from '@contractkit/core';
-import { resolveModifiers, isJsonMime, classifyContentType, observableResponses, thrownResponses, PATH_PARAM_RE_G, toIdentifier, deriveSdkMethodName } from '@contractkit/core';
+import {
+    resolveModifiers,
+    isJsonMime,
+    classifyContentType,
+    observableResponses,
+    thrownResponses,
+    PATH_PARAM_RE_G,
+    toIdentifier,
+    deriveSdkMethodName,
+} from '@contractkit/core';
 import {
     renderInputTsType,
     renderOutputTsType,
@@ -192,6 +201,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
             valueImports.push(sdkResponsesUseBigInt(root, options, includeInternal) ? 'parseJsonWithBigInt as parseJson' : 'parseJson');
         }
         if (sdkNeedsQueryString(root, includeInternal)) valueImports.push('buildQueryString');
+        if (sdkNeedsHeaders(root, includeInternal)) valueImports.push('buildHeaders');
         if (sdkNeedsReadContentType(root, includeInternal)) valueImports.push('readContentType');
         if (valueImports.length > 0) {
             lines.push(`import { ${valueImports.join(', ')} } from '${rel}';`);
@@ -265,6 +275,8 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('    const qs = searchParams.toString();');
         lines.push("    return qs ? `?${qs}` : '';");
         lines.push('}');
+        lines.push('');
+        lines.push(...BUILD_HEADERS_DECL);
         lines.push('');
         lines.push('export async function parseJson<T>(res: Response): Promise<T> {');
         lines.push(
@@ -578,9 +590,9 @@ function generateMethod(
         if (lastHeaderIdx !== -1) {
             const existing = fetchArgs[lastHeaderIdx]!;
             const inner = existing.slice('headers: '.length).replace(/^\{\s*|\s*\}$/g, '');
-            fetchArgs[lastHeaderIdx] = `headers: { ${inner}, ...customHeaders }`;
+            fetchArgs[lastHeaderIdx] = `headers: { ${inner}, ...buildHeaders(customHeaders) }`;
         } else {
-            fetchArgs.push('headers: customHeaders');
+            fetchArgs.push('headers: buildHeaders(customHeaders)');
         }
     }
 
@@ -754,8 +766,7 @@ function sdkHeaderEntry(h: OpResponseHeaderNode, where: string): string {
      * — so without the assertion the optional form is a TS2345 even though the ternary has
      * already excluded null.
      */
-    const convert = (expr: (v: string) => string) =>
-        `${key}: ${h.optional ? `${raw} === null ? undefined : ${expr(`${raw}!`)}` : expr(`${raw}!`)}`;
+    const convert = (expr: (v: string) => string) => `${key}: ${h.optional ? `${raw} === null ? undefined : ${expr(`${raw}!`)}` : expr(`${raw}!`)}`;
 
     switch (scalar) {
         case 'string':
@@ -793,7 +804,11 @@ function sdkHeaderEntry(h: OpResponseHeaderNode, where: string): string {
 
 /** A short, contract-facing description of a header type, for the rejection message above. */
 function describeHeaderType(type: ContractTypeNode): string {
-    return type.kind === 'scalar' ? `the '${type.name}' scalar` : type.kind === 'ref' ? `the model '${type.name}'` : `${type.kind === 'array' ? 'an' : 'a'} ${type.kind}`;
+    return type.kind === 'scalar'
+        ? `the '${type.name}' scalar`
+        : type.kind === 'ref'
+          ? `the model '${type.name}'`
+          : `${type.kind === 'array' ? 'an' : 'a'} ${type.kind}`;
 }
 
 function sdkHeaderEntries(headers: OpResponseHeaderNode[], where: string): string {
@@ -1237,12 +1252,43 @@ function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string
     }
 }
 
+/**
+ * The runtime helper that turns an operation's `headers:` argument into what `fetch` accepts. A
+ * header param can be typed `int`, `boolean`, `datetime` and so on, and `HeadersInit` takes only
+ * strings, so passing the argument straight through fails to typecheck. At run time it was worse:
+ * an optional header given as `undefined` went out as the text "undefined". Mirrors
+ * `buildQueryString`: absent values are dropped, arrays are joined the way a repeated header is.
+ */
+const BUILD_HEADERS_DECL: readonly string[] = [
+    'export function buildHeaders(headers: object | undefined): Record<string, string> {',
+    '    const out: Record<string, string> = {};',
+    '    if (headers) {',
+    '        for (const [k, v] of Object.entries(headers)) {',
+    '            if (v === undefined || v === null) continue;',
+    "            out[k] = Array.isArray(v) ? v.map(String).join(', ') : String(v);",
+    '        }',
+    '    }',
+    '    return out;',
+    '}',
+];
+
 /** True if any emitted operation has query params (drives the `buildQueryString` import). */
 function sdkNeedsQueryString(root: OpRootNode, includeInternal = false): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             if (op.query) return true;
+        }
+    }
+    return false;
+}
+
+/** True if any emitted operation declares header params (drives the `buildHeaders` import). */
+function sdkNeedsHeaders(root: OpRootNode, includeInternal = false): boolean {
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
+            if (op.headers) return true;
         }
     }
     return false;
@@ -1549,6 +1595,8 @@ export function generateSdkOptions(): string {
         "    return qs ? `?${qs}` : '';",
         '}',
         '',
+        ...BUILD_HEADERS_DECL,
+        '',
         '/**',
         ' * Read a JSON response body.',
         ' *',
@@ -1744,6 +1792,7 @@ export function generateAreaClient(input: AreaClientInput): string {
     let needsParseJson = false;
     let needsBigIntReviver = false;
     let needsQueryString = false;
+    let needsHeaders = false;
     let needsReadContentType = false;
 
     for (const inline of inlineFiles) {
@@ -1766,6 +1815,7 @@ export function generateAreaClient(input: AreaClientInput): string {
         if (sdkParsesJsonResponse(inline.root, includeInternal)) needsParseJson = true;
         if (sdkResponsesUseBigInt(inline.root, inline.codegenOptions, includeInternal)) needsBigIntReviver = true;
         if (sdkNeedsQueryString(inline.root, includeInternal)) needsQueryString = true;
+        if (sdkNeedsHeaders(inline.root, includeInternal)) needsHeaders = true;
         if (sdkNeedsReadContentType(inline.root, includeInternal)) needsReadContentType = true;
 
         // Revivers this file's methods call, resolved against the same modelOutPaths. Derived from
@@ -1819,6 +1869,7 @@ export function generateAreaClient(input: AreaClientInput): string {
     if (needsBigIntReplacer) valueImports.push('bigIntReplacer');
     if (needsParseJson) valueImports.push(needsBigIntReviver ? 'parseJsonWithBigInt as parseJson' : 'parseJson');
     if (needsQueryString) valueImports.push('buildQueryString');
+    if (needsHeaders) valueImports.push('buildHeaders');
     if (needsReadContentType) valueImports.push('readContentType');
     if (valueImports.length > 0) {
         lines.push(`import { ${valueImports.join(', ')} } from '${sdkOptionsRel}';`);

@@ -25,6 +25,16 @@
 
 </details>
 
+<details>
+<summary><strong>Kitchen</strong> (4)</summary>
+
+- [Several statuses, and two content types on one of them](#several-statuses-and-two-content-types-on-one-of-them)
+- [A method name that is a keyword in the target languages](#a-method-name-that-is-a-keyword-in-the-target-languages)
+- [Mint](#mint)
+- [List tokens](#list-tokens)
+
+</details>
+
 **Models**
 
 - [Invoice](#invoice)
@@ -42,6 +52,22 @@
 - [PaymentRef](#paymentref)
 - [UpdatePaymentForm](#updatepaymentform)
 - [UploadReceiptForm](#uploadreceiptform)
+
+</details>
+
+<details>
+<summary><strong>Kitchen</strong> (10)</summary>
+
+- [Rating](#rating)
+- [Folder](#folder)
+- [Doc](#doc)
+- [Card](#card)
+- [Bank](#bank)
+- [Instrument](#instrument)
+- [Token](#token)
+- [Owned](#owned)
+- [Named](#named)
+- [Shared](#shared)
 
 </details>
 
@@ -398,6 +424,111 @@ Accepts a [Session](#session) object.
 `200 OK` — Returns a [Session](#session) object.
 
 
+### Kitchen
+
+#### Several statuses, and two content types on one of them
+
+**`GET`** `/folders/{folder-id}`
+
+> [!NOTE]
+> SDK method: `getFolder`
+
+##### Attributes
+
+<details>
+<summary>Attributes (5)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `folder-id` | `string` | Yes | Path parameter. |
+| `x-trace` | `string` | Yes |  |
+| `depth` | `number` | No |  |
+| `tags` | `string[]` | No |  |
+| `x-opt` | `number` | No |  |
+
+</details>
+
+##### Response
+
+`200 OK` `application/json` — Returns a [Folder](#folder) object.
+
+`200` `text/plain` — Returns `string`.
+
+Response headers:
+
+| Header | Type | Description |
+| ------ | ---- | ----------- |
+| `x-count` | `number` *(required)* |  |
+| `x-when` | `string` |  |
+
+`204 No Content`
+
+`404 Not Found` — Returns a [Shared](#shared) object.
+
+
+---
+
+#### A method name that is a keyword in the target languages
+
+**`PUT`** `/folders/{folder-id}`
+
+> [!NOTE]
+> SDK method: `import`
+
+##### Attributes
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `folder-id` | `string` | Yes | Path parameter. |
+
+</details>
+
+##### Request body (`application/json`)
+
+Accepts a [Shared](#shared) object.
+
+##### Response
+
+`200 OK` — Returns a [Instrument](#instrument) object.
+
+
+---
+
+#### Mint
+
+**`POST`** `/tokens`
+
+> [!NOTE]
+> SDK method: `mint`
+
+##### Request body (`application/json`)
+
+Accepts a [Token](#token) object.
+
+##### Response
+
+`201 Created` — Returns a [Token](#token) object.
+
+`400 Bad Request`
+
+
+---
+
+#### List tokens
+
+**`GET`** `/tokens`
+
+> [!NOTE]
+> SDK method: `listTokens`
+
+##### Response
+
+`200 OK` — Returns a list of [Token](#token) objects.
+
+
 ## Models
 
 ### Invoice
@@ -556,5 +687,145 @@ Extends [`Credential`](#credential)
 | --- | --- | --- | --- |
 | `caption` | `string` | No |  |
 | `file` | `Blob` | No |  |
+
+</details>
+
+### Kitchen
+
+#### Rating
+
+> A named enum, so a field default has to resolve to a member rather than its wire spelling
+
+```typescript
+type Rating = 'good' | 'neutral' | 'bad'
+```
+
+#### Folder
+
+> Self recursion through lazy(), mutual recursion through Doc, every container, both union
+> forms, every scalar, and field names that are keywords in the target languages
+
+<details>
+<summary>Attributes (22)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes |  |
+| `class` | `string` | Yes |  |
+| `default` | `string` | No |  |
+| `rating` | `Rating` | No | *default: `neutral`* |
+| `parent` | `Folder` | No |  |
+| `readme` | `Doc` | No |  |
+| `children` | `Folder[]` | Yes |  |
+| `byName` | `Record<string, Folder>` | No |  |
+| `span` | `[number, number]` | No |  |
+| `stamped` | `[string, string, boolean]` | No |  |
+| `label` | `string \| number` | Yes |  |
+| `pinned` | `Doc \| Folder` | Yes | *nullable* |
+| `instrument` | `Card \| Bank` | No |  |
+| `origin` | `{ x: number; y: number }` | No |  |
+| `size` | `bigint` | Yes |  |
+| `price` | `Decimal` | Yes |  |
+| `day` | `string` | No |  |
+| `at` | `string` | No |  |
+| `ttl` | `string` | No |  |
+| `blob` | `Blob` | No |  |
+| `extra` | `unknown` | No |  |
+| `raw` | `JsonValue` | No |  |
+
+</details>
+
+#### Doc
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes |  |
+| `folder` | `Folder` | No |  |
+
+</details>
+
+#### Card
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `kind` | `'card'` | Yes |  |
+| `last4` | `string` | Yes |  |
+
+</details>
+
+#### Bank
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `kind` | `'bank'` | Yes |  |
+| `iban` | `string` | Yes |  |
+
+</details>
+
+#### Instrument
+
+```typescript
+type Instrument = Card | Bank
+```
+
+#### Token
+
+> Decodes snake_case keys and encodes PascalCase ones
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `accessToken` | `string` | Yes |  |
+| `expiresIn` | `number` | No | *default: `3600`* |
+
+</details>
+
+#### Owned
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | *read-only* |
+| `secret` | `string` | Yes | *write-only* |
+
+</details>
+
+#### Named
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | `string` | Yes |  |
+
+</details>
+
+#### Shared
+
+> Two flattened bases, split into a read and an input shape
+
+Extends [`Owned`](#owned), [`Named`](#named)
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `label` | `string` | No | *default: `x`* |
+| `instrument` | `Instrument` | No |  |
 
 </details>

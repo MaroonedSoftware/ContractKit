@@ -154,6 +154,21 @@ describe('optional, nullable, default and literal', () => {
         ]);
         expect(render(root)).toContain('public Rating R { get; init; } = Rating.Neutral;');
     });
+
+    it('qualifies the enum when a property of the same record shares its name', () => {
+        // `Rating?` is `Nullable<Rating>`, so C#'s same-name rule does not apply and a bare
+        // `Rating.Neutral` reads the property: CS0236 at build time.
+        const root = contractRoot([
+            model('Rating', [], { type: enumType('good', 'neutral') }),
+            model('M', [field('rating', refType('Rating'), { optional: true, default: 'neutral' })]),
+        ]);
+        expect(render(root)).toContain('public Rating? Rating { get; init; } = global::Acme.Sdk.Models.Rating.Neutral;');
+    });
+
+    it('qualifies a hoisted enum shadowed by a sibling property', () => {
+        const out = render(one('M', field('status', enumType('pending', 'done'), { default: 'done' }), field('mStatus', scalarType('string'))));
+        expect(out).toContain('public MStatus Status { get; init; } = global::Acme.Sdk.Models.MStatus.Done;');
+    });
 });
 
 describe('naming', () => {

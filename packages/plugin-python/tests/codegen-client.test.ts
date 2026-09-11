@@ -1,8 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import { generatePythonClient, deriveClientClassName, deriveClientModuleName, hasPublicOperations, BASE_CLIENT_PY } from '../src/codegen-client.js';
 import {
-    scalarType, arrayType, tupleType, refType, enumType, recordType, unionType, inlineObjectType,
-    opParam, paramNodes, paramRef, paramType, opRequest, opResponse, opOperation, opRoute, opRoot,
+    scalarType,
+    arrayType,
+    tupleType,
+    refType,
+    enumType,
+    recordType,
+    unionType,
+    inlineObjectType,
+    opParam,
+    paramNodes,
+    paramRef,
+    paramType,
+    opRequest,
+    opResponse,
+    opOperation,
+    opRoute,
+    opRoot,
     type ContractTypeNode,
 } from './helpers.js';
 
@@ -27,16 +42,12 @@ describe('deriveClientModuleName', () => {
 
 describe('hasPublicOperations', () => {
     it('returns false for all-internal ops', () => {
-        const root = opRoot([
-            opRoute('/internal', [opOperation('get')], undefined, ['internal']),
-        ]);
+        const root = opRoot([opRoute('/internal', [opOperation('get')], undefined, ['internal'])]);
         expect(hasPublicOperations(root)).toBe(false);
     });
 
     it('returns true when at least one public op exists', () => {
-        const root = opRoot([
-            opRoute('/public', [opOperation('get')]),
-        ]);
+        const root = opRoot([opRoute('/public', [opOperation('get')])]);
         expect(hasPublicOperations(root)).toBe(true);
     });
 });
@@ -45,11 +56,7 @@ describe('hasPublicOperations', () => {
 
 describe('generatePythonClient', () => {
     it('generates a class with the right name', () => {
-        const root = opRoot([
-            opRoute('/payments', [
-                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
-            ]),
-        ], 'payments.op.ck');
+        const root = opRoot([opRoute('/payments', [opOperation('get', { responses: [opResponse(200, 'Payment')] })])], 'payments.op.ck');
         const output = generatePythonClient(root);
         expect(output).toContain('class PaymentsClient(BaseClient):');
     });
@@ -65,12 +72,18 @@ describe('generatePythonClient', () => {
     });
 
     it('infers method names from path and method', () => {
-        const root = opRoot([
-            opRoute('/payments', [opOperation('get', { responses: [opResponse(200, 'array(Payment)')] })]),
-            opRoute('/payments/{id}', [opOperation('get', { responses: [opResponse(200, 'Payment')] })],
-                paramNodes([opParam('id', scalarType('uuid'))])),
-            opRoute('/payments', [opOperation('post', { request: opRequest('PaymentInput'), responses: [opResponse(201, 'Payment')] })]),
-        ], 'payments.op.ck');
+        const root = opRoot(
+            [
+                opRoute('/payments', [opOperation('get', { responses: [opResponse(200, 'array(Payment)')] })]),
+                opRoute(
+                    '/payments/{id}',
+                    [opOperation('get', { responses: [opResponse(200, 'Payment')] })],
+                    paramNodes([opParam('id', scalarType('uuid'))]),
+                ),
+                opRoute('/payments', [opOperation('post', { request: opRequest('PaymentInput'), responses: [opResponse(201, 'Payment')] })]),
+            ],
+            'payments.op.ck',
+        );
         const output = generatePythonClient(root);
         expect(output).toContain('async def get_payments(self)');
         expect(output).toContain('async def get_payments_by_id(self, id: UUID)');
@@ -79,40 +92,48 @@ describe('generatePythonClient', () => {
 
     it('uses op.sdk name when provided (converted to snake_case)', () => {
         const root = opRoot([
-            opRoute('/payments/{id}', [
-                opOperation('get', { sdk: 'getPayment', responses: [opResponse(200, 'Payment')] }),
-            ], paramNodes([opParam('id', scalarType('uuid'))])),
+            opRoute(
+                '/payments/{id}',
+                [opOperation('get', { sdk: 'getPayment', responses: [opResponse(200, 'Payment')] })],
+                paramNodes([opParam('id', scalarType('uuid'))]),
+            ),
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('async def get_payment(self, id: UUID)');
     });
 
     it('uses op.name as method name when op.sdk is not set', () => {
-        const root = opRoot([
-            opRoute('/payments', [
-                opOperation('post', { name: 'Create a Payment', responses: [opResponse(201, 'Payment')] }),
-            ]),
-        ]);
+        const root = opRoot([opRoute('/payments', [opOperation('post', { name: 'Create a Payment', responses: [opResponse(201, 'Payment')] })])]);
         const output = generatePythonClient(root);
         expect(output).toContain('async def create_a_payment(self)');
     });
 
     it('prefers op.sdk over op.name as method name', () => {
         const root = opRoot([
-            opRoute('/payments', [
-                opOperation('post', { sdk: 'makePayment', name: 'Create a Payment', responses: [opResponse(201, 'Payment')] }),
-            ]),
+            opRoute('/payments', [opOperation('post', { sdk: 'makePayment', name: 'Create a Payment', responses: [opResponse(201, 'Payment')] })]),
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('async def make_payment(self)');
         expect(output).not.toContain('create_a_payment');
     });
 
+    it('escapes a method name and a path parameter that are Python keywords', () => {
+        const root = opRoot([
+            opRoute(
+                '/imports/{from}',
+                [opOperation('put', { sdk: 'import', responses: [opResponse(200, 'Payment')] })],
+                paramNodes([opParam('from', scalarType('string'))]),
+            ),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('async def import_(self, from_: str)');
+        expect(output).toContain('f"/imports/{quote(str(from_), safe=\'\')}"');
+        expect(output).not.toContain('def import(');
+    });
+
     it('generates void return for operations with no body', () => {
         const root = opRoot([
-            opRoute('/payments/{id}', [
-                opOperation('delete', { responses: [opResponse(204)] }),
-            ], paramNodes([opParam('id', scalarType('uuid'))])),
+            opRoute('/payments/{id}', [opOperation('delete', { responses: [opResponse(204)] })], paramNodes([opParam('id', scalarType('uuid'))])),
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('-> None:');
@@ -121,20 +142,18 @@ describe('generatePythonClient', () => {
 
     it('generates model_validate for model responses', () => {
         const root = opRoot([
-            opRoute('/payments/{id}', [
-                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
-            ], paramNodes([opParam('id', scalarType('uuid'))])),
+            opRoute(
+                '/payments/{id}',
+                [opOperation('get', { responses: [opResponse(200, 'Payment')] })],
+                paramNodes([opParam('id', scalarType('uuid'))]),
+            ),
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('Payment.model_validate(result)');
     });
 
     it('validates an array-of-model response through a module-level TypeAdapter', () => {
-        const root = opRoot([
-            opRoute('/payments', [
-                opOperation('get', { responses: [opResponse(200, 'array(Payment)')] }),
-            ]),
-        ]);
+        const root = opRoot([opRoute('/payments', [opOperation('get', { responses: [opResponse(200, 'array(Payment)')] })])]);
         const output = generatePythonClient(root);
         expect(output).toContain('_GET_PAYMENTS_RESPONSE = TypeAdapter(list[Payment])');
         expect(output).toContain('return _GET_PAYMENTS_RESPONSE.validate_python(result)');
@@ -150,7 +169,9 @@ describe('generatePythonClient', () => {
                 opRoute('/c', [opOperation('get', { sdk: 'tagged', responses: [opResponse(200, discriminated)] })]),
                 opRoute('/d', [opOperation('get', { sdk: 'counts', responses: [opResponse(200, arrayType(scalarType('bigint')))] })]),
                 opRoute('/e', [opOperation('get', { sdk: 'days', responses: [opResponse(200, arrayType(scalarType('date')))] })]),
-                opRoute('/f', [opOperation('get', { sdk: 'pair', responses: [opResponse(200, tupleType(scalarType('date'), scalarType('decimal')))] })]),
+                opRoute('/f', [
+                    opOperation('get', { sdk: 'pair', responses: [opResponse(200, tupleType(scalarType('date'), scalarType('decimal')))] }),
+                ]),
             ]);
             const output = generatePythonClient(root);
             // Returned raw, each of these was decoded JSON under a lying annotation: plain dicts for
@@ -176,7 +197,9 @@ describe('generatePythonClient', () => {
                 opRoute('/m', [opOperation('get', { sdk: 'getModel', responses: [opResponse(200, 'Item')] })]),
                 opRoute('/j', [opOperation('get', { sdk: 'getJson', responses: [opResponse(200, scalarType('json'))] })]),
                 opRoute('/t', [opOperation('get', { sdk: 'getText', responses: [opResponse(200, scalarType('string'), 'text/plain')] })]),
-                opRoute('/b', [opOperation('get', { sdk: 'getBytes', responses: [opResponse(200, scalarType('binary'), 'application/octet-stream')] })]),
+                opRoute('/b', [
+                    opOperation('get', { sdk: 'getBytes', responses: [opResponse(200, scalarType('binary'), 'application/octet-stream')] }),
+                ]),
             ]);
             const output = generatePythonClient(root);
             expect(output).not.toContain('TypeAdapter');
@@ -256,7 +279,9 @@ describe('generatePythonClient', () => {
             expect(output).toContain('_MIME_RESPONSE = TypeAdapter(list[BigInt])');
             expect(output).toContain('_MIME_RESPONSE_VND_MAP_JSON = TypeAdapter(dict[str, BigInt])');
             expect(output).toContain('return { "content_type": "application/vnd.api+json", "data": _MIME_RESPONSE.validate_python(result) }');
-            expect(output).toContain('return { "content_type": "application/vnd.map+json", "data": _MIME_RESPONSE_VND_MAP_JSON.validate_python(result) }');
+            expect(output).toContain(
+                'return { "content_type": "application/vnd.map+json", "data": _MIME_RESPONSE_VND_MAP_JSON.validate_python(result) }',
+            );
             expect(output).toContain('return { "content_type": "text/csv", "data": result }');
         });
     });
@@ -287,11 +312,15 @@ describe('generatePythonClient', () => {
                     query: [
                         opParam('status', enumType('open', 'closed'), { optional: true }),
                         opParam('wait', scalarType('duration'), { optional: true }),
-                        opParam('kind', {
-                            kind: 'discriminatedUnion',
-                            discriminator: 'type',
-                            members: [refType('Card'), refType('Bank')],
-                        } as never, { optional: true }),
+                        opParam(
+                            'kind',
+                            {
+                                kind: 'discriminatedUnion',
+                                discriminator: 'type',
+                                members: [refType('Card'), refType('Bank')],
+                            } as never,
+                            { optional: true },
+                        ),
                     ],
                     responses: [opResponse(200, 'array(Payment)')],
                 }),
@@ -376,9 +405,7 @@ describe('generatePythonClient', () => {
 
     it('leaves a query declared as a model ref alone', () => {
         const root = opRoot([
-            opRoute('/payments', [
-                opOperation('get', { query: paramRef('PaymentFilter'), responses: [opResponse(200, 'array(Payment)')] }),
-            ]),
+            opRoute('/payments', [opOperation('get', { query: paramRef('PaymentFilter'), responses: [opResponse(200, 'array(Payment)')] })]),
         ]);
         const output = generatePythonClient(root);
         // Deciding optionality needs the model's own fields, which this generator does not have.
@@ -420,8 +447,20 @@ describe('generatePythonClient', () => {
 
     it('serializes record, union and inline-object bodies the same way', () => {
         const root = opRoot([
-            opRoute('/a', [opOperation('put', { sdk: 'putRecord', request: opRequest(recordType(scalarType('string'), refType('Item'))), responses: [opResponse(204)] })]),
-            opRoute('/b', [opOperation('put', { sdk: 'putUnion', request: opRequest(unionType(refType('Card'), refType('Bank'))), responses: [opResponse(204)] })]),
+            opRoute('/a', [
+                opOperation('put', {
+                    sdk: 'putRecord',
+                    request: opRequest(recordType(scalarType('string'), refType('Item'))),
+                    responses: [opResponse(204)],
+                }),
+            ]),
+            opRoute('/b', [
+                opOperation('put', {
+                    sdk: 'putUnion',
+                    request: opRequest(unionType(refType('Card'), refType('Bank'))),
+                    responses: [opResponse(204)],
+                }),
+            ]),
             opRoute('/c', [opOperation('put', { sdk: 'putObject', request: opRequest(inlineObjectType([])), responses: [opResponse(204)] })]),
         ]);
         const output = generatePythonClient(root);
@@ -472,9 +511,19 @@ describe('generatePythonClient', () => {
     it('leaves single-model, multipart, text and binary bodies without an adapter', () => {
         const root = opRoot([
             opRoute('/m', [opOperation('post', { sdk: 'postModel', request: opRequest('Item'), responses: [opResponse(204)] })]),
-            opRoute('/f', [opOperation('post', { sdk: 'postFile', request: opRequest('Upload', 'multipart/form-data'), responses: [opResponse(204)] })]),
-            opRoute('/t', [opOperation('post', { sdk: 'postText', request: opRequest(scalarType('string'), 'text/plain'), responses: [opResponse(204)] })]),
-            opRoute('/b', [opOperation('post', { sdk: 'postBytes', request: opRequest(scalarType('binary'), 'application/octet-stream'), responses: [opResponse(204)] })]),
+            opRoute('/f', [
+                opOperation('post', { sdk: 'postFile', request: opRequest('Upload', 'multipart/form-data'), responses: [opResponse(204)] }),
+            ]),
+            opRoute('/t', [
+                opOperation('post', { sdk: 'postText', request: opRequest(scalarType('string'), 'text/plain'), responses: [opResponse(204)] }),
+            ]),
+            opRoute('/b', [
+                opOperation('post', {
+                    sdk: 'postBytes',
+                    request: opRequest(scalarType('binary'), 'application/octet-stream'),
+                    responses: [opResponse(204)],
+                }),
+            ]),
         ]);
         const output = generatePythonClient(root);
         expect(output).not.toContain('TypeAdapter');
@@ -517,9 +566,7 @@ describe('generatePythonClient', () => {
 
     it('leaves a JSON body on the json= path with no body_kind', () => {
         const root = opRoot([
-            opRoute('/payments', [
-                opOperation('post', { request: opRequest('PaymentInput'), responses: [opResponse(201, 'Payment')] }),
-            ]),
+            opRoute('/payments', [opOperation('post', { request: opRequest('PaymentInput'), responses: [opResponse(201, 'Payment')] })]),
         ]);
         const output = generatePythonClient(root);
         expect(output).not.toContain('body_kind=');
@@ -527,9 +574,11 @@ describe('generatePythonClient', () => {
 
     it('generates path param interpolation in f-string', () => {
         const root = opRoot([
-            opRoute('/payments/{id}', [
-                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
-            ], paramNodes([opParam('id', scalarType('uuid'))])),
+            opRoute(
+                '/payments/{id}',
+                [opOperation('get', { responses: [opResponse(200, 'Payment')] })],
+                paramNodes([opParam('id', scalarType('uuid'))]),
+            ),
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('f"/payments/{quote(str(id), safe=\'\')}"');
@@ -538,34 +587,36 @@ describe('generatePythonClient', () => {
 
     it('interpolates the snake_cased name the signature actually binds', () => {
         const root = opRoot([
-            opRoute('/payments/{paymentId}', [
-                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
-            ], paramNodes([opParam('paymentId', scalarType('uuid'))])),
+            opRoute(
+                '/payments/{paymentId}',
+                [opOperation('get', { responses: [opResponse(200, 'Payment')] })],
+                paramNodes([opParam('paymentId', scalarType('uuid'))]),
+            ),
         ]);
         const output = generatePythonClient(root);
         // The signature snake_cases the name, so interpolating `paymentId` raises NameError.
         expect(output).toContain('async def get_payments_by_payment_id(self, payment_id: UUID)');
-        expect(output).toContain("f\"/payments/{quote(str(payment_id), safe='')}\"");
+        expect(output).toContain('f"/payments/{quote(str(payment_id), safe=\'\')}"');
         expect(output).not.toContain('{paymentId}');
     });
 
     it('interpolates a hyphenated path param, which is not a Python identifier', () => {
         const root = opRoot([
-            opRoute('/payments/{payment-id}', [
-                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
-            ], paramNodes([opParam('payment-id', scalarType('uuid'))])),
+            opRoute(
+                '/payments/{payment-id}',
+                [opOperation('get', { responses: [opResponse(200, 'Payment')] })],
+                paramNodes([opParam('payment-id', scalarType('uuid'))]),
+            ),
         ]);
         const output = generatePythonClient(root);
         // Previously left untouched, so the literal braces went out on the wire.
-        expect(output).toContain("f\"/payments/{quote(str(payment_id), safe='')}\"");
+        expect(output).toContain('f"/payments/{quote(str(payment_id), safe=\'\')}"');
         expect(output).not.toContain('{payment-id}');
     });
 
     it('reads path params off the params argument when the route declares a model', () => {
         const root = opRoot([
-            opRoute('/payments/{paymentId}', [
-                opOperation('get', { responses: [opResponse(200, 'Payment')] }),
-            ], { kind: 'ref', name: 'PaymentRef' }),
+            opRoute('/payments/{paymentId}', [opOperation('get', { responses: [opResponse(200, 'Payment')] })], { kind: 'ref', name: 'PaymentRef' }),
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('async def get_payments_by_payment_id(self, params: PaymentRef)');
@@ -574,21 +625,21 @@ describe('generatePythonClient', () => {
 
     it('escapes a path param named after a Python keyword, in the signature and the URL', () => {
         const root = opRoot([
-            opRoute('/seats/{class}', [
-                opOperation('get', { sdk: 'getSeat', responses: [opResponse(200, 'Seat')] }),
-            ], paramNodes([opParam('class', scalarType('string'))])),
+            opRoute(
+                '/seats/{class}',
+                [opOperation('get', { sdk: 'getSeat', responses: [opResponse(200, 'Seat')] })],
+                paramNodes([opParam('class', scalarType('string'))]),
+            ),
         ]);
         const output = generatePythonClient(root);
         // `def get_seat(self, class: str)` is a SyntaxError for the whole module.
         expect(output).toContain('async def get_seat(self, class_: str)');
-        expect(output).toContain("f\"/seats/{quote(str(class_), safe='')}\"");
+        expect(output).toContain('f"/seats/{quote(str(class_), safe=\'\')}"');
     });
 
     it('reads a params model by contract name, whatever the model calls the attribute', () => {
         const root = opRoot([
-            opRoute('/rows/{class}', [
-                opOperation('get', { sdk: 'getRow', responses: [opResponse(200, 'Seat')] }),
-            ], paramRef('SeatRef')),
+            opRoute('/rows/{class}', [opOperation('get', { sdk: 'getRow', responses: [opResponse(200, 'Seat')] })], paramRef('SeatRef')),
         ]);
         const output = generatePythonClient(root);
         // The model names the field `class_`, and would name a defaulted `date` field `date_`,
@@ -598,9 +649,11 @@ describe('generatePythonClient', () => {
 
     it('keeps a path param clear of the arguments and functions the method already uses', () => {
         const root = opRoot([
-            opRoute('/notes/{body}/{quote}', [
-                opOperation('post', { sdk: 'postNote', request: opRequest('Note'), responses: [opResponse(204)] }),
-            ], paramNodes([opParam('body', scalarType('string')), opParam('quote', scalarType('string'))])),
+            opRoute(
+                '/notes/{body}/{quote}',
+                [opOperation('post', { sdk: 'postNote', request: opRequest('Note'), responses: [opResponse(204)] })],
+                paramNodes([opParam('body', scalarType('string')), opParam('quote', scalarType('string'))]),
+            ),
         ]);
         const output = generatePythonClient(root);
         // A second `body` is a duplicate-argument SyntaxError; a `quote` argument shadows
@@ -611,9 +664,11 @@ describe('generatePythonClient', () => {
 
     it('leaves a path param named after a soft keyword alone', () => {
         const root = opRoot([
-            opRoute('/kinds/{type}', [
-                opOperation('get', { sdk: 'getKind', responses: [opResponse(200, 'Kind')] }),
-            ], paramNodes([opParam('type', scalarType('string'))])),
+            opRoute(
+                '/kinds/{type}',
+                [opOperation('get', { sdk: 'getKind', responses: [opResponse(200, 'Kind')] })],
+                paramNodes([opParam('type', scalarType('string'))]),
+            ),
         ]);
         expect(generatePythonClient(root)).toContain('async def get_kind(self, type: str)');
     });
@@ -626,7 +681,10 @@ describe('generatePythonClient', () => {
     });
 
     it('imports model types from their modules', () => {
-        const modelModulePaths = new Map([['Payment', '._models_payment'], ['PaymentInput', '._models_payment']]);
+        const modelModulePaths = new Map([
+            ['Payment', '._models_payment'],
+            ['PaymentInput', '._models_payment'],
+        ]);
         const root = opRoot([
             opRoute('/payments', [
                 opOperation('post', {
@@ -641,20 +699,14 @@ describe('generatePythonClient', () => {
 
     it('imports UUID when uuid scalar is used', () => {
         const root = opRoot([
-            opRoute('/payments/{id}', [
-                opOperation('get', { responses: [opResponse(204)] }),
-            ], paramNodes([opParam('id', scalarType('uuid'))])),
+            opRoute('/payments/{id}', [opOperation('get', { responses: [opResponse(204)] })], paramNodes([opParam('id', scalarType('uuid'))])),
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('from uuid import UUID');
     });
 
     it('adds deprecated comment for deprecated operations', () => {
-        const root = opRoot([
-            opRoute('/old', [
-                opOperation('get', { responses: [opResponse(200, 'User')] }),
-            ], undefined, ['deprecated']),
-        ]);
+        const root = opRoot([opRoute('/old', [opOperation('get', { responses: [opResponse(200, 'User')] })], undefined, ['deprecated'])]);
         const output = generatePythonClient(root);
         expect(output).toContain('# @deprecated');
     });
@@ -753,9 +805,7 @@ describe('generatePythonClient', () => {
 
         it('leaves the common success-plus-bodyless-errors method alone', () => {
             const root = opRoot([
-                opRoute('/pets', [
-                    opOperation('get', { sdk: 'listPets', responses: [opResponse(200, 'Pet', 'application/json'), opResponse(404)] }),
-                ]),
+                opRoute('/pets', [opOperation('get', { sdk: 'listPets', responses: [opResponse(200, 'Pet', 'application/json'), opResponse(404)] })]),
             ]);
             const output = generatePythonClient(root);
             expect(output).toContain('-> Pet:');
@@ -766,9 +816,7 @@ describe('generatePythonClient', () => {
 
         it('reports which mime came back when a status declares several', () => {
             const root = opRoot([
-                opRoute('/art', [
-                    opOperation('get', { sdk: 'getArt', responses: [{ statusCode: 200, hasBlock: true, bodies: artBodies }] }),
-                ]),
+                opRoute('/art', [opOperation('get', { sdk: 'getArt', responses: [{ statusCode: 200, hasBlock: true, bodies: artBodies }] })]),
             ]);
             const output = generatePythonClient(root);
             expect(output).toContain('class GetArtResponse(TypedDict):');
@@ -819,7 +867,12 @@ describe('generatePythonClient', () => {
                     opOperation('get', {
                         sdk: 'getArt',
                         responses: [
-                            { statusCode: 200, hasBlock: true, bodies: artBodies, headers: [{ name: 'etag', optional: true, type: scalarType('string') }] },
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: artBodies,
+                                headers: [{ name: 'etag', optional: true, type: scalarType('string') }],
+                            },
                             {
                                 statusCode: 202,
                                 hasBlock: true,
@@ -841,22 +894,26 @@ describe('generatePythonClient', () => {
     describe('response headers', () => {
         it('emits a TypedDict and tuple return type when response declares headers', () => {
             const root = opRoot([
-                opRoute('/transfers/{id}', [
-                    opOperation('get', {
-                        sdk: 'getTransfer',
-                        responses: [
-                            {
-                                statusCode: 200,
-                                hasBlock: true,
-                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Transfer' } }],
-                                headers: [
-                                    { name: 'preference-applied', optional: true, type: scalarType('string') },
-                                    { name: 'etag', optional: false, type: scalarType('string') },
-                                ],
-                            },
-                        ],
-                    }),
-                ], paramNodes([opParam('id', scalarType('uuid'))])),
+                opRoute(
+                    '/transfers/{id}',
+                    [
+                        opOperation('get', {
+                            sdk: 'getTransfer',
+                            responses: [
+                                {
+                                    statusCode: 200,
+                                    hasBlock: true,
+                                    bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Transfer' } }],
+                                    headers: [
+                                        { name: 'preference-applied', optional: true, type: scalarType('string') },
+                                        { name: 'etag', optional: false, type: scalarType('string') },
+                                    ],
+                                },
+                            ],
+                        }),
+                    ],
+                    paramNodes([opParam('id', scalarType('uuid'))]),
+                ),
             ]);
             const output = generatePythonClient(root);
             expect(output).toContain('from typing import TypedDict');
@@ -955,19 +1012,23 @@ describe('generatePythonClient', () => {
 
         it('returns just headers TypedDict for void ops with declared response headers', () => {
             const root = opRoot([
-                opRoute('/resources/{id}', [
-                    opOperation('delete', {
-                        sdk: 'deleteResource',
-                        responses: [
-                            {
-                                statusCode: 204,
-                                hasBlock: true,
-                                bodies: [],
-                                headers: [{ name: 'x-deleted-at', optional: false, type: scalarType('string') }],
-                            },
-                        ],
-                    }),
-                ], paramNodes([opParam('id', scalarType('uuid'))])),
+                opRoute(
+                    '/resources/{id}',
+                    [
+                        opOperation('delete', {
+                            sdk: 'deleteResource',
+                            responses: [
+                                {
+                                    statusCode: 204,
+                                    hasBlock: true,
+                                    bodies: [],
+                                    headers: [{ name: 'x-deleted-at', optional: false, type: scalarType('string') }],
+                                },
+                            ],
+                        }),
+                    ],
+                    paramNodes([opParam('id', scalarType('uuid'))]),
+                ),
             ]);
             const output = generatePythonClient(root);
             expect(output).toContain('class DeleteResourceHeaders(TypedDict, total=False):');
@@ -977,7 +1038,11 @@ describe('generatePythonClient', () => {
 
         it('keeps plain return type when no response headers are declared', () => {
             const root = opRoot([
-                opRoute('/users/{id}', [opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User')] })], paramNodes([opParam('id', scalarType('uuid'))])),
+                opRoute(
+                    '/users/{id}',
+                    [opOperation('get', { sdk: 'getUser', responses: [opResponse(200, 'User')] })],
+                    paramNodes([opParam('id', scalarType('uuid'))]),
+                ),
             ]);
             const output = generatePythonClient(root);
             expect(output).toContain('-> User:');

@@ -1,5 +1,31 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.38.4
+
+### Patch Changes
+
+- 022da80: Two contracts that refer to each other, one of them through `lazy()`, now load in the right order.
+  `Folder { readme?: Doc }` with `Doc { folder?: lazy(Folder) }` put `Folder` first, so the generated
+  module evaluated `Doc.optional()` before `Doc` was declared and threw at import. The model sort
+  counted the lazy reference as a dependency, saw a cycle, and fell back to source order. A lazy
+  reference is read only when a value is parsed, so it no longer constrains the order.
+- 99f4e13: A contract with several bases is now declared after all of them, not only the first. `C: A & B`
+  generates `A.extend(B.shape)`, which reads `B` when the module loads, but the model sort only
+  counted `A` as a dependency. When `B` itself waited on a later model, `C` could be emitted ahead of
+  it and the module threw at import.
+- b17a7e5: A recursive contract now has a real TypeScript type instead of `any`. A field such as
+  `parent?: lazy(Folder)` was generated as `parent: z.lazy(() => Folder).optional()` inside `Folder`'s own
+  initializer. TypeScript cannot infer a type from itself, so `Folder`, its `z.infer` type and its
+  reviver all became `any`, and a strict build failed with TS7022. Every object field whose type contains
+  `lazy()` is now a getter that names the schema directly, such as
+  `get parent() { return Folder.optional(); }`, which Zod 4 supports and TypeScript can infer through.
+  Parsing behaves as before.
+- 7bc73bb: An SDK method whose operation declares a non-string header param now typechecks. The `headers:`
+  argument went to `fetch` as-is, and `HeadersInit` takes only strings, so `x-limit?: int` failed with
+  TS2322 in the generated client. It was wrong at run time too: an optional header passed as
+  `undefined` went out as the text "undefined". The argument now goes through a new `buildHeaders`
+  helper in the SDK runtime, which, like `buildQueryString`, stringifies each value and drops absent ones.
+
 ## 0.38.3
 
 ### Patch Changes

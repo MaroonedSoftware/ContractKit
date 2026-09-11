@@ -2,10 +2,8 @@
 '@contractkit/plugin-python': patch
 ---
 
-Escape Python keywords in generated names, so a contract field or path param called `class` or `from` no longer produces a module that fails to import with a `SyntaxError`.
+A path param can no longer take a name its method already uses, which produced a module that failed to import or a method that failed when called.
 
-A name that becomes a hard keyword once snake-cased now gets a trailing underscore: `class` becomes `class_`. On a model field, the differing name is what triggers the existing alias, so the field is `class_: str = Field(alias="class")` and still goes on the wire as `class`. The same applies to path-param arguments and to response-header `TypedDict` keys (the HTTP `From` header becomes `from_`). Soft keywords (`type`, `match`, `case`) are valid names and are left alone.
-
-A path param also can no longer take a name the method already uses: `body`, `query`, `custom_headers` or `self` (a duplicate-argument `SyntaxError`), or `quote` and `str`, which the URL expression calls. Those get the same trailing underscore.
+`body`, `query`, `custom_headers` and `self` are the method's own arguments, so a path param with one of those names was a duplicate-argument `SyntaxError`. `quote` and `str` are the functions the URL expression calls, so a path param named either shadowed it and the call failed. Those names now get a trailing underscore (`body_`, `quote_`), as a keyword already does since 0.14.3. Only the Python argument is renamed; the request path is unchanged.
 
 No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `3` earlier in this batch.

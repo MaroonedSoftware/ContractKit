@@ -39,7 +39,7 @@ const testsDir = dirname(fileURLToPath(import.meta.url));
 /** Fixture root the generated paths are relative to. Never written to — the harness captures emits in memory. */
 export const ROOT_DIR = '/project';
 
-export const FIXTURES = ['billing.ck', 'hyphenated.ck', 'reserved.ck', 'simple.ck'] as const;
+export const FIXTURES = ['billing.ck', 'hyphenated.ck', 'kitchen.ck', 'reserved.ck', 'simple.ck'] as const;
 
 /** Every file one plugin emitted, keyed by a rootDir-relative POSIX path. */
 export type EmittedFiles = Map<string, string>;

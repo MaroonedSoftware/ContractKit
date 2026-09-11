@@ -1,5 +1,6 @@
 sdk/clients/billing.client.ts
 sdk/clients/hyphenated.client.ts
+sdk/clients/kitchen.client.ts
 sdk/clients/reserved.client.ts
 sdk/clients/simple.client.ts
 sdk/index.ts
@@ -9,6 +10,7 @@ sdk/tsconfig.json
 sdk/types/billing.types.ts
 sdk/types/hyphenated.types.ts
 sdk/types/index.ts
+sdk/types/kitchen.types.ts
 sdk/types/reserved.types.ts
 sdk/types/simple.types.ts
 server/billing.mcp.ts
@@ -17,9 +19,11 @@ server/mcp.router.ts
 server/mcp.tools.ts
 server/routes/billing.router.ts
 server/routes/hyphenated.router.ts
+server/routes/kitchen.router.ts
 server/routes/reserved.router.ts
 server/routes/simple.router.ts
 server/schemas/billing.schema.ts
 server/schemas/hyphenated.schema.ts
+server/schemas/kitchen.schema.ts
 server/schemas/reserved.schema.ts
 server/schemas/simple.schema.ts

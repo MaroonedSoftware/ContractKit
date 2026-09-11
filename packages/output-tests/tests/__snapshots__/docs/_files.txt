@@ -12,6 +12,10 @@ docs/api-reference/endpoints/get-invoice.mdx
 docs/api-reference/endpoints/get-row.mdx
 docs/api-reference/endpoints/get-seat.mdx
 docs/api-reference/endpoints/get-status.mdx
+docs/api-reference/kitchen/get-folder.mdx
+docs/api-reference/kitchen/import.mdx
+docs/api-reference/kitchen/list-tokens.mdx
+docs/api-reference/kitchen/mint.mdx
 docs/api-reference/models/billing/admin-credential.mdx
 docs/api-reference/models/billing/credential.mdx
 docs/api-reference/models/billing/payment-ref.mdx
@@ -21,6 +25,16 @@ docs/api-reference/models/billing/update-payment-form.mdx
 docs/api-reference/models/billing/upload-receipt-form.mdx
 docs/api-reference/models/heartbeat.mdx
 docs/api-reference/models/invoice.mdx
+docs/api-reference/models/kitchen/bank.mdx
+docs/api-reference/models/kitchen/card.mdx
+docs/api-reference/models/kitchen/doc.mdx
+docs/api-reference/models/kitchen/folder.mdx
+docs/api-reference/models/kitchen/instrument.mdx
+docs/api-reference/models/kitchen/named.mdx
+docs/api-reference/models/kitchen/owned.mdx
+docs/api-reference/models/kitchen/rating.mdx
+docs/api-reference/models/kitchen/shared.mdx
+docs/api-reference/models/kitchen/token.mdx
 docs/api-reference/models/seat-ref.mdx
 docs/api-reference/models/seat.mdx
 docs/docs.json

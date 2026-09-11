@@ -1,5 +1,5 @@
 import type { SdkFetch } from '../sdk-options.js';
-import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString } from '../sdk-options.js';
+import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString, buildHeaders } from '../sdk-options.js';
 import type { AdminCredentialInput, Credential, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm } from '../types/billing.types.js';
 import { revivePayment } from '../types/billing.types.js';
 import { DateTime } from 'luxon';
@@ -24,7 +24,7 @@ export class BillingClient {
         const qs = buildQueryString(query);
         const result = await this.fetch(`/payments${qs}`, {
             method: 'GET',
-            headers: customHeaders,
+            headers: buildHeaders(customHeaders),
         });
         return (await parseJson<Payment[]>(result)).map(revivePayment);
     }

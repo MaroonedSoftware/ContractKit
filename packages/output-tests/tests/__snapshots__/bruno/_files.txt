@@ -12,6 +12,11 @@ bruno/billing/post-sessions.yml
 bruno/environments/local.yml
 bruno/hyphenated/folder.yml
 bruno/hyphenated/get-invoices-invoice-id.yml
+bruno/kitchen/folder.yml
+bruno/kitchen/get-folders-folder-id.yml
+bruno/kitchen/get-tokens.yml
+bruno/kitchen/post-tokens.yml
+bruno/kitchen/put-folders-folder-id.yml
 bruno/opencollection.yml
 bruno/reserved/folder.yml
 bruno/reserved/get-rows-class.yml

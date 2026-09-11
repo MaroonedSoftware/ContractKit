@@ -1,6 +1,7 @@
 // Auto-generated barrel file
 export * from './clients/billing.client.js';
 export * from './clients/hyphenated.client.js';
+export * from './clients/kitchen.client.js';
 export * from './clients/reserved.client.js';
 export * from './clients/simple.client.js';
 export * from './index.js';
