@@ -1,5 +1,57 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.38.8
+
+### Patch Changes
+
+- 153134e: A default on a `bigint` field is parsed as an exact `bigint`, and the generated TypeScript for one compiles.
+
+    `quantity: bigint = 9007199254740993` used to parse to the JS number `9007199254740992`, so every generator emitted the rounded value and `pnpm format` wrote it back into the file. The parser now reads the literal's digits into a `bigint`, for a `bigint` field or a `bigint | null` one. A non-integer default such as `= 1.5` is reported as an error instead. `FieldNode.default` and `OpParamNode.default` are typed `FieldDefault`, which adds `bigint`, so plugins that read a default have one more case to handle. The new `coerceDefault` export applies the rule.
+
+    The TypeScript plugin wrote a bigint default as `.default(5)`. Zod requires a default to be the schema's output type, so every generated project with a bigint default failed to typecheck (TS2769). At runtime the handler would also have received a `number`, because Zod returns a default without parsing it. It now writes `.default(5n)`.
+
+    Every other consumer handles the new value: Kotlin, Swift and C# initialize from the exact digits, Bruno and the `openapi` target write the digit string a `bigint` travels as, `openapi-to-ck` reads that string back with `BigInt()` rather than `Number()`, and the VS Code hover no longer throws when a referenced model carries a bigint default.
+
+    A default on a field whose type is a `ref` to a `bigint` alias is still parsed as a number, because the alias is not resolved at parse time.
+
+- 300217d: The generated router now finds a request header declared with a name that is not lowercase.
+
+    Node lowercases every incoming header name, so `ctx.headers` (Koa) and `request.headers` (Fastify) hold `xtenant`, never `xTenant`. The router validated that object against a schema keyed by the declared name, so a required `xTenant` was always missing and the request failed whatever the client sent. This hit `headers: Tenant` with `contract Tenant: { xTenant: string }` and an inline `headers: { xTenant: string }` block alike; only lowercase or hyphenated names such as `x-tenant` worked.
+
+    Each declared name that is not lowercase is now read from its lowercase key before validation, `parseAndValidate({ ...ctx.headers, xTenant: ctx.headers['xtenant'] }, Tenant.strip())`, and the service receives it under the declared name. This covers inline blocks, models (their bases included) and models inside an intersection. A block whose names are all lowercase is generated exactly as before.
+
+    `TYPESCRIPT_CODEGEN_VERSION` is bumped to `6`, and a router's cache fingerprint now also covers the fields of a model its `headers:` references, so renaming such a field in another `.ck` file regenerates the router.
+
+- e780c63: The generated router now accepts a one-element array in a `query:` declared as a model.
+
+    `query: Filter` validated `ctx.query` against `Filter` itself, the schema request bodies use, whose `tags: z.array(z.string())` has no query-string handling. A query string carries a one-element list as `tags=only`, which Koa and Fastify both parse to the string `"only"`, so the request failed with "expected array, received string" whatever the client sent. Two or more values, as repeated keys, passed. An inline query block was never affected: its array fields already split a bare string on commas.
+
+    The router now re-wraps each array field of a query model in that same split, reading the field off the model's own `.shape` so its modifiers carry over: `Filter.extend({ tags: z.preprocess(split, Filter.shape.tags) }).strict()`. This covers fields inherited from a base, the `Input` variant of a model with visibility modifiers, and a model that is one member of an intersection such as `query: Filter & { q: string }`. A model with no array field is validated exactly as before.
+
+    `TYPESCRIPT_CODEGEN_VERSION` is bumped to `5`, so an existing incremental cache regenerates its routers. A router's cache fingerprint now also covers the fields of a model its `query:` references, so adding an array field to such a model in another `.ck` file regenerates the router too.
+
+- b27277f: The SDK now sends `date`, `time` and `decimal` query and header params in the text the generated router parses, instead of `String(value)`.
+
+    A `date` or `time` param is typed as a luxon `DateTime`, and `buildQueryString` and `buildHeaders` stringified it with `toISO()`, so `2026-09-11` went out as `2026-09-11T00:00:00.000-04:00`. The router parses these with `DateTime.fromFormat` against the contract's format, so every such request failed with a 400. A `decimal` went out in exponential notation (`1e-8`) whenever decimal.js had not been configured in that module, which the router happened to accept but the documented pattern `^-?\d+(\.\d+)?$` does not.
+
+    Each SDK method now writes these values itself, at the call site, where the declared type is known: `toFormat()` with the scalar's `format` (`yyyy-MM-dd` and `HH:mm:ss` by default) for `date` and `time`, and `toFixed()` for `decimal`. This covers inline params, `query: Model` and `headers: Model` (including inherited fields and `format(input=)` key casing), arrays of these scalars, and type aliases such as `contract Day: date("yyyyMMdd")`. A method whose params already stringified correctly (`datetime`, `duration`, `int`, `bigint`, `boolean`, strings) is generated unchanged.
+
+    `TYPESCRIPT_CODEGEN_VERSION` is bumped to `7`, so an existing incremental cache regenerates its clients. The cache fingerprint for a client now also covers the fields of a model its `query:` or `headers:` references, so changing such a field's type or format regenerates the client too.
+
+- 5b5f81c: SDK path params typed `date`, `time`, `decimal`, `datetime`, `duration` or `bigint` now compile and reach the router in a form it parses.
+
+    An inline path param is passed to `encodeURIComponent`, which accepts only `string | number | boolean`, so a `DateTime`, `Duration`, `Decimal` or `bigint` argument failed to compile. A field of a `params: Model` argument compiled, since it was wrapped in `String()`, but a `date` or `time` then went out as a full ISO timestamp and the router answered 400. Path params now use the same serialization as query and header params: `toFormat()` with the scalar's format for `date` and `time`, `toFixed()` for `decimal`, and `String()` for `datetime`, `duration` and `bigint`, whose string form the router already parses.
+
+- 0740a6e: The TypeScript SDK reads a `bigint` response header in the documented wire form, `^-?\d+n?$`, and throws a descriptive error for anything else.
+
+    The client called `BigInt()` on the raw header value. That threw an opaque `SyntaxError` on `123n`, a form the OpenAPI output documents, and on a malformed value like `abc`, and it accepted `0x10`, `""` and `" 7"` as `16n`, `0n` and `7n`. Clients now read the header through a new `parseBigIntHeader` helper in `sdk-options.ts`, which accepts an optionally negative run of digits with an optional trailing `n` and otherwise throws `Response header 'x-total' is not a bigint: "abc"`. It is imported only by a client that reads a bigint header.
+
+    `TYPESCRIPT_CODEGEN_VERSION` is bumped to `7`, so an existing incremental cache regenerates every client instead of keeping the old `BigInt()` call.
+
+- Updated dependencies [a440886]
+- Updated dependencies [153134e]
+    - @contractkit/core@0.31.0
+
 ## 0.38.7
 
 ### Patch Changes
