@@ -233,7 +233,7 @@ contract deprecated format(input=camel) mode(strip) OldWebhookPayload: {
 | `string`   | `z.string()`              |                                                                                 |
 | `number`   | `z.coerce.number()`       |                                                                                 |
 | `int`      | `z.coerce.number().int()` |                                                                                 |
-| `bigint`   | `z.coerce.bigint()`       |                                                                                 |
+| `bigint`   | `z.coerce.bigint()`       | Integer of any size, sent as a digit string (`"123"`, or `"123n"`)              |
 | `decimal`  | decimal.js `Decimal`      | Exact decimal sent as a quoted string; see below                                |
 | `boolean`  | `z.coerce.boolean()`      |                                                                                 |
 | `date`     | `z.string().date()`       | ISO 8601 date string                                                            |

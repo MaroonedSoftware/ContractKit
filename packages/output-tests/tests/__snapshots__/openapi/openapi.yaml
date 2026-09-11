@@ -362,8 +362,9 @@ components:
           pattern: '^-?\d+(\.\d{1,2})?$'
           x-contractkit-scale: 2
         quantity:
-          type: integer
-          format: int64
+          type: string
+          format: bigint
+          pattern: '^-?\d+n?$'
         createdAt:
           type: string
           format: date-time
@@ -506,8 +507,9 @@ components:
               type: number
           required: [x, y]
         size:
-          type: integer
-          format: int64
+          type: string
+          format: bigint
+          pattern: '^-?\d+n?$'
         price:
           type: string
           format: decimal

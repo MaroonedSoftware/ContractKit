@@ -332,6 +332,12 @@ describe('generateMarkdown', () => {
     // ─── Unified attributes table ───────────────────────────────
 
     describe('unified attributes table', () => {
+        it('notes the wire form of a bigint parameter', () => {
+            const op = opRoot([opRoute('/orders/{orderId}', [opOperation('get')], [opParam('orderId', scalarType('bigint'))])]);
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
+            expect(output).toContain('| `orderId` | `bigint` | Yes | Path parameter. *sent as a digit string, "123" or "123n"* |');
+        });
+
         it('renders path params in attributes table', () => {
             const op = opRoot([opRoute('/users/{userId}', [opOperation('get')], [opParam('userId', scalarType('uuid'))])]);
             const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
@@ -712,6 +718,36 @@ describe('generateMarkdown', () => {
             const dto = contractRoot([model('Payslip', [field('gross', scalarType('decimal'))])]);
             const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
             expect(output).toContain('| `gross` | `Decimal` | Yes |');
+        });
+
+        it('keeps bigint as the type but notes that it travels as a digit string', () => {
+            // The type column is what a generated client works with; a reader writing their own
+            // client needs to know the wire carries a string, which the column cannot say.
+            const dto = contractRoot([
+                model('Order', [
+                    field('quantity', scalarType('bigint')),
+                    field('batches', arrayType(scalarType('bigint')), { description: 'Batch sizes' }),
+                    field('name', scalarType('string')),
+                ]),
+            ]);
+            const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
+            expect(output).toContain('| `quantity` | `bigint` | Yes | *sent as a digit string, "123" or "123n"* |');
+            expect(output).toContain('| `batches` | `bigint[]` | Yes | Batch sizes. *sent as a digit string, "123" or "123n"* |');
+            expect(output).toContain('| `name` | `string` | Yes |  |');
+        });
+
+        it('notes a bigint type alias below its declaration', () => {
+            const lines = renderModelBody(model('Snowflake', [], { type: scalarType('bigint') }), githubDialect);
+            expect(lines).toContain('A `bigint` here is sent as a digit string, "123" or "123n".');
+        });
+
+        it('leaves the note to the referenced model rather than repeating it on every reference', () => {
+            const dto = contractRoot([
+                model('Ledger', [field('total', scalarType('bigint'))]),
+                model('Statement', [field('ledger', refType('Ledger'))]),
+            ]);
+            const output = generateMarkdown({ contractRoots: [dto], opRoots: [] });
+            expect(output).toContain('| `ledger` | `Ledger` | Yes |  |');
         });
 
         it('marks optional fields as not required', () => {

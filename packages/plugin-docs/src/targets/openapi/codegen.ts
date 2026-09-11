@@ -316,7 +316,9 @@ function fieldToSchema(field: FieldNode, modelMap?: Map<string, ModelNode>): Rec
         schema.writeOnly = true;
     }
     if (field.default !== undefined) {
-        schema.default = field.default;
+        // A bigint is documented as a string, so its default has to be one too for the schema to
+        // accept its own default.
+        schema.default = field.type.kind === 'scalar' && field.type.name === 'bigint' ? String(field.default) : field.default;
     }
     if (field.description) {
         schema.description = field.description;
@@ -388,6 +390,12 @@ function resolveDiscriminatorLiterals(modelName: string, discriminator: string, 
 }
 
 /**
+ * The wire form of a `bigint`: an optionally negative run of digits, with the trailing `n` the
+ * TypeScript SDK and server write.
+ */
+export const BIGINT_PATTERN = '^-?\\d+n?$';
+
+/**
  * Map a ContractKit scalar type node to its OpenAPI schema object (`{ type, format, ... }`),
  * carrying across constraints like min/max/length.
  *
@@ -420,8 +428,20 @@ export function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode)
             if (type.max !== undefined) s.maximum = Number(type.max);
             break;
         case 'bigint':
-            s.type = 'integer';
-            s.format = 'int64';
+            // A digit string, not `type: integer, format: int64`. No ContractKit client sends a JSON
+            // number for one (it would lose precision past 2**53, the reason for the scalar), and the
+            // server's schema rejects a number, so a client generated from `integer` could not talk
+            // to it. The TypeScript SDK and a TypeScript server write the `"123n"` form, the other
+            // SDKs `"123"`, and every one of them reads both, hence the optional `n`.
+            // `format: bigint` rather than `int64`: the value is unbounded, and a generator that keys
+            // on `int64` alone could still map it to a 64-bit number.
+            s.type = 'string';
+            s.format = 'bigint';
+            s.pattern = BIGINT_PATTERN;
+            // Bounds ride in the same extensions as `decimal`'s, since `minimum`/`maximum` are
+            // ignored on a string and a float could not hold them exactly anyway.
+            if (type.min !== undefined) s['x-contractkit-min'] = String(type.min);
+            if (type.max !== undefined) s['x-contractkit-max'] = String(type.max);
             break;
         case 'decimal':
             // A quoted string, not `type: number` — the whole point is to keep the value away from
