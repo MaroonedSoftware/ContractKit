@@ -1,5 +1,54 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.38.10
+
+### Patch Changes
+
+- d0252dd: An intersection with a `format()` model as a member now compiles and validates, in a router's `query:`, `headers:` and `params:` blocks, in request and response bodies, and in model fields and aliases.
+
+    A model such as `contract format(input=snake) SnakeFilter: { fromDate?: date }` compiles to a `ZodPipe`, which has neither `.extend()` nor `.shape`. An intersection `SnakeFilter & { q: string }` was emitted as `SnakeFilter.extend({ q: z.string() })`, and `Plain & SnakeFilter` as `Plain.extend(SnakeFilter.shape)`, both of which failed `tsc` with TS2339.
+
+    The object is now built from the member's own object, `SnakeFilter.in`, and ends in one transform that hands the member's keys to its own `SnakeFilter.out` and passes every other key through. A request block's mode goes on the object, before the transform:
+
+    ```ts
+    SnakeFilter.in
+        .extend({ q: z.string() })
+        .strict()
+        .transform(({ from_date: _0, ...rest }) => ({
+            ...rest,
+            ...SnakeFilter.out.parse({ from_date: _0 }),
+        }));
+    ```
+
+    So the router parses `from_date` and `q`, the keys the SDK already sent for this intersection, and the service receives `{ fromDate, q }`. An alias of such an intersection (`contract Scoped: SnakeFilter & Scope`) is a pipe itself, and a block that references it is validated as `Scoped.in.strict().pipe(Scoped.out)`. A `headers:` intersection copies a camelCase header over from its lowercase key by the name the object parses, so a `format(input=snake)` member's keys are no longer copied under their camelCase names. An intersection without a `format()` member is emitted exactly as before.
+
+    The cache fingerprint of every router and Zod schema file now covers the `format()` models it reads through and the keys each one parses, so a model in another `.ck` file gaining `format()` or a field regenerates the files that intersect it.
+
+- c758d33: A router now finds the headers of a `format(input=pascal)` model referenced as a `headers:` block.
+
+    Node lowercases every incoming header name, so a router copies each declared header that is not lowercase over from its lowercase key before validating. For a `format()` model it copied none, but a `format(input=pascal)` model's object is keyed `TenantId`, which the request never carries, so every such header was missing. The router now copies each key the model's object parses, `{ ...ctx.headers, TenantId: ctx.headers['tenantid'] }`, as it already did for a model without `format()`. A `format(input=snake)` model's keys are lowercase and still read straight off the request.
+
+- 84cb180: A router now splits a comma-joined query array of a `format()` model, as it already did for an inline query array and for a plain model's.
+
+    A query string carries a one-element list as `tag_ids=only`, which the framework parses to the string `"only"`. A `query:` block re-wraps each array field of its model in a `z.preprocess` that splits such a string, read back off the model's `.shape`. A `format()` model's schema is a pipe with no `.shape`, so its arrays were left as they were, and `tag_ids=only` or `tag_ids=a,b` was rejected. They are now read off the pipe's object, under the key that object parses, and the result is piped back through the model's own transform:
+
+    ```ts
+    SnakeFilter.in
+        .extend({
+            tag_ids: z.preprocess(v => (typeof v === 'string' ? v.split(',') : v), SnakeFilter.in.shape.tag_ids),
+        })
+        .strict()
+        .pipe(SnakeFilter.out);
+    ```
+
+    The same goes for a `format()` member of a query intersection, whose arrays are re-wrapped before the block's mode and the transform. An inline member that redeclares the object's key (`tag_ids`) takes the field over, as `.extend()` does.
+
+- f3ae880: A generated SDK client now imports every model reviver its inline response wrappers call.
+
+    A response body with no `reviveX` of its own, such as an intersection `Invoice & { note: string }` or an inline object `{ invoice: Invoice }`, is rehydrated through a local `__revive…` wrapper, which calls `reviveInvoice` for the model it holds. The client decided its reviver imports from its method bodies alone, where only the wrapper's name appears, so the client failed `tsc` with TS2304 ("Cannot find name 'reviveInvoice'"). Top-level clients and area clients both read the wrappers now.
+
+    `TYPESCRIPT_CODEGEN_VERSION` is bumped to `10`, so an existing incremental cache regenerates its output.
+
 ## 0.38.9
 
 ### Patch Changes
