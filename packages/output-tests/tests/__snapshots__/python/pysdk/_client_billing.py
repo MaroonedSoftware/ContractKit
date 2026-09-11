@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import UUID
 from urllib.parse import quote
 from typing import Literal, NotRequired, TypedDict
+from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError  # noqa: F401
 from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm, UploadReceiptForm
 
@@ -27,6 +28,9 @@ ListPaymentsHeaders = TypedDict("ListPaymentsHeaders", {
     "api-key": NotRequired[str],
     "x-tenant": str,
 })
+
+
+_CREATE_PAYMENTS_BODY = TypeAdapter(list[PaymentInput])
 
 
 class BillingClient(BaseClient):
@@ -52,6 +56,13 @@ class BillingClient(BaseClient):
         list payments
         """
         result = await self._fetch("/payments", method="GET", params=query, extra_headers=custom_headers)
+        return [Payment.model_validate(item) for item in result]
+
+    async def create_payments(self, body: list[PaymentInput]) -> list[Payment]:
+        """
+        create several payments at once
+        """
+        result = await self._fetch("/payments/batch", method="POST", body=_CREATE_PAYMENTS_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True))
         return [Payment.model_validate(item) for item in result]
 
     async def get_payment(self, payment_id: UUID) -> Payment:

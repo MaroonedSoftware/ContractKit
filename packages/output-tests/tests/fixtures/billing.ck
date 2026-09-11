@@ -91,6 +91,19 @@ operation /payments: {
     }
 }
 
+operation /payments/batch: {
+    post: { # create several payments at once
+        sdk: createPayments
+        service: PaymentService.createBatch
+        request: {
+            application/json: array(Payment)
+        }
+        response: {
+            200: { application/json: array(Payment) }
+        }
+    }
+}
+
 operation /payments/{paymentId}: {
     params: {
         paymentId: uuid

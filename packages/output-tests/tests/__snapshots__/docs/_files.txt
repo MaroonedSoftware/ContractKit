@@ -1,5 +1,6 @@
 docs/api-reference/billing/create-credential.mdx
 docs/api-reference/billing/create-payment.mdx
+docs/api-reference/billing/create-payments.mdx
 docs/api-reference/billing/create-session.mdx
 docs/api-reference/billing/delete-payment.mdx
 docs/api-reference/billing/get-payment.mdx

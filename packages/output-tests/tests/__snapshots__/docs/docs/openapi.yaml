@@ -77,6 +77,27 @@ paths:
                 type: array
                 items:
                   '$ref': '#/components/schemas/Payment'
+  '/payments/batch':
+    post:
+      operationId: createPayments
+      description: 'create several payments at once'
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              type: array
+              items:
+                '$ref': '#/components/schemas/Payment'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                type: array
+                items:
+                  '$ref': '#/components/schemas/Payment'
   '/payments/{paymentId}':
     get:
       operationId: getPayment

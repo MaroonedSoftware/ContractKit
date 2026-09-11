@@ -49,6 +49,17 @@ public sealed class BillingClient(SdkHttp http)
         return http.ReadJson<List<Payment>>(response);
     }
 
+    /// <summary>create several payments at once</summary>
+    public async Task<List<Payment>> CreatePaymentsAsync(List<PaymentInput> body, CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Post,
+            http.Path("payments", "batch"),
+            content: http.JsonContent(body, "application/json"),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<List<Payment>>(response);
+    }
+
     /// <summary>fetch one payment</summary>
     /// <exception cref="SdkException">On 404.</exception>
     public async Task<Payment> GetPaymentAsync(Guid paymentId, CancellationToken cancellationToken = default)

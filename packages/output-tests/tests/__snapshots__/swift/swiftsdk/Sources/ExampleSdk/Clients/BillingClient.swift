@@ -33,6 +33,14 @@ public final class BillingClient: Sendable {
         return try http.decodeJSON([Payment].self, from: response)
     }
 
+    /// create several payments at once
+    public func createPayments(body: [PaymentInput]) async throws -> [Payment] {
+        var request = SdkRequest(method: "POST", path: ["payments", "batch"])
+        try http.setJSONBody(&request, body, contentType: "application/json")
+        let response = try await http.execute(request)
+        return try http.decodeJSON([Payment].self, from: response)
+    }
+
     /// fetch one payment
     /// - Throws: `SdkError` on 404
     public func getPayment(paymentId: UUID) async throws -> Payment {

@@ -5,6 +5,9 @@ import {
     arrayType,
     refType,
     enumType,
+    recordType,
+    unionType,
+    inlineObjectType,
     opParam,
     paramNodes,
     paramRef,
@@ -274,6 +277,63 @@ describe('generatePythonClient', () => {
         // by_alias: a renamed field goes out as `unitPrice`, not `unit_price`, which a strict server
         // schema rejects. exclude_unset: an optional the caller never set is omitted rather than
         // sent as null, which `.optional()` rejects.
+        expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
+    });
+
+    it('serializes a list-of-model body through a module-level TypeAdapter', () => {
+        const modelsWithInput = new Set(['Item']);
+        const root = opRoot([
+            opRoute('/items', [
+                opOperation('post', { sdk: 'createItems', request: opRequest(arrayType(refType('Item'))), responses: [opResponse(204)] }),
+            ]),
+        ]);
+        const output = generatePythonClient(root, { modelsWithInput });
+        // Sent raw, a list of Pydantic objects fails in httpx: "Object of type Item is not JSON
+        // serializable". Built once at import, not per call.
+        expect(output).toContain('from pydantic import TypeAdapter');
+        expect(output).toContain('_CREATE_ITEMS_BODY = TypeAdapter(list[ItemInput])');
+        expect(output).toContain('async def create_items(self, body: list[ItemInput]) -> None:');
+        expect(output).toContain('body=_CREATE_ITEMS_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
+    });
+
+    it('serializes record, union and inline-object bodies the same way', () => {
+        const root = opRoot([
+            opRoute('/a', [opOperation('put', { sdk: 'putRecord', request: opRequest(recordType(scalarType('string'), refType('Item'))), responses: [opResponse(204)] })]),
+            opRoute('/b', [opOperation('put', { sdk: 'putUnion', request: opRequest(unionType(refType('Card'), refType('Bank'))), responses: [opResponse(204)] })]),
+            opRoute('/c', [opOperation('put', { sdk: 'putObject', request: opRequest(inlineObjectType([])), responses: [opResponse(204)] })]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('_PUT_RECORD_BODY = TypeAdapter(dict[str, Item])');
+        expect(output).toContain('_PUT_UNION_BODY = TypeAdapter(Card | Bank)');
+        // An inline object is `dict[str, Any]`, whose values may be dates or Decimals.
+        expect(output).toContain('_PUT_OBJECT_BODY = TypeAdapter(dict[str, Any])');
+        expect(output).toContain('body=_PUT_UNION_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
+    });
+
+    it('builds the adapter for a urlencoded body that is not a single model', () => {
+        const root = opRoot([
+            opRoute('/forms', [
+                opOperation('post', {
+                    sdk: 'postForm',
+                    request: opRequest(recordType(scalarType('string'), scalarType('date')), 'application/x-www-form-urlencoded'),
+                    responses: [opResponse(204)],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('_POST_FORM_BODY = TypeAdapter(dict[str, date])');
+        expect(output).toContain('body_kind="form"');
+    });
+
+    it('leaves single-model, multipart, text and binary bodies without an adapter', () => {
+        const root = opRoot([
+            opRoute('/m', [opOperation('post', { sdk: 'postModel', request: opRequest('Item'), responses: [opResponse(204)] })]),
+            opRoute('/f', [opOperation('post', { sdk: 'postFile', request: opRequest('Upload', 'multipart/form-data'), responses: [opResponse(204)] })]),
+            opRoute('/t', [opOperation('post', { sdk: 'postText', request: opRequest(scalarType('string'), 'text/plain'), responses: [opResponse(204)] })]),
+            opRoute('/b', [opOperation('post', { sdk: 'postBytes', request: opRequest(scalarType('binary'), 'application/octet-stream'), responses: [opResponse(204)] })]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).not.toContain('TypeAdapter');
         expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
     });
 

@@ -30,6 +30,7 @@
                         "pages": [
                             "api-reference/billing/create-payment",
                             "api-reference/billing/list-payments",
+                            "api-reference/billing/create-payments",
                             "api-reference/billing/get-payment",
                             "api-reference/billing/update-payment-with-form",
                             "api-reference/billing/delete-payment",

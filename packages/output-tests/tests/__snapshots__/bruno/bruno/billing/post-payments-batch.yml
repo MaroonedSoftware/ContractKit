@@ -1,0 +1,29 @@
+info:
+  name: /payments/batch
+  type: http
+  seq: 8
+
+http:
+  method: POST
+  url: "{{baseUrl}}/payments/batch"
+  body:
+    type: json
+    data: |
+      [
+        {
+          "amount": 0,
+          "unitPrice": "0.00",
+          "quantity": 0,
+          "createdAt": "2024-01-01T00:00:00Z",
+          "status": "pending"
+        }
+      ]
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+docs: |-
+  create several payments at once

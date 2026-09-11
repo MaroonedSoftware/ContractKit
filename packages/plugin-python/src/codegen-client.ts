@@ -166,8 +166,18 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         if (needsTypedDict) typingImports.push('TypedDict');
         lines.push(`from typing import ${typingImports.join(', ')}`);
     }
+    // Request bodies that are neither a single model nor sent raw, each serialized by a
+    // module-level TypeAdapter built once at import rather than on every call.
+    const bodyAdapters = publicOps.flatMap(({ route, op }) => {
+        const name = bodyAdapterName(route, op, modelsWithInput);
+        return name ? [{ name, type: renderInputPyType(op.request!.bodies[0]!.bodyType, modelsWithInput) }] : [];
+    });
+
+    const pydanticImports: string[] = [];
     // A discriminated union renders as `Annotated[A | B, Field(discriminator=...)]`.
-    if (needsAnnotated) lines.push('from pydantic import Field');
+    if (needsAnnotated) pydanticImports.push('Field');
+    if (bodyAdapters.length > 0) pydanticImports.push('TypeAdapter');
+    if (pydanticImports.length > 0) lines.push(`from pydantic import ${pydanticImports.join(', ')}`);
     lines.push('from ._base_client import BaseClient, SdkError  # noqa: F401');
 
     // Model imports grouped by module
@@ -262,6 +272,12 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
                 lines.push('    pass');
             }
         }
+    }
+
+    if (bodyAdapters.length > 0) {
+        lines.push('');
+        lines.push('');
+        for (const { name, type } of bodyAdapters) lines.push(`${name} = TypeAdapter(${type})`);
     }
 
     lines.push('');
@@ -382,7 +398,10 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
             // reject; a required nullable field is always set by the constructor, so its null stays.
             fetchKwargs.push('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
         } else {
-            fetchKwargs.push('body=body');
+            // Anything else: a list, record, tuple or union of models, or a type holding values
+            // httpx cannot encode itself (`date`, `Decimal`, `UUID`). The same flags, so models
+            // inside it go out exactly as a lone model would.
+            fetchKwargs.push(`body=${bodyAdapterName(route, op, modelsWithInput)}.dump_python(body, mode="json", by_alias=True, exclude_unset=True)`);
         }
         // Forward the declared content-type so `_fetch` sets the correct Content-Type header
         // (vendor JSON types like `application/vnd.api+json` still serialize as JSON but need
@@ -789,6 +808,23 @@ function isModelRef(type: ContractTypeNode, modelsWithInput?: Set<string>): bool
     if (type.kind === 'ref') return /^[A-Z]/.test(type.name);
     if (type.kind === 'lazy') return isModelRef(type.inner, modelsWithInput);
     return false;
+}
+
+/**
+ * The module-level `TypeAdapter` that serializes an operation's JSON or urlencoded request body,
+ * or `undefined` when the body needs none: a single model has `model_dump`, and multipart, text
+ * and binary bodies go to httpx as the caller supplied them.
+ *
+ * Before this, any body that was not a single model went out raw, so `array(Item)` handed httpx a
+ * list of Pydantic objects and failed with "Object of type Item is not JSON serializable".
+ */
+function bodyAdapterName(route: OpRouteNode, op: OpOperationNode, modelsWithInput?: Set<string>): string | undefined {
+    const body = op.request?.bodies[0];
+    if (!body) return undefined;
+    const category = classifyContentType(body.contentType);
+    if (category !== 'json' && category !== 'urlencoded') return undefined;
+    if (isModelRef(body.bodyType, modelsWithInput)) return undefined;
+    return `_${deriveMethodName(op, route).toUpperCase()}_BODY`;
 }
 
 function isListModelRef(type: ContractTypeNode, modelsWithInput?: Set<string>): boolean {
