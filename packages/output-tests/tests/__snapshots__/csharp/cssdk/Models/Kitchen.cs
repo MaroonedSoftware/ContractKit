@@ -51,6 +51,10 @@ public sealed record Token
     [JsonPropertyName("expires_in")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public long? ExpiresIn { get; init; } = 3600L;
+
+    [JsonPropertyName("refresh_after")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BigInteger? RefreshAfter { get; init; } = BigInteger.Parse("9007199254740993");
 }
 
 public sealed record Owned
@@ -209,6 +213,9 @@ public sealed record Folder
 
     [JsonPropertyName("size")]
     public required BigInteger Size { get; init; }
+
+    [JsonPropertyName("generation")]
+    public BigInteger Generation { get; init; } = BigInteger.Parse("9007199254740993");
 
     [JsonPropertyName("price")]
     public required decimal Price { get; init; }

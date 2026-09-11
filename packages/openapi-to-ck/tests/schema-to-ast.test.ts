@@ -316,12 +316,13 @@ describe('schemasToModels', () => {
         expect(bioField.description).toBe('User bio');
     });
 
-    it('reads a bigint default back from its digit string, as the number a .ck source spells it', () => {
+    it('reads a bigint default back from its digit string, exactly, as the bigint parsing a .ck source gives', () => {
         const schemas = {
             Order: {
                 type: 'object',
                 properties: {
                     quantity: { type: 'string', format: 'bigint', pattern: '^-?\\d+n?$', default: '5' },
+                    serial: { type: 'string', format: 'bigint', pattern: '^-?\\d+n?$', default: '-9007199254740993n' },
                     note: { type: 'string', default: '5' },
                 },
             },
@@ -329,7 +330,9 @@ describe('schemasToModels', () => {
         const ctx = makeCtx({ namedSchemas: schemas as Record<string, NormalizedSchema> });
         const [order] = schemasToModels(schemas as Record<string, NormalizedSchema>, ctx);
 
-        expect(order!.fields.find(f => f.name === 'quantity')!.default).toBe(5);
+        expect(order!.fields.find(f => f.name === 'quantity')!.default).toBe(5n);
+        // Past 2**53, where `Number()` used to round it to ...992.
+        expect(order!.fields.find(f => f.name === 'serial')!.default).toBe(-9007199254740993n);
         // Only a bigint's default changes: a plain string that happens to hold digits stays a string.
         expect(order!.fields.find(f => f.name === 'note')!.default).toBe('5');
     });

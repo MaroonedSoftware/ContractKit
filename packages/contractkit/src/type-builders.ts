@@ -2,7 +2,7 @@
  * Shared type-building utilities used by both contract and operation semantic actions.
  * Extracted from visitor-contract.ts and visitor-op.ts to eliminate duplication.
  */
-import type { ContractTypeNode, ScalarTypeNode, UnionTypeNode } from './ast.js';
+import type { ContractTypeNode, FieldDefault, ScalarTypeNode, UnionTypeNode } from './ast.js';
 import { SCALAR_NAMES } from './ast.js';
 
 export const OBJECT_MODES = new Set<string>(['strict', 'strip', 'loose']);
@@ -165,6 +165,29 @@ function coerceBound(name: ScalarTypeNode['name'], arg: TypeArgKeyValue, report?
     }
     if (name === 'duration' || name === 'decimal') return text;
     return Number(arg.value);
+}
+
+/**
+ * Coerce a field's `= value` default to the representation its type holds.
+ *
+ * A number on a `bigint` field (`T | null` included) becomes a `bigint` read from `source`, the
+ * literal as written, for the reason `coerceBound` reads bounds that way. A `ref` to a bigint alias
+ * cannot be resolved here, so its default stays a number.
+ *
+ * Returns `undefined`, after reporting it, for a `bigint` default that is not an integer.
+ */
+export function coerceDefault(
+    type: ContractTypeNode,
+    value: string | number | boolean,
+    source: string,
+    report?: (message: string) => void,
+): FieldDefault | undefined {
+    if (typeof value !== 'number') return value;
+    const base = extractNullability(type).type;
+    if (base.kind !== 'scalar' || base.name !== 'bigint') return value;
+    if (INTEGER_LITERAL.test(source)) return BigInt(source);
+    report?.(`bigint default must be an integer, got ${source}`);
+    return undefined;
 }
 
 function buildScalarWithModifiers(name: ScalarTypeNode['name'], args: TypeArg[], report?: (message: string) => void): ScalarTypeNode {

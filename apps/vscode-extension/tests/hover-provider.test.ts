@@ -32,6 +32,16 @@ describe('getHover', () => {
         expect(value).not.toContain('undefined');
     });
 
+    it('shows a bigint default on a referenced model instead of throwing', () => {
+        // The default parses to a JS bigint, which `JSON.stringify` refuses.
+        const doc = TextDocument.create('file:///test.ck', 'contract-ck', 1, 'contract M: {\n    ref: Counter\n}');
+        const index = new WorkspaceIndex();
+        index.indexFromSource('file:///counter.ck', 'contract Counter: { serial: bigint = 9007199254740993 }');
+        const hover = getHover({ textDocument: { uri: doc.uri }, position: { line: 1, character: 10 } }, doc, index);
+        expect(hover).not.toBeNull();
+        expect((hover!.contents as { value: string }).value).toContain('serial: bigint = 9007199254740993');
+    });
+
     it('returns null for unknown words', () => {
         const doc = TextDocument.create('file:///test.ck', 'contract-ck', 1, 'contract M: {\n    f: xyz\n}');
         const index = new WorkspaceIndex();

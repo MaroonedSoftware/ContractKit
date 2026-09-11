@@ -721,6 +721,13 @@ components:
           type: string
           format: bigint
           pattern: '^-?\d+n?$'
+        generation:
+          type: string
+          format: bigint
+          pattern: '^-?\d+n?$'
+          x-contractkit-min: '0'
+          x-contractkit-max: '9007199254740993'
+          default: '9007199254740993'
         price:
           type: string
           format: decimal
@@ -740,7 +747,7 @@ components:
           format: binary
         extra: {}
         raw: {}
-      required: [id, class, children, label, pinned, size, price]
+      required: [id, class, children, label, pinned, size, generation, price]
       description: "Self recursion through lazy(), mutual recursion through Doc, every container, both union\nforms, every scalar, and field names that are keywords in the target languages"
     Doc:
       type: object
@@ -786,6 +793,11 @@ components:
         expiresIn:
           type: integer
           default: 3600
+        refreshAfter:
+          type: string
+          format: bigint
+          pattern: '^-?\d+n?$'
+          default: '9007199254740993'
       required: [accessToken]
       description: 'Decodes snake_case keys and encodes PascalCase ones'
     Owned:

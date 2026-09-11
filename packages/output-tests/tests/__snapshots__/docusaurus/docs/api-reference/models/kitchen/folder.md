@@ -9,7 +9,7 @@ mdx:
 > forms, every scalar, and field names that are keywords in the target languages
 
 <details>
-<summary>Attributes (22)</summary>
+<summary>Attributes (23)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -28,6 +28,7 @@ mdx:
 | `instrument` | `Card \| Bank` | No |  |
 | `origin` | `{ x: number; y: number }` | No |  |
 | `size` | `bigint` | Yes | *sent as a digit string, "123" or "123n"* |
+| `generation` | `bigint` | Yes | *default: `9007199254740993`*. *sent as a digit string, "123" or "123n"* |
 | `price` | `Decimal` | Yes |  |
 | `day` | `string` | No |  |
 | `at` | `string` | No |  |

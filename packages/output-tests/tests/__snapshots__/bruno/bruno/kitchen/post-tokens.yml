@@ -11,7 +11,8 @@ http:
     data: |
       {
         "accessToken": "",
-        "expiresIn": 3600
+        "expiresIn": 3600,
+        "refreshAfter": "9007199254740993"
       }
 
 runtime:

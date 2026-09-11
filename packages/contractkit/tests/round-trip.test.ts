@@ -689,6 +689,15 @@ describe('round-trip — exact numeric literals', () => {
         expect(format(source)).toBe(source);
     });
 
+    it('keeps a bigint default past 2**53 exact', () => {
+        const source = `contract Pet: {
+    serial: bigint = 9007199254740993
+    floor?: bigint | null = -9007199254740993
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
     it('keeps a decimal bound as written', () => {
         const source = `contract Price: {
     amount: decimal(min=0.10, max=123456789012345678901.5, scale=2)

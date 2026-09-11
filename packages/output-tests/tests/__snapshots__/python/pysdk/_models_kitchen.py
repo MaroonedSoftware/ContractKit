@@ -25,6 +25,7 @@ class Token(BaseModel):
 
     access_token: str = Field(alias="accessToken")
     expires_in: int | None = Field(alias="expiresIn", default=3600)
+    refresh_after: BigInt | None = Field(alias="refreshAfter", default=9007199254740993)
 
 class Owned(BaseModel):
     id: UUID
@@ -91,6 +92,7 @@ class Folder(BaseModel):
     instrument: Card | Bank | None = None
     origin: dict[str, Any] | None = None
     size: BigInt
+    generation: BigInt | None = Field(default=9007199254740993)
     price: Decimal
     day: date | None = None
     at: time | None = None
