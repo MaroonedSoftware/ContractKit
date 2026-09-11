@@ -1,5 +1,140 @@
 # @contractkit/contractkit-plugin-python
 
+## 0.15.0
+
+### Minor Changes
+
+- 80af3cd: Send and read `bigint` the way the other ContractKit clients do: as a digit string.
+
+    `bigint` mapped to a bare `int`, so `model_dump(mode="json")` put a JSON number on the wire. A ContractKit server's schema for a bigint only accepts a string (`"123"`, or the TypeScript SDK's `"123n"`), so every request carrying one was rejected with "expected bigint, received number". A JSON number also loses precision past 2\*\*53, which is the reason the contract said bigint. On the way in, a `"123n"` failed validation against `int`.
+
+    A new `_scalars.py` defines `BigInt`, an `int` annotated to read a digit string, a `"123n"` string or a JSON number, and to write a plain digit string in JSON mode. Every `bigint` in a model, request body, query param or response now uses it. That matches what the Kotlin, Swift and C# SDKs write, and the server accepts it. In Python the value is still an `int`, and `model_dump()` in Python mode still returns one.
+
+    **Minor rather than patch, because the wire format changes.** Against a ContractKit server nothing that worked stops working, since the number was always rejected. A server that took the OpenAPI output at its word, which documents bigint as `type: integer`, now receives a string.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `3` earlier in this batch.
+
+- f7ab553: Keep model field names clear of Pydantic's `BaseModel` attributes, and of the type names their own class annotates with.
+
+    **`BaseModel` attributes.** A field named `model_config`, or anything in the `model_dump` and `model_validate` families, failed class creation, so the module did not import. A field named after any other `BaseModel` attribute (`json`, `copy`, `schema`, `validate`, `model_copy`...) imported with a `UserWarning` and replaced the method, which breaks under `-W error` and breaks any caller of that method. All of these now get a trailing underscore and an alias: `json_: str = Field(alias="json")`. A model with a `model_` field that collides with nothing (`model_name`) keeps the name and gets `protected_namespaces=()`, since Pydantic before 2.10 warned on any `model_` prefix.
+
+    **Type names.** Pydantic evaluates a model's annotations against the class namespace, so a field that puts a value there under a type's name replaced that type for the whole class. `date: date | None = None` failed to import, and `date: str | None = None` next to `when: date` imported fine and then validated `when` as `None`. Such a field is now `date_` with an alias. A field with no default (`date: date`) puts nothing in the namespace, already works, and keeps its name.
+
+    A model and its `Input` variant always agree on a field's name. Every escaped field still goes on the wire under its contract name.
+
+    **Minor rather than patch, because some attributes are renamed.** A field named after a `BaseModel` method that only warned (`json`, `copy`, `schema`, `validate` and the like) used to be reachable as `seat.json`, and is now `seat.json_`. Every other rename here is of a field whose module could not be imported.
+
+    The client now reads a path param off a `params` model by contract name, `params.model_dump(by_alias=True)['paymentId']`, rather than as an attribute. The attribute name now depends on the model's other fields, which the client generator never sees.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `3` earlier in this batch.
+
+- 0256246: Key the query and header `TypedDict`s by the names that go on the wire.
+
+    The `TypedDict` for an inline `query:` or `headers:` block is passed to httpx as-is, so its keys are what the server receives. They were snake_cased Python names: a call typed correctly against `ListPaymentsHeaders` sent an `x_tenant` header where the server reads `x-tenant`, and a query typed against `pageSize` sent `page_size`, which the router's strict query schema rejects. A keyword such as a `from` query param could not be written in the class syntax at all, and was a `SyntaxError`.
+
+    The `TypedDict`s now use the functional form, whose keys can be any string:
+
+    ```python
+    ListPaymentsHeaders = TypedDict("ListPaymentsHeaders", {
+        "api-key": NotRequired[str],
+        "x-tenant": str,
+    })
+    ```
+
+    The class names and the method signatures that take them are unchanged.
+
+    **Minor rather than patch, because the keys a type checker accepts change.** Code that passes `{"x_tenant": ...}` is now a type error. It never reached the server as `x-tenant`, so it could not have been working, and at runtime the dict is still sent as given.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `3` earlier in this batch.
+
+### Patch Changes
+
+- 9659ace: Send model request bodies under their contract field names, and leave out optionals the caller never set.
+
+    Model bodies were serialized with `body.model_dump(mode="json")`, which uses Python names. Every renamed field went out as `unit_price` instead of `unitPrice` or `refresh_token` instead of `refreshToken`, and a ContractKit server's `z.strictObject` rejects both the unknown key and the missing one. Every absent optional also went out as `null`, which a field declared `.optional()` rejects too.
+
+    The generated call is now `body.model_dump(mode="json", by_alias=True, exclude_unset=True)`, for JSON and urlencoded bodies alike.
+
+    `exclude_unset` rather than `exclude_none`, because a required nullable field (`billTo: Address | null`) must be able to send an explicit `null`. The constructor forces the caller to set such a field, so it always survives `exclude_unset`, while `exclude_none` would drop it and the server would report the key missing. A field with a contract default that the caller leaves alone is omitted too, and the server applies the same default. Fields set by attribute assignment or `model_copy(update=...)` count as set.
+
+    One case this does not cover: passing `None` explicitly to an optional field that is not nullable (`tracking_code=None`) still sends `null`. Leave the argument out instead.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `3` earlier in this batch.
+
+- 5317658: Serialize request bodies that are not a single model: lists, records, tuples and unions of models.
+
+    Only a body that was exactly one model went through `model_dump`. Anything else was handed to httpx as the caller passed it, so `request: { application/json: array(Item) }` failed before the request left the process with `TypeError: Object of type Item is not JSON serializable`. The same happened for `record(string, Item)`, a union of models, and any body holding a `date`, `Decimal` or `UUID` that httpx cannot encode itself.
+
+    Each such operation now gets a module-level `TypeAdapter` for its body type, built once at import:
+
+    ```python
+    _CREATE_PAYMENTS_BODY = TypeAdapter(list[PaymentInput])
+    ...
+    body=_CREATE_PAYMENTS_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)
+    ```
+
+    It uses the same flags as a single model's `model_dump`, so every model inside the body goes out under its contract field names, with unset optionals left out and a required nullable field's `null` kept. JSON and urlencoded bodies both use it. A single-model body keeps `model_dump`, and multipart, text and binary bodies still go out as passed.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `3` earlier in this batch.
+
+- 8f9c5d8: A path param can no longer take a name its method already uses, which produced a module that failed to import or a method that failed when called.
+
+    `body`, `query`, `custom_headers` and `self` are the method's own arguments, so a path param with one of those names was a duplicate-argument `SyntaxError`. `quote` and `str` are the functions the URL expression calls, so a path param named either shadowed it and the call failed. Those names now get a trailing underscore (`body_`, `quote_`), as a keyword already does since 0.14.3. Only the Python argument is renamed; the request path is unchanged.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `3` earlier in this batch.
+
+- 66af2aa: Render literal types as `Literal[...]`, so models with a literal field, and the discriminated unions built from them, can be used.
+
+    `literal("card")` rendered as a bare `"card"`, which as an annotation is a forward reference to a type named `card`. The module imported, and then the first attempt to build or validate the model failed with "`Card` is not fully defined". Every discriminated union member declares its discriminator this way, so no discriminated union worked in the Python SDK. Numeric literals rendered as a bare number, which is not a type either, and `literal(true)` as `true`, which is not Python.
+
+    They are now `Literal["card"]`, `Literal[42]` and `Literal[True]`, with the `Literal` import added wherever one appears.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `3` earlier in this batch.
+
+- 3731d54: Optional fields that need an alias are optional again.
+
+    A field whose Python name differs from its contract name (`processingTime` → `processing_time`, `x-topic` → `x_topic`) is emitted with `Field(alias=...)`. That moved the right-hand side into the `Field` call and dropped the `= None` every other optional field gets, and to Pydantic a `Field` with no default is required. So `processingTime?: duration` became a field every caller had to pass, and every response that omitted it (which is what a ContractKit server does with an absent optional) failed `model_validate`.
+
+    An optional field with no declared default now emits `Field(alias="processingTime", default=None)`. A declared default still wins, and a required nullable field (`billTo: Address | null`) stays required, as the contract says.
+
+    `PYTHON_CODEGEN_VERSION` is bumped to `3`, so a warm `.contractkit/cache` does not keep the old models across the upgrade.
+
+- 0c64336: Validate every JSON response against its declared type, not only a single model or a list of models.
+
+    Any other response went back to the caller as decoded JSON under the declared annotation. A method annotated `-> dict[str, Item]` returned plain dicts. A union of models, or a discriminated union, returned a dict. `array(bigint)` returned the wire strings (`["1", "2n"]`) instead of ints, and `array(date)` or `record(string, decimal)` returned strings instead of `date` and `Decimal`. Nested lists, tuples and lists of unions did the same.
+
+    Each such response type now gets a module-level `TypeAdapter`, built once at import, and the method returns its `validate_python` result:
+
+    ```python
+    _ITEMS_BY_ID_RESPONSE = TypeAdapter(dict[str, Item])
+    ...
+    return _ITEMS_BY_ID_RESPONSE.validate_python(result)
+    ```
+
+    This covers methods that return the body directly, methods that also return response headers, and methods that report their status or content type. A method with several statuses gets one adapter per status (`_MULTI_RESPONSE_202`). Content types of one status that share a type share an adapter, and a second type is named after its mime (`_MIME_RESPONSE_VND_API_JSON`). A list of models now goes through an adapter too, replacing the list comprehension over `model_validate`. A single model keeps `model_validate`. Text, binary and `Any` responses are returned as they arrive.
+
+    A response that does not match its declared type now raises `pydantic.ValidationError`, which a single-model response already did. Before, it came back unchecked.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `3` earlier in this batch.
+
+- f477e39: Stop calling `model_validate` and `model_dump` on contracts that are not Pydantic classes.
+
+    A contract declared as a type rather than an object is emitted as a Python type alias: `contract Tier: enum(free, pro)` becomes `Tier = Literal["free", "pro"]`, and `contract Method: discriminated(by=kind, Card | Bank)` becomes `Method = Annotated[Card | Bank, Field(discriminator="kind")]`. The client treated every capitalised ref as a model class, so a method returning one of these raised `AttributeError: model_validate` on every call, and a request body of `Tier` raised `'str' object has no attribute 'model_dump'` before the request was sent.
+
+    The plugin now works out which contracts are aliases. A request body of one is serialized through a module-level `TypeAdapter`, like any other body that is not a single model:
+
+    ```python
+    _PUT_TIER_BODY = TypeAdapter(Tier)
+    ...
+    body=_PUT_TIER_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)
+    ```
+
+    A response of one is returned without the failing call. A contract that only renames a model (`contract B: A`, emitted as `B = A`) is still a class and keeps `model_validate`.
+
+    The client file's cache fingerprint now includes which referenced contracts are aliases, so changing a contract between an object and a type regenerates the clients that use it.
+
+    No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `3` earlier in this batch.
+
 ## 0.14.3
 
 ### Patch Changes
