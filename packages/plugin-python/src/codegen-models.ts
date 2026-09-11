@@ -142,6 +142,7 @@ function scanTypeImports(type: ContractTypeNode, imports: ImportTracker): void {
             }
             break;
         case 'enum':
+        case 'literal':
             imports.add('typing', 'Literal');
             break;
         case 'union':
@@ -191,8 +192,12 @@ export function renderPyType(type: ContractTypeNode, modelsWithInput?: Set<strin
             return renderScalar(type.name);
         case 'enum':
             return `Literal[${type.values.map(v => JSON.stringify(v)).join(', ')}]`;
-        case 'literal':
-            return typeof type.value === 'string' ? JSON.stringify(type.value) : String(type.value);
+        case 'literal': {
+            // A bare `"card"` annotation is a forward reference to a type named `card`, and `true`
+            // is not Python at all, so a discriminated union's members could never be built.
+            if (typeof type.value === 'boolean') return `Literal[${type.value ? 'True' : 'False'}]`;
+            return `Literal[${typeof type.value === 'string' ? JSON.stringify(type.value) : String(type.value)}]`;
+        }
         case 'array':
             return `list[${renderPyType(type.item, modelsWithInput, forInput)}]`;
         case 'tuple':
