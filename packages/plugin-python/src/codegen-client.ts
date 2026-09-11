@@ -114,19 +114,24 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         }
     }
 
-    // stdlib imports
+    // stdlib imports. Every name a rendered type can use, not just the ones annotations happen to
+    // need: annotations are lazy under `from __future__ import annotations`, but a functional
+    // `TypedDict` evaluates its value types when the module is imported.
     const needsDatetime = referencedModels.has('__datetime__');
     const needsDate = referencedModels.has('__date__');
     const needsTime = referencedModels.has('__time__');
+    const needsTimedelta = referencedModels.has('__timedelta__');
     const needsDecimal = referencedModels.has('__decimal__');
     const needsUUID = referencedModels.has('__uuid__');
     const needsAny = referencedModels.has('__any__');
+    const needsAnnotated = referencedModels.has('__annotated__');
 
-    if (needsDatetime || needsDate || needsTime) {
+    if (needsDatetime || needsDate || needsTime || needsTimedelta) {
         const dtParts: string[] = [];
         if (needsDate) dtParts.push('date');
         if (needsDatetime) dtParts.push('datetime');
         if (needsTime) dtParts.push('time');
+        if (needsTimedelta) dtParts.push('timedelta');
         lines.push(`from datetime import ${dtParts.join(', ')}`);
     }
     if (needsDecimal) lines.push('from decimal import Decimal');
@@ -148,18 +153,21 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         .flatMap(({ op }) => [op.query, op.headers])
         .filter((src): src is Extract<ParamSource, { kind: 'params' }> => src?.kind === 'params' && src.nodes.length > 0);
     const needsTypedDict = opsWithRespHeaders.length > 0 || opsWithResponseDict.length > 0 || inlineRequestDicts.length > 0;
-    const needsLiteral = opsWithResponseDict.length > 0;
+    const needsLiteral = opsWithResponseDict.length > 0 || referencedModels.has('__literal__');
     // `NotRequired` needs Python 3.11; only a request dict with an optional field pulls it in.
     const needsNotRequired = inlineRequestDicts.some(src => src.nodes.some(p => Boolean(p.optional) || p.default !== undefined));
 
-    if (needsAny || needsTypedDict) {
+    if (needsAnnotated || needsAny || needsLiteral || needsTypedDict) {
         const typingImports: string[] = [];
+        if (needsAnnotated) typingImports.push('Annotated');
         if (needsAny) typingImports.push('Any');
         if (needsLiteral) typingImports.push('Literal');
         if (needsNotRequired) typingImports.push('NotRequired');
         if (needsTypedDict) typingImports.push('TypedDict');
         lines.push(`from typing import ${typingImports.join(', ')}`);
     }
+    // A discriminated union renders as `Annotated[A | B, Field(discriminator=...)]`.
+    if (needsAnnotated) lines.push('from pydantic import Field');
     lines.push('from ._base_client import BaseClient, SdkError  # noqa: F401');
 
     // Model imports grouped by module
@@ -206,6 +214,11 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     // Per-method request TypedDicts for inline `query:` and `headers:` blocks. A bare `dict`
     // told a type checker nothing about what the request accepts, while the router has always
     // validated these fields — so a typo in a key was a runtime 400 with nothing to catch it.
+    //
+    // The dict goes to httpx as-is, so its keys are the names on the wire. That rules out the
+    // class syntax, whose keys have to be identifiers: `api-key` cannot be one and `from` is a
+    // keyword. Snake-casing them instead typed the dict to send `api_key`, which the server
+    // reads as a different header, and `page_size`, which a strict query schema rejects.
     for (const { route, op } of publicOps) {
         const base = snakeToPascal(deriveMethodName(op, route));
         for (const { source, suffix } of [
@@ -213,15 +226,17 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
             { source: op.headers, suffix: 'Headers' },
         ]) {
             if (source?.kind !== 'params' || source.nodes.length === 0) continue;
+            const name = `${base}${suffix}`;
             lines.push('');
             lines.push('');
-            lines.push(`class ${base}${suffix}(TypedDict):`);
+            lines.push(`${name} = TypedDict(${JSON.stringify(name)}, {`);
             for (const p of source.nodes) {
                 // `NotRequired` rather than `total=False`, so a required field stays required.
                 const optional = Boolean(p.optional) || p.default !== undefined;
                 const type = renderPyType(p.type, modelsWithInput, true);
-                lines.push(`    ${toPythonFieldName(p.name)}: ${optional ? `NotRequired[${type}]` : type}  # ${p.name}`);
+                lines.push(`    ${JSON.stringify(p.name)}: ${optional ? `NotRequired[${type}]` : type},`);
             }
+            lines.push('})');
         }
     }
 
@@ -854,6 +869,9 @@ function collectTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWithInp
                 case 'uuid':
                     out.add('__uuid__');
                     break;
+                case 'duration':
+                    out.add('__timedelta__');
+                    break;
                 case 'unknown':
                 case 'json':
                 case 'object':
@@ -882,7 +900,11 @@ function collectTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWithInp
             type.members.forEach(m => collectTypeRefs(m, out, modelsWithInput, forInput));
             break;
         case 'discriminatedUnion':
+            out.add('__annotated__');
             type.members.forEach(m => collectTypeRefs(m, out, modelsWithInput, forInput));
+            break;
+        case 'enum':
+            out.add('__literal__');
             break;
         case 'intersection':
             out.add('__any__');

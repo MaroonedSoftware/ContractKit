@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 from urllib.parse import quote
-from typing import NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict
 from ._base_client import BaseClient, SdkError  # noqa: F401
 from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm, UploadReceiptForm
 
@@ -16,14 +16,17 @@ class CreatePaymentHeaders(TypedDict, total=False):
     x_expires_after: datetime  # x-expires-after (optional)
 
 
-class ListPaymentsQuery(TypedDict):
-    limit: NotRequired[int]  # limit
-    cursor: str  # cursor
+ListPaymentsQuery = TypedDict("ListPaymentsQuery", {
+    "limit": NotRequired[int],
+    "cursor": str,
+    "status": NotRequired[Literal["pending", "completed", "failed"]],
+})
 
 
-class ListPaymentsHeaders(TypedDict):
-    api_key: NotRequired[str]  # api-key
-    x_tenant: str  # x-tenant
+ListPaymentsHeaders = TypedDict("ListPaymentsHeaders", {
+    "api-key": NotRequired[str],
+    "x-tenant": str,
+})
 
 
 class BillingClient(BaseClient):

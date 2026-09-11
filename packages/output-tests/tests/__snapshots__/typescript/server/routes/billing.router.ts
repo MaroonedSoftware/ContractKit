@@ -41,6 +41,7 @@ BillingRouter.get('/payments', requirePolicy(), async ctx => {
         z.strictObject({
             limit: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()).default(20),
             cursor: z.string(),
+            status: z.enum(["pending", "completed", "failed"]).optional(),
         }),
     );
 
@@ -62,7 +63,7 @@ BillingRouter.get('/payments', requirePolicy(), async ctx => {
 
 /**
  * fetch one payment
- * from [billing.ck](../../contracts/billing.ck#L98)
+ * from [billing.ck](../../contracts/billing.ck#L99)
 */
 BillingRouter.get('/payments/:paymentId', requirePolicy(), async ctx => {
     const { paymentId } = await parseAndValidate(
@@ -82,7 +83,7 @@ BillingRouter.get('/payments/:paymentId', requirePolicy(), async ctx => {
 
 /**
  * update a payment with form data
- * from [billing.ck](../../contracts/billing.ck#L107)
+ * from [billing.ck](../../contracts/billing.ck#L108)
 */
 BillingRouter.post('/payments/:paymentId', requirePolicy(), bodyParserMiddleware(['urlencoded']), async ctx => {
     const { paymentId } = await parseAndValidate(
@@ -102,7 +103,7 @@ BillingRouter.post('/payments/:paymentId', requirePolicy(), bodyParserMiddleware
 
 /**
  * delete a payment — declares only a documented error status
- * from [billing.ck](../../contracts/billing.ck#L118)
+ * from [billing.ck](../../contracts/billing.ck#L119)
 */
 BillingRouter.delete('/payments/:paymentId', requirePolicy(), async ctx => {
     const { paymentId } = await parseAndValidate(
@@ -120,7 +121,7 @@ BillingRouter.delete('/payments/:paymentId', requirePolicy(), async ctx => {
 
 /**
  * upload a receipt image
- * from [billing.ck](../../contracts/billing.ck#L132)
+ * from [billing.ck](../../contracts/billing.ck#L133)
 */
 BillingRouter.post('/payments/:paymentId/receipt', requirePolicy(), bodyParserMiddleware(['multipart']), async ctx => {
     const { paymentId } = await parseAndValidate(
@@ -142,7 +143,7 @@ BillingRouter.post('/payments/:paymentId/receipt', requirePolicy(), bodyParserMi
 
 /**
  * look up a refund by its originating payment
- * from [billing.ck](../../contracts/billing.ck#L147)
+ * from [billing.ck](../../contracts/billing.ck#L148)
  * @deprecated
 */
 BillingRouter.get('/refunds/:paymentId', requirePolicy(), async ctx => {
@@ -158,7 +159,7 @@ BillingRouter.get('/refunds/:paymentId', requirePolicy(), async ctx => {
 
 /**
  * store a credential
- * from [billing.ck](../../contracts/billing.ck#L161)
+ * from [billing.ck](../../contracts/billing.ck#L162)
 */
 BillingRouter.post('/credentials', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, AdminCredentialInput);
@@ -173,7 +174,7 @@ BillingRouter.post('/credentials', requirePolicy(), bodyParserMiddleware(['json'
 
 /**
  * open a session
- * from [billing.ck](../../contracts/billing.ck#L174)
+ * from [billing.ck](../../contracts/billing.ck#L175)
 */
 BillingRouter.post('/sessions', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, SessionInput);

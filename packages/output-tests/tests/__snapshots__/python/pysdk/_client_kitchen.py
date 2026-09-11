@@ -14,14 +14,16 @@ class GetFolder200Headers(TypedDict, total=False):
     x_when: datetime  # x-when (optional)
 
 
-class GetFolderQuery(TypedDict):
-    depth: NotRequired[int]  # depth
-    tags: NotRequired[list[str]]  # tags
+GetFolderQuery = TypedDict("GetFolderQuery", {
+    "depth": NotRequired[int],
+    "tags": NotRequired[list[str]],
+})
 
 
-class GetFolderHeaders(TypedDict):
-    x_trace: str  # x-trace
-    x_opt: NotRequired[int]  # x-opt
+GetFolderHeaders = TypedDict("GetFolderHeaders", {
+    "x-trace": str,
+    "x-opt": NotRequired[int],
+})
 
 
 class GetFolder200Response(TypedDict):

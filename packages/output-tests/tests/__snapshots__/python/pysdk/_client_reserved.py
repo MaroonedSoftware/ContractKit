@@ -11,9 +11,10 @@ class GetSeatHeaders(TypedDict, total=False):
     from_: str  # from (optional)
 
 
-class GetSeatQuery(TypedDict):
-    from_: NotRequired[str]  # from
-    page_size: NotRequired[int]  # pageSize
+GetSeatQuery = TypedDict("GetSeatQuery", {
+    "from": NotRequired[str],
+    "pageSize": NotRequired[int],
+})
 
 
 class ReservedClient(BaseClient):

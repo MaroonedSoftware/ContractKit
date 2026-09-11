@@ -15,7 +15,7 @@ SDK method: `listPayments`
 ## Attributes
 
 <details>
-<summary>Attributes (4)</summary>
+<summary>Attributes (5)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -23,6 +23,7 @@ SDK method: `listPayments`
 | `x-tenant` | `string` | Yes |  |
 | `api-key` | `string` | No |  |
 | `limit` | `number` | No |  |
+| `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
 
 </details>
 

@@ -119,15 +119,18 @@ public struct CreatePaymentResult: Equatable, Sendable {
 public struct ListPaymentsQuery: Encodable, Equatable, Sendable {
     public var limit: Int?
     public var cursor: String
+    public var status: JSONValue?
 
-    public init(limit: Int? = nil, cursor: String) {
+    public init(limit: Int? = nil, cursor: String, status: JSONValue? = nil) {
         self.limit = limit
         self.cursor = cursor
+        self.status = status
     }
 
     private enum CodingKeys: String, CodingKey {
         case limit = "limit"
         case cursor = "cursor"
+        case status = "status"
     }
 }
 
