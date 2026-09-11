@@ -1118,6 +1118,8 @@ function collectMcpOutput(
     const includeInternal = config.includeInternal ?? false;
 
     const modelOutPaths = resolveMcpModelOutPaths(fullConfig, rootDir, inputs.contractRoots, commonRoot, modelsWithInput, modelsWithOutput);
+    // Which tool results go out through `bigIntReplacer`; cross-file, like the router's copy.
+    const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
 
     // ── Per-op-root tool-handler units (only files with MCP-exposed ops) ──
     const entries: { outPath: string; registerFn: string }[] = [];
@@ -1133,6 +1135,7 @@ function collectMcpOutput(
             outPathSlice: sliceOutPathMap(refs, modelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
+            modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
             servicePathTemplate: config.servicePathTemplate ?? null,
             includeInternal,
             sub: subConfigKey,
@@ -1150,6 +1153,7 @@ function collectMcpOutput(
                         modelsWithOutput,
                         servicePathTemplate: config.servicePathTemplate,
                         includeInternal,
+                        modelsWithBigInt,
                     }),
                 },
             ],
