@@ -80,6 +80,25 @@ describe('schemaToTypeNode', () => {
             expect(result).toEqual({ kind: 'scalar', name: 'bigint' });
         });
 
+        it('converts string with format bigint → bigint, the form plugin-docs documents it as', () => {
+            const result = schemaToTypeNode({ type: 'string', format: 'bigint', pattern: '^-?\\d+n?$' }, makeCtx());
+            // The pattern is implied by the scalar, so it does not come back as a regex modifier.
+            expect(result).toEqual({ kind: 'scalar', name: 'bigint' });
+        });
+
+        it('restores bigint bounds from their extensions as exact BigInts', () => {
+            const result = schemaToTypeNode(
+                { type: 'string', format: 'bigint', 'x-contractkit-min': '-9007199254740993', 'x-contractkit-max': '9007199254740993' },
+                makeCtx(),
+            );
+            expect(result).toEqual({ kind: 'scalar', name: 'bigint', min: -9007199254740993n, max: 9007199254740993n });
+        });
+
+        it('converts string with format int64 → bigint, the digit-string convention some specs use', () => {
+            const result = schemaToTypeNode({ type: 'string', format: 'int64' }, makeCtx());
+            expect(result).toEqual({ kind: 'scalar', name: 'bigint' });
+        });
+
         it('converts integer with min/max', () => {
             const result = schemaToTypeNode({ type: 'integer', minimum: 0, maximum: 100 }, makeCtx());
             expect(result).toEqual({ kind: 'scalar', name: 'int', min: 0, max: 100 });
@@ -295,6 +314,24 @@ describe('schemasToModels', () => {
         const bioField = user.fields.find(f => f.name === 'bio')!;
         expect(bioField.optional).toBe(true);
         expect(bioField.description).toBe('User bio');
+    });
+
+    it('reads a bigint default back from its digit string, as the number a .ck source spells it', () => {
+        const schemas = {
+            Order: {
+                type: 'object',
+                properties: {
+                    quantity: { type: 'string', format: 'bigint', pattern: '^-?\\d+n?$', default: '5' },
+                    note: { type: 'string', default: '5' },
+                },
+            },
+        };
+        const ctx = makeCtx({ namedSchemas: schemas as Record<string, NormalizedSchema> });
+        const [order] = schemasToModels(schemas as Record<string, NormalizedSchema>, ctx);
+
+        expect(order!.fields.find(f => f.name === 'quantity')!.default).toBe(5);
+        // Only a bigint's default changes: a plain string that happens to hold digits stays a string.
+        expect(order!.fields.find(f => f.name === 'note')!.default).toBe('5');
     });
 
     it('converts type aliases', () => {
