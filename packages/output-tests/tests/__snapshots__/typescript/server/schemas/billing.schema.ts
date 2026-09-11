@@ -109,6 +109,28 @@ export const TenantHeaders = z.strictObject({
 export type TenantHeaders = z.infer<typeof TenantHeaders>;
 
 /**
+ * Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
+ * its own, so the router applies the block's object mode to the object inside it.
+ * generated from [SnakeFilter](../../contracts/billing.ck#L229)
+*/
+export const SnakeFilter = z.strictObject({
+    from_date: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })).nullish(),
+}).transform(data => ({
+    ...(data.from_date != null ? { fromDate: data.from_date } : {}),
+}));
+export type SnakeFilter = z.output<typeof SnakeFilter>;
+
+/**
+ * generated from [SnakeHeaders](../../contracts/billing.ck#L233)
+*/
+export const SnakeHeaders = z.strictObject({
+    tenant_id: z.string().nullish(),
+}).transform(data => ({
+    ...(data.tenant_id != null ? { tenantId: data.tenant_id } : {}),
+}));
+export type SnakeHeaders = z.output<typeof SnakeHeaders>;
+
+/**
  * Extends a writeonly base and is itself writeonly
  * generated from [AdminCredential](../../contracts/billing.ck#L28)
 */

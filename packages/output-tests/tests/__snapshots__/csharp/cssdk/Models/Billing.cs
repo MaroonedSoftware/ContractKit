@@ -142,6 +142,24 @@ public sealed record TenantHeaders
     public string? XCorrelationId { get; init; }
 }
 
+/// <summary>
+/// Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
+/// its own, so the router applies the block's object mode to the object inside it.
+/// </summary>
+public sealed record SnakeFilter
+{
+    [JsonPropertyName("from_date")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateOnly? FromDate { get; init; }
+}
+
+public sealed record SnakeHeaders
+{
+    [JsonPropertyName("tenant_id")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TenantId { get; init; }
+}
+
 /// <summary>Extends a writeonly base and is itself writeonly</summary>
 public sealed record AdminCredential
 {

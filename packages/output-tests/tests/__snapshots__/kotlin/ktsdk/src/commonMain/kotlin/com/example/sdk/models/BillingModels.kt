@@ -9,6 +9,7 @@ import kotlin.time.Duration
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlinx.datetime.LocalDate
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -90,6 +91,20 @@ data class PaymentFilter(
 data class TenantHeaders(
     @SerialName("x-tenant") val xTenant: String,
     val xCorrelationId: String? = null,
+)
+
+/**
+ * Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
+ * its own, so the router applies the block's object mode to the object inside it.
+ */
+@Serializable
+data class SnakeFilter(
+    @SerialName("from_date") val fromDate: LocalDate? = null,
+)
+
+@Serializable
+data class SnakeHeaders(
+    @SerialName("tenant_id") val tenantId: String? = null,
 )
 
 /** Extends a writeonly base and is itself writeonly */

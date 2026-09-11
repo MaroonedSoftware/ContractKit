@@ -11,7 +11,7 @@
 - [Current service status](#current-service-status)
 
 <details>
-<summary><strong>Billing</strong> (11)</summary>
+<summary><strong>Billing</strong> (12)</summary>
 
 - [Create a payment](#create-a-payment)
 - [List payments](#list-payments)
@@ -24,6 +24,7 @@
 - [Look up a refund by its originating payment](#look-up-a-refund-by-its-originating-payment)
 - [Store a credential](#store-a-credential)
 - [Open a session](#open-a-session)
+- [Search payments with snake_case filter and header models](#search-payments-with-snake-case-filter-and-header-models)
 
 </details>
 
@@ -49,7 +50,7 @@
 - [Heartbeat](#heartbeat)
 
 <details>
-<summary><strong>Billing</strong> (9)</summary>
+<summary><strong>Billing</strong> (11)</summary>
 
 - [Payment](#payment)
 - [Credential](#credential)
@@ -60,6 +61,8 @@
 - [UploadReceiptForm](#uploadreceiptform)
 - [PaymentFilter](#paymentfilter)
 - [TenantHeaders](#tenantheaders)
+- [SnakeFilter](#snakefilter)
+- [SnakeHeaders](#snakeheaders)
 
 </details>
 
@@ -495,6 +498,32 @@ Accepts a [Session](#session) object.
 `200 OK` — Returns a [Session](#session) object.
 
 
+---
+
+#### Search payments with snake_case filter and header models
+
+**`GET`** `/payments/by-date`
+
+> [!NOTE]
+> SDK method: `searchPaymentsByDate`
+
+##### Attributes
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `fromDate` | `string` | No |  |
+| `tenantId` | `string` | No |  |
+
+</details>
+
+##### Response
+
+`204 No Content`
+
+
 ### Kitchen
 
 #### Several statuses, and two content types on one of them
@@ -873,6 +902,31 @@ Extends [`Credential`](#credential)
 | --- | --- | --- | --- |
 | `x-tenant` | `string` | Yes |  |
 | `xCorrelationId` | `string` | No |  |
+
+</details>
+
+#### SnakeFilter
+
+> Query params and headers declared as format() models. Each schema is a pipe with no `.strict()` of
+> its own, so the router applies the block's object mode to the object inside it.
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `fromDate` | `string` | No |  |
+
+</details>
+
+#### SnakeHeaders
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `tenantId` | `string` | No |  |
 
 </details>
 

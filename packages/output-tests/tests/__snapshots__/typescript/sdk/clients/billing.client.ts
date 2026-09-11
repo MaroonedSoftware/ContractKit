@@ -1,6 +1,6 @@
 import type { SdkFetch } from '../sdk-options.js';
 import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString, buildHeaders } from '../sdk-options.js';
-import type { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, TenantHeaders, UpdatePaymentForm } from '../types/billing.types.js';
+import type { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, SnakeFilterWireInput, SnakeHeadersWireInput, TenantHeaders, UpdatePaymentForm } from '../types/billing.types.js';
 import { revivePayment } from '../types/billing.types.js';
 import { DateTime } from 'luxon';
 
@@ -105,5 +105,14 @@ export class BillingClient {
             body: JSON.stringify(body, bigIntReplacer),
         });
         return await parseJson<Session>(result);
+    }
+
+    /** @description search payments with snake_case filter and header models */
+    async searchPaymentsByDate(query?: SnakeFilterWireInput, customHeaders?: SnakeHeadersWireInput): Promise<void> {
+        const qs = buildQueryString({ ...query, from_date: query?.from_date?.toFormat('yyyy-MM-dd') });
+        await this.fetch(`/payments/by-date${qs}`, {
+            method: 'GET',
+            headers: buildHeaders(customHeaders),
+        });
     }
 }

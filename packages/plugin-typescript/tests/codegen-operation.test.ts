@@ -691,12 +691,13 @@ describe('generateOperation', () => {
                 expect(output).not.toContain('Filter.shape.ids');
             });
 
-            it('leaves a format() model alone, whose schema is a pipe with no .shape to read', () => {
+            it('leaves the array fields of a format() model alone, whose schema is a pipe with no .shape to read', () => {
                 const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Snake' })])]);
                 const output = generateOp(root, {
                     models: models(model('Snake', [field('tagIds', arrayType(scalarType('string')))], { inputCase: 'snake' })),
                 });
-                expect(output).toContain('parseAndValidate(ctx.query, Snake.strict())');
+                expect(output).toContain('parseAndValidate(ctx.query, Snake.in.strict().pipe(Snake.out))');
+                expect(output).not.toContain('.shape');
             });
 
             it('leaves the model schema as-is when no models are supplied', () => {
@@ -863,6 +864,94 @@ describe('generateOperation', () => {
             ]);
             const output = generateOp(root);
             expect(output).toContain('z.object({');
+        });
+    });
+
+    // ─── A format() model as query, headers or params ───────────
+
+    // A format() model compiles to `z.strictObject({...}).transform(...)`, a ZodPipe, which has no
+    // `.strict()` or `.strip()`. The mode goes on the object inside the pipe instead, and the result
+    // is piped back through the model's own transform.
+    describe('a format() model as query, headers or params', () => {
+        const models = (...ms: ModelNode[]) => new Map(ms.map(m => [m.name, m]));
+        const snake = (name: string, overrides?: Partial<ModelNode>) =>
+            model(name, [field('fromDate', scalarType('date'), { optional: true })], { inputCase: 'snake', ...overrides });
+
+        it('applies the query mode inside the pipe', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query: 'SnakeFilter' })])]);
+            const output = generateOp(root, { models: models(snake('SnakeFilter')) });
+            expect(output).toContain('const query = await parseAndValidate(ctx.query, SnakeFilter.in.strict().pipe(SnakeFilter.out));');
+            expect(output).not.toContain('SnakeFilter.strict()');
+        });
+
+        it('applies an explicit query mode inside the pipe', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query: 'SnakeFilter', queryMode: 'loose' })])]);
+            const output = generateOp(root, { models: models(snake('SnakeFilter')) });
+            expect(output).toContain('parseAndValidate(ctx.query, SnakeFilter.in.loose().pipe(SnakeFilter.out))');
+        });
+
+        it("strips a headers model's undeclared headers, where the model's own strict object would reject them", () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { headers: 'SnakeHeaders' })])]);
+            const output = generateOp(root, { models: models(snake('SnakeHeaders')) });
+            expect(output).toContain('const headers = await parseAndValidate(ctx.headers, SnakeHeaders.in.strip().pipe(SnakeHeaders.out));');
+        });
+
+        it('applies an explicit headers mode inside the pipe', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { headers: 'SnakeHeaders', headersMode: 'strict' })])]);
+            const output = generateOp(root, { models: models(snake('SnakeHeaders')) });
+            expect(output).toContain('parseAndValidate(ctx.headers, SnakeHeaders.in.strict().pipe(SnakeHeaders.out))');
+        });
+
+        it('applies the params mode inside the pipe', () => {
+            const root = opRoot([opRoute('/reports/{reportId}', [opOperation('get')], 'SnakeRef')]);
+            const output = generateOp(root, { models: models(model('SnakeRef', [field('reportId', scalarType('uuid'))], { inputCase: 'snake' })) });
+            expect(output).toContain('const params = await parseAndValidate(ctx.params, SnakeRef.in.strict().pipe(SnakeRef.out));');
+        });
+
+        it('pipes the Input variant of a model split for readonly fields', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query: 'SnakeFilter' })])]);
+            const filter = model(
+                'SnakeFilter',
+                [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('fromDate', scalarType('date'), { optional: true })],
+                { inputCase: 'snake' },
+            );
+            const output = generateOp(root, { models: models(filter), modelsWithInput: new Set(['SnakeFilter']) });
+            expect(output).toContain('parseAndValidate(ctx.query, SnakeFilterInput.in.strict().pipe(SnakeFilterInput.out))');
+        });
+
+        it('treats a model that inherits format() from its base as a pipe', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query: 'ChildFilter' })])]);
+            const child = model('ChildFilter', [field('toDate', scalarType('date'), { optional: true })], { bases: ['SnakeFilter'] });
+            const output = generateOp(root, { models: models(snake('SnakeFilter'), child) });
+            expect(output).toContain('parseAndValidate(ctx.query, ChildFilter.in.strict().pipe(ChildFilter.out))');
+        });
+
+        it('treats an alias of a format() model as a pipe', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query: 'Alias' })])]);
+            const output = generateOp(root, { models: models(snake('SnakeFilter'), model('Alias', [], { type: refType('SnakeFilter') })) });
+            expect(output).toContain('parseAndValidate(ctx.query, Alias.in.strict().pipe(Alias.out))');
+        });
+
+        it('treats a format(output=) model as a pipe too', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query: 'Outbound' })])]);
+            const output = generateOp(root, {
+                models: models(model('Outbound', [field('fromDate', scalarType('date'))], { outputCase: 'snake' })),
+            });
+            expect(output).toContain('parseAndValidate(ctx.query, Outbound.in.strict().pipe(Outbound.out))');
+        });
+
+        it('goes through the adapter, reading request.query and request.headers on Fastify', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query: 'SnakeFilter', headers: 'SnakeHeaders' })])]);
+            const output = generateOp(root, { framework: FASTIFY_SERVER_FRAMEWORK, models: models(snake('SnakeFilter'), snake('SnakeHeaders')) });
+            expect(output).toContain('const query = await parseAndValidate(request.query, SnakeFilter.in.strict().pipe(SnakeFilter.out));');
+            expect(output).toContain('const headers = await parseAndValidate(request.headers, SnakeHeaders.in.strip().pipe(SnakeHeaders.out));');
+        });
+
+        it('keeps the mode method on the schema of a model without format()', () => {
+            const root = opRoot([opRoute('/reports', [opOperation('get', { query: 'Plain', headers: 'Plain' })])]);
+            const output = generateOp(root, { models: models(model('Plain', [field('since', scalarType('date'), { optional: true })])) });
+            expect(output).toContain('parseAndValidate(ctx.query, Plain.strict())');
+            expect(output).toContain('parseAndValidate(ctx.headers, Plain.strip())');
         });
     });
 
