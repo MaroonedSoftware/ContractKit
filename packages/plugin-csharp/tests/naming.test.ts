@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     CSHARP_KEYWORDS,
+    bindCSharpParameterNames,
     deriveCSharpFileBase,
     escapeCSharpIdentifier,
     escapeXml,
@@ -56,6 +57,31 @@ describe('toCSharpParameterName', () => {
     it('escapes a name that lands on a keyword, which camelCase regularly does', () => {
         expect(toCSharpParameterName('event')).toBe('@event');
         expect(toCSharpParameterName('params')).toBe('@params');
+    });
+});
+
+describe('bindCSharpParameterNames', () => {
+    it('converts and escapes like toCSharpParameterName when nothing collides', () => {
+        expect(bindCSharpParameterNames(['invoice-id', 'class'], [])).toEqual(
+            new Map([
+                ['invoice-id', 'invoiceId'],
+                ['class', '@class'],
+            ]),
+        );
+    });
+
+    it('suffixes a name that lands on one already taken', () => {
+        expect(bindCSharpParameterNames(['body'], ['body']).get('body')).toBe('body_');
+    });
+
+    it('compares the unescaped spelling, since @class and class are one identifier', () => {
+        expect(bindCSharpParameterNames(['class'], ['class']).get('class')).toBe('class_');
+    });
+
+    it('keeps two names distinct when a suffix would collapse them onto one', () => {
+        const bindings = bindCSharpParameterNames(['body', 'body_'], ['body']);
+        expect(bindings.get('body')).toBe('body_');
+        expect(bindings.get('body_')).toBe('body__');
     });
 });
 
