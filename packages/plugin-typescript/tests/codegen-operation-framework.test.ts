@@ -8,6 +8,7 @@ import {
     arrayType,
     inlineObjectType,
     field,
+    model,
     opParam,
     opRequest,
     opMultiRequest,
@@ -223,6 +224,23 @@ describe('generateOp — Fastify', () => {
         const statusSwitch = output.slice(output.indexOf('switch (result.status) {'));
         expect(statusSwitch).toContain('case 202:');
         expect(statusSwitch).not.toContain('break;');
+    });
+
+    it('indents every line of a multi-line query schema inside the plugin body', () => {
+        // The plugin indents a handler element by element, so a schema handed over as one string with
+        // newlines in it would keep its continuation lines at the Koa depth.
+        const root = opRoot([opRoute('/items', [opOperation('get', { query: 'Filter' })])]);
+        const models = new Map([['Filter', model('Filter', [field('tags', arrayType(scalarType('string')))])]]);
+        expect(generateOp(root, { framework: FASTIFY_SERVER_FRAMEWORK, models })).toContain(
+            [
+                '        const query = await parseAndValidate(',
+                '            request.query,',
+                '            Filter.extend({',
+                "                tags: z.preprocess((v) => typeof v === 'string' ? v.split(',') : v, Filter.shape.tags),",
+                '            }).strict(),',
+                '        );',
+            ].join('\n'),
+        );
     });
 });
 

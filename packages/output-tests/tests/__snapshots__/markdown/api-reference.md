@@ -284,13 +284,15 @@ Response headers:
 ##### Attributes
 
 <details>
-<summary>Attributes (3)</summary>
+<summary>Attributes (5)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `x-tenant` | `string` | Yes |  |
+| `ids` | `string[]` | No |  |
 | `since` | `string` | No |  |
 | `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
+| `xCorrelationId` | `string` | No |  |
 
 </details>
 
@@ -849,25 +851,27 @@ Extends [`Credential`](#credential)
 > Query params declared as a model, referenced via `query: PaymentFilter`
 
 <details>
-<summary>Attributes (2)</summary>
+<summary>Attributes (3)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
 | `since` | `string` | No |  |
+| `ids` | `string[]` | No |  |
 
 </details>
 
 #### TenantHeaders
 
-> Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+> Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.
 
 <details>
-<summary>Attributes (1)</summary>
+<summary>Attributes (2)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `x-tenant` | `string` | Yes |  |
+| `xCorrelationId` | `string` | No |  |
 
 </details>
 
