@@ -1,5 +1,49 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.38.5
+
+### Patch Changes
+
+- 20534bb: A `format()` contract no longer loses the fields of its bases. `contract Base: { baseField: string }`
+  plus `contract format(input=snake) Child: Base & { childField: string }` generated a `Child` schema
+  with only `child_field`, so a request carrying `base_field` was rejected as an unrecognized key and one
+  missing it was accepted. The schema was only flattened when the _first_ base had a `format()` of its
+  own, and only through bases in the same file.
+
+    A contract whose keys a `format()` renames, its own or a base's, is now always one flat schema with
+    every base's fields, keyed by that casing, including bases declared in another `.ck` file. A
+    contract whose second base carried the `format()` also compiled to `A.extend(B.shape)` on a pipe,
+    which failed to typecheck, and is flattened the same way. The SDK types follow suit: `XOutput`,
+    `XWireInput` and the response revivers carry the inherited fields in the right casing. External bases
+    beyond the first are now imported wherever a schema or interface extends them.
+
+- cb5f318: `format()` now applies to a contract with `readonly` or `writeonly` fields. For
+  `contract format(input=snake) Split: { id: readonly uuid, userName: string }`, both `Split` and
+  `SplitInput` were plain objects with camelCase keys and no transform, so the server rejected the
+  `user_name` that the Swift, Kotlin and C# SDKs send for the Input twin. Both schemas now carry the same
+  key transform a single-schema contract does: `SplitInput` parses the input casing, and `SplitOutput`
+  is the output casing. Their types follow the single-schema rule, `z.input` when only `format(output=)`
+  is set and `z.output` otherwise. The TypeScript SDK's `SplitWireInput` now sends the input casing to
+  match. Response validation already skipped these contracts, since a transformed schema cannot re-parse
+  its own output.
+- 5db4d03: An MCP tool whose operation returns a `bigint` no longer fails. The generated `handle` called a bare `JSON.stringify(result)` for its text content, which throws on a `bigint`, and passed the raw result as `structuredContent`, which the dispatcher serializes again and would throw on too. A tool whose result can reach a `bigint`, through any emitted body or response header, now stringifies it once with `bigIntReplacer` and hands `structuredContent` the parsed-back JSON, so both carry `"123n"`, the same form the HTTP route sends. Tools with no `bigint` in their result are unchanged.
+- f8cfa94: An SDK request that carries a `format(input=…)` contract now reaches the server in the casing the
+  server parses. For `contract format(input=pascal, output=snake) Token`, `mint(body: Token)` asked the
+  caller for `access_token`, the post-transform shape, and sent it unchanged. The server's schema only
+  accepts `AccessToken`, so every such request failed validation. The same happened with a
+  `format(input=snake)` contract, which the SDK sent in camelCase, and with any contract nesting one.
+
+    SDK type files now declare a `TokenWireInput` interface with the keys the server parses, at every
+    level, and request bodies, query objects and header objects are typed with it. Responses keep
+    `TokenOutput`. In a Zod SDK this also fixes a plain contract nesting a `format(output=…)` one, whose
+    nested keys were typed in the output casing. Server types are unchanged.
+
+- eb84453: A generated router can now return a `bigint`. Koa's respond step and Fastify's default serializer both hand an object body to a bare `JSON.stringify`, which throws `TypeError: Do not know how to serialize a BigInt`, so every route whose response model carried one answered 500.
+
+    A JSON response whose type reaches a `bigint`, directly or through a contract in any `.ck` file, is now serialized with ServerKit's `bigIntReplacer` from `@maroonedsoftware/utilities`: Koa writes `ctx.body = JSON.stringify(body, bigIntReplacer)`, and Fastify sets a per-reply `reply.serializer(...)`, which keeps the payload an object through `preSerialization` hooks. The value goes out as `"123n"`, which the TypeScript SDK's reviver reads back and the Kotlin, Swift, C# and Python SDKs read by dropping the `n`. A status declaring a bigint JSON body next to another content type branches on `result.contentType`, so the other body is written as before.
+
+    A server whose contracts put a `bigint` in a response now imports `@maroonedsoftware/utilities` and needs it as a dependency. Routes with no `bigint` below them generate exactly what they did. `TYPESCRIPT_CODEGEN_VERSION` is bumped to `3` so cached routers regenerate.
+
 ## 0.38.4
 
 ### Patch Changes
