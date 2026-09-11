@@ -82,6 +82,17 @@ export function buildQueryString(query: object | undefined): string {
     return qs ? `?${qs}` : '';
 }
 
+export function buildHeaders(headers: object | undefined): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (headers) {
+        for (const [k, v] of Object.entries(headers)) {
+            if (v === undefined || v === null) continue;
+            out[k] = Array.isArray(v) ? v.map(String).join(', ') : String(v);
+        }
+    }
+    return out;
+}
+
 /**
  * Read a JSON response body.
  *

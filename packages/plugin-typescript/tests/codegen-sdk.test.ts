@@ -457,7 +457,7 @@ describe('generateSdk', () => {
             const out = generateSdk(root);
             // Header values arrive as strings; the shape is typed from the contract, so without
             // coercion every one of these is a TS2322 in one direction or the other.
-            expect(out).toContain('xCount: Number(result.headers.get(\'x-count\'))');
+            expect(out).toContain("xCount: Number(result.headers.get('x-count'))");
             expect(out).toContain("xRatio: result.headers.get('x-ratio') === null ? undefined : Number(result.headers.get('x-ratio'))");
             expect(out).toContain("xCached: result.headers.get('x-cached') === 'true'");
             expect(out).toContain("xFresh: result.headers.get('x-fresh') === null ? undefined : result.headers.get('x-fresh') === 'true'");
@@ -467,7 +467,9 @@ describe('generateSdk', () => {
             expect(out).toContain("xPrev: result.headers.get('x-prev') === null ? undefined : BigInt(result.headers.get('x-prev')!)");
             // Temporals are Luxon objects since the SDK started reviving them, so a raw string no
             // longer satisfies the shape `renderOutputTsType` produces.
-            expect(out).toContain("xExpires: result.headers.get('x-expires') === null ? undefined : DateTime.fromISO(result.headers.get('x-expires')!)");
+            expect(out).toContain(
+                "xExpires: result.headers.get('x-expires') === null ? undefined : DateTime.fromISO(result.headers.get('x-expires')!)",
+            );
             expect(out).toContain("xDay: DateTime.fromFormat(result.headers.get('x-day')!, 'yyyy-MM-dd')");
         });
 
@@ -887,9 +889,7 @@ describe('generateSdk', () => {
         });
 
         it('tells the caller which mime came back when a status declares several', () => {
-            const root = opRoot([
-                opRoute('/art', [opOperation('get', { sdk: 'getArt', responses: [opResponseMulti(200, artBodies)] })]),
-            ]);
+            const root = opRoot([opRoute('/art', [opOperation('get', { sdk: 'getArt', responses: [opResponseMulti(200, artBodies)] })])]);
             const out = generateSdk(root, sharedOptions);
             expect(out).toContain("async getArt(): Promise<{ contentType: 'image/png' | 'image/jpeg'; data: Blob }> {");
             expect(out).toContain("contentType: readContentType(result) as 'image/png' | 'image/jpeg'");
@@ -1685,7 +1685,7 @@ describe('generateSdk — multipart/form-data', () => {
 // ─── generateMethod fetch assembly ────────────────────────────────────────
 
 describe('generateSdk — fetch call assembly', () => {
-    it('passes headers: customHeaders for GET with headers and no body', () => {
+    it('passes the header params through buildHeaders for GET with headers and no body', () => {
         const root = opRoot([
             opRoute('/users', [
                 opOperation('get', {
@@ -1696,7 +1696,7 @@ describe('generateSdk — fetch call assembly', () => {
             ]),
         ]);
         const out = generateSdk(root);
-        expect(out).toContain('headers: customHeaders');
+        expect(out).toContain('headers: buildHeaders(customHeaders)');
         expect(out).not.toContain("'Content-Type': 'application/json'");
     });
 
@@ -1712,8 +1712,45 @@ describe('generateSdk — fetch call assembly', () => {
             ]),
         ]);
         const out = generateSdk(root);
-        expect(out).toContain("'Content-Type': 'application/json', ...customHeaders");
+        expect(out).toContain("'Content-Type': 'application/json', ...buildHeaders(customHeaders)");
         expect(out).toContain('JSON.stringify(body, bigIntReplacer)');
+    });
+
+    it('stringifies a non-string header param rather than handing fetch a number', () => {
+        // `HeadersInit` takes only strings, so `{ 'x-limit'?: number }` passed straight through fails
+        // to typecheck, and an explicit `undefined` would be sent as the text "undefined".
+        const root = opRoot([
+            opRoute('/users', [
+                opOperation('get', {
+                    sdk: 'listUsers',
+                    headers: [opParam('x-limit', scalarType('int'), { optional: true })],
+                    responses: [opResponse(200, 'User', 'application/json')],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root);
+        expect(out).toContain("customHeaders?: { 'x-limit'?: number }");
+        expect(out).toContain('headers: buildHeaders(customHeaders)');
+        expect(out).toContain('export function buildHeaders(headers: object | undefined): Record<string, string> {');
+        expect(out).toContain('if (v === undefined || v === null) continue;');
+    });
+
+    it('imports buildHeaders from the shared options file only when an operation declares headers', () => {
+        const withHeaders = opRoot([
+            opRoute('/users', [
+                opOperation('get', {
+                    sdk: 'listUsers',
+                    headers: [opParam('x-limit', scalarType('int'))],
+                    responses: [opResponse(200, 'User', 'application/json')],
+                }),
+            ]),
+        ]);
+        const without = opRoot([
+            opRoute('/users', [opOperation('get', { sdk: 'listUsers', responses: [opResponse(200, 'User', 'application/json')] })]),
+        ]);
+        const opts = { sdkOptionsPath: '/out/sdk-options.ts', outPath: '/out/users.client.ts' };
+        expect(generateSdk(withHeaders, opts)).toMatch(/import \{[^}]*\bbuildHeaders\b[^}]*\} from '\.\/sdk-options\.js';/);
+        expect(generateSdk(without, opts)).not.toContain('buildHeaders');
     });
 
     it('emits both URLSearchParams and JSON.stringify for query + body', () => {
@@ -2013,7 +2050,9 @@ describe('generateAreaClient — <Area>Client emission', () => {
         const out = generateAreaClient({
             area: 'identity',
             outPath: '/out/identity/identity.client.ts',
-            inlineFiles: [{ root: inlineRoot, codegenOptions: { outPath: '/out/identity/identity.client.ts', sdkOptionsPath: '/out/sdk-options.ts' } }],
+            inlineFiles: [
+                { root: inlineRoot, codegenOptions: { outPath: '/out/identity/identity.client.ts', sdkOptionsPath: '/out/sdk-options.ts' } },
+            ],
             subareaClients: [
                 {
                     propertyName: 'invitations',
