@@ -792,6 +792,18 @@ function regexHasAnchor(source: string): boolean {
  */
 const NUMERIC_PREPROCESS = `(v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v)`;
 
+/**
+ * Coercion for `bigint`: convert only a string in the documented wire form (`BIGINT_PATTERN` in
+ * plugin-docs' OpenAPI target, an optionally negative run of digits with an optional trailing `n`)
+ * and pass everything else through for `z.bigint()` to reject.
+ *
+ * Calling `BigInt()` on any string was wrong twice over. `"abc"` made it throw a SyntaxError inside
+ * the preprocess, which escapes Zod entirely, so the request failed with a 500 instead of a 400.
+ * And `BigInt()` accepts more than the wire form: `"0x10"`, `""` and `" 7"` became `16n`, `0n` and
+ * `7n`, values a client following the published pattern could never have meant.
+ */
+const BIGINT_PREPROCESS = `(val) => typeof val === 'string' && /^-?\\d+n?$/.test(val) ? BigInt(val.replace(/n$/, '')) : val`;
+
 function renderScalar(s: ScalarTypeNode): string {
     switch (s.name) {
         case 'string': {
@@ -816,7 +828,7 @@ function renderScalar(s: ScalarTypeNode): string {
             let inner = 'z.bigint()';
             if (s.min !== undefined) inner += `.min(${s.min}n)`;
             if (s.max !== undefined) inner += `.max(${s.max}n)`;
-            return `z.preprocess((val) => typeof val === 'string' ? BigInt(val.replace(/n$/, '')) : val, ${inner})`;
+            return `z.preprocess(${BIGINT_PREPROCESS}, ${inner})`;
         }
         case 'decimal': {
             // Deliberately no output `.transform()`: `isRevalidatable` in codegen-operation treats
