@@ -94,15 +94,17 @@ export type UploadReceiptForm = z.infer<typeof UploadReceiptForm>;
 export const PaymentFilter = z.strictObject({
     status: z.enum(["pending", "completed", "failed"]).optional(),
     since: _ZodDatetime.optional(),
+    ids: z.array(z.uuid()).optional(),
 });
 export type PaymentFilter = z.infer<typeof PaymentFilter>;
 
 /**
- * Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
- * generated from [TenantHeaders](../../contracts/billing.ck#L60)
+ * Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.
+ * generated from [TenantHeaders](../../contracts/billing.ck#L61)
 */
 export const TenantHeaders = z.strictObject({
     'x-tenant': z.string(),
+    xCorrelationId: z.string().optional(),
 });
 export type TenantHeaders = z.infer<typeof TenantHeaders>;
 

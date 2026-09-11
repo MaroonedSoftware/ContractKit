@@ -141,13 +141,20 @@ export interface LazyTypeNode {
     inner: ContractTypeNode;
 }
 
+/**
+ * A field's `= value` default. A `bigint` value is how a `bigint` field's default stays exact, for
+ * the same reason the scalar's `min`/`max` are bigints: a JS number rounds anything past 2**53.
+ * Consumers must not hand it to `JSON.stringify`, which throws on a `bigint`.
+ */
+export type FieldDefault = string | number | boolean | bigint;
+
 export interface FieldNode {
     name: string;
     optional: boolean;
     nullable: boolean;
     visibility: 'readonly' | 'writeonly' | 'normal';
     type: ContractTypeNode;
-    default?: string | number | boolean;
+    default?: FieldDefault;
     deprecated?: boolean;
     /** Set when the field is declared with the `override` modifier — used by inheritance validation
      * to confirm the field is intentionally redeclaring a conflicting base field. */
@@ -235,7 +242,7 @@ export interface OpParamNode {
     optional: boolean;
     nullable: boolean;
     type: ContractTypeNode;
-    default?: string | number | boolean;
+    default?: FieldDefault;
     description?: string;
     loc: SourceLocation;
 }

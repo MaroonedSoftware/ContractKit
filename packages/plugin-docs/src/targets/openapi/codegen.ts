@@ -318,7 +318,8 @@ function fieldToSchema(field: FieldNode, modelMap?: Map<string, ModelNode>): Rec
     if (field.default !== undefined) {
         // A bigint is documented as a string, so its default has to be one too for the schema to
         // accept its own default.
-        schema.default = field.type.kind === 'scalar' && field.type.name === 'bigint' ? String(field.default) : field.default;
+        const isBigInt = typeof field.default === 'bigint' || (field.type.kind === 'scalar' && field.type.name === 'bigint');
+        schema.default = isBigInt ? String(field.default) : field.default;
     }
     if (field.description) {
         schema.description = field.description;
@@ -820,10 +821,17 @@ function isPlainObject(value: unknown): boolean {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * A plain scalar a YAML 1.2 parser may resolve as a number rather than a string: `200`, `-5`,
+ * `-0.10`, `.5`, `.inf`. Checking only for a leading digit let a negative bigint bound out bare, so
+ * `'-9007199254740993'` was read back as a float and lost its last digit.
+ */
+const YAML_NUMBER_LIKE = /^-?(\d|\.\d|\.(inf|nan)$)/i;
+
 function yamlString(s: string): string {
     // Use plain style if safe, otherwise single-quoted
     if (s === '') return "''";
-    if (/^[\w./-]+$/.test(s) && !/^(true|false|null|yes|no|on|off)$/i.test(s) && !/^\d/.test(s)) {
+    if (/^[\w./-]+$/.test(s) && !/^(true|false|null|yes|no|on|off)$/i.test(s) && !YAML_NUMBER_LIKE.test(s)) {
         return s;
     }
     // A line break cannot go into a single-quoted scalar as it stands. Written raw, the next line

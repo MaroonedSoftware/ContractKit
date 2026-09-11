@@ -1,4 +1,4 @@
-import type { ContractRootNode, ContractTypeNode, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
+import type { ContractRootNode, ContractTypeNode, FieldDefault, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
 import { buildModelIndex, computeModelsWithInput, resolveEffectiveFields, topoSortModels } from '@contractkit/core';
 import type { HoistedDecl, HoistResult } from './hoist.js';
 import { kdocLines, toKotlinEnumEntryName, toKotlinPropertyName } from './naming.js';
@@ -382,12 +382,13 @@ function serializerExpression(type: ContractTypeNode, ctx: RenderContext, forInp
  * when the value cannot be expressed, so the field is emitted without an initializer rather than
  * with one that will not compile.
  */
-function renderDefault(value: string | number | boolean, type: ContractTypeNode, ctx: RenderContext): string | undefined {
+function renderDefault(value: FieldDefault, type: ContractTypeNode, ctx: RenderContext): string | undefined {
     const inner = type.kind === 'lazy' ? type.inner : type;
 
     if (typeof value === 'boolean') return String(value);
 
-    if (typeof value === 'number') {
+    // A `bigint` value comes from a `bigint` field, whose case below writes it from its exact digits.
+    if (typeof value === 'number' || typeof value === 'bigint') {
         if (inner.kind === 'scalar') {
             switch (inner.name) {
                 case 'int':

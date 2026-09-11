@@ -1,4 +1,4 @@
-import type { ContractRootNode, ContractTypeNode, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
+import type { ContractRootNode, ContractTypeNode, FieldDefault, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
 import { buildModelIndex, computeModelsWithInput, resolveEffectiveFields, topoSortModels } from '@contractkit/core';
 import type { HoistedDecl, HoistResult } from './hoist.js';
 import { docLines, quoteSwiftString, toSwiftCaseName, toSwiftPropertyName } from './naming.js';
@@ -239,12 +239,13 @@ function literalExpression(value: string | number | boolean): string {
  * when the value cannot be expressed, so the field is emitted without a default rather than with
  * one that will not compile.
  */
-function renderDefault(value: string | number | boolean, type: ContractTypeNode, ctx: RenderContext): string | undefined {
+function renderDefault(value: FieldDefault, type: ContractTypeNode, ctx: RenderContext): string | undefined {
     const inner = unwrapLazy(type);
 
     if (typeof value === 'boolean') return String(value);
 
-    if (typeof value === 'number') {
+    // A `bigint` value comes from a `bigint` field, whose case below writes it from its exact digits.
+    if (typeof value === 'number' || typeof value === 'bigint') {
         if (inner.kind === 'scalar') {
             switch (inner.name) {
                 case 'int':

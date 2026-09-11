@@ -72,32 +72,38 @@ public struct Bank: Codable, Equatable, Sendable {
 public struct Token: Codable, Equatable, Sendable {
     public var accessToken: String
     public var expiresIn: Int
+    public var refreshAfter: BigIntValue
 
-    public init(accessToken: String, expiresIn: Int = 3600) {
+    public init(accessToken: String, expiresIn: Int = 3600, refreshAfter: BigIntValue = BigIntValue("9007199254740993")) {
         self.accessToken = accessToken
         self.expiresIn = expiresIn
+        self.refreshAfter = refreshAfter
     }
 
     private enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
         case expiresIn = "expires_in"
+        case refreshAfter = "refresh_after"
     }
 
     private enum EncodingKeys: String, CodingKey {
         case accessToken = "AccessToken"
         case expiresIn = "ExpiresIn"
+        case refreshAfter = "RefreshAfter"
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.accessToken = try container.decode(String.self, forKey: .accessToken)
         self.expiresIn = try container.decodeIfPresent(Int.self, forKey: .expiresIn) ?? 3600
+        self.refreshAfter = try container.decodeIfPresent(BigIntValue.self, forKey: .refreshAfter) ?? BigIntValue("9007199254740993")
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: EncodingKeys.self)
         try container.encode(self.accessToken, forKey: .accessToken)
         try container.encode(self.expiresIn, forKey: .expiresIn)
+        try container.encode(self.refreshAfter, forKey: .refreshAfter)
     }
 }
 
@@ -391,6 +397,7 @@ public struct Folder: Codable, Equatable, Sendable {
     public var instrument: FolderInstrument?
     public var origin: FolderOrigin?
     public var size: BigIntValue
+    public var generation: BigIntValue
     public var price: DecimalValue
     public var day: LocalDate?
     public var at: LocalTime?
@@ -399,7 +406,7 @@ public struct Folder: Codable, Equatable, Sendable {
     public var extra: JSONValue?
     public var raw: JSONValue?
 
-    public init(id: UUID, `class`: String, `default`: String? = nil, rating: Rating = .neutral, parent: Folder? = nil, readme: Doc? = nil, children: [Folder], byName: [String: Folder]? = nil, span: FolderSpan? = nil, stamped: FolderStamped? = nil, label: FolderLabel, pinned: FolderPinned?, instrument: FolderInstrument? = nil, origin: FolderOrigin? = nil, size: BigIntValue, price: DecimalValue, day: LocalDate? = nil, at: LocalTime? = nil, ttl: IsoDuration? = nil, blob: Data? = nil, extra: JSONValue? = nil, raw: JSONValue? = nil) {
+    public init(id: UUID, `class`: String, `default`: String? = nil, rating: Rating = .neutral, parent: Folder? = nil, readme: Doc? = nil, children: [Folder], byName: [String: Folder]? = nil, span: FolderSpan? = nil, stamped: FolderStamped? = nil, label: FolderLabel, pinned: FolderPinned?, instrument: FolderInstrument? = nil, origin: FolderOrigin? = nil, size: BigIntValue, generation: BigIntValue = BigIntValue("9007199254740993"), price: DecimalValue, day: LocalDate? = nil, at: LocalTime? = nil, ttl: IsoDuration? = nil, blob: Data? = nil, extra: JSONValue? = nil, raw: JSONValue? = nil) {
         self.id = id
         self.`class` = `class`
         self.`default` = `default`
@@ -415,6 +422,7 @@ public struct Folder: Codable, Equatable, Sendable {
         self.instrument = instrument
         self.origin = origin
         self.size = size
+        self.generation = generation
         self.price = price
         self.day = day
         self.at = at
@@ -440,6 +448,7 @@ public struct Folder: Codable, Equatable, Sendable {
         case instrument = "instrument"
         case origin = "origin"
         case size = "size"
+        case generation = "generation"
         case price = "price"
         case day = "day"
         case at = "at"
@@ -466,6 +475,7 @@ public struct Folder: Codable, Equatable, Sendable {
         self.instrument = try container.decodeIfPresent(FolderInstrument.self, forKey: .instrument)
         self.origin = try container.decodeIfPresent(FolderOrigin.self, forKey: .origin)
         self.size = try container.decode(BigIntValue.self, forKey: .size)
+        self.generation = try container.decodeIfPresent(BigIntValue.self, forKey: .generation) ?? BigIntValue("9007199254740993")
         self.price = try container.decode(DecimalValue.self, forKey: .price)
         self.day = try container.decodeIfPresent(LocalDate.self, forKey: .day)
         self.at = try container.decodeIfPresent(LocalTime.self, forKey: .at)
@@ -492,6 +502,7 @@ public struct Folder: Codable, Equatable, Sendable {
         try container.encodeIfPresent(self.instrument, forKey: .instrument)
         try container.encodeIfPresent(self.origin, forKey: .origin)
         try container.encode(self.size, forKey: .size)
+        try container.encode(self.generation, forKey: .generation)
         try container.encode(self.price, forKey: .price)
         try container.encodeIfPresent(self.day, forKey: .day)
         try container.encodeIfPresent(self.at, forKey: .at)

@@ -37,6 +37,7 @@ contract Folder: {
         y: number
     }
     size: bigint
+    generation: bigint(min=0, max=9007199254740993) = 9007199254740993
     price: decimal(scale=2)
     day?: date
     at?: time
@@ -67,6 +68,7 @@ contract Instrument: discriminated(by=kind, Card | Bank)
 contract format(output=snake, input=pascal) Token: {
     accessToken: string
     expiresIn?: int = 3600
+    refreshAfter?: bigint = 9007199254740993
 }
 
 contract Owned: {

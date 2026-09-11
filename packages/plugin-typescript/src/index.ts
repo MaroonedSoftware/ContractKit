@@ -24,6 +24,7 @@ import {
     collectTypeRefs,
     computeModelsWithCaseTransform,
     computeModelsWithScalar,
+    resolveEffectiveFields,
     SECURITY_NONE,
 } from '@contractkit/core';
 import {
@@ -213,7 +214,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '5';
+export const TYPESCRIPT_CODEGEN_VERSION = '7';
 
 // The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
 // temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
@@ -392,6 +393,28 @@ function collectOpRootRefs(root: OpRootNode, modelMap: Map<string, ModelNode>): 
     return collectTransitiveModelRefs(seeds, modelMap);
 }
 
+/**
+ * The fields of every model a `query:` or `headers:` block reads through, reduced to what the
+ * router's output depends on: which are arrays, and how each name is cased. Such a model may live in
+ * another `.ck` file, so editing it changes the router with no change to the router's own AST.
+ */
+function paramModelFields(root: OpRootNode, modelMap: Map<string, ModelNode>): Record<string, [string, string, string][]> {
+    const names = new Set<string>();
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            for (const source of [op.query, op.headers]) {
+                if (source?.kind === 'ref') names.add(source.name);
+                else if (source?.kind === 'type') collectTypeRefs(source.node, names);
+            }
+        }
+    }
+    const out: Record<string, [string, string, string][]> = {};
+    for (const name of [...names].sort()) {
+        out[name] = resolveEffectiveFields(name, modelMap).fields.map(f => [f.name, f.visibility, f.type.kind]);
+    }
+    return out;
+}
+
 function paramSourceTypes(src: NonNullable<OpRootNode['routes'][number]['params']>): Parameters<typeof collectTypeRefs>[0][] {
     const out: Parameters<typeof collectTypeRefs>[0][] = [];
     if (src.kind === 'params') {
@@ -536,6 +559,9 @@ function collectServerOutput(
             modelsWithTransform: sliceModelSet(refs, new Set(), modelsWithTransform),
             // Same: a bigint added to a model in another .ck file changes how this router writes it.
             modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
+            // Same: an array field added to a query model re-wraps it in this router, and a header
+            // model's camelCase field is read from its lowercase key.
+            paramModelFields: paramModelFields(ast, modelMap),
             validateResponses: config.validateResponses ?? false,
             // Covered by `sub` already, which is the whole sub-config; explicit for the same reason
             // `validateResponses` is — the inputs that change a router's text read at a glance.
@@ -559,6 +585,7 @@ function collectServerOutput(
                         includeInternal: config.includeInternal,
                         validateResponses: config.validateResponses,
                         framework,
+                        models: modelMap,
                     }),
                 },
             ],

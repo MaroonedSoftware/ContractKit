@@ -284,13 +284,15 @@ Response headers:
 ##### Attributes
 
 <details>
-<summary>Attributes (3)</summary>
+<summary>Attributes (5)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `x-tenant` | `string` | Yes |  |
+| `ids` | `string[]` | No |  |
 | `since` | `string` | No |  |
 | `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
+| `xCorrelationId` | `string` | No |  |
 
 </details>
 
@@ -850,25 +852,27 @@ Extends [`Credential`](#credential)
 > Query params declared as a model, referenced via `query: PaymentFilter`
 
 <details>
-<summary>Attributes (2)</summary>
+<summary>Attributes (3)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
 | `since` | `string` | No |  |
+| `ids` | `string[]` | No |  |
 
 </details>
 
 #### TenantHeaders
 
-> Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+> Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.
 
 <details>
-<summary>Attributes (1)</summary>
+<summary>Attributes (2)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `x-tenant` | `string` | Yes |  |
+| `xCorrelationId` | `string` | No |  |
 
 </details>
 
@@ -888,7 +892,7 @@ type Rating = 'good' | 'neutral' | 'bad'
 > forms, every scalar, and field names that are keywords in the target languages
 
 <details>
-<summary>Attributes (22)</summary>
+<summary>Attributes (23)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -907,6 +911,7 @@ type Rating = 'good' | 'neutral' | 'bad'
 | `instrument` | `Card \| Bank` | No |  |
 | `origin` | `{ x: number; y: number }` | No |  |
 | `size` | `bigint` | Yes | *sent as a digit string, "123" or "123n"* |
+| `generation` | `bigint` | Yes | *default: `9007199254740993`*. *sent as a digit string, "123" or "123n"* |
 | `price` | `Decimal` | Yes |  |
 | `day` | `string` | No |  |
 | `at` | `string` | No |  |
@@ -964,12 +969,13 @@ type Instrument = Card | Bank
 > Decodes snake_case keys and encodes PascalCase ones
 
 <details>
-<summary>Attributes (2)</summary>
+<summary>Attributes (3)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `accessToken` | `string` | Yes |  |
 | `expiresIn` | `number` | No | *default: `3600`* |
+| `refreshAfter` | `bigint` | No | *default: `9007199254740993`*. *sent as a digit string, "123" or "123n"* |
 
 </details>
 

@@ -13,7 +13,7 @@ export const KitchenRouter = ServerKitRouter();
 
 /**
  * several statuses, and two content types on one of them
- * from [kitchen.ck](../../contracts/kitchen.ck#L109)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L111)
 */
 KitchenRouter.get('/folders/:folderId', requirePolicy(), async ctx => {
     const { folderId } = await parseAndValidate(
@@ -71,7 +71,7 @@ KitchenRouter.get('/folders/:folderId', requirePolicy(), async ctx => {
 
 /**
  * a method name that is a keyword in the target languages
- * from [kitchen.ck](../../contracts/kitchen.ck#L137)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L139)
 */
 KitchenRouter.put('/folders/:folderId', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const { folderId } = await parseAndValidate(
@@ -92,7 +92,7 @@ KitchenRouter.put('/folders/:folderId', requirePolicy(), bodyParserMiddleware(['
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L152)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L154)
 */
 KitchenRouter.post('/ledgers', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, LedgerInput);
@@ -106,7 +106,7 @@ KitchenRouter.post('/ledgers', requirePolicy(), bodyParserMiddleware(['json']), 
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L167)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L169)
 */
 KitchenRouter.post('/stamps', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, Stamped);
@@ -120,7 +120,7 @@ KitchenRouter.post('/stamps', requirePolicy(), bodyParserMiddleware(['json']), a
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L182)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L184)
 */
 KitchenRouter.post('/tokens', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, Token);
@@ -130,11 +130,11 @@ KitchenRouter.post('/tokens', requirePolicy(), bodyParserMiddleware(['json']), a
 
     ctx.status = 201;
     ctx.type = 'application/json';
-    ctx.body = result;
+    ctx.body = JSON.stringify(result, bigIntReplacer);
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L196)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L198)
 */
 KitchenRouter.get('/tokens', requirePolicy(), async ctx => {
     const service = ctx.container.get(KitchenService);
@@ -142,12 +142,12 @@ KitchenRouter.get('/tokens', requirePolicy(), async ctx => {
 
     ctx.status = 200;
     ctx.type = 'application/json';
-    ctx.body = result;
+    ctx.body = JSON.stringify(result, bigIntReplacer);
 });
 
 /**
  * one status with two content types and response headers, so the headers are read before the mime dispatch
- * from [kitchen.ck](../../contracts/kitchen.ck#L212)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L214)
 */
 KitchenRouter.get('/folders/:folderId/export', requirePolicy(), async ctx => {
     const { folderId } = await parseAndValidate(
