@@ -27,36 +27,32 @@ import { basename, dirname, relative } from 'path';
 import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 import { policyGuard, signatureGuard } from './route-guards.js';
+import { bindIdentifiers } from './reserved-words.js';
 
 /** Which request-side object a validation block reads from. Names the variable the block declares. */
 export type ParamKind = 'params' | 'query' | 'headers';
 
 /**
- * Identifiers the generated handler body binds for itself. A path parameter destructured under one
- * of these names would redeclare it, so those bindings are renamed the same way a collision with a
- * handler parameter is.
+ * Identifiers the generated handler body binds for itself, plus the two module imports the path
+ * parameter destructuring reads in its own initializer. A path parameter destructured under one of
+ * these names would redeclare or shadow it, so those bindings are renamed the same way a collision
+ * with a handler parameter is.
  */
-const GENERATOR_HANDLER_LOCALS = ['service', 'result', 'body', 'multipartBody', 'params', 'query', 'headers'] as const;
+const GENERATOR_HANDLER_LOCALS = ['service', 'result', 'body', 'multipartBody', 'params', 'query', 'headers', 'z', 'parseAndValidate'] as const;
 
 /**
  * Local identifier for each inline path parameter, keyed by its declared name.
  *
  * The declared name is what the framework keys its params object by, so it stays the schema key and
- * the route placeholder; only the local binding moves, and a `_` is appended until it collides with
- * neither a reserved identifier nor another parameter's binding. Path parameters are spread
- * positionally into the service call, so a rename is invisible to the service.
+ * the route placeholder; only the local binding moves, away from a JavaScript reserved word, a
+ * handler local, and another parameter's binding. Path parameters are spread positionally into the
+ * service call, so a rename is invisible to the service.
  */
 function bindPathParams(nodes: readonly { name: string }[], handlerLocals: readonly string[]): Map<string, string> {
-    const reserved = new Set<string>([...handlerLocals, ...GENERATOR_HANDLER_LOCALS]);
-    const taken = new Set<string>();
-    const bindings = new Map<string, string>();
-    for (const node of nodes) {
-        let local = toIdentifier(node.name);
-        while (reserved.has(local) || taken.has(local)) local += '_';
-        taken.add(local);
-        bindings.set(node.name, local);
-    }
-    return bindings;
+    return bindIdentifiers(
+        nodes.map(n => n.name),
+        [...handlerLocals, ...GENERATOR_HANDLER_LOCALS],
+    );
 }
 
 /**
@@ -720,8 +716,8 @@ export function buildArgs(route: OpRouteNode, op: OpOperationNode, bindings?: Ma
     // Path params: spread individually (inline) or pass 'params' object (type-ref/ContractTypeNode)
     if (route.params) {
         if (route.params.kind === 'params') {
-            // `bindings` carries any rename the handler needed; the MCP generator passes none, since
-            // its handlers bind different locals than a router's.
+            // `bindings` carries any rename the handler needed. Each caller computes its own, since a
+            // router handler and an MCP tool handler bind different locals.
             args.push(...route.params.nodes.map(p => bindings?.get(p.name) ?? toIdentifier(p.name)));
         } else {
             args.push('params');

@@ -12,6 +12,7 @@ import { classifyContentType, observableResponses, resolveModifiers } from '@con
 import type { HoistResult } from './hoist.js';
 import { createRenderContext, renderFile, renderSwiftType, type RenderContext } from './codegen-models.js';
 import {
+    bindSwiftParameterNames,
     deriveSwiftFileBase,
     docLines,
     escapeSwiftIdentifier,
@@ -171,13 +172,14 @@ function observableOf(shape: ResponseShape): OpResponseNode[] {
 // ─── Method generation ─────────────────────────────────────────────────────
 
 function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderContext, methodName: string): string[] {
-    const params = buildMethodParams(route, op, ctx);
+    const pathBindings = bindPathParams(route);
+    const params = buildMethodParams(route, op, ctx, pathBindings);
     const signature = params.map(p => `${p.name}: ${p.type}${p.optional ? ' = nil' : ''}`).join(', ');
 
     const shape = responseShape(op);
     const base = toSwiftTypeName(methodName.replace(/`/g, ''));
     const where = `${op.method.toUpperCase()} ${route.path}`;
-    const returnType = returnTypeFor(shape, base, ctx);
+    const returnType = returnTypeFor(shape, op, base, ctx);
     const observable = observableOf(shape);
     const expectStatuses = observable.filter(r => r.statusCode < 200 || r.statusCode >= 300).map(r => r.statusCode);
 
@@ -194,7 +196,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderCont
     if (op.headers) setup.push('try http.addHeaders(&request, customHeaders)');
     setup.push(...bodyCall(op));
 
-    const path = buildPathSegments(route.path, route.params);
+    const path = buildPathSegments(route.path, route.params, pathBindings);
     // `try` goes in front of the whole initializer when a segment throws, so it covers every
     // element of the literal; a request nothing mutates is a `let`, which keeps the compiler quiet.
     const declaration = setup.length > 0 ? 'var' : 'let';
@@ -207,18 +209,18 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderCont
     if (expectStatuses.length > 0) executeArgs.push(`expectStatuses: [${expectStatuses.join(', ')}]`);
     const assignment = returnType === 'Void' ? '_ = ' : 'let response = ';
     lines.push(`    ${assignment}try await http.execute(${executeArgs.join(', ')})`);
-    lines.push(...returnStatements(shape, base, ctx, where));
+    lines.push(...returnStatements(shape, op, base, ctx, where));
     lines.push('}');
     return lines;
 }
 
 /** What a method hands back. Declared before the body so the two cannot drift apart. */
-function returnTypeFor(shape: ResponseShape, base: string, ctx: RenderContext): string {
+function returnTypeFor(shape: ResponseShape, op: OpOperationNode, base: string, ctx: RenderContext): string {
     if (shape.kind !== 'simple') return `${base}Response`;
     const response = shape.response;
     const body = response?.bodies[0];
     const headers = response?.headers ?? [];
-    if (!body) return headers.length > 0 ? `${base}Headers` : 'Void';
+    if (!body) return headers.length > 0 ? headersStructName(op, base) : 'Void';
     const dataType = bodySwiftType(body, ctx);
     // A declared response header changes the return shape: the body alone cannot carry it.
     return headers.length > 0 ? `${base}Result` : dataType;
@@ -249,13 +251,13 @@ function bodyReadExpr(body: OpResponseBodyNode, ctx: RenderContext): string {
 }
 
 /** The statements after `execute`, which turn the response into the declared return type. */
-function returnStatements(shape: ResponseShape, base: string, ctx: RenderContext, where: string): string[] {
+function returnStatements(shape: ResponseShape, op: OpOperationNode, base: string, ctx: RenderContext, where: string): string[] {
     if (shape.kind === 'simple') {
         const response = shape.response;
         const body = response?.bodies[0];
         const headers = response?.headers ?? [];
         if (headers.length === 0) return body ? [`    return ${bodyReadExpr(body, ctx)}`] : [];
-        const lines = readHeaderLines(headers, `${base}Headers`, where, '    ');
+        const lines = readHeaderLines(headers, headersStructName(op, base), where, '    ');
         return body ? [...lines, `    return ${base}Result(data: ${bodyReadExpr(body, ctx)}, headers: headers)`] : [...lines, '    return headers'];
     }
 
@@ -267,19 +269,27 @@ function returnStatements(shape: ResponseShape, base: string, ctx: RenderContext
     const lines: string[] = ['    switch response.status {'];
     for (const response of rest) {
         lines.push(`    case ${response.statusCode}:`);
-        lines.push(...statusBranch(response, base, response.statusCode, ctx, where, '        '));
+        lines.push(...statusBranch(response, op, base, response.statusCode, ctx, where, '        '));
     }
     lines.push('    default:');
-    lines.push(...statusBranch(fallback!, base, fallback!.statusCode, ctx, where, '        '));
+    lines.push(...statusBranch(fallback!, op, base, fallback!.statusCode, ctx, where, '        '));
     lines.push('    }');
     return lines;
 }
 
 /** One `switch` branch: read this status's headers, then dispatch over its mimes. */
-function statusBranch(response: OpResponseNode, base: string, statusCode: number, ctx: RenderContext, where: string, indent: string): string[] {
+function statusBranch(
+    response: OpResponseNode,
+    op: OpOperationNode,
+    base: string,
+    statusCode: number,
+    ctx: RenderContext,
+    where: string,
+    indent: string,
+): string[] {
     const lines: string[] = [];
     const headers = response.headers ?? [];
-    if (headers.length > 0) lines.push(...readHeaderLines(headers, headersStructName(base, statusCode), where, indent));
+    if (headers.length > 0) lines.push(...readHeaderLines(headers, headersStructName(op, base, statusCode), where, indent));
     lines.push(...mimeBranches(response, base, statusCode, ctx, where, indent, headers.length > 0));
     return lines;
 }
@@ -344,8 +354,22 @@ function bodyCall(op: OpOperationNode): string[] {
 
 // ─── Response declarations ─────────────────────────────────────────────────
 
-function headersStructName(base: string, statusCode?: number): string {
-    return statusCode === undefined ? `${base}Headers` : `${base}${statusCode}Headers`;
+/**
+ * The name of a response-headers struct: `<Method><Status>Headers` when the status is part of the
+ * value, otherwise `<Method>Headers`.
+ *
+ * The request-headers struct claims `<Method>Headers` first, since it is the one a caller builds by
+ * name, so an operation that declares both gets `<Method>ResponseHeaders` for its response side.
+ * Two structs of one name in one module is an invalid redeclaration.
+ */
+function headersStructName(op: OpOperationNode, base: string, statusCode?: number): string {
+    if (statusCode !== undefined) return `${base}${statusCode}Headers`;
+    return declaresRequestHeadersStruct(op) ? `${base}ResponseHeaders` : `${base}Headers`;
+}
+
+/** Whether the operation's `headers:` block gets a generated `<Method>Headers` struct. */
+function declaresRequestHeadersStruct(op: OpOperationNode): boolean {
+    return op.headers?.kind === 'params' && op.headers.nodes.length > 0;
 }
 
 /**
@@ -391,7 +415,7 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
         const response = shape.response;
         const headers = response?.headers ?? [];
         if (headers.length === 0) return lines;
-        headerStruct(headers, headersStructName(base));
+        headerStruct(headers, headersStructName(op, base));
         const body = response?.bodies[0];
         if (body) {
             const dataType = bodySwiftType(body, ctx);
@@ -399,9 +423,9 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
             lines.push(...docLines(`The body of ${where}, with the response headers the contract declares.`, ''));
             lines.push(`public struct ${base}Result: Equatable, Sendable {`);
             lines.push(`    public let data: ${dataType}`);
-            lines.push(`    public let headers: ${headersStructName(base)}`);
+            lines.push(`    public let headers: ${headersStructName(op, base)}`);
             lines.push('');
-            lines.push(`    public init(data: ${dataType}, headers: ${headersStructName(base)}) {`);
+            lines.push(`    public init(data: ${dataType}, headers: ${headersStructName(op, base)}) {`);
             lines.push('        self.data = data');
             lines.push('        self.headers = headers');
             lines.push('    }');
@@ -414,7 +438,7 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
     const withStatus = shape.kind === 'multiStatus';
     for (const response of responses) {
         const headers = response.headers ?? [];
-        if (headers.length > 0) headerStruct(headers, headersStructName(base, withStatus ? response.statusCode : undefined));
+        if (headers.length > 0) headerStruct(headers, headersStructName(op, base, withStatus ? response.statusCode : undefined));
     }
 
     lines.push('');
@@ -431,7 +455,7 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
     for (const response of responses) {
         const statusCode = withStatus ? response.statusCode : undefined;
         const headers = response.headers ?? [];
-        const headersType = headers.length > 0 ? headersStructName(base, statusCode) : undefined;
+        const headersType = headers.length > 0 ? headersStructName(op, base, statusCode) : undefined;
         const bodies = response.bodies.length > 0 ? response.bodies : [undefined];
         for (const body of bodies) {
             const name = leafCaseName(response, body, statusCode);
@@ -543,7 +567,11 @@ const PATH_PLACEHOLDER = /\{([a-zA-Z_$][a-zA-Z0-9_$.-]*)\}/g;
  * value lives: spread across the signature, or behind one `params` argument when the route
  * declares a model.
  */
-export function buildPathSegments(path: string, params?: ParamSource): { segments: string[]; throws: boolean } {
+export function buildPathSegments(
+    path: string,
+    params?: ParamSource,
+    bindings?: ReadonlyMap<string, string>,
+): { segments: string[]; throws: boolean } {
     let throws = false;
     const segments = path
         .split('/')
@@ -553,13 +581,34 @@ export function buildPathSegments(path: string, params?: ParamSource): { segment
             const match = PATH_PLACEHOLDER.exec(raw);
             if (!match || match[0] !== raw) return quoteSwiftString(raw);
             throws = true;
-            const prop = toSwiftPropertyName(match[1]!);
-            return params && params.kind !== 'params' ? `http.segment(params.${prop})` : `http.segment(${prop})`;
+            if (params && params.kind !== 'params') return `http.segment(params.${toSwiftPropertyName(match[1]!)})`;
+            return `http.segment(${bindings?.get(match[1]!) ?? toSwiftPropertyName(match[1]!)})`;
         });
     return { segments, throws };
 }
 
 // ─── Parameters ────────────────────────────────────────────────────────────
+
+/**
+ * Identifiers a generated method binds or reads besides its path parameters: the other arguments
+ * {@link buildMethodParams} can declare, the locals the body declares, and the client's own `http`
+ * property, which the body reads without `self.`. A path parameter under one of these names would
+ * repeat an argument label, collide with a local, or hide `http`.
+ */
+const METHOD_LOCALS = ['body', 'query', 'customHeaders', 'params', 'request', 'response', 'headers', 'http'] as const;
+
+/**
+ * The Swift parameter name each inline path parameter is spread into the signature under, keyed by
+ * its declared name. Backtick-escaped (`` `class` ``), and suffixed when it lands on one of
+ * {@link METHOD_LOCALS} (`body_`). Empty when the route has no inline params.
+ */
+function bindPathParams(route: OpRouteNode): Map<string, string> {
+    if (route.params?.kind !== 'params') return new Map();
+    return bindSwiftParameterNames(
+        route.params.nodes.map(n => n.name),
+        METHOD_LOCALS,
+    );
+}
 
 interface MethodParam {
     name: string;
@@ -573,13 +622,13 @@ interface MethodParam {
  * Swift, unlike Python, allows a required parameter after a defaulted one, so nothing has to be
  * widened or reordered to keep the declaration legal.
  */
-function buildMethodParams(route: OpRouteNode, op: OpOperationNode, ctx: RenderContext): MethodParam[] {
+function buildMethodParams(route: OpRouteNode, op: OpOperationNode, ctx: RenderContext, pathBindings: ReadonlyMap<string, string>): MethodParam[] {
     const params: MethodParam[] = [];
 
     if (route.params) {
         if (route.params.kind === 'params') {
             for (const node of route.params.nodes) {
-                params.push({ name: toSwiftPropertyName(node.name), type: renderSwiftType(node.type, ctx, true), optional: false });
+                params.push({ name: pathBindings.get(node.name)!, type: renderSwiftType(node.type, ctx, true), optional: false });
             }
         } else {
             params.push({ name: 'params', type: renderParamSourceType(route.params, ctx, ''), optional: false });

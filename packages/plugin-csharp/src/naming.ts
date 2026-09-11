@@ -142,6 +142,29 @@ export function toCSharpParameterName(name: string): string {
 }
 
 /**
+ * A C# parameter or local name for each declared name, keyed by that name.
+ *
+ * Each goes through {@link toCSharpParameterName}, then gains a `_` until it collides with neither
+ * one of `taken` nor another name's result, and is keyword-escaped last. The comparison is on the
+ * unescaped spelling, since `@class` and `class` are the same identifier to the compiler. Returns
+ * the plain conversion in the common case, so existing output stays byte-identical.
+ *
+ * @param taken Unescaped identifiers the surrounding generated code already binds or reads, which
+ * a declared name must not duplicate or shadow.
+ */
+export function bindCSharpParameterNames(names: readonly string[], taken: Iterable<string>): Map<string, string> {
+    const unavailable = new Set<string>(taken);
+    const bindings = new Map<string, string>();
+    for (const name of names) {
+        let local = toCSharpParameterName(name).replace(/^@/, '');
+        while (unavailable.has(local)) local += '_';
+        unavailable.add(local);
+        bindings.set(name, escapeCSharpIdentifier(local));
+    }
+    return bindings;
+}
+
+/**
  * Make a property name safe inside `ownerTypeName`.
  *
  * C# rejects a member whose name matches its enclosing type (CS0542), which a contract hits

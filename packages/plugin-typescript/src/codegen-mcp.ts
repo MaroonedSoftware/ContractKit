@@ -1,5 +1,5 @@
 import type { OpRootNode, OpRouteNode, OpOperationNode, McpConfigNode, ParamSource, ContractTypeNode, SecurityNode } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses, toIdentifier } from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses } from '@contractkit/core';
 import { renderType, renderInputType, pascalToDotCase } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
@@ -9,6 +9,7 @@ import { basename, dirname, relative } from 'node:path';
 import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 import { policyGuard } from './route-guards.js';
+import { bindIdentifiers } from './reserved-words.js';
 
 /**
  * Source location for a `SecurityNode` this generator builds rather than reads off a `.ck` file.
@@ -113,26 +114,56 @@ function deriveToolClassName(toolName: string): string {
 
 interface ArgsProp {
     key: string;
+    /** The identifier `handle` destructures the key into; the key itself unless that is not bindable. */
+    local: string;
     expr: string;
     optional: boolean;
+}
+
+/** Keys the flat args object gives an operation's body, query and headers. */
+const MCP_ARG_KEYS = ['body', 'multipartBody', 'query', 'headers'] as const;
+
+/** Identifiers `handle` binds or reads besides the args it destructures. */
+const MCP_HANDLER_LOCALS = ['args', '_args', 'context', '_context', 'result', 'resultJson', 'parseAndValidate', 'bigIntReplacer', 'JSON'] as const;
+
+/**
+ * The args key and the local binding for each inline path param, both keyed by its declared name.
+ *
+ * Path params share the flat args object with the body, query and headers, so a param named
+ * `body` needs a different key, or the schema would declare `body` twice. The MCP input schema is
+ * ours to name, since nothing on an HTTP wire depends on it. A key that is fine as a key but not
+ * as a binding (`class`) keeps its spelling and is destructured under an alias instead, so the
+ * tool's arguments still read like the contract.
+ */
+function bindMcpPathParams(route: OpRouteNode): { keys: Map<string, string>; locals: Map<string, string> } {
+    if (route.params?.kind !== 'params') return { keys: new Map(), locals: new Map() };
+    const names = route.params.nodes.map(n => n.name);
+    const keys = bindIdentifiers(names, MCP_ARG_KEYS, new Set());
+    const localsByKey = bindIdentifiers([...keys.values()], [...MCP_ARG_KEYS, ...MCP_HANDLER_LOCALS]);
+    return { keys, locals: new Map(names.map(n => [n, localsByKey.get(keys.get(n)!)!])) };
 }
 
 /** Build the flat args properties for a tool, matching the router's `buildArgs` variable names. */
 function buildArgsProps(route: OpRouteNode, op: OpOperationNode, modelsWithInput?: Set<string>): ArgsProp[] {
     const props: ArgsProp[] = [];
+    const add = (key: string, expr: string, optional: boolean) => props.push({ key, local: key, expr, optional });
 
     // Path params — spread individually (inline) or as a single `params` object (ref/type).
     if (route.params) {
         if (route.params.kind === 'params') {
+            const { keys, locals } = bindMcpPathParams(route);
             for (const node of route.params.nodes) {
-                // The handler destructures these, so the key has to be a valid identifier. The MCP
-                // input schema is ours to name — nothing on an HTTP wire depends on it.
-                props.push({ key: toIdentifier(node.name), expr: renderInputType(node.type, modelsWithInput), optional: false });
+                props.push({
+                    key: keys.get(node.name)!,
+                    local: locals.get(node.name)!,
+                    expr: renderInputType(node.type, modelsWithInput),
+                    optional: false,
+                });
             }
         } else if (route.params.kind === 'ref') {
-            props.push({ key: 'params', expr: refSchema(route.params.name, modelsWithInput), optional: false });
+            add('params', refSchema(route.params.name, modelsWithInput), false);
         } else {
-            props.push({ key: 'params', expr: renderInputType(route.params.node, modelsWithInput), optional: false });
+            add('params', renderInputType(route.params.node, modelsWithInput), false);
         }
     }
 
@@ -140,16 +171,16 @@ function buildArgsProps(route: OpRouteNode, op: OpOperationNode, modelsWithInput
     // representable as JSON tool args, so they fall back to `z.unknown()` (advisory only).
     const bodies = op.request?.bodies ?? [];
     if (bodies.length === 1 && bodies[0]!.contentType === 'multipart/form-data') {
-        props.push({ key: 'multipartBody', expr: 'z.unknown()', optional: false });
+        add('multipartBody', 'z.unknown()', false);
     } else if (bodies.length === 1) {
-        props.push({ key: 'body', expr: renderInputType(bodies[0]!.bodyType, modelsWithInput), optional: false });
+        add('body', renderInputType(bodies[0]!.bodyType, modelsWithInput), false);
     } else if (bodies.length > 1) {
-        props.push({ key: 'body', expr: 'z.unknown()', optional: false });
+        add('body', 'z.unknown()', false);
     }
 
     // Query / headers — whole objects, optional.
-    if (op.query) props.push({ key: 'query', expr: paramSourceSchema(op.query, modelsWithInput), optional: true });
-    if (op.headers) props.push({ key: 'headers', expr: paramSourceSchema(op.headers, modelsWithInput), optional: true });
+    if (op.query) add('query', paramSourceSchema(op.query, modelsWithInput), true);
+    if (op.headers) add('headers', paramSourceSchema(op.headers, modelsWithInput), true);
 
     return props;
 }
@@ -433,8 +464,8 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
 
     // handle
     const props = buildArgsProps(route, op, options.modelsWithInput);
-    const destructure = props.map(p => p.key);
-    const callArgs = buildArgs(route, op);
+    const destructure = props.map(p => (p.local === p.key ? p.key : `${p.key}: ${p.local}`));
+    const callArgs = buildArgs(route, op, bindMcpPathParams(route).locals);
     const isVoid = !primaryResponseBody(op);
     const structured = !!outExpr;
 

@@ -10,11 +10,12 @@ public final class ReservedClient: Sendable {
     }
 
     /// fetch one seat
-    public func getSeat(seatId: String, query: GetSeatQuery? = nil) async throws -> GetSeatResult {
-        var request = try SdkRequest(method: "GET", path: ["seats", http.segment(seatId)])
+    public func getSeat(`class`: String, query: GetSeatQuery? = nil, customHeaders: GetSeatHeaders? = nil) async throws -> GetSeatResult {
+        var request = try SdkRequest(method: "GET", path: ["seats", http.segment(`class`)])
         try http.addQuery(&request, query)
+        try http.addHeaders(&request, customHeaders)
         let response = try await http.execute(request)
-        let headers = try GetSeatHeaders(
+        let headers = try GetSeatResponseHeaders(
             from: http.optionalHeader(response, "from", as: String.self)
         )
         return GetSeatResult(data: try http.decodeJSON(Seat.self, from: response), headers: headers)
@@ -26,26 +27,50 @@ public final class ReservedClient: Sendable {
         let response = try await http.execute(request)
         return try http.decodeJSON(Seat.self, from: response)
     }
+
+    /// replace a note
+    public func putNote(body_: String, body: Note) async throws -> Note {
+        var request = try SdkRequest(method: "PUT", path: ["notes", http.segment(body_)])
+        try http.setJSONBody(&request, body, contentType: "application/json")
+        let response = try await http.execute(request)
+        return try http.decodeJSON(Note.self, from: response)
+    }
 }
 
-/// Query parameters for GET /seats/{seatId}.
+/// Query parameters for GET /seats/{class}.
 public struct GetSeatQuery: Encodable, Equatable, Sendable {
-    public var from: String?
+    public var from: LocalDate?
+    public var `in`: String?
     public var pageSize: Int?
 
-    public init(from: String? = nil, pageSize: Int? = nil) {
+    public init(from: LocalDate? = nil, `in`: String? = nil, pageSize: Int? = nil) {
         self.from = from
+        self.`in` = `in`
         self.pageSize = pageSize
     }
 
     private enum CodingKeys: String, CodingKey {
         case from = "from"
+        case `in` = "in"
         case pageSize = "pageSize"
     }
 }
 
-/// Response headers declared on GET /seats/{seatId}.
-public struct GetSeatHeaders: Equatable, Sendable {
+/// Request headers for GET /seats/{class}.
+public struct GetSeatHeaders: Encodable, Equatable, Sendable {
+    public var from: String?
+
+    public init(from: String? = nil) {
+        self.from = from
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case from = "from"
+    }
+}
+
+/// Response headers declared on GET /seats/{class}.
+public struct GetSeatResponseHeaders: Equatable, Sendable {
     public let from: String?
 
     public init(from: String?) {
@@ -53,12 +78,12 @@ public struct GetSeatHeaders: Equatable, Sendable {
     }
 }
 
-/// The body of GET /seats/{seatId}, with the response headers the contract declares.
+/// The body of GET /seats/{class}, with the response headers the contract declares.
 public struct GetSeatResult: Equatable, Sendable {
     public let data: Seat
-    public let headers: GetSeatHeaders
+    public let headers: GetSeatResponseHeaders
 
-    public init(data: Seat, headers: GetSeatHeaders) {
+    public init(data: Seat, headers: GetSeatResponseHeaders) {
         self.data = data
         self.headers = headers
     }

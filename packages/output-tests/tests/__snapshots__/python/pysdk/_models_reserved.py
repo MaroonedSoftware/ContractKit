@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, time
 from pydantic import BaseModel, ConfigDict, Field
 
-# A seat, whose field names are all reserved somewhere in Python
+# A seat, whose field names are all reserved somewhere
 class Seat(BaseModel):
     model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
 
@@ -15,9 +15,16 @@ class Seat(BaseModel):
     copy_: str | None = Field(alias="copy", default=None)
     model_dump_: str | None = Field(alias="modelDump", default=None)
     json_: str | None = Field(alias="json", default=None)
+    in_: str | None = Field(alias="in", default=None)
+    is_: bool | None = Field(alias="is", default=None)
+    object: str | None = None
+    default: str | None = None
 
 # Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`
 class SeatRef(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     class_: str = Field(alias="class")
+
+class Note(BaseModel):
+    text: str

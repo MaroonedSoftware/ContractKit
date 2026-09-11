@@ -171,6 +171,37 @@ describe('parameters', () => {
         expect(signature).toContain('ListQuery? query = null');
     });
 
+    it('escapes a path param named after a C# keyword, in the signature and the path alike', () => {
+        const root = opRoot([opRoute('/seats/{class}', [opOperation('get', { sdk: 'getSeat' })], [opParam('class', scalarType('string'))])]);
+        const out = render(root, { contracts });
+        expect(out).toContain('public async Task GetSeatAsync(string @class, CancellationToken cancellationToken = default)');
+        expect(out).toContain('http.Path("seats", http.Segment(@class))');
+    });
+
+    it('suffixes a path param named like the request body argument, which would otherwise be CS0100', () => {
+        const root = opRoot([
+            opRoute(
+                '/notes/{body}',
+                [opOperation('put', { sdk: 'putNote', request: opRequest('Payment') })],
+                [opParam('body', scalarType('string'))],
+            ),
+        ]);
+        const out = render(root, { contracts });
+        expect(out).toContain('PutNoteAsync(string body_, Payment body, CancellationToken cancellationToken = default)');
+        expect(out).toContain('http.Path("notes", http.Segment(body_))');
+        expect(out).toContain('content: http.JsonContent(body, "application/json")');
+    });
+
+    it.each(['query', 'customHeaders', 'cancellationToken', 'response', 'headers', 'http', 'pathParams'])(
+        'suffixes a path param named `%s`, which the method already binds or reads',
+        name => {
+            const root = opRoot([opRoute(`/things/{${name}}`, [opOperation('get', { sdk: 'getThing' })], [opParam(name, scalarType('string'))])]);
+            const out = render(root, { contracts });
+            expect(out).toContain(`GetThingAsync(string ${name}_, CancellationToken cancellationToken = default)`);
+            expect(out).toContain(`http.Segment(${name}_)`);
+        },
+    );
+
     it('names a route-level params model pathParams, since params is a C# keyword', () => {
         const root = opRoot([opRoute('/refunds/{paymentId}', [opOperation('get', { sdk: 'refund' })], paramRef('PaymentRef'))]);
         const out = render(root, { contracts: [contractRoot([model('PaymentRef', [field('paymentId', scalarType('uuid'))])])] });
@@ -269,7 +300,79 @@ describe('response headers', () => {
         expect(withHeaders([{ name: 'h', optional: false, type: scalarType('bigint') }])).toContain('BigInteger.Parse(');
     });
 
+    it('renames an optional header pattern variable that would redeclare a parameter', () => {
+        const root = opRoot([
+            opRoute(
+                '/payments/{from}',
+                [
+                    opOperation('get', {
+                        sdk: 'get',
+                        responses: [{ ...opResponse(200, 'Payment'), headers: [{ name: 'from', optional: true, type: scalarType('string') }] }],
+                    }),
+                ],
+                [opParam('from', scalarType('string'))],
+            ),
+        ]);
+        const out = render(root, { contracts });
+        // `is { } from` in the method that takes `string from` is CS0136.
+        expect(out).toContain('response.Header("from") is { } from_ ? from_ : null');
+    });
+
     it('rejects a header type that cannot come off the wire as text', () => {
         expect(() => withHeaders([{ name: 'h', optional: false, type: scalarType('json') }])).toThrow(/cannot be read from an HTTP header/);
+    });
+});
+
+describe('request and response headers on one operation', () => {
+    const contracts = [contractRoot([model('Payment', [field('id', scalarType('uuid'))])])];
+    const requestHeaders = [opParam('from', scalarType('string'), { optional: true })];
+    const responseHeaders = [{ name: 'x-request-id', optional: false, type: scalarType('string') }];
+
+    it('gives the response side its own record name, so the namespace does not declare GetHeaders twice', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', { sdk: 'get', headers: requestHeaders, responses: [{ ...opResponse(200, 'Payment'), headers: responseHeaders }] }),
+            ]),
+        ]);
+        const out = render(root, { contracts });
+        expect(out.match(/public sealed record GetHeaders\b/g)).toHaveLength(1);
+        expect(out).toContain('GetHeaders? customHeaders = null');
+        expect(out).toContain('public sealed record GetResponseHeaders(string XRequestId);');
+        expect(out).toContain('public sealed record GetResult(Payment Data, GetResponseHeaders Headers);');
+        expect(out).toContain('var headers = new GetResponseHeaders(');
+    });
+
+    it('returns the renamed record when the response carries headers and no body', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('head', { sdk: 'get', headers: requestHeaders, responses: [{ ...opResponse(204), headers: responseHeaders }] }),
+            ]),
+        ]);
+        expect(render(root, { contracts })).toContain('public async Task<GetResponseHeaders> GetAsync(');
+    });
+
+    it('keeps GetHeaders for the response side when the operation declares no request headers', () => {
+        const root = opRoot([
+            opRoute('/payments', [opOperation('get', { sdk: 'get', responses: [{ ...opResponse(200, 'Payment'), headers: responseHeaders }] })]),
+        ]);
+        expect(render(root, { contracts })).toContain('public sealed record GetHeaders(string XRequestId);');
+    });
+
+    it('leaves per-status header records alone, since they never collide', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', {
+                    sdk: 'get',
+                    headers: requestHeaders,
+                    responses: [
+                        { ...opResponse(200, 'Payment'), headers: responseHeaders },
+                        { ...opResponse(202, 'Payment'), headers: responseHeaders },
+                    ],
+                }),
+            ]),
+        ]);
+        const out = render(root, { contracts });
+        expect(out).toContain('public sealed record Get200Headers(string XRequestId);');
+        expect(out).toContain('public sealed record Get202Headers(string XRequestId);');
     });
 });

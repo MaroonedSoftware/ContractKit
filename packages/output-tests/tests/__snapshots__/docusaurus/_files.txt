@@ -16,6 +16,7 @@ docs/api-reference/endpoints/get-invoice.md
 docs/api-reference/endpoints/get-row.md
 docs/api-reference/endpoints/get-seat.md
 docs/api-reference/endpoints/get-status.md
+docs/api-reference/endpoints/put-note.md
 docs/api-reference/index.md
 docs/api-reference/kitchen/_category_.json
 docs/api-reference/kitchen/get-folder.md
@@ -51,5 +52,6 @@ docs/api-reference/models/kitchen/shared.md
 docs/api-reference/models/kitchen/stamp.md
 docs/api-reference/models/kitchen/stamped.md
 docs/api-reference/models/kitchen/token.md
+docs/api-reference/models/note.md
 docs/api-reference/models/seat-ref.md
 docs/api-reference/models/seat.md

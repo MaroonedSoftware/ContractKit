@@ -6,7 +6,7 @@ mdx:
     format: "md"
 ---
 
-**`GET`** `/seats/{seatId}`
+**`GET`** `/seats/{class}`
 
 :::note
 SDK method: `getSeat`
@@ -15,12 +15,14 @@ SDK method: `getSeat`
 ## Attributes
 
 <details>
-<summary>Attributes (3)</summary>
+<summary>Attributes (5)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
-| `seatId` | `string` | Yes | Path parameter. |
+| `class` | `string` | Yes | Path parameter. |
 | `from` | `string` | No |  |
+| `from` | `string` | No |  |
+| `in` | `string` | No |  |
 | `pageSize` | `number` | No |  |
 
 </details>

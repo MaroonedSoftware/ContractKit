@@ -22,6 +22,7 @@
                             "api-reference/endpoints/get-invoice",
                             "api-reference/endpoints/get-seat",
                             "api-reference/endpoints/get-row",
+                            "api-reference/endpoints/put-note",
                             "api-reference/endpoints/get-status"
                         ]
                     },
@@ -58,6 +59,7 @@
                             "api-reference/models/invoice",
                             "api-reference/models/seat",
                             "api-reference/models/seat-ref",
+                            "api-reference/models/note",
                             "api-reference/models/heartbeat",
                             {
                                 "group": "Billing",

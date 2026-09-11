@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 
 namespace Example.Sdk.Models;
 
-/// <summary>A seat, whose field names are all reserved somewhere in Python</summary>
+/// <summary>A seat, whose field names are all reserved somewhere</summary>
 public sealed record Seat
 {
     [JsonPropertyName("class")]
@@ -38,6 +38,22 @@ public sealed record Seat
     [JsonPropertyName("json")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Json { get; init; }
+
+    [JsonPropertyName("in")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? In { get; init; }
+
+    [JsonPropertyName("is")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Is { get; init; }
+
+    [JsonPropertyName("object")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Object { get; init; }
+
+    [JsonPropertyName("default")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Default { get; init; }
 }
 
 /// <summary>Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`</summary>
@@ -45,4 +61,10 @@ public sealed record SeatRef
 {
     [JsonPropertyName("class")]
     public required string Class { get; init; }
+}
+
+public sealed record Note
+{
+    [JsonPropertyName("text")]
+    public required string Text { get; init; }
 }

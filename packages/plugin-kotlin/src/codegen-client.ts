@@ -11,7 +11,14 @@ import type {
 import { classifyContentType, observableResponses, resolveModifiers } from '@contractkit/core';
 import type { HoistResult } from './hoist.js';
 import { createRenderContext, quoteKotlinString, renderFile, renderKotlinType, type RenderContext } from './codegen-models.js';
-import { deriveKotlinFileBase, escapeKotlinIdentifier, kdocLines, toKotlinPropertyName, toKotlinTypeName } from './naming.js';
+import {
+    bindKotlinParameterNames,
+    deriveKotlinFileBase,
+    escapeKotlinIdentifier,
+    kdocLines,
+    toKotlinPropertyName,
+    toKotlinTypeName,
+} from './naming.js';
 
 export interface KotlinClientCodegenOptions {
     packageName: string;
@@ -153,13 +160,14 @@ function observableOf(shape: ResponseShape): OpResponseNode[] {
 function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderContext, methodName: string): string[] {
     ctx.imports.add('io.ktor.http.HttpMethod');
 
-    const params = buildMethodParams(route, op, ctx);
+    const pathBindings = bindPathParams(route);
+    const params = buildMethodParams(route, op, ctx, pathBindings);
     const signature = params.map(p => `${p.name}: ${p.type}${p.optional ? ' = null' : ''}`).join(', ');
 
     const shape = responseShape(op);
     const base = toKotlinTypeName(methodName.replace(/`/g, ''));
     const where = `${op.method.toUpperCase()} ${route.path}`;
-    const returnType = returnTypeFor(shape, base, ctx);
+    const returnType = returnTypeFor(shape, op, base, ctx);
     const observable = observableOf(shape);
     const expectStatuses = observable.filter(r => r.statusCode < 200 || r.statusCode >= 300).map(r => r.statusCode);
 
@@ -176,23 +184,23 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderCont
 
     const assignment = returnType === 'Unit' ? '' : 'val response = ';
     lines.push(`    ${assignment}http.execute(${executeArgs.join(', ')}) {`);
-    lines.push(`        ${buildPathCall(route.path, route.params)}`);
+    lines.push(`        ${buildPathCall(route.path, route.params, pathBindings)}`);
     if (op.query) lines.push('        params(query)');
     if (op.headers) lines.push('        headers(customHeaders)');
     lines.push(...bodyCall(op, ctx));
     lines.push('    }');
-    lines.push(...returnStatements(shape, base, ctx, where));
+    lines.push(...returnStatements(shape, op, base, ctx, where));
     lines.push('}');
     return lines;
 }
 
 /** What a method hands back. Declared before the body so the two cannot drift apart. */
-function returnTypeFor(shape: ResponseShape, base: string, ctx: RenderContext): string {
+function returnTypeFor(shape: ResponseShape, op: OpOperationNode, base: string, ctx: RenderContext): string {
     if (shape.kind !== 'simple') return `${base}Response`;
     const response = shape.response;
     const body = response?.bodies[0];
     const headers = response?.headers ?? [];
-    if (!body) return headers.length > 0 ? `${base}Headers` : 'Unit';
+    if (!body) return headers.length > 0 ? headersClassName(op, base) : 'Unit';
     const dataType = bodyKotlinType(body, ctx);
     // A declared response header changes the return shape: the body alone cannot carry it.
     return headers.length > 0 ? `${base}Result` : dataType;
@@ -223,13 +231,13 @@ function bodyReadExpr(body: OpResponseBodyNode): string {
 }
 
 /** The statements after `execute`, which turn the response into the declared return type. */
-function returnStatements(shape: ResponseShape, base: string, ctx: RenderContext, where: string): string[] {
+function returnStatements(shape: ResponseShape, op: OpOperationNode, base: string, ctx: RenderContext, where: string): string[] {
     if (shape.kind === 'simple') {
         const response = shape.response;
         const body = response?.bodies[0];
         const headers = response?.headers ?? [];
         if (headers.length === 0) return body ? [`    return ${bodyReadExpr(body)}`] : [];
-        const lines = readHeaderLines(headers, `${base}Headers`, ctx, where, '    ');
+        const lines = readHeaderLines(headers, headersClassName(op, base), ctx, where, '    ');
         return body ? [...lines, `    return ${base}Result(${bodyReadExpr(body)}, headers)`] : [...lines, '    return headers'];
     }
 
@@ -245,21 +253,29 @@ function returnStatements(shape: ResponseShape, base: string, ctx: RenderContext
     lines.push('    return when (response.status.value) {');
     for (const response of rest) {
         lines.push(`        ${response.statusCode} -> {`);
-        lines.push(...statusBranch(response, base, response.statusCode, ctx, where, '            '));
+        lines.push(...statusBranch(response, op, base, response.statusCode, ctx, where, '            '));
         lines.push('        }');
     }
     lines.push('        else -> {');
-    lines.push(...statusBranch(fallback!, base, fallback!.statusCode, ctx, where, '            '));
+    lines.push(...statusBranch(fallback!, op, base, fallback!.statusCode, ctx, where, '            '));
     lines.push('        }');
     lines.push('    }');
     return lines;
 }
 
 /** One `when` branch: read this status's headers, then dispatch over its mimes. */
-function statusBranch(response: OpResponseNode, base: string, statusCode: number, ctx: RenderContext, where: string, indent: string): string[] {
+function statusBranch(
+    response: OpResponseNode,
+    op: OpOperationNode,
+    base: string,
+    statusCode: number,
+    ctx: RenderContext,
+    where: string,
+    indent: string,
+): string[] {
     const lines: string[] = [];
     const headers = response.headers ?? [];
-    if (headers.length > 0) lines.push(...readHeaderLines(headers, headersClassName(base, statusCode), ctx, where, indent));
+    if (headers.length > 0) lines.push(...readHeaderLines(headers, headersClassName(op, base, statusCode), ctx, where, indent));
     lines.push(...mimeBranches(response, base, statusCode, ctx, where, indent, headers.length > 0));
     return lines;
 }
@@ -330,8 +346,22 @@ function bodyCall(op: OpOperationNode, ctx: RenderContext): string[] {
 
 // ─── Response declarations ─────────────────────────────────────────────────
 
-function headersClassName(base: string, statusCode?: number): string {
-    return statusCode === undefined ? `${base}Headers` : `${base}${statusCode}Headers`;
+/**
+ * The name of a response-headers class: `<Method><Status>Headers` when the status is part of the
+ * value, otherwise `<Method>Headers`.
+ *
+ * The request-headers class claims `<Method>Headers` first, since it is the one a caller builds by
+ * name, so an operation that declares both gets `<Method>ResponseHeaders` for its response side.
+ * Two classes of one name in one package is a redeclaration error.
+ */
+function headersClassName(op: OpOperationNode, base: string, statusCode?: number): string {
+    if (statusCode !== undefined) return `${base}${statusCode}Headers`;
+    return declaresRequestHeadersClass(op) ? `${base}ResponseHeaders` : `${base}Headers`;
+}
+
+/** Whether the operation's `headers:` block gets a generated `<Method>Headers` class. */
+function declaresRequestHeadersClass(op: OpOperationNode): boolean {
+    return op.headers?.kind === 'params' && op.headers.nodes.length > 0;
 }
 
 /**
@@ -373,14 +403,14 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
         const response = shape.response;
         const headers = response?.headers ?? [];
         if (headers.length === 0) return lines;
-        headerClass(headers, headersClassName(base));
+        headerClass(headers, headersClassName(op, base));
         const body = response?.bodies[0];
         if (body) {
             lines.push('');
             lines.push(...kdocLines(`The body of ${where}, with the response headers the contract declares.`, ''));
             lines.push(`data class ${base}Result(`);
             lines.push(`    val data: ${bodyKotlinType(body, ctx)},`);
-            lines.push(`    val headers: ${headersClassName(base)},`);
+            lines.push(`    val headers: ${headersClassName(op, base)},`);
             lines.push(')');
         }
         return lines;
@@ -390,7 +420,7 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
     const withStatus = shape.kind === 'multiStatus';
     for (const response of responses) {
         const headers = response.headers ?? [];
-        if (headers.length > 0) headerClass(headers, headersClassName(base, withStatus ? response.statusCode : undefined));
+        if (headers.length > 0) headerClass(headers, headersClassName(op, base, withStatus ? response.statusCode : undefined));
     }
 
     lines.push('');
@@ -407,7 +437,7 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
     for (const response of responses) {
         const statusCode = withStatus ? response.statusCode : undefined;
         const headers = response.headers ?? [];
-        const headerProp = headers.length > 0 ? `    val headers: ${headersClassName(base, statusCode)},` : undefined;
+        const headerProp = headers.length > 0 ? `    val headers: ${headersClassName(op, base, statusCode)},` : undefined;
         const bodies = response.bodies.length > 0 ? response.bodies : [undefined];
         for (const body of bodies) {
             const name = leafClassName(response, body, statusCode);
@@ -534,7 +564,7 @@ const PATH_PLACEHOLDER = /\{([a-zA-Z_$][a-zA-Z0-9_$.-]*)\}/g;
  * percent-encodes exactly the values that came from the caller. `params` says where a value lives:
  * spread across the signature, or behind one `params` argument when the route declares a model.
  */
-export function buildPathCall(path: string, params?: ParamSource): string {
+export function buildPathCall(path: string, params?: ParamSource, bindings?: ReadonlyMap<string, string>): string {
     const args = path
         .split('/')
         .filter(Boolean)
@@ -542,13 +572,34 @@ export function buildPathCall(path: string, params?: ParamSource): string {
             PATH_PLACEHOLDER.lastIndex = 0;
             const match = PATH_PLACEHOLDER.exec(raw);
             if (!match || match[0] !== raw) return quoteKotlinString(raw);
-            const prop = toKotlinPropertyName(match[1]!);
-            return params && params.kind !== 'params' ? `segment(params.${prop})` : `segment(${prop})`;
+            if (params && params.kind !== 'params') return `segment(params.${toKotlinPropertyName(match[1]!)})`;
+            return `segment(${bindings?.get(match[1]!) ?? toKotlinPropertyName(match[1]!)})`;
         });
     return `path(${args.join(', ')})`;
 }
 
 // ─── Parameters ────────────────────────────────────────────────────────────
+
+/**
+ * Identifiers a generated method binds or reads besides its path parameters: the other arguments
+ * {@link buildMethodParams} can declare, the locals the body declares, and the client's own `http`
+ * property. A path parameter under one of these names would redeclare an argument, be shadowed by
+ * a local, or hide `http`.
+ */
+const METHOD_LOCALS = ['body', 'query', 'customHeaders', 'params', 'response', 'headers', 'http'] as const;
+
+/**
+ * The Kotlin parameter name each inline path parameter is spread into the signature under, keyed
+ * by its declared name. Backtick-escaped (`` `class` ``), and suffixed when it lands on one of
+ * {@link METHOD_LOCALS} (`body_`). Empty when the route has no inline params.
+ */
+function bindPathParams(route: OpRouteNode): Map<string, string> {
+    if (route.params?.kind !== 'params') return new Map();
+    return bindKotlinParameterNames(
+        route.params.nodes.map(n => n.name),
+        METHOD_LOCALS,
+    );
+}
 
 interface MethodParam {
     name: string;
@@ -562,13 +613,13 @@ interface MethodParam {
  * Kotlin, unlike Python, allows a required parameter after a defaulted one, so nothing has to be
  * widened or reordered to keep the declaration legal.
  */
-function buildMethodParams(route: OpRouteNode, op: OpOperationNode, ctx: RenderContext): MethodParam[] {
+function buildMethodParams(route: OpRouteNode, op: OpOperationNode, ctx: RenderContext, pathBindings: ReadonlyMap<string, string>): MethodParam[] {
     const params: MethodParam[] = [];
 
     if (route.params) {
         if (route.params.kind === 'params') {
             for (const node of route.params.nodes) {
-                params.push({ name: toKotlinPropertyName(node.name), type: renderKotlinType(node.type, ctx, true), optional: false });
+                params.push({ name: pathBindings.get(node.name)!, type: renderKotlinType(node.type, ctx, true), optional: false });
             }
         } else {
             params.push({ name: 'params', type: renderParamSourceType(route.params, ctx, ''), optional: false });

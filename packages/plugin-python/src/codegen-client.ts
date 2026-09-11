@@ -25,8 +25,23 @@ type PyResponseShape =
     | { kind: 'multiMime'; resp: OpResponseNode }
     | { kind: 'multiStatus'; responses: OpResponseNode[] };
 
-function headersClassName(methodBase: string, statusCode?: number): string {
-    return statusCode === undefined ? `${methodBase}Headers` : `${methodBase}${statusCode}Headers`;
+/**
+ * The name of a response-headers TypedDict: `<Method><Status>Headers` when the status is part of
+ * the value, otherwise `<Method>Headers`.
+ *
+ * The request-headers TypedDict claims `<Method>Headers` first, since it is the one a caller builds
+ * by name, so an operation that declares both gets `<Method>ResponseHeaders` for its response side.
+ * Python does not reject a second definition of one name: the later one silently replaced the
+ * earlier, typing the returned headers as the request's.
+ */
+function headersClassName(op: OpOperationNode, methodBase: string, statusCode?: number): string {
+    if (statusCode !== undefined) return `${methodBase}${statusCode}Headers`;
+    return declaresRequestHeadersDict(op) ? `${methodBase}ResponseHeaders` : `${methodBase}Headers`;
+}
+
+/** Whether the operation's `headers:` block gets a generated `<Method>Headers` TypedDict. */
+function declaresRequestHeadersDict(op: OpOperationNode): boolean {
+    return op.headers?.kind === 'params' && op.headers.nodes.length > 0;
 }
 
 function responseClassName(methodBase: string, statusCode?: number): string {
@@ -220,8 +235,8 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         const base = snakeToPascal(deriveMethodName(op, route));
         const targets =
             shape.kind === 'multiStatus'
-                ? shape.responses.filter(r => (r.headers?.length ?? 0) > 0).map(r => ({ name: headersClassName(base, r.statusCode), resp: r }))
-                : [{ name: headersClassName(base), resp: shape.resp! }];
+                ? shape.responses.filter(r => (r.headers?.length ?? 0) > 0).map(r => ({ name: headersClassName(op, base, r.statusCode), resp: r }))
+                : [{ name: headersClassName(op, base), resp: shape.resp! }];
         for (const { name, resp } of targets) {
             lines.push('');
             lines.push('');
@@ -280,7 +295,7 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
                 lines.push(`    data: ${pyDataAnnotation(bodies, opts.modelsWithInput)}`);
             }
             if ((resp.headers?.length ?? 0) > 0) {
-                lines.push(`    headers: ${headersClassName(base, shape.kind === 'multiStatus' ? resp.statusCode : undefined)}`);
+                lines.push(`    headers: ${headersClassName(op, base, shape.kind === 'multiStatus' ? resp.statusCode : undefined)}`);
             }
             if (shape.kind !== 'multiStatus' && bodies.length === 0 && (resp.headers?.length ?? 0) === 0) {
                 lines.push('    pass');
@@ -364,7 +379,7 @@ function generateMethod(
     const dataExpr = (body: OpResponseBodyNode) => pyDataExpr(body, responseAdapterNames, modelsWithInput, typeAliases);
     const respHeaders = primaryResponse?.headers ?? [];
     const hasRespHeaders = respHeaders.length > 0;
-    const headersTypeName = hasRespHeaders ? headersClassName(methodBase) : '';
+    const headersTypeName = hasRespHeaders ? headersClassName(op, methodBase) : '';
     const returnType =
         shape.kind === 'multiStatus'
             ? shape.responses.map(r => responseClassName(methodBase, r.statusCode)).join(' | ')
@@ -462,7 +477,7 @@ function generateMethod(
 
     if (shape.kind !== 'simple') {
         lines.push(`        _status, _content_type, result, _response_headers = await self._fetch_full(${urlExpr}, ${kwargsStr})`);
-        lines.push(...buildMultiReturnLines(shape, methodBase, where, dataExpr));
+        lines.push(...buildMultiReturnLines(shape, op, methodBase, where, dataExpr));
         return lines;
     }
 
@@ -558,6 +573,7 @@ function responseAdapters(
  */
 function buildMultiReturnLines(
     shape: Extract<PyResponseShape, { kind: 'multiMime' | 'multiStatus' }>,
+    op: OpOperationNode,
     methodBase: string,
     where: string,
     dataExpr: (body: OpResponseBodyNode) => string,
@@ -589,7 +605,7 @@ function buildMultiReturnLines(
         let headersVar: string | undefined;
         if ((resp.headers?.length ?? 0) > 0) {
             headersVar = includeStatus ? `headers_${resp.statusCode}` : 'headers';
-            const typeName = headersClassName(methodBase, includeStatus ? resp.statusCode : undefined);
+            const typeName = headersClassName(op, methodBase, includeStatus ? resp.statusCode : undefined);
             out.push(...buildHeadersDictLines(resp.headers!, typeName, where, indent, headersVar));
         }
 

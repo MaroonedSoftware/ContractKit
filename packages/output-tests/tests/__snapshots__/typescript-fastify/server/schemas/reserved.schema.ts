@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { DateTime } from 'luxon';
 
 /**
- * A seat, whose field names are all reserved somewhere in Python
- * generated from [Seat](../../contracts/reserved.ck#L13)
+ * A seat, whose field names are all reserved somewhere
+ * generated from [Seat](../../contracts/reserved.ck#L18)
 */
 export const Seat = z.strictObject({
     class: z.string(),
@@ -13,14 +13,26 @@ export const Seat = z.strictObject({
     copy: z.string().optional(),
     modelDump: z.string().optional(),
     json: z.string().optional(),
+    in: z.string().optional(),
+    is: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).optional(),
+    object: z.string().optional(),
+    default: z.string().optional(),
 });
 export type Seat = z.infer<typeof Seat>;
 
 /**
  * Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`
- * generated from [SeatRef](../../contracts/reserved.ck#L24)
+ * generated from [SeatRef](../../contracts/reserved.ck#L33)
 */
 export const SeatRef = z.strictObject({
     class: z.string(),
 });
 export type SeatRef = z.infer<typeof SeatRef>;
+
+/**
+ * generated from [Note](../../contracts/reserved.ck#L37)
+*/
+export const Note = z.strictObject({
+    text: z.string(),
+});
+export type Note = z.infer<typeof Note>;

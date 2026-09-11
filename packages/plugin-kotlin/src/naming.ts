@@ -73,6 +73,29 @@ export function toKotlinPropertyName(name: string): string {
 }
 
 /**
+ * A Kotlin parameter name for each declared name, keyed by that name.
+ *
+ * Each goes through {@link toKotlinPropertyName}, then gains a `_` until it collides with neither
+ * one of `taken` nor another name's result, and is keyword-escaped last. The comparison is on the
+ * unescaped spelling, since `` `class` `` and `class` name the same identifier. Returns the plain
+ * conversion in the common case, so existing output stays byte-identical.
+ *
+ * @param taken Unescaped identifiers the surrounding generated code already binds or reads, which
+ * a declared name must not duplicate or shadow.
+ */
+export function bindKotlinParameterNames(names: readonly string[], taken: Iterable<string>): Map<string, string> {
+    const unavailable = new Set<string>(taken);
+    const bindings = new Map<string, string>();
+    for (const name of names) {
+        let local = toKotlinPropertyName(name).replace(/`/g, '');
+        while (unavailable.has(local)) local += '_';
+        unavailable.add(local);
+        bindings.set(name, escapeKotlinIdentifier(local));
+    }
+    return bindings;
+}
+
+/**
  * Convert a name to a Kotlin type name in PascalCase. Never backtick-escaped: type names are
  * generated (from model names, method names, or status codes) rather than taken verbatim, so a
  * collision with a keyword is a naming bug worth surfacing rather than papering over.

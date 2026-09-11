@@ -416,12 +416,12 @@ paths:
                 type: array
                 items:
                   '$ref': '#/components/schemas/Token'
-  '/seats/{seatId}':
+  '/seats/{class}':
     get:
       operationId: getSeat
       description: 'fetch one seat'
       parameters:
-        - name: seatId
+        - name: class
           in: path
           required: true
           schema:
@@ -431,11 +431,22 @@ paths:
           required: false
           schema:
             type: string
+            format: date
+        - name: in
+          in: query
+          required: false
+          schema:
+            type: string
         - name: pageSize
           in: query
           required: false
           schema:
             type: integer
+        - name: from
+          in: header
+          required: false
+          schema:
+            type: string
       responses:
         '200':
           description: 'Successful response'
@@ -464,6 +475,29 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Seat'
+  '/notes/{body}':
+    put:
+      operationId: putNote
+      description: 'replace a note'
+      parameters:
+        - name: body
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Note'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Note'
   '/status':
     get:
       operationId: getStatus
@@ -804,8 +838,16 @@ components:
           type: string
         json:
           type: string
+        in:
+          type: string
+        is:
+          type: boolean
+        object:
+          type: string
+        default:
+          type: string
       required: [class, date]
-      description: 'A seat, whose field names are all reserved somewhere in Python'
+      description: 'A seat, whose field names are all reserved somewhere'
     SeatRef:
       type: object
       properties:
@@ -813,6 +855,12 @@ components:
           type: string
       required: [class]
       description: 'Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`'
+    Note:
+      type: object
+      properties:
+        text:
+          type: string
+      required: [text]
     Heartbeat:
       type: object
       properties:

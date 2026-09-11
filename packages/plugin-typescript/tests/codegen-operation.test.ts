@@ -429,6 +429,24 @@ describe('generateOperation', () => {
             expect(output).toContain('await service.getById(userId)');
         });
 
+        it('renames a param named after a JavaScript reserved word', () => {
+            // `const { class } = …` is a parse error, and so is passing `class` to the service.
+            const root = opRoot([opRoute('/seats/{class}', [opOperation('get')], [opParam('class', scalarType('string'))])]);
+            const output = generateOp(root);
+            expect(output).toContain("get('/seats/:class'");
+            expect(output).toContain('class: z.string()');
+            expect(output).toContain('const { class: class_ } = await parseAndValidate(');
+            expect(output).toContain('await service.getById(class_)');
+        });
+
+        it('renames a param that would shadow the `z` the destructuring reads', () => {
+            // The initializer is `z.strictObject(…)`, so a `z` binding is read in its own dead zone.
+            const root = opRoot([opRoute('/axes/{z}', [opOperation('get')], [opParam('z', scalarType('string'))])]);
+            const output = generateOp(root);
+            expect(output).toContain('const { z: z_ } = await parseAndValidate(');
+            expect(output).toContain('z.strictObject({');
+        });
+
         it('keeps two params distinct when a rename would collapse them onto one name', () => {
             const root = opRoot([
                 opRoute('/x/{ctx}/{ctx_}', [opOperation('get')], [opParam('ctx', scalarType('uuid')), opParam('ctx_', scalarType('uuid'))]),

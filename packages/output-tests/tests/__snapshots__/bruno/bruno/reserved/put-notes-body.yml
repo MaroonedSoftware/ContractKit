@@ -1,0 +1,29 @@
+info:
+  name: "/notes/{body}"
+  type: http
+  seq: 1
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/notes/:body"
+  params:
+    - name: body
+      value: ""
+      type: path
+  body:
+    type: json
+    data: |
+      {
+        "text": ""
+      }
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+docs: |-
+  A path param named like the SDK method's own request-body argument
+  
+  replace a note

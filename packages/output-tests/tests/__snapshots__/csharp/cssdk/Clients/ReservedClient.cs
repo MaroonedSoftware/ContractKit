@@ -21,14 +21,15 @@ namespace Example.Sdk.Clients;
 public sealed class ReservedClient(SdkHttp http)
 {
     /// <summary>fetch one seat</summary>
-    public async Task<GetSeatResult> GetSeatAsync(string seatId, GetSeatQuery? query = null, CancellationToken cancellationToken = default)
+    public async Task<GetSeatResult> GetSeatAsync(string @class, GetSeatQuery? query = null, GetSeatHeaders? customHeaders = null, CancellationToken cancellationToken = default)
     {
         var response = await http.ExecuteAsync(
             HttpMethod.Get,
-            http.Path("seats", http.Segment(seatId)),
+            http.Path("seats", http.Segment(@class)),
             query: http.Params(query),
+            headers: http.Params(customHeaders),
             cancellationToken: cancellationToken).ConfigureAwait(false);
-        var headers = new GetSeatHeaders(
+        var headers = new GetSeatResponseHeaders(
             response.Header("from") is { } from ? from : null);
         return new GetSeatResult(http.ReadJson<Seat>(response), headers);
     }
@@ -42,22 +43,45 @@ public sealed class ReservedClient(SdkHttp http)
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return http.ReadJson<Seat>(response);
     }
+
+    /// <summary>replace a note</summary>
+    public async Task<Note> PutNoteAsync(string body_, Note body, CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Put,
+            http.Path("notes", http.Segment(body_)),
+            content: http.JsonContent(body, "application/json"),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<Note>(response);
+    }
 }
 
-/// <summary>The query parameters declared on GET /seats/{seatId}.</summary>
+/// <summary>The query parameters declared on GET /seats/{class}.</summary>
 public sealed record GetSeatQuery
 {
     [JsonPropertyName("from")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? From { get; init; }
+    public DateOnly? From { get; init; }
+
+    [JsonPropertyName("in")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? In { get; init; }
 
     [JsonPropertyName("pageSize")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public long? PageSize { get; init; }
 }
 
-/// <summary>Response headers declared on GET /seats/{seatId}.</summary>
-public sealed record GetSeatHeaders(string? From);
+/// <summary>The request headers declared on GET /seats/{class}.</summary>
+public sealed record GetSeatHeaders
+{
+    [JsonPropertyName("from")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? From { get; init; }
+}
 
-/// <summary>The body of GET /seats/{seatId}, with the response headers the contract declares.</summary>
-public sealed record GetSeatResult(Seat Data, GetSeatHeaders Headers);
+/// <summary>Response headers declared on GET /seats/{class}.</summary>
+public sealed record GetSeatResponseHeaders(string? From);
+
+/// <summary>The body of GET /seats/{class}, with the response headers the contract declares.</summary>
+public sealed record GetSeatResult(Seat Data, GetSeatResponseHeaders Headers);

@@ -143,7 +143,8 @@ that hold it.
 A method returns the response body directly. Three things change that:
 
 - A status declaring **response headers** returns `<Method>Result(Data, Headers)`, or
-  `<Method>Headers` when there is no body.
+  `<Method>Headers` when there is no body. When the operation also declares request `headers:`,
+  those keep `<Method>Headers` and the response side is `<Method>ResponseHeaders`.
 - An operation the client can observe at **several statuses** returns an abstract
   `<Method>Response` with a `Status<code>` leaf each.
 - A status declaring **several content types** returns one leaf per mime.

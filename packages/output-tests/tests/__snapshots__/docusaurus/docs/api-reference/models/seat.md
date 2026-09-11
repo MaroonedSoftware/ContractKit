@@ -5,10 +5,10 @@ mdx:
     format: "md"
 ---
 
-> A seat, whose field names are all reserved somewhere in Python
+> A seat, whose field names are all reserved somewhere
 
 <details>
-<summary>Attributes (7)</summary>
+<summary>Attributes (11)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -19,5 +19,9 @@ mdx:
 | `copy` | `string` | No |  |
 | `modelDump` | `string` | No |  |
 | `json` | `string` | No |  |
+| `in` | `string` | No |  |
+| `is` | `boolean` | No |  |
+| `object` | `string` | No |  |
+| `default` | `string` | No |  |
 
 </details>

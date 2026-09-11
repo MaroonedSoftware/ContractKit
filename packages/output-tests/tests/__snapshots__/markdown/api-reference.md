@@ -7,6 +7,7 @@
 - [Fetch an invoice](#fetch-an-invoice)
 - [Fetch one seat](#fetch-one-seat)
 - [Fetch a row by its seat class](#fetch-a-row-by-its-seat-class)
+- [Replace a note](#replace-a-note)
 - [Current service status](#current-service-status)
 
 <details>
@@ -43,6 +44,7 @@
 - [Invoice](#invoice)
 - [Seat](#seat)
 - [SeatRef](#seatref)
+- [Note](#note)
 - [Heartbeat](#heartbeat)
 
 <details>
@@ -112,7 +114,7 @@
 
 ### Fetch one seat
 
-**`GET`** `/seats/{seatId}`
+**`GET`** `/seats/{class}`
 
 > [!NOTE]
 > SDK method: `getSeat`
@@ -120,12 +122,14 @@
 #### Attributes
 
 <details>
-<summary>Attributes (3)</summary>
+<summary>Attributes (5)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
-| `seatId` | `string` | Yes | Path parameter. |
+| `class` | `string` | Yes | Path parameter. |
 | `from` | `string` | No |  |
+| `from` | `string` | No |  |
+| `in` | `string` | No |  |
 | `pageSize` | `number` | No |  |
 
 </details>
@@ -164,6 +168,35 @@ Response headers:
 #### Response
 
 `200 OK` — Returns a [Seat](#seat) object.
+
+
+---
+
+### Replace a note
+
+**`PUT`** `/notes/{body}`
+
+> [!NOTE]
+> SDK method: `putNote`
+
+#### Attributes
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `body` | `string` | Yes | Path parameter. |
+
+</details>
+
+#### Request body (`application/json`)
+
+Accepts a [Note](#note) object.
+
+#### Response
+
+`200 OK` — Returns a [Note](#note) object.
 
 
 ---
@@ -616,10 +649,10 @@ Accepts a [Token](#token) object.
 
 ### Seat
 
-> A seat, whose field names are all reserved somewhere in Python
+> A seat, whose field names are all reserved somewhere
 
 <details>
-<summary>Attributes (7)</summary>
+<summary>Attributes (11)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -630,6 +663,10 @@ Accepts a [Token](#token) object.
 | `copy` | `string` | No |  |
 | `modelDump` | `string` | No |  |
 | `json` | `string` | No |  |
+| `in` | `string` | No |  |
+| `is` | `boolean` | No |  |
+| `object` | `string` | No |  |
+| `default` | `string` | No |  |
 
 </details>
 
@@ -643,6 +680,17 @@ Accepts a [Token](#token) object.
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `class` | `string` | Yes |  |
+
+</details>
+
+### Note
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `text` | `string` | Yes |  |
 
 </details>
 

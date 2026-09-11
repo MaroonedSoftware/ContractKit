@@ -33,9 +33,10 @@ import {
 } from './ts-render.js';
 import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
-import { reviveFnName, renderInlineReviver, typeReachesDecimal, coerceDeclsFor, coerceLuxonImports } from './codegen-revive.js';
+import { reviveFnName, renderInlineReviver, typeReachesDecimal, coerceDeclsFor } from './codegen-revive.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
 import { typeReachesBigInt } from './bigint-runtime.js';
+import { bindIdentifiers } from './reserved-words.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Body strategy ────────────────────────────────────────────────────────
@@ -188,9 +189,7 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
     if (referenced.length > 0) {
         lines.push(...generateTypeImports(referenced, root.file, options, usedRevivers(classBody)));
     }
-    lines.push(...decimalPrelude.imports);
-    const headerLuxon = headerLuxonImport(classBody, decimalPrelude.imports);
-    if (headerLuxon) lines.push(headerLuxon);
+    lines.push(...scalarClassImports([...classBody, ...errorAliases, ...decimalPrelude, ...inlineReviverDecls]));
 
     // SdkOptions import (from shared file) or inline fallback
     if (options.sdkOptionsPath && options.outPath) {
@@ -304,9 +303,9 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('');
     }
 
-    if (decimalPrelude.decls.length > 0) {
+    if (decimalPrelude.length > 0) {
         lines.push('');
-        lines.push(...decimalPrelude.decls);
+        lines.push(...decimalPrelude);
     }
 
     // Wrappers for bodies with no `reviveX` of their own — an inline object, a record, a tuple.
@@ -339,13 +338,12 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
  * lines between methods; `methodNames`, used by the caller to detect cross-file collisions when
  * several files contribute to the same area-level client; `preludeLines`, module-level
  * declarations the methods reference (decimal revivers and their `__dec` helper) which the caller
- * must splice in above the class; and `needsDecimalImport`, true when those declarations require
- * `import { Decimal } from 'decimal.js'` in the emitting file.
+ * must splice in above the class. The emitting file derives its own imports from these lines.
  */
 export function generateClientMethods(
     root: OpRootNode,
     options: SdkCodegenOptions,
-): { lines: string[]; methodNames: string[]; preludeLines: string[]; needsDecimalImport: boolean } {
+): { lines: string[]; methodNames: string[]; preludeLines: string[] } {
     const lines: string[] = [];
     const methodNames: string[] = [];
     const includeInternal = options.includeInternal ?? false;
@@ -362,46 +360,46 @@ export function generateClientMethods(
     // Module-level declarations the methods reference, spliced above the class by the caller —
     // the same shape `generateErrorBodyAliases` already uses.
     const declLines = [...inlineRevivers.values()].flat();
-    const { decls } = decimalPreludeFor(declLines);
+    const decls = decimalPreludeFor(declLines);
     const preludeLines = [...(decls.length > 0 ? ['', ...decls] : []), ...[...inlineRevivers.values()].flatMap(decl => ['', ...decl])];
-    return { lines, methodNames, preludeLines, needsDecimalImport: decls.length > 0 };
+    return { lines, methodNames, preludeLines };
 }
 
 /**
  * Declarations a client file needs for the inline revivers it carries.
  *
  * An inline wrapper calls `__dec`, which is file-local to the *types* module and not exported, so
- * a client file that has one needs its own copy — along with the decimal.js import and the global
- * config, since nothing else in the file necessarily pulls them in.
+ * a client file that has one needs its own copy, along with the global config, since nothing else
+ * in the file necessarily pulls it in. The imports these declarations need are left to
+ * {@link scalarClassImports}, which reads them off the emitted text.
  */
-function decimalPreludeFor(declLines: string[]): { imports: string[]; decls: string[] } {
+function decimalPreludeFor(declLines: string[]): string[] {
     const decls = coerceDeclsFor(declLines);
-    if (decls.length === 0) return { imports: [], decls: [] };
-
-    const imports: string[] = [];
-    const preamble: string[] = [];
-    if (declLines.some(l => l.includes('__dec('))) {
-        imports.push(DECIMAL_IMPORT);
-        // The global config keeps decimals out of exponential notation; only decimal.js needs it.
-        preamble.push(DECIMAL_CONFIG_LINE, '');
-    }
-    const luxon = coerceLuxonImports(declLines);
-    if (luxon.length > 0) imports.push(`import { ${luxon.join(', ')} } from 'luxon';`);
-
-    return { imports, decls: [...preamble, ...decls] };
+    if (decls.length === 0) return [];
+    // The global config keeps decimals out of exponential notation; only decimal.js needs it.
+    const preamble = declLines.some(l => l.includes('__dec(')) ? [DECIMAL_CONFIG_LINE, ''] : [];
+    return [...preamble, ...decls];
 }
 
 /**
- * The `luxon` import a client needs for its response-header coercions, or undefined.
+ * The `decimal.js` and `luxon` imports a client file needs, read off the code it emits.
  *
- * Header conversions call `DateTime.fromISO` and friends directly rather than through a reviver,
- * so they are invisible to `decimalPreludeFor`. Decided from the emitted method bodies, like every
- * other import in these files, and skipped when the reviver prelude already brought luxon in.
+ * Every place a client can name one of these classes counts: a method signature (a `date` query
+ * parameter is typed `DateTime`), a response header conversion (`DateTime.fromISO`), an inline
+ * response or error-body type, and the reviver prelude. Deciding from any one of them alone is how
+ * a `date` query parameter came to be typed `DateTime` in a file that never imported it.
+ *
+ * Doc comments are skipped and a quoted or property-key spelling does not count, so a description
+ * that mentions `DateTime`, or an inline object with a `Decimal:` key, adds no unused import.
  */
-function headerLuxonImport(methodLines: string[], existingImports: string[]): string | undefined {
-    if (existingImports.some(l => l.includes("from 'luxon'"))) return undefined;
-    const needed = ['DateTime', 'Duration'].filter(c => methodLines.some(l => l.includes(`${c}.from`)));
-    return needed.length > 0 ? `import { ${needed.join(', ')} } from 'luxon';` : undefined;
+function scalarClassImports(emitted: string[]): string[] {
+    const code = emitted.filter(l => !/^\s*(\/\*\*|\*|\/\/)/.test(l)).join('\n');
+    const uses = (name: string) => new RegExp(`(?<![A-Za-z0-9_$.'"])${name}(?![A-Za-z0-9_$'"]|\\??:)`).test(code);
+    const imports: string[] = [];
+    if (uses('Decimal')) imports.push(DECIMAL_IMPORT);
+    const luxon = ['DateTime', 'Duration'].filter(uses);
+    if (luxon.length > 0) imports.push(`import { ${luxon.join(', ')} } from 'luxon';`);
+    return imports;
 }
 
 /** Model reviver names referenced by generated method bodies. `__revive…` wrappers are local. */
@@ -454,7 +452,8 @@ function generateMethod(
     const { modelsWithInput, modelsWithOutput } = options;
 
     // Build method parameters (request-side — use Input variants, and WireInput where format(input=) re-keys)
-    const params = buildMethodParams(route, op, modelsWithInput, options.modelsWithWireInput);
+    const pathBindings = bindSdkPathParams(route);
+    const params = buildMethodParams(route, op, pathBindings, modelsWithInput, options.modelsWithWireInput);
     const paramStr = params.map(p => `${p.name}${p.optional ? '?' : ''}: ${p.type}`).join(', ');
 
     // Determine return type — response side uses Output variants (post-transform wire shape).
@@ -526,7 +525,7 @@ function generateMethod(
     }
 
     // Build URL with path params
-    const urlExpr = buildUrlExpression(route.path, route.params);
+    const urlExpr = buildUrlExpression(route.path, route.params, pathBindings);
 
     // Query string
     const hasQuery = !!op.query;
@@ -956,10 +955,10 @@ export function generateErrorBodyAliases(root: OpRootNode, options: SdkCodegenOp
  * `[a-zA-Z_]\w*`, so a hyphenated `{payment-id}` is interpolated instead of being left in the URL
  * verbatim. Such a name is not a valid property accessor either, hence the bracket form.
  */
-function buildUrlExpression(path: string, params?: ParamSource): string {
+function buildUrlExpression(path: string, params: ParamSource | undefined, bindings: Map<string, string>): string {
     return path.replace(PATH_PARAM_RE_G, (_m, name: string) => {
         // Spread across the signature: interpolate the identifier `buildMethodParams` bound.
-        if (!params || params.kind === 'params') return `\${encodeURIComponent(${toIdentifier(name)})}`;
+        if (!params || params.kind === 'params') return `\${encodeURIComponent(${bindings.get(name) ?? toIdentifier(name)})}`;
         // Behind one `params` argument: read the model's field, which keeps its declared spelling
         // and so may need bracket access. `String(...)` because that field may be typed something
         // `encodeURIComponent` does not accept.
@@ -970,13 +969,68 @@ function buildUrlExpression(path: string, params?: ParamSource): string {
 
 // ─── Method parameters ────────────────────────────────────────────────────
 
+/**
+ * Identifiers a generated method binds or reads besides its path parameters: the other arguments
+ * `buildMethodParams` can declare, the locals `generateMethod` declares, and the globals and
+ * `sdk-options` helpers its body calls. A path parameter spread into the signature under one of
+ * these names would duplicate an argument (`putNote(body: string, body: Note)`), be redeclared by
+ * a local, or shadow the function the URL expression calls.
+ */
+const SDK_METHOD_LOCALS = [
+    'body',
+    'options',
+    'query',
+    'customHeaders',
+    'params',
+    'qs',
+    'result',
+    'data',
+    '__contentType',
+    '__serialized',
+    '__isFormData',
+    'encodeURIComponent',
+    'String',
+    'Number',
+    'BigInt',
+    'JSON',
+    'FormData',
+    'URLSearchParams',
+    'DateTime',
+    'Duration',
+    'Decimal',
+    'bigIntReplacer',
+    'parseJson',
+    'buildQueryString',
+    'buildHeaders',
+    'readContentType',
+] as const;
+
+/**
+ * The argument name each inline path parameter is spread into the signature under, keyed by its
+ * declared name. Positional, so a rename changes nothing for a caller; empty when the route has no
+ * inline params.
+ */
+function bindSdkPathParams(route: OpRouteNode): Map<string, string> {
+    if (route.params?.kind !== 'params') return new Map();
+    return bindIdentifiers(
+        route.params.nodes.map(p => p.name),
+        SDK_METHOD_LOCALS,
+    );
+}
+
 interface MethodParam {
     name: string;
     type: string;
     optional: boolean;
 }
 
-function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithInput?: Set<string>, modelsWithWireInput?: Set<string>): MethodParam[] {
+function buildMethodParams(
+    route: OpRouteNode,
+    op: OpOperationNode,
+    bindings: Map<string, string>,
+    modelsWithInput?: Set<string>,
+    modelsWithWireInput?: Set<string>,
+): MethodParam[] {
     const params: MethodParam[] = [];
     // Path params are interpolated value by value, so their keys never reach the wire and they keep
     // the declared names. Everything serialized as an object below uses `wire`.
@@ -986,7 +1040,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     if (route.params) {
         if (route.params.kind === 'params') {
             for (const p of route.params.nodes) {
-                params.push({ name: toIdentifier(p.name), type: renderInputTsType(p.type, modelsWithInput), optional: false });
+                params.push({ name: bindings.get(p.name)!, type: renderInputTsType(p.type, modelsWithInput), optional: false });
             }
         } else if (route.params.kind === 'ref') {
             const typeName = modelsWithInput?.has(route.params.name) ? `${route.params.name}Input` : route.params.name;
@@ -1806,7 +1860,6 @@ export function generateAreaClient(input: AreaClientInput): string {
     // ── Merge inputs across all inline files ────────────────────────────────
     const collectedMethodLines: string[] = [];
     const collectedRevivePrelude: string[] = [];
-    let areaNeedsDecimalImport = false;
     /** Reviver value imports, grouped the same way `typesByImportPath` groups the type imports. */
     const reviversByImportPath = new Map<string, Set<string>>();
     // Aliases are keyed off method names, which already collide-check below, so a Set is enough.
@@ -1824,9 +1877,8 @@ export function generateAreaClient(input: AreaClientInput): string {
 
     for (const inline of inlineFiles) {
         const includeInternal = inline.codegenOptions.includeInternal ?? false;
-        const { lines: methodLines, methodNames, preludeLines, needsDecimalImport } = generateClientMethods(inline.root, inline.codegenOptions);
+        const { lines: methodLines, methodNames, preludeLines } = generateClientMethods(inline.root, inline.codegenOptions);
         collectedRevivePrelude.push(...preludeLines);
-        if (needsDecimalImport) areaNeedsDecimalImport = true;
         for (const name of methodNames) {
             if (seenMethods.has(name)) {
                 throw new Error(
@@ -1918,9 +1970,7 @@ export function generateAreaClient(input: AreaClientInput): string {
         lines.push(`import type { ${t} } from './${pascalToDotCase(t)}.js';`);
     }
 
-    if (areaNeedsDecimalImport) lines.push(DECIMAL_IMPORT);
-    const areaHeaderLuxon = headerLuxonImport(collectedMethodLines, collectedRevivePrelude);
-    if (areaHeaderLuxon) lines.push(areaHeaderLuxon);
+    lines.push(...scalarClassImports([...collectedMethodLines, ...collectedErrorAliases, ...collectedRevivePrelude]));
 
     // Leaf client imports (subareas only — top-level clients live next to sdk.ts).
     const importedClients = new Set<string>();

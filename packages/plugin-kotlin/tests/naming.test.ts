@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    bindKotlinParameterNames,
     deriveKotlinFileBase,
     escapeKotlinIdentifier,
     kdocLines,
@@ -40,6 +41,31 @@ describe('toKotlinPropertyName', () => {
 
     it('escapes a name that lands on a keyword', () => {
         expect(toKotlinPropertyName('object')).toBe('`object`');
+    });
+});
+
+describe('bindKotlinParameterNames', () => {
+    it('converts and escapes like toKotlinPropertyName when nothing collides', () => {
+        expect(bindKotlinParameterNames(['invoice-id', 'class'], [])).toEqual(
+            new Map([
+                ['invoice-id', 'invoiceId'],
+                ['class', '`class`'],
+            ]),
+        );
+    });
+
+    it('suffixes a name that lands on one already taken', () => {
+        expect(bindKotlinParameterNames(['body'], ['body']).get('body')).toBe('body_');
+    });
+
+    it('compares the unescaped spelling, since `class` in backticks is still class', () => {
+        expect(bindKotlinParameterNames(['class'], ['class']).get('class')).toBe('class_');
+    });
+
+    it('keeps two names distinct when a suffix would collapse them onto one', () => {
+        const bindings = bindKotlinParameterNames(['body', 'body_'], ['body']);
+        expect(bindings.get('body')).toBe('body_');
+        expect(bindings.get('body_')).toBe('body__');
     });
 });
 

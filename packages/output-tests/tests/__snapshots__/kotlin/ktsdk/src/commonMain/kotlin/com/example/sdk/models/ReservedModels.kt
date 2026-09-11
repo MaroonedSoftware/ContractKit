@@ -5,7 +5,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.serialization.Serializable
 
-/** A seat, whose field names are all reserved somewhere in Python */
+/** A seat, whose field names are all reserved somewhere */
 @Serializable
 data class Seat(
     val `class`: String,
@@ -15,10 +15,19 @@ data class Seat(
     val copy: String? = null,
     val modelDump: String? = null,
     val json: String? = null,
+    val `in`: String? = null,
+    val `is`: Boolean? = null,
+    val `object`: String? = null,
+    val default: String? = null,
 )
 
 /** Path params declared as a model whose field is a keyword, referenced via `params: SeatRef` */
 @Serializable
 data class SeatRef(
     val `class`: String,
+)
+
+@Serializable
+data class Note(
+    val text: String,
 )

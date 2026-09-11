@@ -1,0 +1,44 @@
+info:
+  name: "/seats/{class}"
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{baseUrl}}/seats/:class"
+  params:
+    - name: class
+      value: ""
+      type: path
+    - name: from
+      value: "2024-01-01"
+      type: query
+      disabled: true
+    - name: in
+      value: ""
+      type: query
+      disabled: true
+    - name: pageSize
+      value: "0"
+      type: query
+      disabled: true
+  headers:
+    - name: from
+      value: ""
+      disabled: true
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+docs: |-
+  An inline path param named after a keyword, plus a request header block and response headers on
+  the same operation, so the two generated header types have to be told apart
+  
+  fetch one seat
+  
+  **Response headers**
+  
+  - `from` (optional)

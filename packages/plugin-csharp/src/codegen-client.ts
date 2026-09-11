@@ -12,6 +12,7 @@ import { classifyContentType, observableResponses, resolveModifiers } from '@con
 import type { HoistResult } from './hoist.js';
 import { createRenderContext, renderCSharpType, renderFile, type RenderContext } from './codegen-models.js';
 import {
+    bindCSharpParameterNames,
     deriveCSharpFileBase,
     quoteCSharpString,
     safeMemberName,
@@ -193,11 +194,14 @@ function observableOf(shape: ResponseShape): OpResponseNode[] {
 function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderContext, methodName: string): string[] {
     const base = methodBase(methodName);
     const shape = responseShape(op);
-    const returnType = returnTypeFor(shape, base, ctx);
+    const returnType = returnTypeFor(shape, op, base, ctx);
     const observable = observableOf(shape);
     const expectStatuses = observable.filter(r => r.statusCode < 200 || r.statusCode >= 300).map(r => r.statusCode);
 
-    const params = buildMethodParams(route, op, ctx);
+    const pathBindings = bindPathParams(route);
+    const params = buildMethodParams(route, op, ctx, pathBindings);
+    // Everything the body can see by name: a response-header pattern variable must not redeclare one.
+    const bound = [...METHOD_LOCALS, ...params.map(p => p.name.replace(/^@/, ''))];
     const signature = [...params.map(p => `${p.type} ${p.name}${p.optional ? ' = null' : ''}`), 'CancellationToken cancellationToken = default'].join(
         ', ',
     );
@@ -209,7 +213,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderCont
     lines.push(`public async ${returnType === 'void' ? 'Task' : `Task<${returnType}>`} ${methodName}(${signature})`);
     lines.push('{');
 
-    const callArgs: string[] = [`HttpMethod.${httpMethodConstant(op.method)}`, buildPathExpression(route.path, route.params)];
+    const callArgs: string[] = [`HttpMethod.${httpMethodConstant(op.method)}`, buildPathExpression(route.path, route.params, pathBindings)];
     if (op.query) callArgs.push('query: http.Params(query)');
     if (op.headers) callArgs.push('headers: http.Params(customHeaders)');
     const content = bodyArgument(op);
@@ -222,18 +226,18 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderCont
     callArgs.forEach((arg, index) => {
         lines.push(`        ${arg}${index === callArgs.length - 1 ? ').ConfigureAwait(false);' : ','}`);
     });
-    lines.push(...returnStatements(shape, base, ctx, where(route, op)));
+    lines.push(...returnStatements(shape, op, base, ctx, where(route, op), bound));
     lines.push('}');
     return lines;
 }
 
 /** What a method hands back. Declared before the body so the two cannot drift apart. */
-function returnTypeFor(shape: ResponseShape, base: string, ctx: RenderContext): string {
+function returnTypeFor(shape: ResponseShape, op: OpOperationNode, base: string, ctx: RenderContext): string {
     if (shape.kind !== 'simple') return `${base}Response`;
     const response = shape.response;
     const body = response?.bodies[0];
     const headers = response?.headers ?? [];
-    if (!body) return headers.length > 0 ? `${base}Headers` : 'void';
+    if (!body) return headers.length > 0 ? headersRecordName(op, base) : 'void';
     const dataType = bodyCSharpType(body, ctx);
     // A declared response header changes the return shape: the body alone cannot carry it.
     return headers.length > 0 ? `${base}Result` : dataType;
@@ -264,19 +268,26 @@ function bodyReadExpr(body: OpResponseBodyNode, ctx: RenderContext): string {
 }
 
 /** The statements after `ExecuteAsync`, which turn the response into the declared return type. */
-function returnStatements(shape: ResponseShape, base: string, ctx: RenderContext, place: string): string[] {
+function returnStatements(
+    shape: ResponseShape,
+    op: OpOperationNode,
+    base: string,
+    ctx: RenderContext,
+    place: string,
+    bound: readonly string[],
+): string[] {
     if (shape.kind === 'simple') {
         const response = shape.response;
         const body = response?.bodies[0];
         const headers = response?.headers ?? [];
         if (headers.length === 0) return body ? [`    return ${bodyReadExpr(body, ctx)};`] : [];
-        const lines = readHeaderLines(headers, `${base}Headers`, ctx, place, '    ');
+        const lines = readHeaderLines(headers, headersRecordName(op, base), ctx, place, '    ', bound);
         return body ? [...lines, `    return new ${base}Result(${bodyReadExpr(body, ctx)}, headers);`] : [...lines, '    return headers;'];
     }
 
     if (shape.kind === 'multiMime') {
         const headers = shape.response.headers ?? [];
-        const lines = headers.length > 0 ? readHeaderLines(headers, `${base}Headers`, ctx, place, '    ') : [];
+        const lines = headers.length > 0 ? readHeaderLines(headers, headersRecordName(op, base), ctx, place, '    ', bound) : [];
         lines.push(...mimeSwitch(shape.response, base, undefined, ctx, '    ', headers.length > 0));
         return lines;
     }
@@ -288,13 +299,13 @@ function returnStatements(shape: ResponseShape, base: string, ctx: RenderContext
     for (const response of rest) {
         lines.push(`        case ${response.statusCode}:`);
         lines.push('        {');
-        lines.push(...statusBranch(response, base, response.statusCode, ctx, place, '            '));
+        lines.push(...statusBranch(response, op, base, response.statusCode, ctx, place, '            ', bound));
         lines.push('        }');
         lines.push('');
     }
     lines.push('        default:');
     lines.push('        {');
-    lines.push(...statusBranch(fallback!, base, fallback!.statusCode, ctx, place, '            '));
+    lines.push(...statusBranch(fallback!, op, base, fallback!.statusCode, ctx, place, '            ', bound));
     lines.push('        }');
     lines.push('    }');
     return lines;
@@ -306,10 +317,19 @@ function returnStatements(shape: ResponseShape, base: string, ctx: RenderContext
  * Every branch is braced. Two branches each declaring `headers` would otherwise collide, since a
  * declaration in a switch section is scoped to the whole switch block rather than to its own case.
  */
-function statusBranch(response: OpResponseNode, base: string, statusCode: number, ctx: RenderContext, place: string, indent: string): string[] {
+function statusBranch(
+    response: OpResponseNode,
+    op: OpOperationNode,
+    base: string,
+    statusCode: number,
+    ctx: RenderContext,
+    place: string,
+    indent: string,
+    bound: readonly string[],
+): string[] {
     const lines: string[] = [];
     const headers = response.headers ?? [];
-    if (headers.length > 0) lines.push(...readHeaderLines(headers, headersRecordName(base, statusCode), ctx, place, indent));
+    if (headers.length > 0) lines.push(...readHeaderLines(headers, headersRecordName(op, base, statusCode), ctx, place, indent, bound));
     lines.push(...mimeSwitch(response, base, statusCode, ctx, indent, headers.length > 0));
     return lines;
 }
@@ -371,8 +391,22 @@ function bodyArgument(op: OpOperationNode): string | undefined {
 
 // ─── Response declarations ─────────────────────────────────────────────────
 
-function headersRecordName(base: string, statusCode?: number): string {
-    return statusCode === undefined ? `${base}Headers` : `${base}${statusCode}Headers`;
+/**
+ * The name of a response-headers record: `<Method><Status>Headers` when the status is part of the
+ * value, otherwise `<Method>Headers`.
+ *
+ * The request-headers record claims `<Method>Headers` first, since it is the one a caller builds by
+ * name, so an operation that declares both gets `<Method>ResponseHeaders` for its response side.
+ * Two records of one name in one namespace is CS0101.
+ */
+function headersRecordName(op: OpOperationNode, base: string, statusCode?: number): string {
+    if (statusCode !== undefined) return `${base}${statusCode}Headers`;
+    return declaresRequestHeadersRecord(op) ? `${base}ResponseHeaders` : `${base}Headers`;
+}
+
+/** Whether the operation's `headers:` block gets a generated `<Method>Headers` record. */
+function declaresRequestHeadersRecord(op: OpOperationNode): boolean {
+    return op.headers?.kind === 'params' && op.headers.nodes.length > 0;
 }
 
 /**
@@ -415,12 +449,12 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
         const response = shape.response;
         const headers = response?.headers ?? [];
         if (headers.length === 0) return lines;
-        headerRecord(headers, headersRecordName(base));
+        headerRecord(headers, headersRecordName(op, base));
         const body = response?.bodies[0];
         if (body) {
             lines.push('');
             lines.push(...xmlDocLines(`The body of ${place}, with the response headers the contract declares.`, ''));
-            lines.push(`public sealed record ${base}Result(${bodyCSharpType(body, ctx)} Data, ${headersRecordName(base)} Headers);`);
+            lines.push(`public sealed record ${base}Result(${bodyCSharpType(body, ctx)} Data, ${headersRecordName(op, base)} Headers);`);
         }
         return lines;
     }
@@ -429,7 +463,7 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
     const withStatus = shape.kind === 'multiStatus';
     for (const response of responses) {
         const headers = response.headers ?? [];
-        if (headers.length > 0) headerRecord(headers, headersRecordName(base, withStatus ? response.statusCode : undefined));
+        if (headers.length > 0) headerRecord(headers, headersRecordName(op, base, withStatus ? response.statusCode : undefined));
     }
 
     lines.push('');
@@ -453,7 +487,7 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
             const name = leafRecordName(response, body, statusCode);
             const parameters: string[] = [];
             if (body) parameters.push(`${bodyCSharpType(body, ctx)} Data`);
-            if (headers.length > 0) parameters.push(`${headersRecordName(base, statusCode)} Headers`);
+            if (headers.length > 0) parameters.push(`${headersRecordName(op, base, statusCode)} Headers`);
             lines.push('');
             lines.push(`    public sealed record ${name}(${parameters.join(', ')}) : ${base}Response;`);
         }
@@ -515,14 +549,27 @@ function describeHeaderType(type: { kind: string; name?: string }): string {
 }
 
 /** The lines that build one response-headers value out of the response. */
-function readHeaderLines(headers: OpResponseHeaderNode[], typeName: string, ctx: RenderContext, place: string, indent: string): string[] {
+function readHeaderLines(
+    headers: OpResponseHeaderNode[],
+    typeName: string,
+    ctx: RenderContext,
+    place: string,
+    indent: string,
+    bound: readonly string[],
+): string[] {
+    // Pattern variables share the statement's scope, and the method's: each needs a name nothing
+    // else in either binds.
+    const locals = bindCSharpParameterNames(
+        headers.filter(h => h.optional).map(h => h.name),
+        bound,
+    );
     const args = headers.map(header => {
         const reader = headerReader(header, place);
         const name = quoteCSharpString(header.name);
         // A required header the service omitted is a broken contract, not a null the caller has to
         // handle; an optional one simply stays absent.
         if (!header.optional) return reader.read(`http.RequireHeader(response, ${name})`);
-        const local = toCSharpParameterName(header.name);
+        const local = locals.get(header.name)!;
         return `response.Header(${name}) is { } ${local} ? ${reader.read(local)} : null`;
     });
     const lines: string[] = [`${indent}var headers = new ${typeName}(`];
@@ -564,7 +611,7 @@ const PATH_PLACEHOLDER = /\{([a-zA-Z_$][a-zA-Z0-9_$.-]*)\}/g;
  * values that came from the caller are percent-encoded. `params` says where a value lives: spread
  * across the signature, or behind one `pathParams` argument when the route declares a model.
  */
-export function buildPathExpression(path: string, params?: ParamSource): string {
+export function buildPathExpression(path: string, params?: ParamSource, bindings?: ReadonlyMap<string, string>): string {
     const args = path
         .split('/')
         .filter(Boolean)
@@ -572,13 +619,37 @@ export function buildPathExpression(path: string, params?: ParamSource): string 
             PATH_PLACEHOLDER.lastIndex = 0;
             const match = PATH_PLACEHOLDER.exec(raw);
             if (!match || match[0] !== raw) return quoteCSharpString(raw);
-            const value = params && params.kind !== 'params' ? `pathParams.${toCSharpPropertyName(match[1]!)}` : toCSharpParameterName(match[1]!);
+            const value =
+                params && params.kind !== 'params'
+                    ? `pathParams.${toCSharpPropertyName(match[1]!)}`
+                    : (bindings?.get(match[1]!) ?? toCSharpParameterName(match[1]!));
             return `http.Segment(${value})`;
         });
     return `http.Path(${args.join(', ')})`;
 }
 
 // ─── Parameters ────────────────────────────────────────────────────────────
+
+/**
+ * Identifiers a generated method binds or reads besides its path parameters: the other arguments
+ * {@link buildMethodParams} can declare, the trailing `CancellationToken`, the locals the body
+ * declares, and the client's own `http` constructor parameter. A path parameter under one of these
+ * names would duplicate an argument (CS0100), clash with a local (CS0136), or hide `http`.
+ */
+const METHOD_LOCALS = ['body', 'query', 'customHeaders', 'pathParams', 'cancellationToken', 'response', 'headers', 'http'] as const;
+
+/**
+ * The C# parameter name each inline path parameter is spread into the signature under, keyed by its
+ * declared name. Keyword-escaped (`@class`), and suffixed when it lands on one of
+ * {@link METHOD_LOCALS} (`body_`). Empty when the route has no inline params.
+ */
+function bindPathParams(route: OpRouteNode): Map<string, string> {
+    if (route.params?.kind !== 'params') return new Map();
+    return bindCSharpParameterNames(
+        route.params.nodes.map(n => n.name),
+        METHOD_LOCALS,
+    );
+}
 
 interface MethodParam {
     name: string;
@@ -594,13 +665,13 @@ interface MethodParam {
  * order cannot always survive. The relative order within each group is kept, and a trailing
  * `CancellationToken` is appended by the caller.
  */
-function buildMethodParams(route: OpRouteNode, op: OpOperationNode, ctx: RenderContext): MethodParam[] {
+function buildMethodParams(route: OpRouteNode, op: OpOperationNode, ctx: RenderContext, pathBindings: ReadonlyMap<string, string>): MethodParam[] {
     const params: MethodParam[] = [];
 
     if (route.params) {
         if (route.params.kind === 'params') {
             for (const node of route.params.nodes) {
-                params.push({ name: toCSharpParameterName(node.name), type: renderCSharpType(node.type, ctx, true), optional: false });
+                params.push({ name: pathBindings.get(node.name)!, type: renderCSharpType(node.type, ctx, true), optional: false });
             }
         } else {
             // Not `params`, which is a C# keyword: the argument would have to be written `@params`.
