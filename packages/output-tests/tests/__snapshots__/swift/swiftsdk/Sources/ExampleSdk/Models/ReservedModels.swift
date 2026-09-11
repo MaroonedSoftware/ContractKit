@@ -44,13 +44,13 @@ public struct Seat: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(`class`, forKey: .`class`)
-        try container.encodeIfPresent(from, forKey: .from)
-        try container.encode(date, forKey: .date)
-        try container.encodeIfPresent(time, forKey: .time)
-        try container.encodeIfPresent(copy, forKey: .copy)
-        try container.encodeIfPresent(modelDump, forKey: .modelDump)
-        try container.encodeIfPresent(json, forKey: .json)
+        try container.encode(self.`class`, forKey: .`class`)
+        try container.encodeIfPresent(self.from, forKey: .from)
+        try container.encode(self.date, forKey: .date)
+        try container.encodeIfPresent(self.time, forKey: .time)
+        try container.encodeIfPresent(self.copy, forKey: .copy)
+        try container.encodeIfPresent(self.modelDump, forKey: .modelDump)
+        try container.encodeIfPresent(self.json, forKey: .json)
     }
 }
 
@@ -73,6 +73,6 @@ public struct SeatRef: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(`class`, forKey: .`class`)
+        try container.encode(self.`class`, forKey: .`class`)
     }
 }

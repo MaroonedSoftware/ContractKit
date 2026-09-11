@@ -158,7 +158,7 @@ describe('field shapes', () => {
         expect(out).toContain('public var note: String?');
         expect(out).toContain('public init(note: String? = nil)');
         expect(out).toContain('try container.decodeIfPresent(String.self, forKey: .note)');
-        expect(out).toContain('try container.encodeIfPresent(note, forKey: .note)');
+        expect(out).toContain('try container.encodeIfPresent(self.note, forKey: .note)');
     });
 
     it('writes a required nullable field as an explicit null, and requires the key on the way in', () => {
@@ -167,14 +167,14 @@ describe('field shapes', () => {
         // No `= nil` default: the caller has to say which of the two it means.
         expect(out).toContain('public init(note: String?) {');
         expect(out).toContain('try container.decode(String?.self, forKey: .note)');
-        expect(out).toContain('try container.encode(note, forKey: .note)');
+        expect(out).toContain('try container.encode(self.note, forKey: .note)');
     });
 
     it('fills a default in when the wire omits it, and always sends it', () => {
         const out = gen([model('M', [field('limit', scalarType('int'), { optional: true, default: 20 })])]);
         expect(out).toContain('public init(limit: Int = 20)');
         expect(out).toContain('try container.decodeIfPresent(Int.self, forKey: .limit) ?? 20');
-        expect(out).toContain('try container.encode(limit, forKey: .limit)');
+        expect(out).toContain('try container.encode(self.limit, forKey: .limit)');
     });
 
     it('renders a default of each scalar shape in the field type, not as its wire spelling', () => {
@@ -203,7 +203,7 @@ describe('field shapes', () => {
     it('validates a literal field on the way in and sends it on the way out', () => {
         const out = gen([model('Card', [field('kind', literalType('card'))])]);
         expect(out).toContain('public init(kind: String = "card")');
-        expect(out).toContain('guard kind == "card" else {');
+        expect(out).toContain('guard self.kind == "card" else {');
         expect(out).toContain('throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Expected \\"card\\"")');
     });
 });

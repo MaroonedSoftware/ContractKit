@@ -140,6 +140,13 @@ struct Probe {
         checks.expectThrows("discriminated: unknown tag is rejected") { try decoder.decode(Method.self, from: data(#"{"kind":"cash"}"#)) }
         checks.expectThrows("literal: wrong value is rejected") { try decoder.decode(Card.self, from: data(#"{"kind":"bank","last4":"1234"}"#)) }
 
+        // Fields named after the coder's locals: read through `self.`, or they resolve to the locals.
+        let shadow = try decoder.decode(Shadow.self, from: data(#"{"container":"c","encoder":2,"decoder":"d"}"#))
+        checks.expect("shadowing: container, encoder and decoder fields decode", shadow.container == "c" && shadow.encoder == 2 && shadow.decoder == "d")
+        let shadowOut = try object(encoder.encode(shadow))
+        checks.expect("shadowing: encode writes the properties, not the locals", shadowOut["container"] as? String == "c" && shadowOut["encoder"] as? Int == 2 && shadowOut["decoder"] as? String == "d")
+        checks.expectThrows("shadowing: a literal's guard reads the property") { try decoder.decode(Shadow.self, from: data(#"{"container":"c","decoder":"x"}"#)) }
+
         // Recursion, containers, plain unions, scalars.
         let node = try decoder.decode(Node.self, from: data(nodeJSON))
         checks.expect("recursion: lazy() self reference decodes", node.next?.class == "d")
