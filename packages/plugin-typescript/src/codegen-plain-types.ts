@@ -9,8 +9,10 @@ import {
     resolveImportPath,
     rootNeedsScalar,
 } from './codegen-contract.js';
-import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJsDocLines, sourceLink, JSON_VALUE_TYPE_DECL } from './ts-render.js';
+import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJsDocLines, sourceLink, withFieldJsDoc, JSON_VALUE_TYPE_DECL } from './ts-render.js';
 import type { TsRenderTarget } from './ts-render.js';
+import { collectExternalWireInputRefs, renderWireInputModel } from './codegen-wire-input.js';
+import type { WireInputRenderContext } from './codegen-wire-input.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
 
@@ -40,10 +42,16 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
     const localModelsWithOutput = computeModelsWithOutput(root.models, externalModelsWithOutput);
     const allModelsWithOutput = new Set([...localModelsWithOutput, ...externalModelsWithOutput]);
 
+    const modelMap = new Map(root.models.map(m => [m.name, m]));
+    const wireCtx: WireInputRenderContext | undefined = context?.modelsWithWireInput
+        ? { modelsWithInput: allModelsWithInput, modelsWithWireInput: context.modelsWithWireInput, modelMap, target, jsonType: 'JsonValue' }
+        : undefined;
+
     // Collect additional external Input/Output refs needed for variant fields
     const externalInputRefs = allModelsWithInput.size > 0 ? collectExternalInputRefs(root, allModelsWithInput) : [];
     const externalOutputRefs = allModelsWithOutput.size > 0 ? collectExternalOutputRefs(root, allModelsWithOutput) : [];
-    const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs, ...externalOutputRefs])].sort();
+    const externalWireInputRefs = wireCtx ? collectExternalWireInputRefs(root, wireCtx) : [];
+    const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs, ...externalOutputRefs, ...externalWireInputRefs])].sort();
 
     // Not `import type`: `renderTsScalar` maps `decimal` to `Decimal` in this mode too, so the class
     // is a real runtime dependency of any consumer holding one — same position as in
@@ -79,8 +87,6 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
         lines.push('');
     }
 
-    const modelMap = new Map(root.models.map(m => [m.name, m]));
-
     const reviveOpts =
         context?.emitRevivers && context.modelsWithDecimal
             ? { modelsWithDecimal: context.modelsWithDecimal, modelsWithOutput: allModelsWithOutput, modelMap }
@@ -89,6 +95,10 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
     const bodyLines: string[] = [];
     for (const model of topoSortModels(root.models)) {
         bodyLines.push(...generateModel(model, target, context?.currentOutPath, allModelsWithInput, allModelsWithOutput, modelMap));
+        if (wireCtx?.modelsWithWireInput.has(model.name)) {
+            bodyLines.push('');
+            bodyLines.push(...renderWireInputModel(model, wireCtx));
+        }
         if (reviveOpts) {
             const revivers = renderReviveFunctions(model, reviveOpts);
             if (revivers.length > 0) {
@@ -271,18 +281,6 @@ function generateVisibilityModel(
 }
 
 // ─── Field rendering ──────────────────────────────────────────────────────
-
-/** Prefix a field declaration with a JSDoc comment built from `@deprecated` / description parts,
- *  neutralizing any block-comment terminator and expanding embedded newlines into continuation lines. */
-function withFieldJsDoc(jsdocParts: string[], line: string): string {
-    if (jsdocParts.length === 0) return line;
-    const contentLines = escapeJsDocLines(jsdocParts.join(' '));
-    if (contentLines.length === 1) {
-        return `/** ${contentLines[0]} */\n    ${line}`;
-    }
-    const body = contentLines.map(l => `     * ${l}`).join('\n');
-    return `/**\n${body}\n     */\n    ${line}`;
-}
 
 function renderField(field: FieldNode, target: TsRenderTarget): string {
     const opt = field.optional || field.default !== undefined ? '?' : '';

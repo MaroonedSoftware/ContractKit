@@ -101,6 +101,12 @@ export const Token = z.strictObject({
 export type Token = z.output<typeof Token>;
 export type TokenOutput = z.output<typeof Token>;
 
+/** {@link Token} as a request sends it, keyed the way the server's schema parses it. */
+export interface TokenWireInput {
+    AccessToken: string;
+    ExpiresIn?: number;
+}
+
 /**
  * generated from [Owned](../../contracts/kitchen.ck#L71)
 */

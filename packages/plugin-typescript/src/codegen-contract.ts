@@ -22,6 +22,8 @@ import {
     collectExternalOutputRefs as ckCollectExternalOutputRefs,
 } from '@contractkit/core';
 import { escapeJsDocLines, sourceLink } from './ts-render.js';
+import { collectExternalWireInputRefs, flattenFormatChain, renderWireInputModel } from './codegen-wire-input.js';
+import type { WireInputRenderContext } from './codegen-wire-input.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
@@ -54,6 +56,11 @@ export interface ContractCodegenContext {
     modelsWithInput?: Set<string>;
     /** Set of model names that have Output variants (models with format(output=...)) */
     modelsWithOutput?: Set<string>;
+    /**
+     * Models that get an `XWireInput` type, the shape a request sends (see `codegen-wire-input`).
+     * Set for SDK type files only: a server parses requests through the schema itself.
+     */
+    modelsWithWireInput?: Set<string>;
     /** If set, import JsonValue from this path instead of re-declaring it (avoids barrel re-export conflicts) */
     jsonValueImportPath?: string;
     /**
@@ -166,10 +173,22 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     const localModelsWithOutput = ckComputeModelsWithOutput(root.models, externalModelsWithOutput);
     const allModelsWithOutput = new Set([...localModelsWithOutput, ...externalModelsWithOutput]);
 
+    const modelMap = new Map(root.models.map(m => [m.name, m]));
+    const wireCtx: WireInputRenderContext | undefined = context?.modelsWithWireInput
+        ? {
+              modelsWithInput: allModelsWithInput,
+              modelsWithWireInput: context.modelsWithWireInput,
+              modelMap,
+              target: context.target ?? 'client',
+              jsonType: '_JsonValue',
+          }
+        : undefined;
+
     // Collect additional external Input refs needed for Input schema fields
     const externalInputRefs = allModelsWithInput.size > 0 ? collectExternalInputRefs(root, allModelsWithInput) : [];
     const externalOutputRefs = allModelsWithOutput.size > 0 ? ckCollectExternalOutputRefs(root, allModelsWithOutput) : [];
-    const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs, ...externalOutputRefs])].sort();
+    const externalWireInputRefs = wireCtx ? collectExternalWireInputRefs(root, wireCtx) : [];
+    const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs, ...externalOutputRefs, ...externalWireInputRefs])].sort();
 
     lines.push(`import { z } from 'zod';`);
     const luxonImports: string[] = [];
@@ -219,9 +238,6 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     }
     if (needsBinary || needsDatetime || needsInterval || needsDecimal || needsJson) lines.push('');
 
-    const modelMap = new Map(root.models.map(m => [m.name, m]));
-
-
     const reviveOpts =
         context?.emitRevivers && context.modelsWithDecimal
             ? { modelsWithDecimal: context.modelsWithDecimal, modelsWithOutput: allModelsWithOutput, modelMap }
@@ -230,6 +246,10 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     const bodyLines: string[] = [];
     for (const model of topoSortModels(root.models)) {
         bodyLines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelMap, allModelsWithOutput));
+        if (wireCtx?.modelsWithWireInput.has(model.name)) {
+            bodyLines.push('');
+            bodyLines.push(...renderWireInputModel(model, wireCtx));
+        }
         if (reviveOpts) {
             const revivers = renderReviveFunctions(model, reviveOpts);
             if (revivers.length > 0) {
@@ -253,40 +273,6 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
 }
 
 // ─── Model ─────────────────────────────────────────────────────────────────
-
-/**
- * If any ancestor in the base chain has a format(input=)/format(output=) transform,
- * the parent schema compiles to a `ZodPipe` (object().transform()) which has no `.extend()`.
- * To keep extension working, inline the parent's fields into the child and inherit format/mode
- * so the child re-applies the transform on the merged shape. Returns the model unchanged when
- * no ancestor has format, preserving the existing `.extend()`-based output.
- */
-function flattenFormatChain(model: ModelNode, modelMap: Map<string, ModelNode>): ModelNode {
-    if (!model.bases || model.bases.length === 0) return model;
-    // TODO(multi-base): currently only the first base is followed for format inheritance.
-    // Multi-base format flattening will need a topological merge across all bases.
-    const firstBase = model.bases[0]!;
-    const parent = modelMap.get(firstBase);
-    if (!parent) return model;
-    const flatParent = flattenFormatChain(parent, modelMap);
-    const parentHasFormat =
-        (flatParent.inputCase !== undefined && flatParent.inputCase !== 'camel') ||
-        (flatParent.outputCase !== undefined && flatParent.outputCase !== 'camel');
-    if (!parentHasFormat) return model;
-
-    const merged = new Map<string, FieldNode>();
-    for (const f of flatParent.fields) merged.set(f.name, f);
-    for (const f of model.fields) merged.set(f.name, f);
-
-    return {
-        ...model,
-        bases: undefined,
-        fields: [...merged.values()],
-        inputCase: model.inputCase ?? flatParent.inputCase,
-        outputCase: model.outputCase ?? flatParent.outputCase,
-        mode: model.mode ?? flatParent.mode,
-    };
-}
 
 function generateModel(
     model: ModelNode,
@@ -950,8 +936,9 @@ function renderInlineObject(o: InlineObjectTypeNode, parseCaseTransform?: 'snake
  * branch uses that same schema for `query: X` that the body path uses for
  * `request: { application/json: X }`. Making it strict would break query-by-model; leaving it
  * coercing leaves a JSON body accepting string-shaped numbers. A real split needs a second emitted
- * variant (`XInputWire`) plus the import plumbing to reach it, which is separate work — the
- * narrowed coercion in `renderScalar` closes the soundness hole in the meantime.
+ * schema variant plus the import plumbing to reach it, which is separate work — the narrowed
+ * coercion in `renderScalar` closes the soundness hole in the meantime. (Not to be confused with the
+ * SDK's `XWireInput`, a type-only variant for `format(input=)` key casing; see `codegen-wire-input`.)
  */
 function renderInputScalar(s: ScalarTypeNode): string {
     return renderScalar(s);

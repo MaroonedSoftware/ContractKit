@@ -16,6 +16,18 @@ export function escapeJsDocLines(text: string): string[] {
     return text.replace(/\*\//g, '*\\/').split('\n');
 }
 
+/** Prefix a field declaration with a JSDoc comment built from `@deprecated` / description parts,
+ *  neutralizing any block-comment terminator and expanding embedded newlines into continuation lines. */
+export function withFieldJsDoc(jsdocParts: string[], line: string): string {
+    if (jsdocParts.length === 0) return line;
+    const contentLines = escapeJsDocLines(jsdocParts.join(' '));
+    if (contentLines.length === 1) {
+        return `/** ${contentLines[0]} */\n    ${line}`;
+    }
+    const body = contentLines.map(l => `     * ${l}`).join('\n');
+    return `/**\n${body}\n     */\n    ${line}`;
+}
+
 /** Escape a string for inclusion inside a single-quoted TypeScript string literal. */
 export function escapeSingleQuoted(s: string): string {
     return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');

@@ -1,0 +1,291 @@
+import type { ContractRootNode, ContractTypeNode, FieldNode, ModelNode } from '@contractkit/core';
+import { collectTypeRefs } from '@contractkit/core';
+import { quoteKey, renderTsType, withFieldJsDoc } from './ts-render.js';
+import type { TsRenderTarget } from './ts-render.js';
+
+/**
+ * The request side of `format(input=)`.
+ *
+ * A contract declared `format(input=pascal)` compiles to a schema that parses `PascalCase` keys and
+ * hands the service camelCase (or the `format(output=)` casing). The model's own TypeScript type
+ * describes that post-transform shape, so an SDK that typed a request body with it would ask the
+ * caller for keys the server's schema rejects. `XWireInput` is the type a request is sent in: the
+ * keys the server parses, at every level.
+ *
+ * It is a rendered interface rather than `z.input<typeof X>`. That alias would get every key right,
+ * but `int`, `datetime`, `decimal` and the other coercing scalars compile to `z.preprocess`, whose
+ * input type is `unknown`, so it would accept `ExpiresIn: 'soon'`. A plain-types SDK has no schema to
+ * take `z.input` of anyway, and one renderer keeps the two SDK flavours in agreement.
+ */
+
+/** A key casing a `format()` modifier can name. */
+type KeyCase = NonNullable<ModelNode['inputCase']>;
+
+/** A case that actually renames something. `camel` is the identity and is treated as absent. */
+function renamingCase(keyCase: KeyCase | undefined): 'snake' | 'pascal' | undefined {
+    return keyCase && keyCase !== 'camel' ? keyCase : undefined;
+}
+
+/** A field name in the given casing, spelled exactly as the schema's `.transform()` spells it. */
+export function applyKeyCase(name: string, keyCase: KeyCase | undefined): string {
+    if (keyCase === 'snake') return name.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`);
+    if (keyCase === 'pascal') return name.charAt(0).toUpperCase() + name.slice(1);
+    return name;
+}
+
+/**
+ * If any ancestor in the base chain has a format(input=)/format(output=) transform,
+ * the parent schema compiles to a `ZodPipe` (object().transform()) which has no `.extend()`.
+ * To keep extension working, inline the parent's fields into the child and inherit format/mode
+ * so the child re-applies the transform on the merged shape. Returns the model unchanged when
+ * no ancestor has format, preserving the existing `.extend()`-based output.
+ */
+export function flattenFormatChain(model: ModelNode, modelMap: Map<string, ModelNode>): ModelNode {
+    if (!model.bases || model.bases.length === 0) return model;
+    // TODO(multi-base): currently only the first base is followed for format inheritance.
+    // Multi-base format flattening will need a topological merge across all bases.
+    const firstBase = model.bases[0]!;
+    const parent = modelMap.get(firstBase);
+    if (!parent) return model;
+    const flatParent = flattenFormatChain(parent, modelMap);
+    const parentHasFormat =
+        (flatParent.inputCase !== undefined && flatParent.inputCase !== 'camel') ||
+        (flatParent.outputCase !== undefined && flatParent.outputCase !== 'camel');
+    if (!parentHasFormat) return model;
+
+    const merged = new Map<string, FieldNode>();
+    for (const f of flatParent.fields) merged.set(f.name, f);
+    for (const f of model.fields) merged.set(f.name, f);
+
+    return {
+        ...model,
+        bases: undefined,
+        fields: [...merged.values()],
+        inputCase: model.inputCase ?? flatParent.inputCase,
+        outputCase: model.outputCase ?? flatParent.outputCase,
+        mode: model.mode ?? flatParent.mode,
+    };
+}
+
+/**
+ * The key casings a model's request schema actually applies.
+ *
+ * Mirrors which schema `generateContract` emits. Only the single-schema path honours `format()`: a
+ * type alias ignores it, and so does a model split into a read schema and an `Input` schema, whose
+ * generator renders every key as declared. The SDK has to send what the server parses, so it
+ * follows the same rule rather than the contract text.
+ */
+function appliedCasing(
+    model: ModelNode,
+    modelMap: Map<string, ModelNode>,
+    modelsWithInput: Set<string>,
+): { input?: 'snake' | 'pascal'; output?: 'snake' | 'pascal' } {
+    if (model.type || modelsWithInput.has(model.name)) return {};
+    const effective = flattenFormatChain(model, modelMap);
+    return { input: renamingCase(effective.inputCase), output: renamingCase(effective.outputCase) };
+}
+
+/** Every model name `model` mentions: its fields, its bases, and a type alias's expression. */
+function directRefs(model: ModelNode): Set<string> {
+    const refs = new Set<string>();
+    for (const field of model.fields) collectTypeRefs(field.type, refs);
+    for (const base of model.bases ?? []) refs.add(base);
+    if (model.type) collectTypeRefs(model.type, refs);
+    return refs;
+}
+
+/** Grow `seed` with every model that references a member, until nothing changes. */
+function closeOverRefs(models: ModelNode[], seed: Set<string>): Set<string> {
+    const result = new Set(seed);
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const model of models) {
+            if (result.has(model.name)) continue;
+            if ([...directRefs(model)].some(ref => result.has(ref))) {
+                result.add(model.name);
+                changed = true;
+            }
+        }
+    }
+    return result;
+}
+
+/**
+ * Which models need an `XWireInput` type: those whose SDK request type would otherwise carry keys the
+ * server's schema does not parse.
+ *
+ * The answer depends on how the SDK spells the model's own type, so it differs by flavour:
+ *
+ * - `plain`: every interface carries the keys as declared. A model is affected when it, or anything
+ *   it references, is keyed by `format(input=)`.
+ * - `zod`: a model's type is `z.output` of its schema (`z.infer`), and a nested schema contributes
+ *   its post-transform keys. So a model referencing *any* re-keying schema is affected, including
+ *   one that only has `format(output=)`. The exception is a model whose only transform is its own
+ *   `format(output=)`: its type is already `z.input`, which is the wire shape.
+ *
+ * @param models Every model in scope, across all files, so a reference into another file counts.
+ * @param modelsWithInput Models split into a read and an `Input` schema.
+ */
+export function computeModelsWithWireInput(models: ModelNode[], modelsWithInput: Set<string>, flavor: 'zod' | 'plain'): Set<string> {
+    const modelMap = new Map(models.map(m => [m.name, m]));
+    const casing = new Map(models.map(m => [m.name, appliedCasing(m, modelMap, modelsWithInput)]));
+
+    const inputKeyed = new Set(models.filter(m => casing.get(m.name)!.input).map(m => m.name));
+    if (flavor === 'plain') return closeOverRefs(models, inputKeyed);
+
+    const transformed = closeOverRefs(models, new Set(models.filter(m => casing.get(m.name)!.input || casing.get(m.name)!.output).map(m => m.name)));
+    const result = new Set<string>();
+    for (const model of models) {
+        const { input, output } = casing.get(model.name)!;
+        if (output && !input) continue;
+        if (input || [...directRefs(model)].some(ref => transformed.has(ref))) result.add(model.name);
+    }
+    return result;
+}
+
+// ─── Rendering ─────────────────────────────────────────────────────────────
+
+/** What the `XWireInput` renderer needs to resolve names and scalars. */
+export interface WireInputRenderContext {
+    /** Models split into a read and an `Input` schema. */
+    modelsWithInput: Set<string>;
+    /** Models that get an `XWireInput`, from {@link computeModelsWithWireInput}. */
+    modelsWithWireInput: Set<string>;
+    /**
+     * The models the schema generator can see. `generateContract` flattens a format chain only
+     * through bases in the same file, so this is the current file's models, to match.
+     */
+    modelMap: Map<string, ModelNode>;
+    target: TsRenderTarget;
+    /** How the file spells the `json` scalar: `JsonValue` in plain types, `_JsonValue` beside Zod. */
+    jsonType: string;
+    /** When set, collects every type name rendered, mapped to the model it belongs to. */
+    refs?: Map<string, string>;
+}
+
+/** A referenced model's request-side name: its `WireInput` type, else its `Input` type, else itself. */
+function requestName(name: string, ctx: WireInputRenderContext): string {
+    const rendered = ctx.modelsWithWireInput.has(name) ? `${name}WireInput` : ctx.modelsWithInput.has(name) ? `${name}Input` : name;
+    ctx.refs?.set(rendered, name);
+    return rendered;
+}
+
+/**
+ * Render a contract type as the TypeScript a request sends.
+ *
+ * `keyCase` re-keys inline objects, which is how the schema generator treats them: a `format(input=)`
+ * model's transform reaches every anonymous object below it, through arrays, unions, intersections
+ * and `lazy()`, but not into a tuple or a record, and never into a referenced model, which keys itself.
+ */
+export function renderWireInputTsType(type: ContractTypeNode, ctx: WireInputRenderContext, keyCase?: 'snake' | 'pascal'): string {
+    const recurse = (t: ContractTypeNode) => renderWireInputTsType(t, ctx, keyCase);
+    switch (type.kind) {
+        case 'ref':
+            return requestName(type.name, ctx);
+        case 'scalar':
+            return type.name === 'json' ? ctx.jsonType : renderTsType(type, ctx.target);
+        case 'array': {
+            const inner = recurse(type.item);
+            const needsParens =
+                type.item.kind === 'union' ||
+                type.item.kind === 'discriminatedUnion' ||
+                type.item.kind === 'intersection' ||
+                type.item.kind === 'enum';
+            return needsParens ? `(${inner})[]` : `${inner}[]`;
+        }
+        case 'tuple':
+            return `[${type.items.map(i => renderWireInputTsType(i, ctx)).join(', ')}]`;
+        case 'record':
+            return `Record<${renderTsType(type.key, ctx.target)}, ${renderWireInputTsType(type.value, ctx)}>`;
+        case 'union':
+        case 'discriminatedUnion':
+            return type.members.map(recurse).join(' | ');
+        case 'intersection':
+            return type.members.map(recurse).join(' & ');
+        case 'lazy':
+            return recurse(type.inner);
+        case 'inlineObject':
+            return `{ ${type.fields.map(f => fieldDeclaration(f, ctx, keyCase)).join('; ')} }`;
+        default:
+            return renderTsType(type, ctx.target);
+    }
+}
+
+/** `key?: Type`, optional when the schema lets the caller leave it out: `?`, or a default. */
+function fieldDeclaration(field: FieldNode, ctx: WireInputRenderContext, keyCase: 'snake' | 'pascal' | undefined): string {
+    const opt = field.optional || field.default !== undefined ? '?' : '';
+    const nullable = field.nullable ? ' | null' : '';
+    return `${quoteKey(applyKeyCase(field.name, keyCase))}${opt}: ${renderWireInputTsType(field.type, ctx, keyCase)}${nullable}`;
+}
+
+/**
+ * Names of fields the declaration replaces in a base: an explicit `override`, or a name a base
+ * already has. Omitted from each base so the redeclaration can change the type.
+ */
+function shadowedNames(fields: FieldNode[], bases: string[], modelMap: Map<string, ModelNode>): string[] {
+    const inherited = new Set<string>();
+    const visit = (name: string): void => {
+        const base = modelMap.get(name);
+        if (!base || base.type) return;
+        for (const f of base.fields) inherited.add(f.name);
+        for (const b of base.bases ?? []) visit(b);
+    };
+    for (const b of bases) visit(b);
+    return fields.filter(f => f.override || inherited.has(f.name)).map(f => f.name);
+}
+
+/**
+ * Emit `export interface XWireInput` (or `export type` for a type alias) for one model.
+ *
+ * The shape follows the schema the server parses the request with:
+ * - A model with an applied `format()` is one flat object of its (flattened) own fields, keyed by
+ *   `format(input=)`. Its bases are not extended, because the schema generator does not extend them.
+ * - Any other model extends its bases, each resolved to its request-side name.
+ * - A model split for `readonly`/`writeonly` leaves out its readonly fields, as its `Input` schema does.
+ */
+export function renderWireInputModel(model: ModelNode, ctx: WireInputRenderContext): string[] {
+    const name = `${model.name}WireInput`;
+    const lines = [`/** {@link ${model.name}} as a request sends it, keyed the way the server's schema parses it. */`];
+
+    if (model.type) {
+        lines.push(`export type ${name} = ${renderWireInputTsType(model.type, ctx)};`);
+        return lines;
+    }
+
+    const split = ctx.modelsWithInput.has(model.name);
+    const effective = flattenFormatChain(model, ctx.modelMap);
+    const { input, output } = appliedCasing(model, ctx.modelMap, ctx.modelsWithInput);
+    const bases = input || output ? [] : (effective.bases ?? []);
+    const fields = split ? effective.fields.filter(f => f.visibility !== 'readonly') : effective.fields;
+
+    const shadowed = shadowedNames(effective.fields, bases, ctx.modelMap);
+    const omit = shadowed.length > 0 ? shadowed.map(n => `'${n}'`).join(' | ') : undefined;
+    const heritage = bases.map(b => (omit ? `Omit<${requestName(b, ctx)}, ${omit}>` : requestName(b, ctx)));
+    lines.push(`export interface ${name}${heritage.length > 0 ? ` extends ${heritage.join(', ')}` : ''} {`);
+    for (const field of fields) {
+        const jsdoc: string[] = [];
+        if (field.deprecated) jsdoc.push('@deprecated');
+        if (field.description) jsdoc.push(field.description);
+        lines.push(`    ${withFieldJsDoc(jsdoc, `${fieldDeclaration(field, ctx, input)};`)}`);
+    }
+    lines.push('}');
+    return lines;
+}
+
+/**
+ * The names the `XWireInput` types of `root` reference from other files, for the import block.
+ *
+ * Found by rendering them into a collector, so the imports cannot disagree with the declarations.
+ */
+export function collectExternalWireInputRefs(root: ContractRootNode, ctx: WireInputRenderContext): string[] {
+    const refs = new Map<string, string>();
+    for (const model of root.models) {
+        if (ctx.modelsWithWireInput.has(model.name)) renderWireInputModel(model, { ...ctx, refs });
+    }
+    const localNames = new Set(root.models.map(m => m.name));
+    return [...refs]
+        .filter(([, owner]) => !localNames.has(owner))
+        .map(([rendered]) => rendered)
+        .sort();
+}

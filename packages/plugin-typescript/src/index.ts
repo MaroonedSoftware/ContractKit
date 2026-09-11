@@ -46,6 +46,7 @@ import {
     type SdkScaffoldDeps,
 } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
+import { computeModelsWithWireInput } from './codegen-wire-input.js';
 import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
 import { resolveServerFramework, SERVER_FRAMEWORK_NAMES, type ServerFrameworkName } from './server-framework.js';
 export {
@@ -387,7 +388,13 @@ function paramSourceTypes(src: NonNullable<OpRootNode['routes'][number]['params'
 }
 
 /** Build a sorted, JSON-stable record of (modelName -> outPath) for refs this unit depends on. */
-function sliceOutPathMap(refs: Set<string>, modelOutPaths: Map<string, string>, modelsWithInput: Set<string>, modelsWithOutput: Set<string>): Record<string, string> {
+function sliceOutPathMap(
+    refs: Set<string>,
+    modelOutPaths: Map<string, string>,
+    modelsWithInput: Set<string>,
+    modelsWithOutput: Set<string>,
+    modelsWithWireInput: Set<string> = new Set(),
+): Record<string, string> {
     const slice: Record<string, string> = {};
     for (const ref of [...refs].sort()) {
         const p = modelOutPaths.get(ref);
@@ -399,6 +406,10 @@ function sliceOutPathMap(refs: Set<string>, modelOutPaths: Map<string, string>, 
         if (modelsWithOutput.has(ref)) {
             const op = modelOutPaths.get(`${ref}Output`);
             if (op) slice[`${ref}Output`] = op;
+        }
+        if (modelsWithWireInput.has(ref)) {
+            const wp = modelOutPaths.get(`${ref}WireInput`);
+            if (wp) slice[`${ref}WireInput`] = wp;
         }
     }
     return slice;
@@ -557,6 +568,14 @@ function collectSdkOutput(
     // a referenced model counts, and cross-file, because that model may live in another .ck file —
     // which is also why it is sliced into every fingerprint below, exactly as modelsWithDecimal is.
     const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
+    // Request types that `format(input=)` re-keys. Depends on the flavour, because a Zod SDK types a
+    // model as its schema's `z.output` and a plain one as the declared interface. Cross-file for the
+    // same reason as the two sets above, and sliced into the same fingerprints.
+    const modelsWithWireInput = computeModelsWithWireInput(
+        inputs.contractRoots.flatMap(r => r.models),
+        modelsWithInput,
+        config.zod ? 'zod' : 'plain',
+    );
     const modelMap = buildModelMap(inputs.contractRoots);
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const ckCommonRoot = commonDir(allFiles, rootDir);
@@ -579,6 +598,7 @@ function collectSdkOutput(
                 sdkModelOutPaths.set(model.name, typeOutPath);
                 if (modelsWithInput.has(model.name)) sdkModelOutPaths.set(`${model.name}Input`, typeOutPath);
                 if (modelsWithOutput.has(model.name)) sdkModelOutPaths.set(`${model.name}Output`, typeOutPath);
+                if (modelsWithWireInput.has(model.name)) sdkModelOutPaths.set(`${model.name}WireInput`, typeOutPath);
             }
         }
     }
@@ -592,9 +612,12 @@ function collectSdkOutput(
             v: TYPESCRIPT_CODEGEN_VERSION,
             outPath: typeOutPath,
             root: ast,
-            outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput),
+            outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput, modelsWithWireInput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
+            // Not covered by `root`: adding `format(input=)` to a model in a *different* .ck file
+            // changes which `WireInput` types this file declares and imports.
+            modelsWithWireInput: sliceModelSet(refs, ownNames, modelsWithWireInput),
             // Not covered by `root`: adding a decimal to a model in a *different* .ck file changes
             // this file's revivers with no change to `root` or the config.
             modelsWithDecimal: sliceModelSet(refs, ownNames, modelsWithDecimal),
@@ -615,6 +638,7 @@ function collectSdkOutput(
                         currentOutPath: typeOutPath,
                         modelsWithInput,
                         modelsWithOutput,
+                        modelsWithWireInput,
                         modelsWithDecimal,
                         emitRevivers: true,
                         // An SDK client runs in a browser as readily as in Node, and its scaffold
@@ -629,6 +653,7 @@ function collectSdkOutput(
                         currentOutPath: typeOutPath,
                         modelsWithInput,
                         modelsWithOutput,
+                        modelsWithWireInput,
                         modelsWithDecimal,
                         emitRevivers: true,
                         jsonValueImportPath: rel,
