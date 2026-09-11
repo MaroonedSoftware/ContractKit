@@ -34,37 +34,61 @@ export function applyKeyCase(name: string, keyCase: KeyCase | undefined): string
 }
 
 /**
- * If any ancestor in the base chain has a format(input=)/format(output=) transform,
- * the parent schema compiles to a `ZodPipe` (object().transform()) which has no `.extend()`.
- * To keep extension working, inline the parent's fields into the child and inherit format/mode
- * so the child re-applies the transform on the merged shape. Returns the model unchanged when
- * no ancestor has format, preserving the existing `.extend()`-based output.
+ * Inline every base into a contract whose keys a `format()` renames.
+ *
+ * A `format()` schema compiles to a `ZodPipe` (`object().transform()`), which has no `.extend()` and
+ * no `.shape`, so neither a child of one nor a `format()` contract with a plain base can be built
+ * by extension. Both get one flat object instead: each base's fields in declaration order, then the
+ * contract's own, a later name replacing an earlier one exactly as `.extend()` would. The casing is
+ * the contract's own, else the first base's that sets one; the object mode is its own, else its
+ * first base's, which is what `.extend()` would have kept.
+ *
+ * Returns the model unchanged when no casing applies, preserving the `.extend()`-based output.
+ *
+ * @param modelMap Every model the bases may name. Pass all files' models: a base in another file
+ * still has to contribute its fields, since the flattened schema cannot extend it.
  */
 export function flattenFormatChain(model: ModelNode, modelMap: Map<string, ModelNode>): ModelNode {
-    if (!model.bases || model.bases.length === 0) return model;
-    // TODO(multi-base): currently only the first base is followed for format inheritance.
-    // Multi-base format flattening will need a topological merge across all bases.
-    const firstBase = model.bases[0]!;
-    const parent = modelMap.get(firstBase);
-    if (!parent) return model;
-    const flatParent = flattenFormatChain(parent, modelMap);
-    const parentHasFormat =
-        (flatParent.inputCase !== undefined && flatParent.inputCase !== 'camel') ||
-        (flatParent.outputCase !== undefined && flatParent.outputCase !== 'camel');
-    if (!parentHasFormat) return model;
+    return flatten(model, modelMap, new Set());
+}
+
+function flatten(model: ModelNode, modelMap: Map<string, ModelNode>, chain: Set<string>): ModelNode {
+    if (!model.bases || model.bases.length === 0 || chain.has(model.name)) return model;
+    // A cycle is reported by validate-inheritance; stopping here only keeps codegen from recursing.
+    const inner = new Set(chain).add(model.name);
+    const bases = model.bases.flatMap(b => {
+        const base = modelMap.get(b);
+        return base && !base.type ? [flatten(base, modelMap, inner)] : [];
+    });
+    const inputCase = model.inputCase ?? bases.find(b => b.inputCase !== undefined)?.inputCase;
+    const outputCase = model.outputCase ?? bases.find(b => b.outputCase !== undefined)?.outputCase;
+    if (!renamingCase(inputCase) && !renamingCase(outputCase)) return model;
 
     const merged = new Map<string, FieldNode>();
-    for (const f of flatParent.fields) merged.set(f.name, f);
+    for (const base of bases) for (const f of inheritedFields(base, modelMap, inner)) merged.set(f.name, f);
     for (const f of model.fields) merged.set(f.name, f);
 
     return {
         ...model,
         bases: undefined,
         fields: [...merged.values()],
-        inputCase: model.inputCase ?? flatParent.inputCase,
-        outputCase: model.outputCase ?? flatParent.outputCase,
-        mode: model.mode ?? flatParent.mode,
+        inputCase,
+        outputCase,
+        mode: model.mode ?? bases[0]?.mode,
     };
+}
+
+/** Every field a model carries, its bases' included, for a model {@link flatten} left unflattened. */
+function inheritedFields(model: ModelNode, modelMap: Map<string, ModelNode>, chain: Set<string>): FieldNode[] {
+    if (!model.bases || model.bases.length === 0 || chain.has(model.name)) return model.fields;
+    const inner = new Set(chain).add(model.name);
+    const merged = new Map<string, FieldNode>();
+    for (const b of model.bases) {
+        const base = modelMap.get(b);
+        if (base && !base.type) for (const f of inheritedFields(flatten(base, modelMap, inner), modelMap, inner)) merged.set(f.name, f);
+    }
+    for (const f of model.fields) merged.set(f.name, f);
+    return [...merged.values()];
 }
 
 /**
@@ -152,10 +176,7 @@ export interface WireInputRenderContext {
     modelsWithInput: Set<string>;
     /** Models that get an `XWireInput`, from {@link computeModelsWithWireInput}. */
     modelsWithWireInput: Set<string>;
-    /**
-     * The models the schema generator can see. `generateContract` flattens a format chain only
-     * through bases in the same file, so this is the current file's models, to match.
-     */
+    /** Every model a base may name, across files: the same map the schema generator flattens with. */
     modelMap: Map<string, ModelNode>;
     target: TsRenderTarget;
     /** How the file spells the `json` scalar: `JsonValue` in plain types, `_JsonValue` beside Zod. */

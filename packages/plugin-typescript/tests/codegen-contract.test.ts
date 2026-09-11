@@ -442,6 +442,26 @@ describe('generateContract', () => {
             expect(out).not.toContain('reviveMoneyOutput');
         });
 
+        it('walks the inherited fields of a flattened format() contract itself, under its output casing', () => {
+            // The response object carries Base's fields under Child's casing, so Base's reviver, which
+            // reads `paidAt`, would find nothing at `paid_at`.
+            const root = contractRoot([
+                model('Base', [field('paidAt', scalarType('datetime'))]),
+                model('Child', [field('grossPay', scalarType('decimal'))], { bases: ['Base'], outputCase: 'snake' }),
+            ]);
+            const out = generateContract(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/out/t.ts',
+                modelsWithOutput: new Set(['Child']),
+                modelsWithDecimal: new Set(['Base', 'Child']),
+                emitRevivers: true,
+            });
+            const childOutput = out.slice(out.indexOf('export function reviveChildOutput('));
+            expect(childOutput).toContain(`__o0["paid_at"] = __dt(__o0["paid_at"], 'Child.paid_at');`);
+            expect(childOutput).toContain(`__o0["gross_pay"] = __dec(__o0["gross_pay"], 'Child.gross_pay');`);
+            expect(childOutput).not.toContain('reviveBase');
+        });
+
         it('revives the fields a model inherits, so a child of a revivable base defines the reviver its callers import', () => {
             const root = contractRoot([
                 model('Summary', [field('enabledAt', scalarType('datetime'), { optional: true })]),
@@ -1245,6 +1265,74 @@ describe('generateContract', () => {
             expect(output).toContain('clientId: data.client_id,');
             expect(output).toContain('clientSecret: data.client_secret');
             expect(output).toContain('export type Child = z.output<typeof Child>');
+        });
+
+        it('a format() child keeps the fields of a base that has no format() of its own', () => {
+            // The cased branch renders one object from the model's fields, so a base it does not
+            // extend has to be inlined, or its fields silently vanish from the schema.
+            const root = contractRoot([
+                model('Base', [field('baseField', scalarType('string'))]),
+                model('Child', [field('childField', scalarType('string'))], { bases: ['Base'], inputCase: 'snake' }),
+            ]);
+            const output = generateContract(root);
+            expect(output).not.toContain('Base.extend');
+            expect(output).toMatch(
+                /export const Child = z\.strictObject\(\{\n {4}base_field: z\.string\(\),\n {4}child_field: z\.string\(\),\n\}\)\.transform/,
+            );
+            expect(output).toContain('baseField: data.base_field,');
+        });
+
+        it('flattens every base, not only the first', () => {
+            const root = contractRoot([
+                model('Plain', [field('plainField', scalarType('string'))]),
+                model('Cased', [field('casedField', scalarType('string'))], { outputCase: 'snake' }),
+                // Neither base alone would do: `Plain.extend(Cased.shape)` fails because Cased is a pipe.
+                model('Both', [field('ownField', scalarType('string'))], { bases: ['Plain', 'Cased'] }),
+            ]);
+            const both = generateContract(root).split('export const Both = ')[1]!.split('\n}));')[0]!;
+            expect(both).toContain('plainField: z.string(),');
+            expect(both).toContain('casedField: z.string(),');
+            expect(both).toContain('ownField: z.string(),');
+            // The casing comes from the base that sets one, even though it is not the first.
+            expect(both).toContain('plain_field: data.plainField,');
+        });
+
+        it('flattens a base declared in another file, importing what its fields need rather than the base', () => {
+            const base = model('Base', [field('addr', refType('Address')), field('seenAt', scalarType('datetime'))], {
+                loc: { file: 'base.ck', line: 1 },
+            });
+            const root = contractRoot(
+                [model('Child', [field('childField', scalarType('string'))], { bases: ['Base'], inputCase: 'snake' })],
+                'child.ck',
+            );
+            const output = generateContract(root, {
+                modelOutPaths: new Map([
+                    ['Base', '/out/base.ts'],
+                    ['Address', '/out/address.ts'],
+                ]),
+                currentOutPath: '/out/child.ts',
+                modelMap: new Map([['Base', base]]),
+            });
+            expect(output).toContain('addr: Address,');
+            expect(output).toContain('seen_at: _ZodDatetime,');
+            expect(output).toContain("import { Address } from './address.js';");
+            expect(output).toContain("import { DateTime } from 'luxon';");
+            // Nothing extends Base any more, and an unused import fails `noUnusedLocals`.
+            expect(output).not.toContain("from './base.js'");
+        });
+
+        it('imports every external base a plain chain extends', () => {
+            const root = contractRoot([model('Child', [field('own', scalarType('string'))], { bases: ['A', 'B'] })], 'child.ck');
+            const output = generateContract(root, {
+                modelOutPaths: new Map([
+                    ['A', '/out/a.ts'],
+                    ['B', '/out/b.ts'],
+                ]),
+                currentOutPath: '/out/child.ts',
+            });
+            expect(output).toContain('export const Child = A.extend(B.shape).extend({');
+            expect(output).toContain("import { A } from './a.js';");
+            expect(output).toContain("import { B } from './b.js';");
         });
 
         it('input=snake: optional fields use conditional spread guarded by `!= null`', () => {

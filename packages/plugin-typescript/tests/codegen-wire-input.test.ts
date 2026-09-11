@@ -104,6 +104,8 @@ contract format(input=snake) Order: {
 contract Wrapper: { token: Token }
 contract Tagged: Wrapper & { tag: string }
 contract Child: Order & { extraNote: string }
+contract Stamp: { stampedBy: string }
+contract format(input=snake) Stamped: Stamp & { stampNote: string }
 contract Account: { id: readonly uuid, secret: writeonly string, token: Token }
 contract Tokens: array(Token)
 `;
@@ -152,6 +154,13 @@ contract Tokens: array(Token)
                 expect(decl).not.toContain('extends');
                 expect(decl).toContain('line_items: { unit_price: number }[];');
                 expect(decl).toContain('extra_note: string;');
+            });
+
+            it("keeps a plain base's fields on a format() contract, keyed by its casing", () => {
+                // The schema inlines the base rather than extending it, so the request carries its fields too.
+                expect(wireDecl(out, 'Stamped')).toBe(
+                    ['export interface StampedWireInput {', '    stamped_by: string;', '    stamp_note: string;', '}'].join('\n'),
+                );
             });
 
             it('leaves readonly fields out of a split contract and keeps writeonly ones', () => {
@@ -214,6 +223,8 @@ contract format(output=snake) Receipt: { issuedTo: string }
 contract Wrapper: { token: Token }
 contract Holds: { receipt: Receipt }
 contract Child: Order & { extraNote: string }
+contract Stamp: { stampedBy: string }
+contract format(input=snake) Stamped: Stamp & { stampNote: string }
 `;
 
     const wireBodies: Record<string, unknown> = {
@@ -222,6 +233,7 @@ contract Child: Order & { extraNote: string }
         Wrapper: { token: { AccessToken: 'a' } },
         Holds: { receipt: { issuedTo: 'me' } },
         Child: { line_items: [], span: [{ fromDay: 1 }, 2], by_code: {}, extra_note: 'n' },
+        Stamped: { stamped_by: 'me', stamp_note: 'n' },
     };
 
     it.each(Object.entries(wireBodies))('%s parses in its wire casing', async (name, body) => {

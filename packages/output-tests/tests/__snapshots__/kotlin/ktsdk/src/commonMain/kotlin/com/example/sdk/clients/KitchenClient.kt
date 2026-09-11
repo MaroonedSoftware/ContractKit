@@ -7,6 +7,7 @@ import com.example.sdk.models.Folder
 import com.example.sdk.models.Instrument
 import com.example.sdk.models.Shared
 import com.example.sdk.models.SharedInput
+import com.example.sdk.models.Stamped
 import com.example.sdk.models.Token
 import com.example.sdk.runtime.SdkHttp
 import io.ktor.http.HttpMethod
@@ -49,6 +50,14 @@ class KitchenClient(private val http: SdkHttp) {
     suspend fun import(folderId: Uuid, body: SharedInput): Instrument {
         val response = http.execute(HttpMethod.Put) {
             path("folders", segment(folderId))
+            jsonBody(body, "application/json")
+        }
+        return http.decodeJson(response)
+    }
+
+    suspend fun stamp(body: Stamped): Stamped {
+        val response = http.execute(HttpMethod.Post) {
+            path("stamps")
             jsonBody(body, "application/json")
         }
         return http.decodeJson(response)

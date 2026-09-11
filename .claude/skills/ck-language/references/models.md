@@ -50,6 +50,13 @@ Codegen impact per plugin:
 
 - **Zod**: `Test5 = A.extend(B.shape).extend(C.shape).extend(D.shape).extend({...inline})`.
   Last-wins is the runtime semantics; the inline block is appended last so overrides win.
+  The exception is a model whose keys a `format()` renames, its own or inherited from any base:
+  a `format()` schema is a pipe with no `.extend()` or `.shape`, so `flattenFormatChain`
+  (`codegen-wire-input.ts`) inlines every base's fields into one object, in the same last-wins
+  order. It resolves bases through the all-files model map (`ContractCodegenContext.modelMap`),
+  so a base in another `.ck` file still contributes, and the generators take imports and scalar
+  needs from the flattened models. The plain `XOutput`, the SDK revivers and `XWireInput` all
+  follow the same flattened shape.
 - **Plain TS** (`codegen-plain-types.ts`): `interface Test5 extends A, B, C, D { ... }`.
   When fields are overridden, each base is wrapped in `Omit<Base, 'a' | 'b'>` — TypeScript's
   `Omit` tolerates omit keys that don't exist on the base, so we omit unconditionally and

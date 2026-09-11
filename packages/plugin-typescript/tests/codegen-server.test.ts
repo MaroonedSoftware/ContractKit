@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { createTypescriptPlugin } from '../src/index.js';
 import type { PluginContext } from '@contractkit/core';
 import { SECURITY_NONE } from '@contractkit/core';
@@ -636,5 +639,63 @@ describe('unresolved output path template variables', () => {
         await plugin.generateTargets!(inputs(), ctx);
 
         expect(ctx.warnings).toEqual([]);
+    });
+});
+
+describe('createTypescriptPlugin — format() across files', () => {
+    /** A context whose emits land on disk, so the incremental cache sees real files between runs. */
+    function diskCtx(rootDir: string): PluginContext & { emitted: Map<string, string> } {
+        const emitted = new Map<string, string>();
+        return {
+            rootDir,
+            options: {},
+            cacheEnabled: true,
+            cacheDir: join(rootDir, '.contractkit/cache'),
+            emitFile: (outPath: string, content: string) => {
+                mkdirSync(dirname(outPath), { recursive: true });
+                writeFileSync(outPath, content, 'utf-8');
+                emitted.set(outPath, content);
+            },
+            emitted,
+        };
+    }
+
+    function contracts(rootDir: string, baseFields: string[]) {
+        const base = contractRoot(
+            [
+                model(
+                    'Base',
+                    baseFields.map(n => field(n, scalarType('string'))),
+                    { loc: { file: join(rootDir, 'contracts/base.ck'), line: 1 } },
+                ),
+            ],
+            join(rootDir, 'contracts/base.ck'),
+        );
+        const child = contractRoot(
+            [
+                model('Child', [field('childField', scalarType('string'))], {
+                    bases: ['Base'],
+                    inputCase: 'snake',
+                    loc: { file: join(rootDir, 'contracts/child.ck'), line: 1 },
+                }),
+            ],
+            join(rootDir, 'contracts/child.ck'),
+        );
+        return { contractRoots: [base, child], opRoots: [], modelsWithInput: new Set<string>(), modelsWithOutput: new Set<string>() };
+    }
+
+    it("flattens a base from another .ck file, and re-emits the child when that base's fields change", async () => {
+        const rootDir = mkdtempSync(join(tmpdir(), 'ck-format-'));
+        const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } } }, rootDir);
+        const childPath = join(rootDir, 'types/child.ts');
+
+        const first = diskCtx(rootDir);
+        await plugin.generateTargets!(contracts(rootDir, ['baseField']), first);
+        expect(first.emitted.get(childPath)).toContain('base_field: z.string(),');
+
+        // Only base.ck changed. child.ck's own AST did not, but its schema carries Base's fields.
+        const second = diskCtx(rootDir);
+        await plugin.generateTargets!(contracts(rootDir, ['baseField', 'addedField']), second);
+        expect(second.emitted.get(childPath)).toContain('added_field: z.string(),');
     });
 });

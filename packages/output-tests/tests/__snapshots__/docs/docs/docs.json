@@ -42,6 +42,7 @@
                         "pages": [
                             "api-reference/kitchen/get-folder",
                             "api-reference/kitchen/import",
+                            "api-reference/kitchen/stamp",
                             "api-reference/kitchen/mint",
                             "api-reference/kitchen/list-tokens"
                         ]
@@ -75,7 +76,9 @@
                                     "api-reference/models/kitchen/token",
                                     "api-reference/models/kitchen/owned",
                                     "api-reference/models/kitchen/named",
-                                    "api-reference/models/kitchen/shared"
+                                    "api-reference/models/kitchen/shared",
+                                    "api-reference/models/kitchen/stamp",
+                                    "api-reference/models/kitchen/stamped"
                                 ]
                             }
                         ]

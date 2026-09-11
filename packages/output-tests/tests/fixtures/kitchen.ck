@@ -83,6 +83,16 @@ contract Shared: Owned & Named & {
     instrument?: Instrument
 }
 
+contract Stamp: {
+    stampedBy: string
+    stampedAt: datetime
+}
+
+# A plain base under format(), which the schema inlines rather than extends
+contract format(input=snake, output=pascal) Stamped: Stamp & {
+    stampNote?: string
+}
+
 operation /folders/{folder-id}: {
     params: {
         folder-id: uuid
@@ -124,6 +134,21 @@ operation /folders/{folder-id}: {
         response: {
             200: {
                 application/json: Instrument
+            }
+        }
+    }
+}
+
+operation /stamps: {
+    post: {
+        sdk: stamp
+        service: KitchenService.stamp
+        request: {
+            application/json: Stamped
+        }
+        response: {
+            201: {
+                application/json: Stamped
             }
         }
     }

@@ -42,6 +42,13 @@ public final class KitchenClient: Sendable {
         return try http.decodeJSON(Instrument.self, from: response)
     }
 
+    public func stamp(body: Stamped) async throws -> Stamped {
+        var request = SdkRequest(method: "POST", path: ["stamps"])
+        try http.setJSONBody(&request, body, contentType: "application/json")
+        let response = try await http.execute(request)
+        return try http.decodeJSON(Stamped.self, from: response)
+    }
+
     /// - Throws: `SdkError` on 400
     public func mint(body: Token) async throws -> Token {
         var request = SdkRequest(method: "POST", path: ["tokens"])

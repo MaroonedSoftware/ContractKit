@@ -23,10 +23,11 @@
 </details>
 
 <details>
-<summary><strong>Kitchen</strong> (4)</summary>
+<summary><strong>Kitchen</strong> (5)</summary>
 
 - [Several statuses, and two content types on one of them](#several-statuses-and-two-content-types-on-one-of-them)
 - [A method name that is a keyword in the target languages](#a-method-name-that-is-a-keyword-in-the-target-languages)
+- [Stamp](#stamp)
 - [Mint](#mint)
 - [List tokens](#list-tokens)
 
@@ -51,7 +52,7 @@
 </details>
 
 <details>
-<summary><strong>Kitchen</strong> (10)</summary>
+<summary><strong>Kitchen</strong> (12)</summary>
 
 - [Rating](#rating)
 - [Folder](#folder)
@@ -63,6 +64,8 @@
 - [Owned](#owned)
 - [Named](#named)
 - [Shared](#shared)
+- [Stamp](#stamp)
+- [Stamped](#stamped)
 
 </details>
 
@@ -415,6 +418,24 @@ Accepts a [Shared](#shared) object.
 
 ---
 
+#### Stamp
+
+**`POST`** `/stamps`
+
+> [!NOTE]
+> SDK method: `stamp`
+
+##### Request body (`application/json`)
+
+Accepts a [Stamped](#stamped) object.
+
+##### Response
+
+`201 Created` — Returns a [Stamped](#stamped) object.
+
+
+---
+
 #### Mint
 
 **`POST`** `/tokens`
@@ -713,5 +734,32 @@ Extends [`Owned`](#owned), [`Named`](#named)
 | --- | --- | --- | --- |
 | `label` | `string` | No | *default: `x`* |
 | `instrument` | `Instrument` | No |  |
+
+</details>
+
+#### Stamp
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `stampedBy` | `string` | Yes |  |
+| `stampedAt` | `string` | Yes |  |
+
+</details>
+
+#### Stamped
+
+> A plain base under format(), which the schema inlines rather than extends
+
+Extends [`Stamp`](#stamp)
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `stampNote` | `string` | No |  |
 
 </details>

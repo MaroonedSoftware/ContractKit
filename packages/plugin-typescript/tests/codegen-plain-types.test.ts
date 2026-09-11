@@ -726,5 +726,71 @@ describe('field name quoting', () => {
             const output = generatePlainTypes(root);
             expect(output).not.toContain('UserOutput');
         });
+
+        it('flattens a format() contract the way its schema does: bases included, keys in the output casing', () => {
+            const root = contractRoot([
+                model('Base', [field('baseField', scalarType('string')), field('secret', scalarType('string'), { visibility: 'writeonly' })]),
+                model('Child', [field('childField', scalarType('string'))], { bases: ['Base'], outputCase: 'snake' }),
+                // Inherits the casing, so its own field is renamed too, not only the inherited ones.
+                model('Grandchild', [field('extraField', scalarType('string'))], { bases: ['Child'] }),
+            ]);
+            const output = generatePlainTypes(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/tmp/t.ts',
+                modelsWithOutput: new Set(['Child', 'Grandchild']),
+            });
+            const decl = (name: string) => output.slice(output.indexOf(`export interface ${name}Output`)).split('\n}')[0]!;
+            expect(decl('Child')).toBe(['export interface ChildOutput {', '    base_field: string;', '    child_field: string;'].join('\n'));
+            expect(decl('Grandchild')).toContain('    extra_field: string;');
+            expect(decl('Grandchild')).toContain('    base_field: string;');
+        });
+
+        it('extends every base of a transitive container, each by its Output variant where it has one', () => {
+            const root = contractRoot([
+                model('Token', [field('accessToken', scalarType('string'))], { outputCase: 'snake' }),
+                model('Holder', [field('token', refType('Token'))]),
+                model('Named', [field('name', scalarType('string'))]),
+                model('Both', [field('own', scalarType('string'))], { bases: ['Holder', 'Named'] }),
+            ]);
+            const output = generatePlainTypes(root, {
+                modelOutPaths: new Map(),
+                currentOutPath: '/tmp/t.ts',
+                modelsWithOutput: new Set(['Token', 'Holder', 'Both']),
+            });
+            expect(output).toContain('export interface BothOutput extends HolderOutput, Named {');
+        });
+
+        it('imports what a base in another file brings into a flattened Output, and only that', () => {
+            const base = model('Base', [field('addr', refType('Address')), field('seenAt', scalarType('datetime'))], {
+                loc: { file: 'base.ck', line: 1 },
+            });
+            const root = contractRoot(
+                [model('Child', [field('childField', scalarType('string'))], { bases: ['Base'], outputCase: 'snake' })],
+                'child.ck',
+            );
+            const context = {
+                modelOutPaths: new Map([
+                    ['Base', '/out/base.ts'],
+                    ['Address', '/out/address.ts'],
+                ]),
+                currentOutPath: '/out/child.ts',
+                modelMap: new Map([['Base', base]]),
+            };
+            const withOutput = generatePlainTypes(root, { ...context, modelsWithOutput: new Set(['Child']) });
+            expect(withOutput).toContain('    addr: Address;');
+            expect(withOutput).toContain("import type { Address } from './address.js';");
+            expect(withOutput).toContain("import { DateTime } from 'luxon';");
+
+            // Input casing only and no WireInput: nothing renders the inherited fields, so nothing
+            // they need is imported. `interface Child extends Base` still needs Base.
+            const inputOnly = contractRoot(
+                [model('Child', [field('childField', scalarType('string'))], { bases: ['Base'], inputCase: 'snake' })],
+                'child.ck',
+            );
+            const bare = generatePlainTypes(inputOnly, context);
+            expect(bare).toContain("import type { Base } from './base.js';");
+            expect(bare).not.toContain('Address');
+            expect(bare).not.toContain('luxon');
+        });
     });
 });

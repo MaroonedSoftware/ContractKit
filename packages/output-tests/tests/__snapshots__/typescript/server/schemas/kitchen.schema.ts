@@ -79,6 +79,31 @@ export const Named = z.strictObject({
 export type Named = z.infer<typeof Named>;
 
 /**
+ * generated from [Stamp](../../contracts/kitchen.ck#L86)
+*/
+export const Stamp = z.strictObject({
+    stampedBy: z.string(),
+    stampedAt: _ZodDatetime,
+});
+export type Stamp = z.infer<typeof Stamp>;
+
+/**
+ * A plain base under format(), which the schema inlines rather than extends
+ * generated from [Stamped](../../contracts/kitchen.ck#L92)
+*/
+export const Stamped = z.strictObject({
+    stamped_by: z.string(),
+    stamped_at: _ZodDatetime,
+    stamp_note: z.string().nullish(),
+}).transform(data => ({
+    StampedBy: data.stamped_by,
+    StampedAt: data.stamped_at,
+    ...(data.stamp_note != null ? { StampNote: data.stamp_note } : {}),
+}));
+export type Stamped = z.output<typeof Stamped>;
+export type StampedOutput = z.output<typeof Stamped>;
+
+/**
  * Self recursion through lazy(), mutual recursion through Doc, every container, both union
  * forms, every scalar, and field names that are keywords in the target languages
  * generated from [Folder](../../contracts/kitchen.ck#L20)

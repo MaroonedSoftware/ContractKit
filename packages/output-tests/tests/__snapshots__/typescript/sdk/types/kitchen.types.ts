@@ -129,6 +129,59 @@ export const Named = z.strictObject({
 export type Named = z.infer<typeof Named>;
 
 /**
+ * generated from [Stamp](../../contracts/kitchen.ck#L86)
+*/
+export const Stamp = z.strictObject({
+    stampedBy: z.string(),
+    stampedAt: _ZodDatetime,
+});
+export type Stamp = z.infer<typeof Stamp>;
+
+/** Rehydrates every wire-encoded scalar in a Stamp into its runtime type. Mutates and returns `raw`. */
+export function reviveStamp(raw: Stamp): Stamp {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    __o0["stampedAt"] = __dt(__o0["stampedAt"], 'Stamp.stampedAt');
+    return raw;
+}
+
+/**
+ * A plain base under format(), which the schema inlines rather than extends
+ * generated from [Stamped](../../contracts/kitchen.ck#L92)
+*/
+export const Stamped = z.strictObject({
+    stamped_by: z.string(),
+    stamped_at: _ZodDatetime,
+    stamp_note: z.string().nullish(),
+}).transform(data => ({
+    StampedBy: data.stamped_by,
+    StampedAt: data.stamped_at,
+    ...(data.stamp_note != null ? { StampNote: data.stamp_note } : {}),
+}));
+export type Stamped = z.output<typeof Stamped>;
+export type StampedOutput = z.output<typeof Stamped>;
+
+/** {@link Stamped} as a request sends it, keyed the way the server's schema parses it. */
+export interface StampedWireInput {
+    stamped_by: string;
+    stamped_at: DateTime;
+    stamp_note?: string;
+}
+
+/** Rehydrates every wire-encoded scalar in a Stamped into its runtime type. Mutates and returns `raw`. */
+export function reviveStamped(raw: Stamped): Stamped {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    __o0["stampedAt"] = __dt(__o0["stampedAt"], 'Stamped.stampedAt');
+    return raw;
+}
+
+/** Rehydrates every wire-encoded scalar in a StampedOutput into its runtime type. Mutates and returns `raw`. */
+export function reviveStampedOutput(raw: StampedOutput): StampedOutput {
+    const __o0 = raw as unknown as Record<string, unknown>;
+    __o0["StampedAt"] = __dt(__o0["StampedAt"], 'Stamped.StampedAt');
+    return raw;
+}
+
+/**
  * Self recursion through lazy(), mutual recursion through Doc, every container, both union
  * forms, every scalar, and field names that are keywords in the target languages
  * generated from [Folder](../../contracts/kitchen.ck#L20)

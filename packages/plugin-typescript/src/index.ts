@@ -46,7 +46,7 @@ import {
     type SdkScaffoldDeps,
 } from './codegen-sdk.js';
 import { generatePlainTypes } from './codegen-plain-types.js';
-import { computeModelsWithWireInput } from './codegen-wire-input.js';
+import { computeModelsWithWireInput, flattenFormatChain } from './codegen-wire-input.js';
 import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
 import { resolveServerFramework, SERVER_FRAMEWORK_NAMES, type ServerFrameworkName } from './server-framework.js';
 export {
@@ -353,6 +353,21 @@ function collectContractRootRefs(root: ContractRootNode, modelMap: Map<string, M
     return collectTransitiveModelRefs(seeds, modelMap);
 }
 
+/**
+ * The root's `format()` contracts as their schemas flatten them, bases' fields included.
+ *
+ * For a types unit's fingerprint: flattening copies a base's fields into this file, so editing a
+ * base in another `.ck` file changes this file's output with no change to its own AST.
+ */
+function flattenedModels(root: ContractRootNode, modelMap: Map<string, ModelNode>): ModelNode[] {
+    return root.models
+        .filter(m => !m.type)
+        .flatMap(m => {
+            const flat = flattenFormatChain(m, modelMap);
+            return flat === m ? [] : [flat];
+        });
+}
+
 /** Collect every model referenced by an op root's routes/operations (transitive). */
 function collectOpRootRefs(root: OpRootNode, modelMap: Map<string, ModelNode>): Set<string> {
     const seeds: Parameters<typeof collectTypeRefs>[0][] = [];
@@ -471,6 +486,7 @@ function collectServerOutput(
             v: TYPESCRIPT_CODEGEN_VERSION,
             outPath: typeOutPath,
             root: ast,
+            flattened: flattenedModels(ast, modelMap),
             outPathSlice: sliceOutPathMap(refs, serverModelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
@@ -485,6 +501,7 @@ function collectServerOutput(
                     currentOutPath: typeOutPath,
                     modelsWithInput,
                     modelsWithOutput,
+                    modelMap,
                     // These types are consumed by server handlers, so `binary` is a Buffer, not a Blob.
                     target: 'server' as const,
                 };
@@ -612,6 +629,7 @@ function collectSdkOutput(
             v: TYPESCRIPT_CODEGEN_VERSION,
             outPath: typeOutPath,
             root: ast,
+            flattened: flattenedModels(ast, modelMap),
             outPathSlice: sliceOutPathMap(refs, sdkModelOutPaths, modelsWithInput, modelsWithOutput, modelsWithWireInput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
@@ -640,6 +658,7 @@ function collectSdkOutput(
                         modelsWithOutput,
                         modelsWithWireInput,
                         modelsWithDecimal,
+                        modelMap,
                         emitRevivers: true,
                         // An SDK client runs in a browser as readily as in Node, and its scaffold
                         // declares no `@types/node`.
@@ -655,6 +674,7 @@ function collectSdkOutput(
                         modelsWithOutput,
                         modelsWithWireInput,
                         modelsWithDecimal,
+                        modelMap,
                         emitRevivers: true,
                         jsonValueImportPath: rel,
                     });
@@ -997,6 +1017,7 @@ function collectZodOutput(
             v: TYPESCRIPT_CODEGEN_VERSION,
             outPath,
             root: ast,
+            flattened: flattenedModels(ast, modelMap),
             outPathSlice: sliceOutPathMap(refs, modelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
@@ -1011,7 +1032,14 @@ function collectZodOutput(
                     // Server-shaped, which is what this sub-generator has always emitted. The
                     // standalone `zod:` output has no target option of its own; only the SDK's
                     // schemas are client-shaped, and they pass their own target.
-                    content: generateContract(ast, { modelOutPaths, currentOutPath: outPath, modelsWithInput, modelsWithOutput, target: 'server' }),
+                    content: generateContract(ast, {
+                        modelOutPaths,
+                        currentOutPath: outPath,
+                        modelsWithInput,
+                        modelsWithOutput,
+                        modelMap,
+                        target: 'server',
+                    }),
                 },
             ],
         });
@@ -1054,6 +1082,7 @@ function collectTypesOutput(
             v: TYPESCRIPT_CODEGEN_VERSION,
             outPath,
             root: ast,
+            flattened: flattenedModels(ast, modelMap),
             outPathSlice: sliceOutPathMap(refs, modelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, ownNames, modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, ownNames, modelsWithOutput),
@@ -1070,6 +1099,7 @@ function collectTypesOutput(
                         currentOutPath: outPath,
                         modelsWithInput,
                         modelsWithOutput,
+                        modelMap,
                         target: config.target,
                     }),
                 },

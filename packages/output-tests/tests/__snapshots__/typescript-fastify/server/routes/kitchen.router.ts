@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { FastifyPluginAsync } from 'fastify';
 import { requirePolicy } from '@maroonedsoftware/fastify';
 import { KitchenService } from '#src/services/kitchen.service.js';
-import { Folder, Instrument, Shared, SharedInput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
+import { Folder, Instrument, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 
@@ -13,7 +13,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * several statuses, and two content types on one of them
-     * from [kitchen.ck](../../contracts/kitchen.ck#L91)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L101)
     */
     app.get('/folders/:folderId', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(
@@ -64,7 +64,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * a method name that is a keyword in the target languages
-     * from [kitchen.ck](../../contracts/kitchen.ck#L118)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L128)
     */
     app.put('/folders/:folderId', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(
@@ -85,7 +85,21 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L133)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L143)
+    */
+    app.post('/stamps', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
+        const body = await parseAndValidate(request.body, Stamped);
+
+        const service = request.container.get(KitchenService);
+        const result: StampedOutput = await service.stamp(body);
+
+        reply.status(201);
+        reply.type('application/json');
+        return reply.send(result);
+    });
+
+    /**
+     * from [kitchen.ck](../../contracts/kitchen.ck#L158)
     */
     app.post('/tokens', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, Token);
@@ -99,7 +113,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L147)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L172)
     */
     app.get('/tokens', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const service = request.container.get(KitchenService);

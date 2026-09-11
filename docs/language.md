@@ -216,6 +216,8 @@ contract format(input=pascal, output=snake) ExternalEvent: {
 
 This accepts `PascalCase` input keys and emits `snake_case` output keys.
 
+A contract inherits the casing of a base that sets one, and a base's fields are renamed along with the contract's own, whichever of them declares the `format()`. `contract format(input=snake) Stamped: Stamp & { stampNote: string }` accepts `stamped_by` from `Stamp` as well as `stamp_note`.
+
 A generated SDK follows the same split. A request is sent in the `input` casing and a response is read in the `output` casing. In the TypeScript SDK, a request body, query or header object that carries such a contract, directly or nested, is typed with `ExternalEventWireInput`, which has the keys the server parses (`EventType`, `CreatedAt`), while the response keeps `ExternalEventOutput`.
 
 Multiple modifiers may appear in any order:

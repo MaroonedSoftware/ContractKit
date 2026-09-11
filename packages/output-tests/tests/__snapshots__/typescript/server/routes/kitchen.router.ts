@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';
 import { KitchenService } from '#src/services/kitchen.service.js';
-import { Folder, Instrument, Shared, SharedInput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
+import { Folder, Instrument, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 
@@ -12,7 +12,7 @@ export const KitchenRouter = ServerKitRouter();
 
 /**
  * several statuses, and two content types on one of them
- * from [kitchen.ck](../../contracts/kitchen.ck#L91)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L101)
 */
 KitchenRouter.get('/folders/:folderId', requirePolicy(), async ctx => {
     const { folderId } = await parseAndValidate(
@@ -65,7 +65,7 @@ KitchenRouter.get('/folders/:folderId', requirePolicy(), async ctx => {
 
 /**
  * a method name that is a keyword in the target languages
- * from [kitchen.ck](../../contracts/kitchen.ck#L118)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L128)
 */
 KitchenRouter.put('/folders/:folderId', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const { folderId } = await parseAndValidate(
@@ -86,7 +86,21 @@ KitchenRouter.put('/folders/:folderId', requirePolicy(), bodyParserMiddleware(['
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L133)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L143)
+*/
+KitchenRouter.post('/stamps', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
+    const body = await parseAndValidate(ctx.parsedBody, Stamped);
+
+    const service = ctx.container.get(KitchenService);
+    const result: StampedOutput = await service.stamp(body);
+
+    ctx.status = 201;
+    ctx.type = 'application/json';
+    ctx.body = result;
+});
+
+/**
+ * from [kitchen.ck](../../contracts/kitchen.ck#L158)
 */
 KitchenRouter.post('/tokens', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, Token);
@@ -100,7 +114,7 @@ KitchenRouter.post('/tokens', requirePolicy(), bodyParserMiddleware(['json']), a
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L147)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L172)
 */
 KitchenRouter.get('/tokens', requirePolicy(), async ctx => {
     const service = ctx.container.get(KitchenService);

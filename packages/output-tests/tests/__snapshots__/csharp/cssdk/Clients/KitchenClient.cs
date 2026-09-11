@@ -69,6 +69,16 @@ public sealed class KitchenClient(SdkHttp http)
         return http.ReadJson<Instrument>(response);
     }
 
+    public async Task<Stamped> StampAsync(Stamped body, CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Post,
+            http.Path("stamps"),
+            content: http.JsonContent(body, "application/json"),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<Stamped>(response);
+    }
+
     /// <exception cref="SdkException">On 400.</exception>
     public async Task<Token> MintAsync(Token body, CancellationToken cancellationToken = default)
     {

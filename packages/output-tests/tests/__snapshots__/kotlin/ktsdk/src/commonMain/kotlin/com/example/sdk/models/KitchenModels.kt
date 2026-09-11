@@ -76,6 +76,20 @@ data class Named(
     val name: String,
 )
 
+@Serializable
+data class Stamp(
+    val stampedBy: String,
+    val stampedAt: Instant,
+)
+
+/** A plain base under format(), which the schema inlines rather than extends */
+@Serializable
+data class Stamped(
+    @SerialName("StampedBy") val stampedBy: String,
+    @SerialName("StampedAt") val stampedAt: Instant,
+    @SerialName("StampNote") val stampNote: String? = null,
+)
+
 /** Two flattened bases, split into a read and an input shape */
 @Serializable
 data class Shared(

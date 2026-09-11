@@ -64,6 +64,12 @@ export interface ContractCodegenContext {
     /** If set, import JsonValue from this path instead of re-declaring it (avoids barrel re-export conflicts) */
     jsonValueImportPath?: string;
     /**
+     * Every model across all contract files. A `format()` contract is flattened rather than
+     * extended (see `flattenFormatChain`), so its bases' fields are needed even when a base lives
+     * in another file. Without it, only this file's models can be flattened.
+     */
+    modelMap?: Map<string, ModelNode>;
+    /**
      * Runtime the emitted types describe. Only affects scalars whose TypeScript type differs per
      * runtime: `binary` is a `Buffer` on a Node server and a `Blob` in a fetch client, and
      * `_ZodBinary` is generated to match. Default `'client'`.
@@ -153,14 +159,18 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
  * @returns The full TypeScript source as a string.
  */
 export function generateContract(root: ContractRootNode, context?: ContractCodegenContext): string {
-    const needsDateTime = rootNeedsDateTime(root);
-    const needsDuration = rootNeedsScalar(root, 'duration');
-    const needsInterval = rootNeedsScalar(root, 'interval');
-    const needsBinary = rootNeedsScalar(root, 'binary');
-    const needsDatetime = rootNeedsScalar(root, 'datetime');
-    const needsJson = rootNeedsScalar(root, 'json');
-    const needsDecimal = rootNeedsScalar(root, 'decimal');
-    const externalRefs = collectExternalRefs(root);
+    const modelMap = contractModelMap(root, context);
+    // What the file actually declares: a flattened `format()` contract carries its bases' fields and
+    // no longer names the bases, so scalars and imports are decided from these, not from `root`.
+    const effectiveRoot = { ...root, models: root.models.map(m => (m.type ? m : flattenFormatChain(m, modelMap))) };
+    const needsDateTime = rootNeedsDateTime(effectiveRoot);
+    const needsDuration = rootNeedsScalar(effectiveRoot, 'duration');
+    const needsInterval = rootNeedsScalar(effectiveRoot, 'interval');
+    const needsBinary = rootNeedsScalar(effectiveRoot, 'binary');
+    const needsDatetime = rootNeedsScalar(effectiveRoot, 'datetime');
+    const needsJson = rootNeedsScalar(effectiveRoot, 'json');
+    const needsDecimal = rootNeedsScalar(effectiveRoot, 'decimal');
+    const externalRefs = collectExternalRefs(effectiveRoot);
     const lines: string[] = [];
 
     // Compute which models have Input variants (local, incl. transitive deps + external)
@@ -173,7 +183,6 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
     const localModelsWithOutput = ckComputeModelsWithOutput(root.models, externalModelsWithOutput);
     const allModelsWithOutput = new Set([...localModelsWithOutput, ...externalModelsWithOutput]);
 
-    const modelMap = new Map(root.models.map(m => [m.name, m]));
     const wireCtx: WireInputRenderContext | undefined = context?.modelsWithWireInput
         ? {
               modelsWithInput: allModelsWithInput,
@@ -185,8 +194,8 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
         : undefined;
 
     // Collect additional external Input refs needed for Input schema fields
-    const externalInputRefs = allModelsWithInput.size > 0 ? collectExternalInputRefs(root, allModelsWithInput) : [];
-    const externalOutputRefs = allModelsWithOutput.size > 0 ? ckCollectExternalOutputRefs(root, allModelsWithOutput) : [];
+    const externalInputRefs = allModelsWithInput.size > 0 ? collectExternalInputRefs(effectiveRoot, allModelsWithInput) : [];
+    const externalOutputRefs = allModelsWithOutput.size > 0 ? ckCollectExternalOutputRefs(effectiveRoot, allModelsWithOutput) : [];
     const externalWireInputRefs = wireCtx ? collectExternalWireInputRefs(root, wireCtx) : [];
     const allExternalRefs = [...new Set([...externalRefs, ...externalInputRefs, ...externalOutputRefs, ...externalWireInputRefs])].sort();
 
@@ -244,7 +253,10 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
             : undefined;
 
     const bodyLines: string[] = [];
-    for (const model of topoSortModels(root.models)) {
+    // Sorted on the effective models: a flattened contract depends on its inherited fields' types,
+    // which may be declared in this file even when the base that brought them is not.
+    const rawByName = new Map(root.models.map(m => [m.name, m]));
+    for (const model of topoSortModels(effectiveRoot.models).map(m => rawByName.get(m.name)!)) {
         bodyLines.push(...generateModel(model, context?.currentOutPath, allModelsWithInput, modelMap, allModelsWithOutput));
         if (wireCtx?.modelsWithWireInput.has(model.name)) {
             bodyLines.push('');
@@ -1155,13 +1167,22 @@ export function typeNeedsDateTime(type: ContractTypeNode): boolean {
     }
 }
 
+/**
+ * The models `generateContract` and `generatePlainTypes` resolve bases against: every file's, from
+ * the context, with this file's own winning.
+ */
+export function contractModelMap(root: ContractRootNode, context?: ContractCodegenContext): Map<string, ModelNode> {
+    return new Map([...(context?.modelMap ?? []), ...root.models.map(m => [m.name, m] as const)]);
+}
+
 /** Collect model names referenced in `root` that are not defined locally (need to be imported). */
 export function collectExternalRefs(root: ContractRootNode): string[] {
     const localNames = new Set(root.models.map(m => m.name));
     const refs = new Set<string>();
 
     for (const model of root.models) {
-        if (model.bases?.[0] && !localNames.has(model.bases?.[0])) refs.add(model.bases?.[0]);
+        // Every base: `C: A & B` emits `A.extend(B.shape)` and `interface C extends A, B`.
+        for (const base of model.bases ?? []) if (!localNames.has(base)) refs.add(base);
         if (model.type) collectTypeRefs(model.type, refs);
         for (const field of model.fields) {
             collectTypeRefs(field.type, refs);
@@ -1184,10 +1205,10 @@ export function collectExternalInputRefs(root: ContractRootNode, modelsWithInput
             collectInputTypeRefs(model.type, refs, modelsWithInput);
             continue;
         }
-        // When a model extends an external parent that has an Input variant,
-        // the write schema extends ParentInput — so we need to import it.
-        if (model.bases?.[0] && modelsWithInput.has(model.bases?.[0]) && !localNames.has(model.bases?.[0])) {
-            refs.add(`${model.bases?.[0]}Input`);
+        // When a model extends an external parent that has an Input variant, the write schema
+        // extends ParentInput (every base, via `buildExtendChain`) — so we need to import it.
+        for (const base of model.bases ?? []) {
+            if (modelsWithInput.has(base) && !localNames.has(base)) refs.add(`${base}Input`);
         }
         const writeFields = model.fields.filter(f => f.visibility !== 'readonly');
         for (const field of writeFields) {
