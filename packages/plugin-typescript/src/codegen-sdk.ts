@@ -145,6 +145,39 @@ export function hasPublicOperations(root: OpRootNode, includeInternal = false): 
 }
 
 /**
+ * Returns true if an operation the SDK emits for `root` names a scalar with the given `name` in
+ * one of its inline types: a path, query or header param, a request body, or a response body or
+ * header.
+ *
+ * The contract roots alone undercount what a client needs. A `date` query param is typed
+ * `DateTime` in the method signature and a `decimal` in an inline response body pulls in the
+ * reviver prelude, so a client can import `luxon` or `decimal.js` with no model using either.
+ * Model references are not followed: the model's own type file carries its imports, and the
+ * contract roots cover it. Internal operations are skipped unless `includeInternal` is set,
+ * matching {@link generateSdk}.
+ */
+export function opRootNeedsScalar(root: OpRootNode, name: string, includeInternal = false): boolean {
+    const sourceNeeds = (source: ParamSource | undefined): boolean => {
+        if (!source) return false;
+        if (source.kind === 'params') return source.nodes.some(p => typeNeedsScalar(p.type, name));
+        if (source.kind === 'type') return typeNeedsScalar(source.node, name);
+        return false;
+    };
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
+            if (sourceNeeds(route.params) || sourceNeeds(op.query) || sourceNeeds(op.headers)) return true;
+            if (op.request?.bodies.some(b => typeNeedsScalar(b.bodyType, name))) return true;
+            for (const response of op.responses) {
+                if (response.bodies.some(b => typeNeedsScalar(b.bodyType, name))) return true;
+                if (response.headers?.some(h => typeNeedsScalar(h.type, name))) return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
  * Generate a complete `*.client.ts` file for one operation root: imports, the client class
  * declaration, and one method per public operation. Used for top-level (no-area) files and
  * for subarea-leaf files. Area-level files are NOT routed through this — their methods get
@@ -1713,9 +1746,13 @@ const SCAFFOLD_DEP_VERSIONS = {
 export interface SdkScaffoldDeps {
     /** Zod schema files are emitted (`config.zod`) — the SDK imports `zod`. */
     zod: boolean;
-    /** Any covered model uses a `date`/`time`/`datetime`/`duration`/`interval` scalar — the SDK imports `luxon`. */
+    /**
+     * Any covered model uses a `date`/`time`/`datetime`/`duration`/`interval` scalar, or an emitted
+     * operation uses a `date`/`time`/`datetime`/`duration` in an inline param, body or header — the
+     * SDK imports `luxon`.
+     */
     luxon: boolean;
-    /** Any covered model uses a `decimal` scalar — the SDK imports `decimal.js`. */
+    /** Any covered model, or an emitted operation's inline param, body or header, uses a `decimal` scalar — the SDK imports `decimal.js`. */
     decimal: boolean;
 }
 

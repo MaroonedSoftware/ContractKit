@@ -39,6 +39,7 @@ import {
     deriveSubareaPropertyName,
     getAreaSubarea,
     hasPublicOperations,
+    opRootNeedsScalar,
     generateSdkPackageJson,
     generateSdkTsconfig,
     type SdkClientInfo,
@@ -135,8 +136,9 @@ export interface SdkConfig {
      * write-once: the files are created only when absent and are never overwritten or
      * cleaned up on later builds, so any edits you make to them are preserved.
      * Dependency ranges are derived from the contracts (always `zod` when `zod: true`;
-     * `luxon` when any covered model uses a date/time/datetime/duration/interval scalar;
-     * `decimal.js` when any uses a decimal).
+     * `luxon` when any covered model uses a date/time/datetime/duration/interval scalar,
+     * or an emitted operation's inline param, body or header uses a date/time/datetime/duration;
+     * `decimal.js` when either uses a decimal).
      */
     scaffold?: boolean;
 }
@@ -696,11 +698,15 @@ function collectSdkOutput(
     }
     const areaBuckets = new Map<string, AreaBucket>();
     const topLevelEntries: { ast: OpRootNode; outPath: string }[] = [];
+    // Every op root a client is generated for, whichever bucket it lands in. The scaffold reads
+    // it: a client names `DateTime` or `Decimal` for an inline param or body with no model to show.
+    const sdkOpRoots: OpRootNode[] = [];
 
     if (config.output?.clients) {
         for (const ast of inputs.opRoots) {
             const sdkOutPath = computeSdkOutPath(ast.file, sdkBase, config.output.clients, ckCommonRoot, ast.meta);
             if (!sdkOutPath || !hasPublicOperations(ast, config.includeInternal)) continue;
+            sdkOpRoots.push(ast);
             const { area, subarea } = getAreaSubarea(ast);
             if (area && subarea) {
                 const bucket = areaBuckets.get(area) ?? { leaves: [], inlineRoots: [] };
@@ -958,20 +964,25 @@ function collectSdkOutput(
 
     // ── Scaffold files (opt-in, write-once) ──
     // Emitted at the SDK package root with `ifAbsent` so they're created once and
-    // then owned by the user. Deps are derived from the contracts actually surfaced
-    // into the SDK: zod when schema output is on, luxon when any covered model uses a
-    // date/time/datetime/interval scalar.
+    // then owned by the user. Deps are derived from the contracts and operations actually
+    // surfaced into the SDK: zod when schema output is on, luxon when a covered model or an
+    // emitted operation uses a temporal scalar, decimal.js when either uses a decimal.
     if (config.scaffold) {
         const coveredRoots = sdkContractEntries.map(e => e.ast);
+        const modelsNeed = (names: readonly string[]) => coveredRoots.some(r => names.some(name => rootNeedsScalar(r, name)));
+        // The client files count as well as the type files: an inline `date` query param or a
+        // `decimal` in an inline response body makes a client import luxon or decimal.js with no
+        // covered model using either, and the scaffold used to leave the dependency out.
+        const opsNeed = (names: readonly string[]) => sdkOpRoots.some(r => names.some(name => opRootNeedsScalar(r, name, config.includeInternal)));
         const deps: SdkScaffoldDeps = {
             zod: !!config.zod,
             // `duration` belongs here too: `generateContract` imports `Duration` from luxon for it,
             // so a contract whose only temporal scalar is a duration used to scaffold a package.json
-            // with no luxon dependency and fail to compile.
-            luxon: coveredRoots.some(r =>
-                (['datetime', 'date', 'time', 'duration', 'interval'] as const).some(name => rootNeedsScalar(r, name)),
-            ),
-            decimal: coveredRoots.some(r => rootNeedsScalar(r, 'decimal')),
+            // with no luxon dependency and fail to compile. `interval` counts for models only: the
+            // Zod type file imports `Interval` for `_ZodInterval`, while a client types an interval
+            // param or body as a plain string.
+            luxon: modelsNeed(['datetime', 'date', 'time', 'duration', 'interval']) || opsNeed(['datetime', 'date', 'time', 'duration']),
+            decimal: modelsNeed(['decimal']) || opsNeed(['decimal']),
         };
         globalFiles.push({
             relativePath: join(sdkBase, 'package.json'),
