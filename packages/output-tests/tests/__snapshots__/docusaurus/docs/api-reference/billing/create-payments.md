@@ -1,7 +1,7 @@
 ---
 title: "Create several payments at once"
 sidebar_label: "Create several payments at once"
-sidebar_position: 3
+sidebar_position: 4
 mdx:
     format: "md"
 ---

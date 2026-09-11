@@ -4,10 +4,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 from urllib.parse import quote
-from typing import Literal, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError  # noqa: F401
-from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm, UploadReceiptForm
+from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentFilter, PaymentInput, PaymentRef, Session, SessionInput, TenantHeaders, UpdatePaymentForm, UploadReceiptForm
 
 
 class CreatePaymentHeaders(TypedDict, total=False):
@@ -30,9 +30,10 @@ ListPaymentsHeaders = TypedDict("ListPaymentsHeaders", {
 })
 
 
-_LIST_PAYMENTS_RESPONSE = TypeAdapter(list[Payment])
-_CREATE_PAYMENTS_BODY = TypeAdapter(list[PaymentInput])
-_CREATE_PAYMENTS_RESPONSE = TypeAdapter(list[Payment])
+_LIST_PAYMENTS_RESPONSE: TypeAdapter[list[Payment]] = TypeAdapter(list[Payment])
+_SEARCH_PAYMENTS_RESPONSE: TypeAdapter[list[Payment]] = TypeAdapter(list[Payment])
+_CREATE_PAYMENTS_BODY: TypeAdapter[list[PaymentInput]] = TypeAdapter(list[PaymentInput])
+_CREATE_PAYMENTS_RESPONSE: TypeAdapter[list[Payment]] = TypeAdapter(list[Payment])
 
 
 class BillingClient(BaseClient):
@@ -59,6 +60,13 @@ class BillingClient(BaseClient):
         """
         result = await self._fetch("/payments", method="GET", params=query, extra_headers=custom_headers)
         return _LIST_PAYMENTS_RESPONSE.validate_python(result)
+
+    async def search_payments(self, query: PaymentFilter | None = None, custom_headers: TenantHeaders | None = None) -> list[Payment]:
+        """
+        search payments with a filter model
+        """
+        result = await self._fetch("/payments/search", method="GET", params=query, extra_headers=custom_headers)
+        return _SEARCH_PAYMENTS_RESPONSE.validate_python(result)
 
     async def create_payments(self, body: list[PaymentInput]) -> list[Payment]:
         """
@@ -88,7 +96,7 @@ class BillingClient(BaseClient):
         result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="DELETE")
         return None
 
-    async def upload_receipt(self, payment_id: UUID, body: dict) -> Payment:
+    async def upload_receipt(self, payment_id: UUID, body: dict[str, Any]) -> Payment:
         """
         upload a receipt image
         """

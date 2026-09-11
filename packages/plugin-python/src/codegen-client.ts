@@ -291,7 +291,8 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     if (adapters.length > 0) {
         lines.push('');
         lines.push('');
-        for (const { name, type } of adapters) lines.push(`${name} = TypeAdapter(${type})`);
+        // Annotated: mypy cannot infer the parameter of a TypeAdapter built from an Annotated alias.
+        for (const { name, type } of adapters) lines.push(`${name}: TypeAdapter[${type}] = TypeAdapter(${type})`);
     }
 
     lines.push('');

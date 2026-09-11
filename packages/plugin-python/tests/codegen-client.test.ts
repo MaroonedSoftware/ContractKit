@@ -155,7 +155,7 @@ describe('generatePythonClient', () => {
     it('validates an array-of-model response through a module-level TypeAdapter', () => {
         const root = opRoot([opRoute('/payments', [opOperation('get', { responses: [opResponse(200, 'array(Payment)')] })])]);
         const output = generatePythonClient(root);
-        expect(output).toContain('_GET_PAYMENTS_RESPONSE = TypeAdapter(list[Payment])');
+        expect(output).toContain('_GET_PAYMENTS_RESPONSE: TypeAdapter[list[Payment]] = TypeAdapter(list[Payment])');
         expect(output).toContain('return _GET_PAYMENTS_RESPONSE.validate_python(result)');
     });
 
@@ -176,12 +176,14 @@ describe('generatePythonClient', () => {
             const output = generatePythonClient(root);
             // Returned raw, each of these was decoded JSON under a lying annotation: plain dicts for
             // the models, and the wire strings for bigint, date and Decimal.
-            expect(output).toContain('_BY_ID_RESPONSE = TypeAdapter(dict[str, Item])');
-            expect(output).toContain('_ANY_METHOD_RESPONSE = TypeAdapter(Card | Bank)');
-            expect(output).toContain('_TAGGED_RESPONSE = TypeAdapter(Annotated[Card | Bank, Field(discriminator="kind")])');
-            expect(output).toContain('_COUNTS_RESPONSE = TypeAdapter(list[BigInt])');
-            expect(output).toContain('_DAYS_RESPONSE = TypeAdapter(list[date])');
-            expect(output).toContain('_PAIR_RESPONSE = TypeAdapter(tuple[date, Decimal])');
+            expect(output).toContain('_BY_ID_RESPONSE: TypeAdapter[dict[str, Item]] = TypeAdapter(dict[str, Item])');
+            expect(output).toContain('_ANY_METHOD_RESPONSE: TypeAdapter[Card | Bank] = TypeAdapter(Card | Bank)');
+            expect(output).toContain(
+                '_TAGGED_RESPONSE: TypeAdapter[Annotated[Card | Bank, Field(discriminator="kind")]] = TypeAdapter(Annotated[Card | Bank, Field(discriminator="kind")])',
+            );
+            expect(output).toContain('_COUNTS_RESPONSE: TypeAdapter[list[BigInt]] = TypeAdapter(list[BigInt])');
+            expect(output).toContain('_DAYS_RESPONSE: TypeAdapter[list[date]] = TypeAdapter(list[date])');
+            expect(output).toContain('_PAIR_RESPONSE: TypeAdapter[tuple[date, Decimal]] = TypeAdapter(tuple[date, Decimal])');
             expect(output).toContain('return _BY_ID_RESPONSE.validate_python(result)');
             expect(output).toContain('return _COUNTS_RESPONSE.validate_python(result)');
             expect(output).not.toMatch(/^\s+return result$/m);
@@ -209,7 +211,7 @@ describe('generatePythonClient', () => {
         it('validates a response typed by a type-alias contract through an adapter', () => {
             const root = opRoot([opRoute('/tier', [opOperation('get', { sdk: 'getTier', responses: [opResponse(200, 'Tier')] })])]);
             const output = generatePythonClient(root, { typeAliases: new Set(['Tier']) });
-            expect(output).toContain('_GET_TIER_RESPONSE = TypeAdapter(Tier)');
+            expect(output).toContain('_GET_TIER_RESPONSE: TypeAdapter[Tier] = TypeAdapter(Tier)');
             expect(output).toContain('return _GET_TIER_RESPONSE.validate_python(result)');
         });
 
@@ -247,8 +249,8 @@ describe('generatePythonClient', () => {
                 ]),
             ]);
             const output = generatePythonClient(root);
-            expect(output).toContain('_MULTI_RESPONSE_200 = TypeAdapter(dict[str, Item])');
-            expect(output).toContain('_MULTI_RESPONSE_202 = TypeAdapter(list[date])');
+            expect(output).toContain('_MULTI_RESPONSE_200: TypeAdapter[dict[str, Item]] = TypeAdapter(dict[str, Item])');
+            expect(output).toContain('_MULTI_RESPONSE_202: TypeAdapter[list[date]] = TypeAdapter(list[date])');
             expect(output).toContain('"data": _MULTI_RESPONSE_202.validate_python(result)');
             expect(output).toContain('"data": _MULTI_RESPONSE_200.validate_python(result)');
             expect(output).toContain('"data": Item.model_validate(result)');
@@ -275,9 +277,9 @@ describe('generatePythonClient', () => {
                 ]),
             ]);
             const output = generatePythonClient(root);
-            expect(output.match(/^_MIME_RESPONSE\w* = /gm)).toEqual(['_MIME_RESPONSE = ', '_MIME_RESPONSE_VND_MAP_JSON = ']);
-            expect(output).toContain('_MIME_RESPONSE = TypeAdapter(list[BigInt])');
-            expect(output).toContain('_MIME_RESPONSE_VND_MAP_JSON = TypeAdapter(dict[str, BigInt])');
+            expect(output.match(/^_MIME_RESPONSE\w*(?=: TypeAdapter)/gm)).toEqual(['_MIME_RESPONSE', '_MIME_RESPONSE_VND_MAP_JSON']);
+            expect(output).toContain('_MIME_RESPONSE: TypeAdapter[list[BigInt]] = TypeAdapter(list[BigInt])');
+            expect(output).toContain('_MIME_RESPONSE_VND_MAP_JSON: TypeAdapter[dict[str, BigInt]] = TypeAdapter(dict[str, BigInt])');
             expect(output).toContain('return { "content_type": "application/vnd.api+json", "data": _MIME_RESPONSE.validate_python(result) }');
             expect(output).toContain(
                 'return { "content_type": "application/vnd.map+json", "data": _MIME_RESPONSE_VND_MAP_JSON.validate_python(result) }',
@@ -440,7 +442,7 @@ describe('generatePythonClient', () => {
         // Sent raw, a list of Pydantic objects fails in httpx: "Object of type Item is not JSON
         // serializable". Built once at import, not per call.
         expect(output).toContain('from pydantic import TypeAdapter');
-        expect(output).toContain('_CREATE_ITEMS_BODY = TypeAdapter(list[ItemInput])');
+        expect(output).toContain('_CREATE_ITEMS_BODY: TypeAdapter[list[ItemInput]] = TypeAdapter(list[ItemInput])');
         expect(output).toContain('async def create_items(self, body: list[ItemInput]) -> None:');
         expect(output).toContain('body=_CREATE_ITEMS_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
     });
@@ -464,10 +466,10 @@ describe('generatePythonClient', () => {
             opRoute('/c', [opOperation('put', { sdk: 'putObject', request: opRequest(inlineObjectType([])), responses: [opResponse(204)] })]),
         ]);
         const output = generatePythonClient(root);
-        expect(output).toContain('_PUT_RECORD_BODY = TypeAdapter(dict[str, Item])');
-        expect(output).toContain('_PUT_UNION_BODY = TypeAdapter(Card | Bank)');
+        expect(output).toContain('_PUT_RECORD_BODY: TypeAdapter[dict[str, Item]] = TypeAdapter(dict[str, Item])');
+        expect(output).toContain('_PUT_UNION_BODY: TypeAdapter[Card | Bank] = TypeAdapter(Card | Bank)');
         // An inline object is `dict[str, Any]`, whose values may be dates or Decimals.
-        expect(output).toContain('_PUT_OBJECT_BODY = TypeAdapter(dict[str, Any])');
+        expect(output).toContain('_PUT_OBJECT_BODY: TypeAdapter[dict[str, Any]] = TypeAdapter(dict[str, Any])');
         expect(output).toContain('body=_PUT_UNION_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
     });
 
@@ -482,7 +484,7 @@ describe('generatePythonClient', () => {
             ]),
         ]);
         const output = generatePythonClient(root);
-        expect(output).toContain('_POST_FORM_BODY = TypeAdapter(dict[str, date])');
+        expect(output).toContain('_POST_FORM_BODY: TypeAdapter[dict[str, date]] = TypeAdapter(dict[str, date])');
         expect(output).toContain('body_kind="form"');
     });
 
@@ -493,7 +495,7 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root, { typeAliases: new Set(['Tier']) });
         // `Tier = Literal["free", "pro"]`: the caller passes a str, which has no `model_dump`.
-        expect(output).toContain('_PUT_TIER_BODY = TypeAdapter(Tier)');
+        expect(output).toContain('_PUT_TIER_BODY: TypeAdapter[Tier] = TypeAdapter(Tier)');
         expect(output).toContain('body=_PUT_TIER_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
         expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
         expect(output).not.toContain('_PUT_CARD_BODY');
