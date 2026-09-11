@@ -69,6 +69,22 @@ public final class KitchenClient: Sendable {
         let response = try await http.execute(request)
         return try http.decodeJSON([Token].self, from: response)
     }
+
+    /// one status with two content types and response headers, so the headers are read before the mime dispatch
+    public func exportFolder(folderId: UUID) async throws -> ExportFolderResponse {
+        let request = try SdkRequest(method: "GET", path: ["folders", http.segment(folderId), "export"])
+        let response = try await http.execute(request)
+        let headers = try ExportFolderHeaders(
+            xExportId: http.requireHeader(response, "x-export-id", as: String.self),
+            xRows: http.optionalHeader(response, "x-rows", as: Int.self)
+        )
+        switch response.contentType {
+        case "text/csv":
+            return .textCsv(data: response.text, headers: headers)
+        default:
+            return .applicationJson(data: try http.decodeJSON(Folder.self, from: response), headers: headers)
+        }
+    }
 }
 
 /// Query parameters for GET /folders/{folder-id}.
@@ -122,4 +138,23 @@ public enum GetFolderResponse: Equatable, Sendable {
     case status200TextPlain(data: String, headers: GetFolder200Headers)
     case status204
     case status404(Shared)
+}
+
+/// Response headers declared on GET /folders/{folder-id}/export.
+public struct ExportFolderHeaders: Equatable, Sendable {
+    public let xExportId: String
+    public let xRows: Int?
+
+    public init(xExportId: String, xRows: Int?) {
+        self.xExportId = xExportId
+        self.xRows = xRows
+    }
+}
+
+/// What GET /folders/{folder-id}/export returned.
+///
+/// The status declares several content types, so which one arrived is part of the value.
+public enum ExportFolderResponse: Equatable, Sendable {
+    case applicationJson(data: Folder, headers: ExportFolderHeaders)
+    case textCsv(data: String, headers: ExportFolderHeaders)
 }

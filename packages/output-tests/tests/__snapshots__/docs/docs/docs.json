@@ -50,7 +50,8 @@
                             "api-reference/kitchen/post-ledger",
                             "api-reference/kitchen/stamp",
                             "api-reference/kitchen/mint",
-                            "api-reference/kitchen/list-tokens"
+                            "api-reference/kitchen/list-tokens",
+                            "api-reference/kitchen/export-folder"
                         ]
                     },
                     {

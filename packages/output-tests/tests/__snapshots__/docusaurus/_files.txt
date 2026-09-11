@@ -19,6 +19,7 @@ docs/api-reference/endpoints/get-status.md
 docs/api-reference/endpoints/put-note.md
 docs/api-reference/index.md
 docs/api-reference/kitchen/_category_.json
+docs/api-reference/kitchen/export-folder.md
 docs/api-reference/kitchen/get-folder.md
 docs/api-reference/kitchen/import.md
 docs/api-reference/kitchen/list-tokens.md

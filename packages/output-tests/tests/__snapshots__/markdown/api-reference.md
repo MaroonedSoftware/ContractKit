@@ -28,7 +28,7 @@
 </details>
 
 <details>
-<summary><strong>Kitchen</strong> (6)</summary>
+<summary><strong>Kitchen</strong> (7)</summary>
 
 - [Several statuses, and two content types on one of them](#several-statuses-and-two-content-types-on-one-of-them)
 - [A method name that is a keyword in the target languages](#a-method-name-that-is-a-keyword-in-the-target-languages)
@@ -36,6 +36,7 @@
 - [Stamp](#stamp)
 - [Mint](#mint)
 - [List tokens](#list-tokens)
+- [One status with two content types and response headers, so the headers are read before the mime dispatch](#one-status-with-two-content-types-and-response-headers-so-the-headers-are-read-before-the-mime-dispatch)
 
 </details>
 
@@ -631,6 +632,40 @@ Accepts a [Token](#token) object.
 ##### Response
 
 `200 OK` — Returns a list of [Token](#token) objects.
+
+
+---
+
+#### One status with two content types and response headers, so the headers are read before the mime dispatch
+
+**`GET`** `/folders/{folder-id}/export`
+
+> [!NOTE]
+> SDK method: `exportFolder`
+
+##### Attributes
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `folder-id` | `string` | Yes | Path parameter. |
+
+</details>
+
+##### Response
+
+`200 OK` `application/json` — Returns a [Folder](#folder) object.
+
+`200` `text/csv` — Returns `string`.
+
+Response headers:
+
+| Header | Type | Description |
+| ------ | ---- | ----------- |
+| `x-export-id` | `string` *(required)* |  |
+| `x-rows` | `number` |  |
 
 
 ## Models

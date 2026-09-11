@@ -14,7 +14,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * several statuses, and two content types on one of them
-     * from [kitchen.ck](../../contracts/kitchen.ck#L108)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L109)
     */
     app.get('/folders/:folderId', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(
@@ -69,7 +69,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * a method name that is a keyword in the target languages
-     * from [kitchen.ck](../../contracts/kitchen.ck#L135)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L136)
     */
     app.put('/folders/:folderId', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(
@@ -90,7 +90,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L150)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L151)
     */
     app.post('/ledgers', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, LedgerInput);
@@ -104,7 +104,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L165)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L166)
     */
     app.post('/stamps', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, Stamped);
@@ -118,7 +118,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L180)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L181)
     */
     app.post('/tokens', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, Token);
@@ -132,7 +132,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L194)
+     * from [kitchen.ck](../../contracts/kitchen.ck#L195)
     */
     app.get('/tokens', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const service = request.container.get(KitchenService);
@@ -141,6 +141,32 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
         reply.status(200);
         reply.type('application/json');
         return reply.send(result);
+    });
+
+    /**
+     * one status with two content types and response headers, so the headers are read before the mime dispatch
+     * from [kitchen.ck](../../contracts/kitchen.ck#L211)
+    */
+    app.get('/folders/:folderId/export', { preHandler: [requirePolicy()] }, async (request, reply) => {
+        const { folderId } = await parseAndValidate(
+            request.params,
+            z.strictObject({
+                folderId: z.uuid(),
+            }),
+        );
+
+        const service = request.container.get(KitchenService);
+        const result: { contentType: 'application/json'; body: Folder; headers: { xExportId: string; xRows?: number } } | { contentType: 'text/csv'; body: string; headers: { xExportId: string; xRows?: number } } = await service.exportFolder(folderId);
+
+        reply.status(200);
+        reply.header('x-export-id', String(result.headers["xExportId"]));
+        if (result.headers["xRows"] !== undefined) reply.header('x-rows', String(result.headers["xRows"]));
+        reply.type(result.contentType);
+        if (result.contentType === 'application/json') {
+            return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result.body);
+        } else {
+            return reply.send(result.body);
+        }
     });
 
 };

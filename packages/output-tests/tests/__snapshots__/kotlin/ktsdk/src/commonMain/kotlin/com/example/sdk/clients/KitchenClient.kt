@@ -88,6 +88,21 @@ class KitchenClient(private val http: SdkHttp) {
         }
         return http.decodeJson(response)
     }
+
+    /** one status with two content types and response headers, so the headers are read before the mime dispatch */
+    suspend fun exportFolder(folderId: Uuid): ExportFolderResponse {
+        val response = http.execute(HttpMethod.Get) {
+            path("folders", segment(folderId), "export")
+        }
+        val headers = ExportFolderHeaders(
+            http.requireHeader(response, "x-export-id"),
+            response.headers["x-rows"]?.let { it.toLong() },
+        )
+        return when (response.contentType) {
+            "text/csv" -> ExportFolderResponse.TextCsv(response.text, headers)
+            else -> ExportFolderResponse.ApplicationJson(http.decodeJson(response), headers)
+        }
+    }
 }
 
 @Serializable
@@ -126,4 +141,26 @@ sealed interface GetFolderResponse {
     data class Status404(
         val data: Shared,
     ) : GetFolderResponse
+}
+
+/** Response headers declared on GET /folders/{folder-id}/export. */
+data class ExportFolderHeaders(
+    val xExportId: String,
+    val xRows: Long?,
+)
+
+/**
+ * What GET /folders/{folder-id}/export returned.
+ *
+ * The status declares several content types, so which one arrived is part of the value.
+ */
+sealed interface ExportFolderResponse {
+    data class ApplicationJson(
+        val data: Folder,
+    val headers: ExportFolderHeaders,
+    ) : ExportFolderResponse
+    data class TextCsv(
+        val data: String,
+    val headers: ExportFolderHeaders,
+    ) : ExportFolderResponse
 }

@@ -241,16 +241,17 @@ function returnStatements(shape: ResponseShape, op: OpOperationNode, base: strin
         return body ? [...lines, `    return ${base}Result(${bodyReadExpr(body)}, headers)`] : [...lines, '    return headers'];
     }
 
-    const lines: string[] = [];
     if (shape.kind === 'multiMime') {
-        lines.push(...mimeBranches(shape.response, base, undefined, ctx, where, '    '));
+        const headers = shape.response.headers ?? [];
+        const lines = headers.length > 0 ? readHeaderLines(headers, headersClassName(op, base), ctx, where, '    ') : [];
+        lines.push(...mimeBranches(shape.response, base, undefined, ctx, where, '    ', headers.length > 0));
         return lines;
     }
 
     // The first declared status is the fall-through, so the `when` is exhaustive without a branch
     // for a status the service cannot return.
     const [fallback, ...rest] = shape.responses;
-    lines.push('    return when (response.status.value) {');
+    const lines: string[] = ['    return when (response.status.value) {'];
     for (const response of rest) {
         lines.push(`        ${response.statusCode} -> {`);
         lines.push(...statusBranch(response, op, base, response.statusCode, ctx, where, '            '));
@@ -283,6 +284,9 @@ function statusBranch(
 /**
  * Construct the response case, dispatching on the content type when a status declares several
  * mimes. The first declared mime is the fall-through, for the same reason the first status is.
+ *
+ * `hasHeaders` passes a `headers` local to each leaf, so it is true only when the caller has
+ * emitted {@link readHeaderLines} ahead of these lines.
  */
 function mimeBranches(
     response: OpResponseNode,
@@ -291,7 +295,7 @@ function mimeBranches(
     ctx: RenderContext,
     where: string,
     indent: string,
-    hasHeaders = (response.headers?.length ?? 0) > 0,
+    hasHeaders: boolean,
 ): string[] {
     const bodies = response.bodies;
     const construct = (body: OpResponseBodyNode | undefined): string => {

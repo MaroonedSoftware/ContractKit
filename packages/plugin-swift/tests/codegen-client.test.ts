@@ -316,6 +316,43 @@ describe('response shapes', () => {
         expect(out).toContain('return .textCsv(response.text)');
     });
 
+    it('reads the response headers before the content-type dispatch that hands them to every case', () => {
+        const out = gen(
+            opRoot([
+                opRoute('/x', [
+                    opOperation('get', {
+                        sdk: 'export',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [
+                                    { contentType: 'application/json', bodyType: { kind: 'ref', name: 'Payment' } },
+                                    { contentType: 'text/csv', bodyType: scalarType('string') },
+                                ],
+                                headers: [{ name: 'x-request-id', optional: false, type: scalarType('string') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]),
+        );
+        expect(out).toContain('public struct ExportHeaders: Equatable, Sendable {');
+        expect(out).toContain(
+            [
+                '        let headers = try ExportHeaders(',
+                '            xRequestId: http.requireHeader(response, "x-request-id", as: String.self)',
+                '        )',
+                '        switch response.contentType {',
+                '        case "text/csv":',
+                '            return .textCsv(data: response.text, headers: headers)',
+                '        default:',
+                '            return .applicationJson(data: try http.decodeJSON(Payment.self, from: response), headers: headers)',
+                '        }',
+            ].join('\n'),
+        );
+    });
+
     it('documents the statuses that raise instead of returning', () => {
         const out = gen(
             opRoot([opRoute('/x', [opOperation('get', { sdk: 'get', name: 'Fetch it', responses: [opResponse(200, 'Payment'), opResponse(404)] })])]),
