@@ -5,8 +5,10 @@ server/mcp.tools.ts
 server/routes/billing.router.ts
 server/routes/hyphenated.router.ts
 server/routes/kitchen.router.ts
+server/routes/reserved.router.ts
 server/routes/simple.router.ts
 server/schemas/billing.schema.ts
 server/schemas/hyphenated.schema.ts
 server/schemas/kitchen.schema.ts
+server/schemas/reserved.schema.ts
 server/schemas/simple.schema.ts

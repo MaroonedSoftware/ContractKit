@@ -5,13 +5,16 @@
 **Endpoints**
 
 - [Fetch an invoice](#fetch-an-invoice)
+- [Fetch one seat](#fetch-one-seat)
+- [Fetch a row by its seat class](#fetch-a-row-by-its-seat-class)
 - [Current service status](#current-service-status)
 
 <details>
-<summary><strong>Billing</strong> (9)</summary>
+<summary><strong>Billing</strong> (10)</summary>
 
 - [Create a payment](#create-a-payment)
 - [List payments](#list-payments)
+- [Create several payments at once](#create-several-payments-at-once)
 - [Fetch one payment](#fetch-one-payment)
 - [Update a payment with form data](#update-a-payment-with-form-data)
 - [Delete a payment — declares only a documented error status](#delete-a-payment-declares-only-a-documented-error-status)
@@ -37,6 +40,8 @@
 **Models**
 
 - [Invoice](#invoice)
+- [Seat](#seat)
+- [SeatRef](#seatref)
 - [Heartbeat](#heartbeat)
 
 <details>
@@ -102,6 +107,64 @@
 
 ---
 
+### Fetch one seat
+
+**`GET`** `/seats/{seatId}`
+
+> [!NOTE]
+> SDK method: `getSeat`
+
+#### Attributes
+
+<details>
+<summary>Attributes (3)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `seatId` | `string` | Yes | Path parameter. |
+| `from` | `string` | No |  |
+| `pageSize` | `number` | No |  |
+
+</details>
+
+#### Response
+
+`200 OK` — Returns a [Seat](#seat) object.
+
+Response headers:
+
+| Header | Type | Description |
+| ------ | ---- | ----------- |
+| `from` | `string` |  |
+
+
+---
+
+### Fetch a row by its seat class
+
+**`GET`** `/rows/{class}`
+
+> [!NOTE]
+> SDK method: `getRow`
+
+#### Attributes
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `class` | `string` | Yes | Path parameter. |
+
+</details>
+
+#### Response
+
+`200 OK` — Returns a [Seat](#seat) object.
+
+
+---
+
 ### Current service status
 
 **`GET`** `/status`
@@ -155,7 +218,7 @@ Response headers:
 ##### Attributes
 
 <details>
-<summary>Attributes (4)</summary>
+<summary>Attributes (5)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -163,8 +226,27 @@ Response headers:
 | `x-tenant` | `string` | Yes |  |
 | `api-key` | `string` | No |  |
 | `limit` | `number` | No |  |
+| `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
 
 </details>
+
+##### Response
+
+`200 OK` — Returns a list of [Payment](#payment) objects.
+
+
+---
+
+#### Create several payments at once
+
+**`POST`** `/payments/batch`
+
+> [!NOTE]
+> SDK method: `createPayments`
+
+##### Request body (`application/json`)
+
+Accepts a list of [Payment](#payment) objects.
 
 ##### Response
 
@@ -499,6 +581,38 @@ Accepts a [Token](#token) object.
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | *read-only* |
 | `total` | `Decimal` | Yes |  |
+
+</details>
+
+### Seat
+
+> A seat, whose field names are all reserved somewhere in Python
+
+<details>
+<summary>Attributes (7)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `class` | `string` | Yes |  |
+| `from` | `string` | No |  |
+| `date` | `string` | Yes |  |
+| `time` | `string` | No |  |
+| `copy` | `string` | No |  |
+| `modelDump` | `string` | No |  |
+| `json` | `string` | No |  |
+
+</details>
+
+### SeatRef
+
+> Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `class` | `string` | Yes |  |
 
 </details>
 

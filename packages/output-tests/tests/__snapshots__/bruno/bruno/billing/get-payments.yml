@@ -14,6 +14,10 @@ http:
     - name: cursor
       value: ""
       type: query
+    - name: status
+      value: "pending"
+      type: query
+      disabled: true
   headers:
     - name: api-key
       value: ""

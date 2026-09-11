@@ -2,6 +2,7 @@ docs/api-reference/_category_.json
 docs/api-reference/billing/_category_.json
 docs/api-reference/billing/create-credential.md
 docs/api-reference/billing/create-payment.md
+docs/api-reference/billing/create-payments.md
 docs/api-reference/billing/create-session.md
 docs/api-reference/billing/delete-payment.md
 docs/api-reference/billing/get-payment.md
@@ -11,6 +12,8 @@ docs/api-reference/billing/update-payment-with-form.md
 docs/api-reference/billing/upload-receipt.md
 docs/api-reference/endpoints/_category_.json
 docs/api-reference/endpoints/get-invoice.md
+docs/api-reference/endpoints/get-row.md
+docs/api-reference/endpoints/get-seat.md
 docs/api-reference/endpoints/get-status.md
 docs/api-reference/index.md
 docs/api-reference/kitchen/_category_.json
@@ -45,3 +48,5 @@ docs/api-reference/models/kitchen/shared.md
 docs/api-reference/models/kitchen/stamp.md
 docs/api-reference/models/kitchen/stamped.md
 docs/api-reference/models/kitchen/token.md
+docs/api-reference/models/seat-ref.md
+docs/api-reference/models/seat.md

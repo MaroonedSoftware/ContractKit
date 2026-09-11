@@ -19,6 +19,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /** Operations declared in `billing.ck`. */
 class BillingClient(private val http: SdkHttp) {
@@ -46,6 +47,15 @@ class BillingClient(private val http: SdkHttp) {
             path("payments")
             params(query)
             headers(customHeaders)
+        }
+        return http.decodeJson(response)
+    }
+
+    /** create several payments at once */
+    suspend fun createPayments(body: List<PaymentInput>): List<Payment> {
+        val response = http.execute(HttpMethod.Post) {
+            path("payments", "batch")
+            jsonBody(body, "application/json")
         }
         return http.decodeJson(response)
     }
@@ -137,6 +147,7 @@ data class CreatePaymentResult(
 data class ListPaymentsQuery(
     val limit: Long? = null,
     val cursor: String,
+    val status: JsonElement? = null,
 )
 
 @Serializable

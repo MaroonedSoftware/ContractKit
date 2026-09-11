@@ -1,7 +1,7 @@
 ---
 title: "Open a session"
 sidebar_label: "Open a session"
-sidebar_position: 9
+sidebar_position: 10
 mdx:
     format: "md"
 ---

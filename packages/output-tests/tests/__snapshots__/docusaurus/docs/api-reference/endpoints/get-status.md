@@ -1,7 +1,7 @@
 ---
 title: "Current service status"
 sidebar_label: "Current service status"
-sidebar_position: 2
+sidebar_position: 4
 mdx:
     format: "md"
 ---

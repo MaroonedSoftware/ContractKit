@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import UUID
 from urllib.parse import quote
 from typing import Literal, NotRequired, TypedDict
+from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError  # noqa: F401
 from ._models_kitchen import Folder, Instrument, Ledger, LedgerInput, Shared, SharedInput, Stamped, Token
 
@@ -14,14 +15,16 @@ class GetFolder200Headers(TypedDict, total=False):
     x_when: datetime  # x-when (optional)
 
 
-class GetFolderQuery(TypedDict):
-    depth: NotRequired[int]  # depth
-    tags: NotRequired[list[str]]  # tags
+GetFolderQuery = TypedDict("GetFolderQuery", {
+    "depth": NotRequired[int],
+    "tags": NotRequired[list[str]],
+})
 
 
-class GetFolderHeaders(TypedDict):
-    x_trace: str  # x-trace
-    x_opt: NotRequired[int]  # x-opt
+GetFolderHeaders = TypedDict("GetFolderHeaders", {
+    "x-trace": str,
+    "x-opt": NotRequired[int],
+})
 
 
 class GetFolder200Response(TypedDict):
@@ -39,6 +42,10 @@ class GetFolder404Response(TypedDict):
     status: Literal[404]
     content_type: Literal["application/json"]
     data: Shared
+
+
+_IMPORT__RESPONSE = TypeAdapter(Instrument)
+_LIST_TOKENS_RESPONSE = TypeAdapter(list[Token])
 
 
 class KitchenClient(BaseClient):
@@ -65,21 +72,21 @@ class KitchenClient(BaseClient):
         """
         a method name that is a keyword in the target languages
         """
-        result = await self._fetch(f"/folders/{quote(str(folder_id), safe='')}", method="PUT", body=body.model_dump(mode="json"))
-        return Instrument.model_validate(result)
+        result = await self._fetch(f"/folders/{quote(str(folder_id), safe='')}", method="PUT", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
+        return _IMPORT__RESPONSE.validate_python(result)
 
     async def post_ledger(self, body: LedgerInput) -> Ledger:
-        result = await self._fetch("/ledgers", method="POST", body=body.model_dump(mode="json"))
+        result = await self._fetch("/ledgers", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Ledger.model_validate(result)
 
     async def stamp(self, body: Stamped) -> Stamped:
-        result = await self._fetch("/stamps", method="POST", body=body.model_dump(mode="json"))
+        result = await self._fetch("/stamps", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Stamped.model_validate(result)
 
     async def mint(self, body: Token) -> Token:
-        result = await self._fetch("/tokens", method="POST", body=body.model_dump(mode="json"))
+        result = await self._fetch("/tokens", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Token.model_validate(result)
 
     async def list_tokens(self) -> list[Token]:
         result = await self._fetch("/tokens", method="GET")
-        return [Token.model_validate(item) for item in result]
+        return _LIST_TOKENS_RESPONSE.validate_python(result)

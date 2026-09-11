@@ -1,7 +1,7 @@
 ---
 title: "Delete a payment — declares only a documented error status"
 sidebar_label: "Delete a payment — declares only a documented error status"
-sidebar_position: 5
+sidebar_position: 6
 mdx:
     format: "md"
 ---

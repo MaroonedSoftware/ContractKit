@@ -4,7 +4,8 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 from urllib.parse import quote
-from typing import NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict
+from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError  # noqa: F401
 from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentInput, PaymentRef, Session, SessionInput, UpdatePaymentForm, UploadReceiptForm
 
@@ -16,14 +17,22 @@ class CreatePaymentHeaders(TypedDict, total=False):
     x_expires_after: datetime  # x-expires-after (optional)
 
 
-class ListPaymentsQuery(TypedDict):
-    limit: NotRequired[int]  # limit
-    cursor: str  # cursor
+ListPaymentsQuery = TypedDict("ListPaymentsQuery", {
+    "limit": NotRequired[int],
+    "cursor": str,
+    "status": NotRequired[Literal["pending", "completed", "failed"]],
+})
 
 
-class ListPaymentsHeaders(TypedDict):
-    api_key: NotRequired[str]  # api-key
-    x_tenant: str  # x-tenant
+ListPaymentsHeaders = TypedDict("ListPaymentsHeaders", {
+    "api-key": NotRequired[str],
+    "x-tenant": str,
+})
+
+
+_LIST_PAYMENTS_RESPONSE = TypeAdapter(list[Payment])
+_CREATE_PAYMENTS_BODY = TypeAdapter(list[PaymentInput])
+_CREATE_PAYMENTS_RESPONSE = TypeAdapter(list[Payment])
 
 
 class BillingClient(BaseClient):
@@ -32,7 +41,7 @@ class BillingClient(BaseClient):
         """
         create a payment
         """
-        result, _response_headers = await self._fetch_with_headers("/payments", method="POST", body=body.model_dump(mode="json"))
+        result, _response_headers = await self._fetch_with_headers("/payments", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         headers: CreatePaymentHeaders = {}
         if "x-request-id" in _response_headers:
             headers["x_request_id"] = _response_headers["x-request-id"]
@@ -49,7 +58,14 @@ class BillingClient(BaseClient):
         list payments
         """
         result = await self._fetch("/payments", method="GET", params=query, extra_headers=custom_headers)
-        return [Payment.model_validate(item) for item in result]
+        return _LIST_PAYMENTS_RESPONSE.validate_python(result)
+
+    async def create_payments(self, body: list[PaymentInput]) -> list[Payment]:
+        """
+        create several payments at once
+        """
+        result = await self._fetch("/payments/batch", method="POST", body=_CREATE_PAYMENTS_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True))
+        return _CREATE_PAYMENTS_RESPONSE.validate_python(result)
 
     async def get_payment(self, payment_id: UUID) -> Payment:
         """
@@ -62,7 +78,7 @@ class BillingClient(BaseClient):
         """
         update a payment with form data
         """
-        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="POST", body=body.model_dump(mode="json"), content_type="application/x-www-form-urlencoded", body_kind="form")
+        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True), content_type="application/x-www-form-urlencoded", body_kind="form")
         return None
 
     async def delete_payment(self, payment_id: UUID) -> None:
@@ -84,19 +100,19 @@ class BillingClient(BaseClient):
         """
         look up a refund by its originating payment
         """
-        result = await self._fetch(f"/refunds/{quote(str(params.payment_id), safe='')}", method="GET")
+        result = await self._fetch(f"/refunds/{quote(str(params.model_dump(by_alias=True)['paymentId']), safe='')}", method="GET")
         return Payment.model_validate(result)
 
     async def create_credential(self, body: AdminCredentialInput) -> Credential:
         """
         store a credential
         """
-        result = await self._fetch("/credentials", method="POST", body=body.model_dump(mode="json"))
+        result = await self._fetch("/credentials", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Credential.model_validate(result)
 
     async def create_session(self, body: SessionInput) -> Session:
         """
         open a session
         """
-        result = await self._fetch("/sessions", method="POST", body=body.model_dump(mode="json"))
+        result = await self._fetch("/sessions", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Session.model_validate(result)

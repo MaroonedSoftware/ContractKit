@@ -33,6 +33,14 @@ public final class BillingClient: Sendable {
         return try http.decodeJSON([Payment].self, from: response)
     }
 
+    /// create several payments at once
+    public func createPayments(body: [PaymentInput]) async throws -> [Payment] {
+        var request = SdkRequest(method: "POST", path: ["payments", "batch"])
+        try http.setJSONBody(&request, body, contentType: "application/json")
+        let response = try await http.execute(request)
+        return try http.decodeJSON([Payment].self, from: response)
+    }
+
     /// fetch one payment
     /// - Throws: `SdkError` on 404
     public func getPayment(paymentId: UUID) async throws -> Payment {
@@ -119,15 +127,18 @@ public struct CreatePaymentResult: Equatable, Sendable {
 public struct ListPaymentsQuery: Encodable, Equatable, Sendable {
     public var limit: Int?
     public var cursor: String
+    public var status: JSONValue?
 
-    public init(limit: Int? = nil, cursor: String) {
+    public init(limit: Int? = nil, cursor: String, status: JSONValue? = nil) {
         self.limit = limit
         self.cursor = cursor
+        self.status = status
     }
 
     private enum CodingKeys: String, CodingKey {
         case limit = "limit"
         case cursor = "cursor"
+        case status = "status"
     }
 }
 

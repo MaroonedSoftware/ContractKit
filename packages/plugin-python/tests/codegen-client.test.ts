@@ -3,8 +3,12 @@ import { generatePythonClient, deriveClientClassName, deriveClientModuleName, ha
 import {
     scalarType,
     arrayType,
+    tupleType,
     refType,
     enumType,
+    recordType,
+    unionType,
+    inlineObjectType,
     opParam,
     paramNodes,
     paramRef,
@@ -14,6 +18,7 @@ import {
     opOperation,
     opRoute,
     opRoot,
+    type ContractTypeNode,
 } from './helpers.js';
 
 // ─── deriveClientClassName ────────────────────────────────────────────────
@@ -147,10 +152,138 @@ describe('generatePythonClient', () => {
         expect(output).toContain('Payment.model_validate(result)');
     });
 
-    it('generates list comprehension for array model responses', () => {
+    it('validates an array-of-model response through a module-level TypeAdapter', () => {
         const root = opRoot([opRoute('/payments', [opOperation('get', { responses: [opResponse(200, 'array(Payment)')] })])]);
         const output = generatePythonClient(root);
-        expect(output).toContain('[Payment.model_validate(item) for item in result]');
+        expect(output).toContain('_GET_PAYMENTS_RESPONSE = TypeAdapter(list[Payment])');
+        expect(output).toContain('return _GET_PAYMENTS_RESPONSE.validate_python(result)');
+    });
+
+    describe('response validation', () => {
+        const discriminated: ContractTypeNode = { kind: 'discriminatedUnion', discriminator: 'kind', members: [refType('Card'), refType('Bank')] };
+
+        it('validates every JSON response that is not a single model, not just lists of models', () => {
+            const root = opRoot([
+                opRoute('/a', [opOperation('get', { sdk: 'byId', responses: [opResponse(200, recordType(scalarType('string'), refType('Item')))] })]),
+                opRoute('/b', [opOperation('get', { sdk: 'anyMethod', responses: [opResponse(200, unionType(refType('Card'), refType('Bank')))] })]),
+                opRoute('/c', [opOperation('get', { sdk: 'tagged', responses: [opResponse(200, discriminated)] })]),
+                opRoute('/d', [opOperation('get', { sdk: 'counts', responses: [opResponse(200, arrayType(scalarType('bigint')))] })]),
+                opRoute('/e', [opOperation('get', { sdk: 'days', responses: [opResponse(200, arrayType(scalarType('date')))] })]),
+                opRoute('/f', [
+                    opOperation('get', { sdk: 'pair', responses: [opResponse(200, tupleType(scalarType('date'), scalarType('decimal')))] }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            // Returned raw, each of these was decoded JSON under a lying annotation: plain dicts for
+            // the models, and the wire strings for bigint, date and Decimal.
+            expect(output).toContain('_BY_ID_RESPONSE = TypeAdapter(dict[str, Item])');
+            expect(output).toContain('_ANY_METHOD_RESPONSE = TypeAdapter(Card | Bank)');
+            expect(output).toContain('_TAGGED_RESPONSE = TypeAdapter(Annotated[Card | Bank, Field(discriminator="kind")])');
+            expect(output).toContain('_COUNTS_RESPONSE = TypeAdapter(list[BigInt])');
+            expect(output).toContain('_DAYS_RESPONSE = TypeAdapter(list[date])');
+            expect(output).toContain('_PAIR_RESPONSE = TypeAdapter(tuple[date, Decimal])');
+            expect(output).toContain('return _BY_ID_RESPONSE.validate_python(result)');
+            expect(output).toContain('return _COUNTS_RESPONSE.validate_python(result)');
+            expect(output).not.toMatch(/^\s+return result$/m);
+            // The adapters are evaluated at import, so everything their types name is imported.
+            expect(output).toContain('from pydantic import Field, TypeAdapter');
+            expect(output).toContain('from ._scalars import BigInt');
+            expect(output).toContain('from datetime import date');
+            expect(output).toContain('from decimal import Decimal');
+        });
+
+        it('keeps model_validate for a single model and adds no adapter for Any, text or binary', () => {
+            const root = opRoot([
+                opRoute('/m', [opOperation('get', { sdk: 'getModel', responses: [opResponse(200, 'Item')] })]),
+                opRoute('/j', [opOperation('get', { sdk: 'getJson', responses: [opResponse(200, scalarType('json'))] })]),
+                opRoute('/t', [opOperation('get', { sdk: 'getText', responses: [opResponse(200, scalarType('string'), 'text/plain')] })]),
+                opRoute('/b', [
+                    opOperation('get', { sdk: 'getBytes', responses: [opResponse(200, scalarType('binary'), 'application/octet-stream')] }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).not.toContain('TypeAdapter');
+            expect(output).toContain('return Item.model_validate(result)');
+        });
+
+        it('validates a response typed by a type-alias contract through an adapter', () => {
+            const root = opRoot([opRoute('/tier', [opOperation('get', { sdk: 'getTier', responses: [opResponse(200, 'Tier')] })])]);
+            const output = generatePythonClient(root, { typeAliases: new Set(['Tier']) });
+            expect(output).toContain('_GET_TIER_RESPONSE = TypeAdapter(Tier)');
+            expect(output).toContain('return _GET_TIER_RESPONSE.validate_python(result)');
+        });
+
+        it('validates the body alongside declared response headers', () => {
+            const root = opRoot([
+                opRoute('/days', [
+                    opOperation('get', {
+                        sdk: 'days',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: arrayType(scalarType('date')) }],
+                                headers: [{ name: 'etag', optional: true, type: scalarType('string') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('return _DAYS_RESPONSE.validate_python(result), headers');
+        });
+
+        it('names one adapter per status when a method reports several', () => {
+            const root = opRoot([
+                opRoute('/multi', [
+                    opOperation('get', {
+                        sdk: 'multi',
+                        responses: [
+                            opResponse(200, recordType(scalarType('string'), refType('Item'))),
+                            opResponse(202, arrayType(scalarType('date'))),
+                            opResponse(409, 'Item'),
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output).toContain('_MULTI_RESPONSE_200 = TypeAdapter(dict[str, Item])');
+            expect(output).toContain('_MULTI_RESPONSE_202 = TypeAdapter(list[date])');
+            expect(output).toContain('"data": _MULTI_RESPONSE_202.validate_python(result)');
+            expect(output).toContain('"data": _MULTI_RESPONSE_200.validate_python(result)');
+            expect(output).toContain('"data": Item.model_validate(result)');
+        });
+
+        it('shares an adapter across mimes of one type and tells a second type apart by its mime', () => {
+            const root = opRoot([
+                opRoute('/mime', [
+                    opOperation('get', {
+                        sdk: 'mime',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [
+                                    { contentType: 'application/json', bodyType: arrayType(scalarType('bigint')) },
+                                    { contentType: 'application/vnd.api+json', bodyType: arrayType(scalarType('bigint')) },
+                                    { contentType: 'application/vnd.map+json', bodyType: recordType(scalarType('string'), scalarType('bigint')) },
+                                    { contentType: 'text/csv', bodyType: scalarType('string') },
+                                ],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            expect(output.match(/^_MIME_RESPONSE\w* = /gm)).toEqual(['_MIME_RESPONSE = ', '_MIME_RESPONSE_VND_MAP_JSON = ']);
+            expect(output).toContain('_MIME_RESPONSE = TypeAdapter(list[BigInt])');
+            expect(output).toContain('_MIME_RESPONSE_VND_MAP_JSON = TypeAdapter(dict[str, BigInt])');
+            expect(output).toContain('return { "content_type": "application/vnd.api+json", "data": _MIME_RESPONSE.validate_python(result) }');
+            expect(output).toContain(
+                'return { "content_type": "application/vnd.map+json", "data": _MIME_RESPONSE_VND_MAP_JSON.validate_python(result) }',
+            );
+            expect(output).toContain('return { "content_type": "text/csv", "data": result }');
+        });
     });
 
     it('emits a TypedDict for an inline query block and requires it when its fields are', () => {
@@ -165,11 +298,76 @@ describe('generatePythonClient', () => {
         const output = generatePythonClient(root);
         // A bare `dict` told a type checker nothing about what the request accepts, while the
         // router has always validated these fields.
-        expect(output).toContain('class GetPaymentsQuery(TypedDict):');
-        expect(output).toContain('    page: int  # page');
-        expect(output).toContain('    limit: int  # limit');
+        expect(output).toContain('GetPaymentsQuery = TypedDict("GetPaymentsQuery", {');
+        expect(output).toContain('    "page": int,');
+        expect(output).toContain('    "limit": int,');
         expect(output).toContain('query: GetPaymentsQuery');
         expect(output).toContain('params=query');
+    });
+
+    it('imports every type a request TypedDict evaluates when the module loads', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', {
+                    query: [
+                        opParam('status', enumType('open', 'closed'), { optional: true }),
+                        opParam('wait', scalarType('duration'), { optional: true }),
+                        opParam(
+                            'kind',
+                            {
+                                kind: 'discriminatedUnion',
+                                discriminator: 'type',
+                                members: [refType('Card'), refType('Bank')],
+                            } as never,
+                            { optional: true },
+                        ),
+                    ],
+                    responses: [opResponse(200, 'array(Payment)')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // Class-syntax annotations were lazy, so these were never needed; the functional form
+        // evaluates its values at import, and a missing one is a NameError.
+        expect(output).toContain('from typing import Annotated, Literal, NotRequired, TypedDict');
+        expect(output).toContain('from datetime import timedelta');
+        expect(output).toContain('from pydantic import Field');
+        expect(output).toContain('    "kind": NotRequired[Annotated[Card | Bank, Field(discriminator="type")]],');
+    });
+
+    it('imports BigInt wherever a request or response type carries a bigint', () => {
+        const root = opRoot([
+            opRoute('/counts', [
+                opOperation('get', {
+                    query: [opParam('since', scalarType('bigint'), { optional: true })],
+                    responses: [opResponse(200, arrayType(scalarType('bigint')))],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // The TypedDict evaluates `BigInt` at import, so the name has to be really imported.
+        expect(output).toContain('from ._scalars import BigInt');
+        expect(output).toContain('    "since": NotRequired[BigInt],');
+    });
+
+    it('keys query and header TypedDicts by the names that go on the wire', () => {
+        const root = opRoot([
+            opRoute('/payments', [
+                opOperation('get', {
+                    query: [opParam('pageSize', scalarType('int'), { optional: true }), opParam('from', scalarType('string'), { optional: true })],
+                    headers: [opParam('x-tenant', scalarType('string'))],
+                    responses: [opResponse(200, 'array(Payment)')],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // The dict is sent as-is, so a snake_cased `x_tenant` key is a different header to the
+        // server and `page_size` an unknown query key. `from` and `x-tenant` cannot be keys in
+        // the class syntax at all.
+        expect(output).toContain('    "pageSize": NotRequired[int],');
+        expect(output).toContain('    "from": NotRequired[str],');
+        expect(output).toContain('GetPaymentsHeaders = TypedDict("GetPaymentsHeaders", {\n    "x-tenant": str,\n})');
+        expect(output).toContain('params=query, extra_headers=custom_headers');
     });
 
     it('marks omittable fields NotRequired and makes the argument optional', () => {
@@ -183,8 +381,8 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root);
         // `NotRequired` rather than `total=False`, so a required field in a mixed block stays so.
-        expect(output).toContain('    page: NotRequired[int]  # page');
-        expect(output).toContain('    limit: NotRequired[int]  # limit');
+        expect(output).toContain('    "page": NotRequired[int],');
+        expect(output).toContain('    "limit": NotRequired[int],');
         expect(output).toContain('from typing import NotRequired, TypedDict');
         expect(output).toContain('query: GetPaymentsQuery | None = None');
     });
@@ -225,7 +423,111 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('body: PaymentInput');
-        expect(output).toContain('body=body.model_dump(mode="json")');
+        // by_alias: a renamed field goes out as `unitPrice`, not `unit_price`, which a strict server
+        // schema rejects. exclude_unset: an optional the caller never set is omitted rather than
+        // sent as null, which `.optional()` rejects.
+        expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
+    });
+
+    it('serializes a list-of-model body through a module-level TypeAdapter', () => {
+        const modelsWithInput = new Set(['Item']);
+        const root = opRoot([
+            opRoute('/items', [
+                opOperation('post', { sdk: 'createItems', request: opRequest(arrayType(refType('Item'))), responses: [opResponse(204)] }),
+            ]),
+        ]);
+        const output = generatePythonClient(root, { modelsWithInput });
+        // Sent raw, a list of Pydantic objects fails in httpx: "Object of type Item is not JSON
+        // serializable". Built once at import, not per call.
+        expect(output).toContain('from pydantic import TypeAdapter');
+        expect(output).toContain('_CREATE_ITEMS_BODY = TypeAdapter(list[ItemInput])');
+        expect(output).toContain('async def create_items(self, body: list[ItemInput]) -> None:');
+        expect(output).toContain('body=_CREATE_ITEMS_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
+    });
+
+    it('serializes record, union and inline-object bodies the same way', () => {
+        const root = opRoot([
+            opRoute('/a', [
+                opOperation('put', {
+                    sdk: 'putRecord',
+                    request: opRequest(recordType(scalarType('string'), refType('Item'))),
+                    responses: [opResponse(204)],
+                }),
+            ]),
+            opRoute('/b', [
+                opOperation('put', {
+                    sdk: 'putUnion',
+                    request: opRequest(unionType(refType('Card'), refType('Bank'))),
+                    responses: [opResponse(204)],
+                }),
+            ]),
+            opRoute('/c', [opOperation('put', { sdk: 'putObject', request: opRequest(inlineObjectType([])), responses: [opResponse(204)] })]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('_PUT_RECORD_BODY = TypeAdapter(dict[str, Item])');
+        expect(output).toContain('_PUT_UNION_BODY = TypeAdapter(Card | Bank)');
+        // An inline object is `dict[str, Any]`, whose values may be dates or Decimals.
+        expect(output).toContain('_PUT_OBJECT_BODY = TypeAdapter(dict[str, Any])');
+        expect(output).toContain('body=_PUT_UNION_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
+    });
+
+    it('builds the adapter for a urlencoded body that is not a single model', () => {
+        const root = opRoot([
+            opRoute('/forms', [
+                opOperation('post', {
+                    sdk: 'postForm',
+                    request: opRequest(recordType(scalarType('string'), scalarType('date')), 'application/x-www-form-urlencoded'),
+                    responses: [opResponse(204)],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('_POST_FORM_BODY = TypeAdapter(dict[str, date])');
+        expect(output).toContain('body_kind="form"');
+    });
+
+    it('sends a body typed by a type-alias contract through an adapter, not model_dump', () => {
+        const root = opRoot([
+            opRoute('/tier', [opOperation('put', { sdk: 'putTier', request: opRequest('Tier'), responses: [opResponse(204)] })]),
+            opRoute('/card', [opOperation('put', { sdk: 'putCard', request: opRequest('Card'), responses: [opResponse(204)] })]),
+        ]);
+        const output = generatePythonClient(root, { typeAliases: new Set(['Tier']) });
+        // `Tier = Literal["free", "pro"]`: the caller passes a str, which has no `model_dump`.
+        expect(output).toContain('_PUT_TIER_BODY = TypeAdapter(Tier)');
+        expect(output).toContain('body=_PUT_TIER_BODY.dump_python(body, mode="json", by_alias=True, exclude_unset=True)');
+        expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
+        expect(output).not.toContain('_PUT_CARD_BODY');
+    });
+
+    it('never calls model_validate on a type-alias contract', () => {
+        const root = opRoot([
+            opRoute('/tier', [opOperation('get', { sdk: 'getTier', responses: [opResponse(200, 'Tier')] })]),
+            opRoute('/tiers', [opOperation('get', { sdk: 'listTiers', responses: [opResponse(200, 'array(Tier)')] })]),
+        ]);
+        const output = generatePythonClient(root, { typeAliases: new Set(['Tier']) });
+        expect(output).not.toContain('Tier.model_validate');
+    });
+
+    it('leaves single-model, multipart, text and binary bodies without an adapter', () => {
+        const root = opRoot([
+            opRoute('/m', [opOperation('post', { sdk: 'postModel', request: opRequest('Item'), responses: [opResponse(204)] })]),
+            opRoute('/f', [
+                opOperation('post', { sdk: 'postFile', request: opRequest('Upload', 'multipart/form-data'), responses: [opResponse(204)] }),
+            ]),
+            opRoute('/t', [
+                opOperation('post', { sdk: 'postText', request: opRequest(scalarType('string'), 'text/plain'), responses: [opResponse(204)] }),
+            ]),
+            opRoute('/b', [
+                opOperation('post', {
+                    sdk: 'postBytes',
+                    request: opRequest(scalarType('binary'), 'application/octet-stream'),
+                    responses: [opResponse(204)],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).not.toContain('TypeAdapter');
+        expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
     });
 
     it('sends a urlencoded body as form data, not JSON', () => {
@@ -242,6 +544,8 @@ describe('generatePythonClient', () => {
         // document under a form Content-Type.
         expect(output).toContain('body_kind="form"');
         expect(output).toContain('content_type="application/x-www-form-urlencoded"');
+        // Form keys are contract names too, and an unset optional must not become `note=`.
+        expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
     });
 
     it('sends a multipart body through files= and lets httpx own the Content-Type', () => {
@@ -316,7 +620,57 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('async def get_payments_by_payment_id(self, params: PaymentRef)');
-        expect(output).toContain('f"/payments/{quote(str(params.payment_id), safe=\'\')}"');
+        expect(output).toContain("f\"/payments/{quote(str(params.model_dump(by_alias=True)['paymentId']), safe='')}\"");
+    });
+
+    it('escapes a path param named after a Python keyword, in the signature and the URL', () => {
+        const root = opRoot([
+            opRoute(
+                '/seats/{class}',
+                [opOperation('get', { sdk: 'getSeat', responses: [opResponse(200, 'Seat')] })],
+                paramNodes([opParam('class', scalarType('string'))]),
+            ),
+        ]);
+        const output = generatePythonClient(root);
+        // `def get_seat(self, class: str)` is a SyntaxError for the whole module.
+        expect(output).toContain('async def get_seat(self, class_: str)');
+        expect(output).toContain('f"/seats/{quote(str(class_), safe=\'\')}"');
+    });
+
+    it('reads a params model by contract name, whatever the model calls the attribute', () => {
+        const root = opRoot([
+            opRoute('/rows/{class}', [opOperation('get', { sdk: 'getRow', responses: [opResponse(200, 'Seat')] })], paramRef('SeatRef')),
+        ]);
+        const output = generatePythonClient(root);
+        // The model names the field `class_`, and would name a defaulted `date` field `date_`,
+        // decisions that depend on fields this generator never sees.
+        expect(output).toContain("f\"/rows/{quote(str(params.model_dump(by_alias=True)['class']), safe='')}\"");
+    });
+
+    it('keeps a path param clear of the arguments and functions the method already uses', () => {
+        const root = opRoot([
+            opRoute(
+                '/notes/{body}/{quote}',
+                [opOperation('post', { sdk: 'postNote', request: opRequest('Note'), responses: [opResponse(204)] })],
+                paramNodes([opParam('body', scalarType('string')), opParam('quote', scalarType('string'))]),
+            ),
+        ]);
+        const output = generatePythonClient(root);
+        // A second `body` is a duplicate-argument SyntaxError; a `quote` argument shadows
+        // urllib.parse.quote, so the URL expression would call a string.
+        expect(output).toContain('async def post_note(self, body_: str, quote_: str, body: Note)');
+        expect(output).toContain("f\"/notes/{quote(str(body_), safe='')}/{quote(str(quote_), safe='')}\"");
+    });
+
+    it('leaves a path param named after a soft keyword alone', () => {
+        const root = opRoot([
+            opRoute(
+                '/kinds/{type}',
+                [opOperation('get', { sdk: 'getKind', responses: [opResponse(200, 'Kind')] })],
+                paramNodes([opParam('type', scalarType('string'))]),
+            ),
+        ]);
+        expect(generatePythonClient(root)).toContain('async def get_kind(self, type: str)');
     });
 
     it('leaves a path with no params as a plain string', () => {
@@ -440,7 +794,7 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root, { modelsWithInput });
         expect(output).toContain('body: PaymentInput');
-        expect(output).toContain('body=body.model_dump(mode="json")');
+        expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
     });
 
     describe('observable-set returns', () => {
@@ -571,6 +925,28 @@ describe('generatePythonClient', () => {
             expect(output).toContain('"preference-applied" in _response_headers');
             expect(output).toContain('headers["preference_applied"] = _response_headers["preference-applied"]');
             expect(output).toContain('return Transfer.model_validate(result), headers');
+        });
+
+        it('escapes a response header named after a Python keyword', () => {
+            const root = opRoot([
+                opRoute('/mail', [
+                    opOperation('get', {
+                        sdk: 'getMail',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Mail' } }],
+                                headers: [{ name: 'from', optional: true, type: scalarType('string') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            // The HTTP `From` header: `from: str` in the TypedDict body is a SyntaxError.
+            expect(output).toContain('    from_: str  # from (optional)');
+            expect(output).toContain('headers["from_"] = _response_headers["from"]');
         });
 
         it('annotates and coerces each header to its declared type', () => {
