@@ -1,5 +1,21 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.38.6
+
+### Patch Changes
+
+- 8420f24: Import `DateTime`, `Duration` and `Decimal` into an SDK client whenever its code names them, so a `date` query param no longer produces a client that fails with TS2304 "Cannot find name 'DateTime'".
+
+    A client's luxon import was decided from response-header conversions alone (`DateTime.fromISO(...)`), and its decimal.js import from the reviver prelude alone. A query, header or path param typed `date`, `datetime`, `duration` or `decimal`, or an inline response or error body holding one, named the class in the method signature without importing it. Both imports are now read off everything the client file emits, in top-level and area clients alike.
+
+- 0455f83: Rename a path param whose name cannot be bound in generated TypeScript, so a route like `/seats/{class}` no longer produces an SDK client and routers that fail to parse.
+
+    The SDK spread the param into the method signature under its declared name, so `class` gave `async getSeat(class: string)` (TS1390) and a cascade of parse errors through the whole client file. The Koa and Fastify routers destructured it the same way (`const { class } = ...`), and so did the MCP tool handler. Each now binds a JavaScript reserved word under a trailing underscore (`class_`), the way the routers already renamed a param that collided with a handler local. The route placeholder, the router's params schema key and the MCP tool's argument name keep the declared spelling.
+
+    A path param also can no longer take a name the SDK method already uses: `body`, `query`, `customHeaders`, `options` or `params` (a duplicate argument, as in `putNote(body: string, body: Note)`), a local such as `result` or `qs`, or a function the method calls, such as `encodeURIComponent`. Those get the same underscore. The argument is positional, so callers are unaffected.
+
+    In an MCP tool, a path param named `body`, `query` or `headers` shared the flat args object with the argument of that name, and the generated schema declared the key twice. The path param's key is now `body_`.
+
 ## 0.38.5
 
 ### Patch Changes
