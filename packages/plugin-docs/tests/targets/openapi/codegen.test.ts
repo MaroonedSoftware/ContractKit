@@ -385,6 +385,19 @@ describe('generateOpenApi', () => {
             expect(doc.components.schemas.Order!.properties.quantity).toMatchObject({ type: 'string', format: 'bigint', default: '5' });
         });
 
+        it('writes an exact bigint default as a string, negative ones quoted', () => {
+            const dto = contractRoot([
+                model('Order', [
+                    field('serial', scalarType('bigint'), { default: 9007199254740993n }),
+                    field('floor', scalarType('bigint'), { default: -9007199254740993n }),
+                ]),
+            ]);
+            const yaml = generateOpenApi({ contractRoots: [dto], opRoots: [], config: {} });
+            const doc = parseDocument(yaml);
+            expect(doc.getIn(['components', 'schemas', 'Order', 'properties', 'serial', 'default'])).toBe('9007199254740993');
+            expect(doc.getIn(['components', 'schemas', 'Order', 'properties', 'floor', 'default'])).toBe('-9007199254740993');
+        });
+
         it('generates enum schema', () => {
             const dto = contractRoot([model('Status', [], { type: enumType('active', 'inactive', 'pending') })]);
             const output = generateOpenApi({

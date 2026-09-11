@@ -318,7 +318,8 @@ function fieldToSchema(field: FieldNode, modelMap?: Map<string, ModelNode>): Rec
     if (field.default !== undefined) {
         // A bigint is documented as a string, so its default has to be one too for the schema to
         // accept its own default.
-        schema.default = field.type.kind === 'scalar' && field.type.name === 'bigint' ? String(field.default) : field.default;
+        const isBigInt = typeof field.default === 'bigint' || (field.type.kind === 'scalar' && field.type.name === 'bigint');
+        schema.default = isBigInt ? String(field.default) : field.default;
     }
     if (field.description) {
         schema.description = field.description;

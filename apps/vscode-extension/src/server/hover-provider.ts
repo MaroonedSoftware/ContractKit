@@ -98,7 +98,8 @@ function formatField(field: FieldNode): string {
     parts.push(':');
     if (field.visibility !== 'normal') parts.push(` ${field.visibility}`);
     parts.push(` ${formatType(field.type)}`);
-    if (field.default !== undefined) parts.push(` = ${JSON.stringify(field.default)}`);
+    // `JSON.stringify` throws on a bigint default; its digits are what the source wrote anyway.
+    if (field.default !== undefined) parts.push(` = ${typeof field.default === 'bigint' ? String(field.default) : JSON.stringify(field.default)}`);
     return parts.join('');
 }
 

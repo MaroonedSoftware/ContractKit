@@ -3,6 +3,7 @@ import type {
     ContractRootNode,
     ModelNode,
     FieldNode,
+    FieldDefault,
     ContractTypeNode,
     ScalarTypeNode,
     ArrayTypeNode,
@@ -520,8 +521,7 @@ function renderCasedFields(
         let expr = renderMember(member.type);
         if (f.default !== undefined) {
             if (f.nullable) expr += '.nullable()';
-            const dv = typeof f.default === 'string' ? `"${escapeString(f.default)}"` : String(f.default);
-            expr += `.default(${dv})`;
+            expr += `.default(${renderDefaultLiteral(f.default)})`;
         } else if (f.optional) {
             // .nullish() accepts null or undefined from the API; the transform coerces null → undefined
             expr += '.nullish()';
@@ -604,6 +604,19 @@ function renderCasedInlineObject(
 }
 
 /**
+ * A field default as the TypeScript literal `.default()` takes.
+ *
+ * Zod returns a default as it is, without running it through the schema, so it has to be the
+ * schema's output type already. A `bigint` default gets its `n` suffix: `.default(5)` on a bigint
+ * pipe does not typecheck, and at runtime would hand the handler a `number`.
+ */
+function renderDefaultLiteral(value: FieldDefault): string {
+    if (typeof value === 'string') return `"${escapeString(value)}"`;
+    if (typeof value === 'bigint') return `${value}n`;
+    return String(value);
+}
+
+/**
  * Append the modifier chain a declared field carries: nullability, then a default or optionality,
  * then the description.
  *
@@ -619,8 +632,7 @@ function renderCasedInlineObject(
 export function applyFieldModifiers(expr: string, field: Pick<FieldNode, 'nullable' | 'default' | 'optional' | 'description'>): string {
     if (field.nullable) expr += '.nullable()';
     if (field.default !== undefined) {
-        const dv = typeof field.default === 'string' ? `"${escapeString(field.default)}"` : String(field.default);
-        expr += `.default(${dv})`;
+        expr += `.default(${renderDefaultLiteral(field.default)})`;
     } else if (field.optional) {
         expr += '.optional()';
     }

@@ -188,6 +188,13 @@ describe('generatePydanticModels', () => {
         expect(output).toContain('default="active"');
     });
 
+    it('writes a bigint default as an exact int literal', () => {
+        const root = contractRoot([model('Counter', [field('serial', scalarType('bigint'), { default: 9007199254740993n })])]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('default=9007199254740993');
+        expect(output).not.toContain('default=9007199254740993n');
+    });
+
     it('generates nullable fields', () => {
         const root = contractRoot([model('Item', [field('description', scalarType('string'), { nullable: true })])]);
         const output = generatePydanticModels(root);
