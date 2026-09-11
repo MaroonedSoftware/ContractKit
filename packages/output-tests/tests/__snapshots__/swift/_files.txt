@@ -1,10 +1,12 @@
 swiftsdk/Package.swift
 swiftsdk/Sources/ExampleSdk/Clients/BillingClient.swift
 swiftsdk/Sources/ExampleSdk/Clients/HyphenatedClient.swift
+swiftsdk/Sources/ExampleSdk/Clients/ReservedClient.swift
 swiftsdk/Sources/ExampleSdk/Clients/SimpleClient.swift
 swiftsdk/Sources/ExampleSdk/KitchenSink.swift
 swiftsdk/Sources/ExampleSdk/Models/BillingModels.swift
 swiftsdk/Sources/ExampleSdk/Models/HyphenatedModels.swift
+swiftsdk/Sources/ExampleSdk/Models/ReservedModels.swift
 swiftsdk/Sources/ExampleSdk/Models/SimpleModels.swift
 swiftsdk/Sources/ExampleSdk/Runtime/JSONValue.swift
 swiftsdk/Sources/ExampleSdk/Runtime/Scalars.swift

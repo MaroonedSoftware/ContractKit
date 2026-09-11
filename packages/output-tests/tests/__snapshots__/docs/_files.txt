@@ -8,6 +8,8 @@ docs/api-reference/billing/list-payments.mdx
 docs/api-reference/billing/update-payment-with-form.mdx
 docs/api-reference/billing/upload-receipt.mdx
 docs/api-reference/endpoints/get-invoice.mdx
+docs/api-reference/endpoints/get-row.mdx
+docs/api-reference/endpoints/get-seat.mdx
 docs/api-reference/endpoints/get-status.mdx
 docs/api-reference/models/billing/admin-credential.mdx
 docs/api-reference/models/billing/credential.mdx
@@ -18,6 +20,8 @@ docs/api-reference/models/billing/update-payment-form.mdx
 docs/api-reference/models/billing/upload-receipt-form.mdx
 docs/api-reference/models/heartbeat.mdx
 docs/api-reference/models/invoice.mdx
+docs/api-reference/models/seat-ref.mdx
+docs/api-reference/models/seat.mdx
 docs/docs.json
 docs/index.mdx
 docs/openapi.yaml

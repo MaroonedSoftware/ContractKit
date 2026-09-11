@@ -276,8 +276,23 @@ export function toPythonFieldName(name: string): string {
     result = result.replace(/_+/g, '_').replace(/^_|_$/g, '');
     // Prefix if starts with digit
     if (/^\d/.test(result)) result = 'f_' + result;
+    // `class: str` is a SyntaxError. PEP 8's trailing underscore, and the differing name is what
+    // gives a model field its `Field(alias="class")`.
+    if (PYTHON_KEYWORDS.has(result)) result += '_';
     return result;
 }
+
+/**
+ * Python's hard keywords (`keyword.kwlist`). The soft keywords (`match`, `case`, `type`, `_`) are
+ * absent on purpose: they are only keywords in their own statement forms, so `type: str` and
+ * `match: str` are valid annotations and parameter names.
+ */
+const PYTHON_KEYWORDS: ReadonlySet<string> = new Set(
+    (
+        'False None True and as assert async await break class continue def del elif else except finally for ' +
+        'from global if import in is lambda nonlocal not or pass raise return try while with yield'
+    ).split(' '),
+);
 
 // ─── Comment emission ─────────────────────────────────────────────────────
 

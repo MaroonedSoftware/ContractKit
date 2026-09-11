@@ -20,6 +20,8 @@
                         "group": "Endpoints",
                         "pages": [
                             "api-reference/endpoints/get-invoice",
+                            "api-reference/endpoints/get-seat",
+                            "api-reference/endpoints/get-row",
                             "api-reference/endpoints/get-status"
                         ]
                     },
@@ -41,6 +43,8 @@
                         "group": "Models",
                         "pages": [
                             "api-reference/models/invoice",
+                            "api-reference/models/seat",
+                            "api-reference/models/seat-ref",
                             "api-reference/models/heartbeat",
                             {
                                 "group": "Billing",

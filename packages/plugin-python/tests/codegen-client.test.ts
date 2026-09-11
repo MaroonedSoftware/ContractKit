@@ -309,6 +309,50 @@ describe('generatePythonClient', () => {
         expect(output).toContain("f\"/payments/{quote(str(params.payment_id), safe='')}\"");
     });
 
+    it('escapes a path param named after a Python keyword, in the signature and the URL', () => {
+        const root = opRoot([
+            opRoute('/seats/{class}', [
+                opOperation('get', { sdk: 'getSeat', responses: [opResponse(200, 'Seat')] }),
+            ], paramNodes([opParam('class', scalarType('string'))])),
+        ]);
+        const output = generatePythonClient(root);
+        // `def get_seat(self, class: str)` is a SyntaxError for the whole module.
+        expect(output).toContain('async def get_seat(self, class_: str)');
+        expect(output).toContain("f\"/seats/{quote(str(class_), safe='')}\"");
+    });
+
+    it('reads a keyword field off a params model by its escaped name', () => {
+        const root = opRoot([
+            opRoute('/rows/{class}', [
+                opOperation('get', { sdk: 'getRow', responses: [opResponse(200, 'Seat')] }),
+            ], paramRef('SeatRef')),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain("f\"/rows/{quote(str(params.class_), safe='')}\"");
+    });
+
+    it('keeps a path param clear of the arguments and functions the method already uses', () => {
+        const root = opRoot([
+            opRoute('/notes/{body}/{quote}', [
+                opOperation('post', { sdk: 'postNote', request: opRequest('Note'), responses: [opResponse(204)] }),
+            ], paramNodes([opParam('body', scalarType('string')), opParam('quote', scalarType('string'))])),
+        ]);
+        const output = generatePythonClient(root);
+        // A second `body` is a duplicate-argument SyntaxError; a `quote` argument shadows
+        // urllib.parse.quote, so the URL expression would call a string.
+        expect(output).toContain('async def post_note(self, body_: str, quote_: str, body: Note)');
+        expect(output).toContain("f\"/notes/{quote(str(body_), safe='')}/{quote(str(quote_), safe='')}\"");
+    });
+
+    it('leaves a path param named after a soft keyword alone', () => {
+        const root = opRoot([
+            opRoute('/kinds/{type}', [
+                opOperation('get', { sdk: 'getKind', responses: [opResponse(200, 'Kind')] }),
+            ], paramNodes([opParam('type', scalarType('string'))])),
+        ]);
+        expect(generatePythonClient(root)).toContain('async def get_kind(self, type: str)');
+    });
+
     it('leaves a path with no params as a plain string', () => {
         const root = opRoot([opRoute('/payments', [opOperation('get', { responses: [opResponse(200, 'Payment')] })])]);
         const output = generatePythonClient(root);
@@ -559,6 +603,28 @@ describe('generatePythonClient', () => {
             expect(output).toContain('"preference-applied" in _response_headers');
             expect(output).toContain('headers["preference_applied"] = _response_headers["preference-applied"]');
             expect(output).toContain('return Transfer.model_validate(result), headers');
+        });
+
+        it('escapes a response header named after a Python keyword', () => {
+            const root = opRoot([
+                opRoute('/mail', [
+                    opOperation('get', {
+                        sdk: 'getMail',
+                        responses: [
+                            {
+                                statusCode: 200,
+                                hasBlock: true,
+                                bodies: [{ contentType: 'application/json', bodyType: { kind: 'ref', name: 'Mail' } }],
+                                headers: [{ name: 'from', optional: true, type: scalarType('string') }],
+                            },
+                        ],
+                    }),
+                ]),
+            ]);
+            const output = generatePythonClient(root);
+            // The HTTP `From` header: `from: str` in the TypedDict body is a SyntaxError.
+            expect(output).toContain('    from_: str  # from (optional)');
+            expect(output).toContain('headers["from_"] = _response_headers["from"]');
         });
 
         it('annotates and coerces each header to its declared type', () => {

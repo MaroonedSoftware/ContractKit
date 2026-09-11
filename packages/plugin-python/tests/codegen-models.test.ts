@@ -109,6 +109,21 @@ describe('toPythonFieldName', () => {
     it('handles mixed separators', () => {
         expect(toPythonFieldName('my.field-name')).toBe('my_field_name');
     });
+
+    it('appends an underscore to a Python keyword', () => {
+        expect(toPythonFieldName('class')).toBe('class_');
+        expect(toPythonFieldName('from')).toBe('from_');
+        expect(toPythonFieldName('import')).toBe('import_');
+        expect(toPythonFieldName('async')).toBe('async_');
+        // Keywords only once snake_cased, so the check has to come after the conversion.
+        expect(toPythonFieldName('Lambda')).toBe('lambda_');
+    });
+
+    it('leaves soft keywords alone, since they are valid annotations and parameter names', () => {
+        expect(toPythonFieldName('type')).toBe('type');
+        expect(toPythonFieldName('match')).toBe('match');
+        expect(toPythonFieldName('case')).toBe('case');
+    });
 });
 
 // ─── deriveModelsModuleName ───────────────────────────────────────────────
@@ -191,6 +206,17 @@ describe('generatePydanticModels', () => {
         const root = contractRoot([model('Payment', [field('processingTime', scalarType('duration'), { optional: true })])]);
         const output = generatePydanticModels(root);
         expect(output).toContain('processing_time: timedelta | None = Field(alias="processingTime", default=None)');
+    });
+
+    it('escapes a keyword field and aliases it back to its contract name', () => {
+        const root = contractRoot([
+            model('Seat', [field('class', scalarType('string')), field('from', scalarType('date'), { optional: true })]),
+        ]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('    class_: str = Field(alias="class")');
+        expect(output).toContain('    from_: date | None = Field(alias="from", default=None)');
+        // Without it, the model could only be built from the alias: `Seat(class_=...)` would fail.
+        expect(output).toContain('model_config = ConfigDict(populate_by_name=True)');
     });
 
     it('keeps a required nullable aliased field required', () => {

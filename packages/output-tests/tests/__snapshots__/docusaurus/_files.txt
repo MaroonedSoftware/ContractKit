@@ -11,6 +11,8 @@ docs/api-reference/billing/update-payment-with-form.md
 docs/api-reference/billing/upload-receipt.md
 docs/api-reference/endpoints/_category_.json
 docs/api-reference/endpoints/get-invoice.md
+docs/api-reference/endpoints/get-row.md
+docs/api-reference/endpoints/get-seat.md
 docs/api-reference/endpoints/get-status.md
 docs/api-reference/index.md
 docs/api-reference/models/_category_.json
@@ -24,3 +26,5 @@ docs/api-reference/models/billing/update-payment-form.md
 docs/api-reference/models/billing/upload-receipt-form.md
 docs/api-reference/models/heartbeat.md
 docs/api-reference/models/invoice.md
+docs/api-reference/models/seat-ref.md
+docs/api-reference/models/seat.md

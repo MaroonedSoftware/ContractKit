@@ -221,6 +221,54 @@ paths:
                 '$ref': '#/components/schemas/Invoice'
         '404':
           description: 'Not found'
+  '/seats/{seatId}':
+    get:
+      operationId: getSeat
+      description: 'fetch one seat'
+      parameters:
+        - name: seatId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Seat'
+          headers:
+            from:
+              schema:
+                type: string
+  '/rows/{class}':
+    get:
+      operationId: getRow
+      description: 'fetch a row by its seat class'
+      parameters:
+        - name: SeatRef
+          in: path
+          required: true
+          schema:
+            '$ref': '#/components/schemas/SeatRef'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Seat'
   '/status':
     get:
       operationId: getStatus
@@ -331,6 +379,32 @@ components:
           pattern: '^-?\d+(\.\d{1,2})?$'
           x-contractkit-scale: 2
       required: [id, total]
+    Seat:
+      type: object
+      properties:
+        class:
+          type: string
+        from:
+          type: string
+          format: date
+        date:
+          type: string
+          format: date
+        copy:
+          type: string
+        modelDump:
+          type: string
+        json:
+          type: string
+      required: [class, date]
+      description: 'A seat, whose field names are all reserved somewhere in Python'
+    SeatRef:
+      type: object
+      properties:
+        class:
+          type: string
+      required: [class]
+      description: 'Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`'
     Heartbeat:
       type: object
       properties:

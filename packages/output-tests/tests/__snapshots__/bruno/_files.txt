@@ -12,5 +12,8 @@ bruno/environments/local.yml
 bruno/hyphenated/folder.yml
 bruno/hyphenated/get-invoices-invoice-id.yml
 bruno/opencollection.yml
+bruno/reserved/folder.yml
+bruno/reserved/get-rows-class.yml
+bruno/reserved/get-seats-seatId.yml
 bruno/simple/folder.yml
 bruno/simple/get-status.yml
