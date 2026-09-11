@@ -181,8 +181,11 @@ function scalarSample(s: ScalarTypeNode, fieldName: string | undefined): unknown
             return faker.datatype.boolean();
         case 'number':
         case 'int':
-        case 'bigint':
             return fakerNumber(fieldName, s);
+        case 'bigint':
+            // A digit string, matching the wire form, for the reason `decimal` below is quoted: a
+            // JSON number is a sample body, and a Try-It pre-fill, the server's schema rejects.
+            return String(fakerNumber(fieldName, s));
         case 'decimal':
             // A quoted string, matching the wire form. Falling through to the `default:` here would
             // render a money field as a lorem word; returning a JSON number would render a sample
