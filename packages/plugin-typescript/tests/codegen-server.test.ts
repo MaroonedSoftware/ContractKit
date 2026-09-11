@@ -61,12 +61,15 @@ function mcpInputs() {
     ]);
 }
 
-/** The router and the schema file the plugin emits for one `.ck` source. */
-async function buildReports(source: string): Promise<{ router: string; schemas: string }> {
+/**
+ * The router and the schema file the plugin emits for one `.ck` source, and the MCP tools file when
+ * an operation sets `mcp: true`.
+ */
+async function buildReports(source: string): Promise<{ router: string; schemas: string; tools?: string }> {
     const diag = new DiagnosticCollector();
     const { contract, op } = decomposeCk(parseCk(source, '/project/contracts/reports.ck', diag));
     expect(diag.getAll().filter(d => d.severity === 'error')).toEqual([]);
-    const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } } }, '/project');
+    const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } }, mcp: {} }, '/project');
     const ctx = makeCtx('/project');
     await plugin.generateTargets!(
         {
@@ -81,7 +84,8 @@ async function buildReports(source: string): Promise<{ router: string; schemas: 
     const emitted = [...ctx.emitted.entries()];
     const router = emitted.find(([p]) => p.endsWith('.router.ts'))![1];
     const schemas = emitted.find(([p]) => p.endsWith('types/reports.ts'))![1];
-    return { router, schemas };
+    const tools = emitted.find(([p]) => p.endsWith('.mcp.ts'))?.[1];
+    return { router, schemas, tools };
 }
 
 type Validator = { safeParse: (v: unknown) => { success: boolean; data?: unknown } };
@@ -92,6 +96,31 @@ type Validator = { safeParse: (v: unknown) => { success: boolean; data?: unknown
  * call on one line, and spread over several with the source and the schema each on their own.
  */
 async function routerValidators(router: string, schemas: string): Promise<(name: string) => Validator> {
+    const evaluate = await schemaEvaluator(schemas);
+    return (name: string) => {
+        const expr =
+            new RegExp(`const ${name} = await parseAndValidate\\(\\n[^\\n]*,\\n([\\s\\S]*?),\\n    \\);`).exec(router)?.[1] ??
+            new RegExp(`const ${name} = await parseAndValidate\\([^,\\n]+, ([\\s\\S]*?)\\);\\n`).exec(router)?.[1];
+        expect(expr, `no ${name} validation in:\n${router}`).toBeDefined();
+        return evaluate(expr!) as Validator;
+    };
+}
+
+/**
+ * The args schema a generated MCP tool parses with, `const <name> = z.object({...});`, evaluated with
+ * real Zod against the models the schema file exports.
+ */
+async function toolArgs(tools: string, schemas: string): Promise<(name: string) => Validator> {
+    const evaluate = await schemaEvaluator(schemas);
+    return (name: string) => {
+        const expr = new RegExp(`^const ${name} = ([\\s\\S]*?);\\n(?=const |\\n)`, 'm').exec(tools)?.[1];
+        expect(expr, `no ${name} in:\n${tools}`).toBeDefined();
+        return evaluate(expr!) as Validator;
+    };
+}
+
+/** Evaluates an expression with real Zod and every schema the schema file exports in scope. */
+async function schemaEvaluator(schemas: string): Promise<(expr: string) => unknown> {
     const names = [...schemas.matchAll(/^export const (\w+)/gm)].map(m => m[1]!);
     const body = schemas
         .split('\n')
@@ -100,13 +129,7 @@ async function routerValidators(router: string, schemas: string): Promise<(name:
         .replace(/^export const /gm, 'const ');
     const { z } = await import('zod');
     const scope = new Function('z', `${body}\nreturn { ${names.join(', ')} };`)(z) as Record<string, unknown>;
-    return (name: string) => {
-        const expr =
-            new RegExp(`const ${name} = await parseAndValidate\\(\\n[^\\n]*,\\n([\\s\\S]*?),\\n    \\);`).exec(router)?.[1] ??
-            new RegExp(`const ${name} = await parseAndValidate\\([^,\\n]+, ([\\s\\S]*?)\\);\\n`).exec(router)?.[1];
-        expect(expr, `no ${name} validation in:\n${router}`).toBeDefined();
-        return new Function('z', ...Object.keys(scope), `return ${expr};`)(z, ...Object.values(scope)) as Validator;
-    };
+    return expr => new Function('z', ...Object.keys(scope), `return ${expr};`)(z, ...Object.values(scope));
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -974,6 +997,44 @@ describe('createTypescriptPlugin — format() across files', () => {
         expect(emitted(second, '.router.ts')).toContain('...Filter.out.parse({ from_date: _0, to_date: _1 }),');
         expect(emitted(second, 'types/saved.ts')).toContain('...Filter.out.parse({ from_date: _0, to_date: _1 }),');
     });
+
+    it('re-emits an MCP tools file whose args intersect a format() model from another .ck file that gains a field', async () => {
+        const rootDir = mkdtempSync(join(tmpdir(), 'ck-format-'));
+        const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } }, mcp: {} }, rootDir);
+        const withQ = { kind: 'intersection' as const, members: [refType('Filter'), inlineObjectType([field('q', scalarType('string'))])] };
+        const run = (filterFields: string[]) => ({
+            contractRoots: [
+                contractRoot(
+                    [
+                        model(
+                            'Filter',
+                            filterFields.map(n => field(n, scalarType('string'), { optional: true })),
+                            { inputCase: 'snake' },
+                        ),
+                    ],
+                    join(rootDir, 'contracts/filters.ck'),
+                ),
+            ],
+            opRoots: [
+                opRoot(
+                    [opRoute('/reports', [opOperation('post', { mcp: true, request: opRequest(withQ), responses: [opResponse(204)] })])],
+                    join(rootDir, 'contracts/reports.ck'),
+                ),
+            ],
+            modelOutPaths: new Map<string, string>(),
+            modelsWithInput: new Set<string>(),
+            modelsWithOutput: new Set<string>(),
+        });
+        const tools = (ctx: { emitted: Map<string, string> }) => [...ctx.emitted.entries()].find(([p]) => p.endsWith('.mcp.ts'))?.[1];
+
+        const first = diskCtx(rootDir);
+        await plugin.generateTargets!(run(['fromDate']), first);
+        expect(tools(first)).toContain('...Filter.out.parse({ from_date: _0 }),');
+
+        const second = diskCtx(rootDir);
+        await plugin.generateTargets!(run(['fromDate', 'toDate']), second);
+        expect(tools(second)).toContain('...Filter.out.parse({ from_date: _0, to_date: _1 }),');
+    });
 });
 
 describe('createTypescriptPlugin: a format() model as query, headers or params', () => {
@@ -1123,5 +1184,43 @@ operation /reports: {
         const query = validator('query');
         expect(query.safeParse({ region: 'eu', from_date: '2026-01-01' })).toEqual({ success: true, data: { region: 'eu', fromDate: '2026-01-01' } });
         expect(query.safeParse({ region: 'eu', page: '2' }).success).toBe(false);
+    });
+
+    // A tool is another way to call the same service method, so its args parse what the router
+    // parses and hand the service the same values.
+    it('parses the args of an MCP tool as the router parses the request', async () => {
+        const { tools, schemas } = await buildReports(`
+contract format(input=snake) SnakeFilter: { fromDate?: string }
+contract format(input=snake) SnakeHeaders: { tenantId: string }
+contract Scope: { region: string }
+
+operation /reports: {
+    post: {
+        sdk: saveReport
+        service: ReportService.save
+        mcp: true
+        query: SnakeFilter & { q: string }
+        headers: SnakeHeaders & { xTrace?: string }
+        request: { application/json: Scope & SnakeFilter }
+        response: { 204: }
+    }
+}
+`);
+        const args = (await toolArgs(tools!, schemas))('SaveReportArgs');
+        const call = {
+            query: { from_date: '2026-01-01', q: 'x' },
+            headers: { tenant_id: 't', xTrace: 'abc' },
+            body: { region: 'eu', from_date: '2026-02-01' },
+        };
+        expect(args.safeParse(call)).toEqual({
+            success: true,
+            data: {
+                query: { q: 'x', fromDate: '2026-01-01' },
+                headers: { xTrace: 'abc', tenantId: 't' },
+                body: { region: 'eu', fromDate: '2026-02-01' },
+            },
+        });
+        expect(args.safeParse({ ...call, query: { fromDate: '2026-01-01', q: 'x' } }).success).toBe(false);
+        expect(args.safeParse({ ...call, body: { region: 'eu', fromDate: '2026-02-01' } }).success).toBe(false);
     });
 });

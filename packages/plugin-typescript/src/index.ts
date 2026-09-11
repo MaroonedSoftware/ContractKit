@@ -1296,6 +1296,9 @@ function collectMcpOutput(
             modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
             modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
+            // Not covered by `root`: a tool's args build an intersection with a `format()` model from
+            // another .ck file out of that model's object, and rename its keys one by one.
+            pipeModels: pipeModelKeys(refs, modelMap, modelsWithInput),
             servicePathTemplate: config.servicePathTemplate ?? null,
             includeInternal,
             sub: subConfigKey,
@@ -1314,6 +1317,7 @@ function collectMcpOutput(
                         servicePathTemplate: config.servicePathTemplate,
                         includeInternal,
                         modelsWithBigInt,
+                        models: modelMap,
                     }),
                 },
             ],

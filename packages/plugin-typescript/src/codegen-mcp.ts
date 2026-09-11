@@ -1,4 +1,13 @@
-import type { OpRootNode, OpRouteNode, OpOperationNode, McpConfigNode, ParamSource, ContractTypeNode, SecurityNode } from '@contractkit/core';
+import type {
+    OpRootNode,
+    OpRouteNode,
+    OpOperationNode,
+    McpConfigNode,
+    ParamSource,
+    ContractTypeNode,
+    SecurityNode,
+    ModelNode,
+} from '@contractkit/core';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses } from '@contractkit/core';
 import { renderType, renderInputType, pascalToDotCase } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName } from './codegen-operation.js';
@@ -37,6 +46,13 @@ export interface McpCodegenOptions {
      * can reach one serializes it with `bigIntReplacer`: a bare `JSON.stringify` throws on a `bigint`.
      */
     modelsWithBigInt?: Set<string>;
+    /**
+     * Every model a ref may name, across all files. An intersection with a `format()` member is built
+     * from that member's object rather than its schema, which is a pipe with no `.extend()` or
+     * `.shape`, and only the models tell the two apart. Without them every member is taken for a
+     * plain object, which fails `tsc` for a `format()` one.
+     */
+    models?: Map<string, ModelNode>;
 }
 
 // ─── MCP flag helpers ─────────────────────────────────────────────────────
@@ -143,8 +159,13 @@ function bindMcpPathParams(route: OpRouteNode): { keys: Map<string, string>; loc
     return { keys, locals: new Map(names.map(n => [n, localsByKey.get(keys.get(n)!)!])) };
 }
 
+/** The request-side schema of a type in a tool's args: `Input` variants, and pipes told apart by the models. */
+type InputSchema = (type: ContractTypeNode) => string;
+
 /** Build the flat args properties for a tool, matching the router's `buildArgs` variable names. */
-function buildArgsProps(route: OpRouteNode, op: OpOperationNode, modelsWithInput?: Set<string>): ArgsProp[] {
+function buildArgsProps(route: OpRouteNode, op: OpOperationNode, options: McpCodegenOptions): ArgsProp[] {
+    const { modelsWithInput, models } = options;
+    const inputSchema: InputSchema = type => renderInputType(type, modelsWithInput, undefined, undefined, models);
     const props: ArgsProp[] = [];
     const add = (key: string, expr: string, optional: boolean) => props.push({ key, local: key, expr, optional });
 
@@ -156,14 +177,14 @@ function buildArgsProps(route: OpRouteNode, op: OpOperationNode, modelsWithInput
                 props.push({
                     key: keys.get(node.name)!,
                     local: locals.get(node.name)!,
-                    expr: renderInputType(node.type, modelsWithInput),
+                    expr: inputSchema(node.type),
                     optional: false,
                 });
             }
         } else if (route.params.kind === 'ref') {
             add('params', refSchema(route.params.name, modelsWithInput), false);
         } else {
-            add('params', renderInputType(route.params.node, modelsWithInput), false);
+            add('params', inputSchema(route.params.node), false);
         }
     }
 
@@ -173,14 +194,14 @@ function buildArgsProps(route: OpRouteNode, op: OpOperationNode, modelsWithInput
     if (bodies.length === 1 && bodies[0]!.contentType === 'multipart/form-data') {
         add('multipartBody', 'z.unknown()', false);
     } else if (bodies.length === 1) {
-        add('body', renderInputType(bodies[0]!.bodyType, modelsWithInput), false);
+        add('body', inputSchema(bodies[0]!.bodyType), false);
     } else if (bodies.length > 1) {
         add('body', 'z.unknown()', false);
     }
 
     // Query / headers — whole objects, optional.
-    if (op.query) add('query', paramSourceSchema(op.query, modelsWithInput), true);
-    if (op.headers) add('headers', paramSourceSchema(op.headers, modelsWithInput), true);
+    if (op.query) add('query', paramSourceSchema(op.query, inputSchema, modelsWithInput), true);
+    if (op.headers) add('headers', paramSourceSchema(op.headers, inputSchema, modelsWithInput), true);
 
     return props;
 }
@@ -189,10 +210,10 @@ function refSchema(name: string, modelsWithInput?: Set<string>): string {
     return modelsWithInput?.has(name) ? `${name}Input` : name;
 }
 
-function paramSourceSchema(src: ParamSource, modelsWithInput?: Set<string>): string {
+function paramSourceSchema(src: ParamSource, inputSchema: InputSchema, modelsWithInput?: Set<string>): string {
     if (src.kind === 'ref') return refSchema(src.name, modelsWithInput);
-    if (src.kind === 'type') return renderInputType(src.node, modelsWithInput);
-    const fields = src.nodes.map(n => `${quoteKey(n.name)}: ${renderInputType(n.type, modelsWithInput)}`).join(', ');
+    if (src.kind === 'type') return inputSchema(src.node);
+    const fields = src.nodes.map(n => `${quoteKey(n.name)}: ${inputSchema(n.type)}`).join(', ');
     return `z.object({ ${fields} })`;
 }
 
@@ -231,11 +252,11 @@ function resultReachesBigInt(op: OpOperationNode, modelsWithBigInt: Set<string> 
 }
 
 /** MCP output schemas must be objects — only model refs and inline objects qualify. */
-function outputSchemaExpr(op: OpOperationNode): string | undefined {
+function outputSchemaExpr(op: OpOperationNode, models?: Map<string, ModelNode>): string | undefined {
     const body = primaryResponseBody(op);
     if (!body) return undefined;
     if (body.kind === 'ref') return body.name;
-    if (body.kind === 'inlineObject') return renderType(body);
+    if (body.kind === 'inlineObject') return renderType(body, undefined, undefined, models);
     return undefined;
 }
 
@@ -446,7 +467,7 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     const desc = cfg?.description ?? op.description ?? route.description;
     if (desc) lines.push(`        description: '${escapeSingleQuoted(desc)}',`);
     lines.push(`        inputSchema: z.toJSONSchema(${argsConstName}, { unrepresentable: 'any' }) as Tool['inputSchema'],`);
-    const outExpr = outputSchemaExpr(op);
+    const outExpr = outputSchemaExpr(op, options.models);
     if (outExpr) lines.push(`        outputSchema: z.toJSONSchema(${outExpr}, { unrepresentable: 'any' }) as Tool['outputSchema'],`);
     const annotations = annotationsExpr(cfg);
     if (annotations) lines.push(`        annotations: ${annotations},`);
@@ -463,7 +484,7 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     lines.push('');
 
     // handle
-    const props = buildArgsProps(route, op, options.modelsWithInput);
+    const props = buildArgsProps(route, op, options);
     const destructure = props.map(p => (p.local === p.key ? p.key : `${p.key}: ${p.local}`));
     const callArgs = buildArgs(route, op, bindMcpPathParams(route).locals);
     const isVoid = !primaryResponseBody(op);
@@ -520,7 +541,7 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     const plans = planTools(root, includeInternal);
 
     // Args schema consts (also drive the JSON-Schema definitions).
-    const argsConsts = plans.map(p => `const ${p.argsConstName} = ${argsSchemaExpr(buildArgsProps(p.route, p.op, options.modelsWithInput))};`);
+    const argsConsts = plans.map(p => `const ${p.argsConstName} = ${argsSchemaExpr(buildArgsProps(p.route, p.op, options))};`);
 
     // Tool classes.
     const classes = plans.map(p => renderToolClass(p, root.file, options).join('\n'));
@@ -539,7 +560,7 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     const bodyWithHelpers = [helperConsts.join('\n'), bodyCore].filter(Boolean).join('\n\n');
 
     // ── Imports ──
-    const needsParseAndValidate = plans.some(p => buildArgsProps(p.route, p.op, options.modelsWithInput).length > 0);
+    const needsParseAndValidate = plans.some(p => buildArgsProps(p.route, p.op, options).length > 0);
     const imports: string[] = [];
     imports.push(`import { Injectable, type Container } from 'injectkit';`);
     imports.push(`import { z } from 'zod';`);

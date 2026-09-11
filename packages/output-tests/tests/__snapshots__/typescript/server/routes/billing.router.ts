@@ -249,7 +249,7 @@ BillingRouter.get('/payments/by-date', requirePolicy(), async ctx => {
 
 /**
  * search payments with a snake_case filter extended inline
- * from [billing.ck](../../contracts/billing.ck#L270)
+ * from [billing.ck](../../contracts/billing.ck#L271)
 */
 BillingRouter.get('/payments/by-date/scoped', requirePolicy(), async ctx => {
     const query = await parseAndValidate(
@@ -290,7 +290,7 @@ BillingRouter.get('/payments/by-date/scoped', requirePolicy(), async ctx => {
 
 /**
  * save a scoped search
- * from [billing.ck](../../contracts/billing.ck#L279)
+ * from [billing.ck](../../contracts/billing.ck#L281)
 */
 BillingRouter.post('/payments/by-date/scoped', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const query = await parseAndValidate(

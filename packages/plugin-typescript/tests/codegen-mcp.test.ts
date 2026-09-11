@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { McpConfigNode } from '@contractkit/core';
+import type { McpConfigNode, ModelNode } from '@contractkit/core';
 import { SECURITY_NONE } from '@contractkit/core';
 import {
     generateMcpFile,
@@ -10,7 +10,24 @@ import {
     deriveMcpRegisterFnName,
 } from '../src/codegen-mcp.js';
 import type { RouteMiddleware } from '../src/server-framework.js';
-import { opRoot, opRoute, opOperation, opParam, opRequest, opResponse, opResponseMulti, scalarType, arrayType, loc } from './helpers.js';
+import {
+    opRoot,
+    opRoute,
+    opOperation,
+    opParam,
+    opRequest,
+    opResponse,
+    opResponseMulti,
+    scalarType,
+    arrayType,
+    loc,
+    model,
+    field,
+    refType,
+    inlineObjectType,
+    intersectionType,
+    paramType,
+} from './helpers.js';
 
 function mcpBlock(over: Partial<McpConfigNode>): McpConfigNode {
     return { loc: loc(), ...over };
@@ -307,6 +324,82 @@ describe('generateMcpFile', () => {
             });
             expect(out).toContain("import { PaymentsService } from '#modules/payments/payments.service.js';");
             expect(out).toContain("import { Payment, PaymentInput } from '../types/payment.js';");
+        });
+    });
+
+    // A format() model compiles to `z.strictObject({...}).transform(...)`, a pipe with neither
+    // `.extend()` nor `.shape`. The router builds an intersection with one from its object,
+    // `SnakeFilter.in`, and so must a tool's args: `SnakeFilter.extend({...})` fails tsc with TS2339.
+    describe('a format() model inside an intersection', () => {
+        const models = (...ms: ModelNode[]) => new Map(ms.map(m => [m.name, m]));
+        const snake = (name: string, fieldName = 'fromDate') =>
+            model(name, [field(fieldName, scalarType('string'), { optional: true })], { inputCase: 'snake' });
+        const withQ = (ref: string) => intersectionType(refType(ref), inlineObjectType([field('q', scalarType('string'))]));
+        const tool = (op: Partial<Parameters<typeof opOperation>[1]>, params?: Parameters<typeof opRoute>[2]) =>
+            opRoot([opRoute('/reports', [opOperation('post', { sdk: 'saveReport', mcp: true, responses: [opResponse(204)], ...op })], params)]);
+        const transform = (schema: string) =>
+            `.transform(({ from_date: _0, ...rest }) => ({\n    ...rest,\n    ...${schema}.out.parse({ from_date: _0 }),\n}))`;
+
+        it("builds a query intersection from the member's object and renames its keys through .out", () => {
+            const out = generateMcpFile(tool({ query: withQ('SnakeFilter') }), { models: models(snake('SnakeFilter')) });
+            expect(out).toContain(`query: SnakeFilter.in.extend({\n    q: z.string(),\n})${transform('SnakeFilter')}.optional()`);
+            expect(out).not.toContain('SnakeFilter.extend(');
+        });
+
+        it('builds a headers intersection the same way', () => {
+            const out = generateMcpFile(tool({ headers: withQ('SnakeHeaders') }), { models: models(snake('SnakeHeaders')) });
+            expect(out).toContain(`headers: SnakeHeaders.in.extend({\n    q: z.string(),\n})${transform('SnakeHeaders')}.optional()`);
+        });
+
+        it("extends a request body with the member's object shape, not the pipe's", () => {
+            const body = intersectionType(refType('Scope'), refType('SnakeFilter'));
+            const out = generateMcpFile(tool({ request: opRequest(body) }), {
+                models: models(snake('SnakeFilter'), model('Scope', [field('region', scalarType('string'))])),
+            });
+            expect(out).toContain(`const SaveReportArgs = z.object({ body: Scope.extend(SnakeFilter.in.shape)${transform('SnakeFilter')} });`);
+            expect(out).not.toContain('SnakeFilter.shape');
+        });
+
+        it("reads a split model's Input variant through its object", () => {
+            const filter = model(
+                'SnakeFilter',
+                [field('id', scalarType('uuid'), { visibility: 'readonly' }), field('fromDate', scalarType('string'), { optional: true })],
+                { inputCase: 'snake' },
+            );
+            const out = generateMcpFile(tool({ query: withQ('SnakeFilter') }), { models: models(filter), modelsWithInput: new Set(['SnakeFilter']) });
+            expect(out).toContain(`query: SnakeFilterInput.in.extend({\n    q: z.string(),\n})${transform('SnakeFilterInput')}.optional()`);
+        });
+
+        it('builds a path params intersection the same way', () => {
+            const out = generateMcpFile(tool({}, paramType(withQ('SnakeRef'))), { models: models(snake('SnakeRef')) });
+            expect(out).toContain(`params: SnakeRef.in.extend({\n    q: z.string(),\n})${transform('SnakeRef')}`);
+        });
+
+        it('builds an inline param typed as such an intersection the same way', () => {
+            const out = generateMcpFile(tool({ query: [opParam('filter', withQ('SnakeFilter'))] }), { models: models(snake('SnakeFilter')) });
+            expect(out).toContain(
+                `query: z.object({ filter: SnakeFilter.in.extend({\n    q: z.string(),\n})${transform('SnakeFilter')} }).optional()`,
+            );
+        });
+
+        it('builds an inline output schema whose field is such an intersection the same way', () => {
+            const response = opResponse(200, inlineObjectType([field('filter', withQ('SnakeFilter'))]), 'application/json');
+            const out = generateMcpFile(tool({ responses: [response] }), { models: models(snake('SnakeFilter')) });
+            expect(out).toContain(
+                `outputSchema: z.toJSONSchema(z.strictObject({\n    filter: SnakeFilter.in.extend({\n    q: z.string(),\n})${transform('SnakeFilter')},\n})`,
+            );
+        });
+
+        it('validates a format() model referenced on its own through its pipe, as the router does', () => {
+            // The args parse the keys the SDK sends (`from_date`) and hand the service the model's own (`fromDate`).
+            const out = generateMcpFile(tool({ query: 'SnakeFilter' }), { models: models(snake('SnakeFilter')) });
+            expect(out).toContain('const SaveReportArgs = z.object({ query: SnakeFilter.optional() });');
+        });
+
+        it('keeps an intersection without a format() member as it was', () => {
+            const out = generateMcpFile(tool({ query: withQ('Plain') }), { models: models(model('Plain', [field('since', scalarType('string'))])) });
+            expect(out).toContain('query: Plain.extend({\n    q: z.string(),\n}).optional()');
+            expect(out).not.toContain('.transform(');
         });
     });
 });
