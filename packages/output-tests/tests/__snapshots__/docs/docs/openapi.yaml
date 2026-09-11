@@ -416,6 +416,35 @@ paths:
                 type: array
                 items:
                   '$ref': '#/components/schemas/Token'
+  '/folders/{folder-id}/export':
+    get:
+      operationId: exportFolder
+      description: 'one status with two content types and response headers, so the headers are read before the mime dispatch'
+      parameters:
+        - name: folder-id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Folder'
+            'text/csv':
+              schema:
+                type: string
+          headers:
+            x-export-id:
+              schema:
+                type: string
+              required: true
+            x-rows:
+              schema:
+                type: integer
   '/seats/{class}':
     get:
       operationId: getSeat

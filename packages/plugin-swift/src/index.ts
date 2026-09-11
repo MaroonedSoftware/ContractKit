@@ -57,7 +57,7 @@ export interface SwiftSdkPluginConfig {
  * per-file fingerprint, so a plugin upgrade forces full regeneration even when no `.ck` file
  * has changed.
  */
-export const SWIFT_CODEGEN_VERSION = '1';
+export const SWIFT_CODEGEN_VERSION = '2';
 
 const CACHE_MANIFEST_FILENAME = 'swift-manifest.json';
 const DEFAULT_BASE_DIR = 'swift-sdk';

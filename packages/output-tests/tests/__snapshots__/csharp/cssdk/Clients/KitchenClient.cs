@@ -108,6 +108,25 @@ public sealed class KitchenClient(SdkHttp http)
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return http.ReadJson<List<Token>>(response);
     }
+
+    /// <summary>one status with two content types and response headers, so the headers are read before the mime dispatch</summary>
+    public async Task<ExportFolderResponse> ExportFolderAsync(Guid folderId, CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Get,
+            http.Path("folders", http.Segment(folderId), "export"),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        var headers = new ExportFolderHeaders(
+            http.RequireHeader(response, "x-export-id"),
+            response.Header("x-rows") is { } xRows ? long.Parse(xRows, CultureInfo.InvariantCulture) : null);
+        switch (response.ContentType)
+        {
+            case "text/csv":
+                return new ExportFolderResponse.TextCsv(response.Text, headers);
+            default:
+                return new ExportFolderResponse.ApplicationJson(http.ReadJson<Folder>(response), headers);
+        }
+    }
 }
 
 /// <summary>The query parameters declared on GET /folders/{folder-id}.</summary>
@@ -152,4 +171,21 @@ public abstract record GetFolderResponse
     public sealed record Status204() : GetFolderResponse;
 
     public sealed record Status404(Shared Data) : GetFolderResponse;
+}
+
+/// <summary>Response headers declared on GET /folders/{folder-id}/export.</summary>
+public sealed record ExportFolderHeaders(string XExportId, long? XRows);
+
+/// <summary>
+/// What GET /folders/{folder-id}/export returned.
+///
+/// The status declares several content types, so which one arrived is part of the value.
+/// </summary>
+public abstract record ExportFolderResponse
+{
+    private ExportFolderResponse() { }
+
+    public sealed record ApplicationJson(Folder Data, ExportFolderHeaders Headers) : ExportFolderResponse;
+
+    public sealed record TextCsv(string Data, ExportFolderHeaders Headers) : ExportFolderResponse;
 }

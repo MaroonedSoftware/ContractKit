@@ -52,7 +52,7 @@ export interface KotlinSdkPluginConfig {
  * per-file fingerprint, so a plugin upgrade forces full regeneration even when no `.ck` file
  * has changed.
  */
-export const KOTLIN_CODEGEN_VERSION = '1';
+export const KOTLIN_CODEGEN_VERSION = '2';
 
 const CACHE_MANIFEST_FILENAME = 'kotlin-manifest.json';
 const DEFAULT_BASE_DIR = 'kotlin-sdk';

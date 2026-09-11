@@ -14,6 +14,7 @@ docs/api-reference/endpoints/get-row.mdx
 docs/api-reference/endpoints/get-seat.mdx
 docs/api-reference/endpoints/get-status.mdx
 docs/api-reference/endpoints/put-note.mdx
+docs/api-reference/kitchen/export-folder.mdx
 docs/api-reference/kitchen/get-folder.mdx
 docs/api-reference/kitchen/import.mdx
 docs/api-reference/kitchen/list-tokens.mdx

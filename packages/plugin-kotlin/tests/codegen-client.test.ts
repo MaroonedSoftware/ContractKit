@@ -374,6 +374,36 @@ describe('multi-mime responses', () => {
         expect(out).toContain('        "text/csv" -> OpResponse.TextCsv(response.text)');
         expect(out).toContain('        else -> OpResponse.ApplicationJson(http.decodeJson(response))');
     });
+
+    it('reads the response headers before the dispatch that hands them to every leaf', () => {
+        const out = withResponses([{ ...multiMime, headers: [header('x-request-id', 'string')] }]);
+        expect(out).toContain('data class OpHeaders(');
+        expect(out).toContain(
+            [
+                '        val headers = OpHeaders(',
+                '            http.requireHeader(response, "x-request-id"),',
+                '        )',
+                '        return when (response.contentType) {',
+                '            "text/csv" -> OpResponse.TextCsv(response.text, headers)',
+                '            else -> OpResponse.ApplicationJson(http.decodeJson(response), headers)',
+                '        }',
+            ].join('\n'),
+        );
+    });
+
+    it('reads into the renamed class when the operation also declares request headers', () => {
+        const out = client([
+            opRoute('/a', [
+                opOperation('get', {
+                    sdk: 'op',
+                    headers: [opParam('from', scalarType('string'), { optional: true })],
+                    responses: [{ ...multiMime, headers: [header('x-request-id', 'string')] }] as never,
+                }),
+            ]),
+        ]);
+        expect(out).toContain('data class OpResponseHeaders(');
+        expect(out).toContain('    val headers = OpResponseHeaders(');
+    });
 });
 
 describe('path params that would not bind', () => {

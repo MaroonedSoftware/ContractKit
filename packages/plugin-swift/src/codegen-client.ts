@@ -261,7 +261,12 @@ function returnStatements(shape: ResponseShape, op: OpOperationNode, base: strin
         return body ? [...lines, `    return ${base}Result(data: ${bodyReadExpr(body, ctx)}, headers: headers)`] : [...lines, '    return headers'];
     }
 
-    if (shape.kind === 'multiMime') return mimeBranches(shape.response, base, undefined, ctx, where, '    ');
+    if (shape.kind === 'multiMime') {
+        const headers = shape.response.headers ?? [];
+        const lines = headers.length > 0 ? readHeaderLines(headers, headersStructName(op, base), where, '    ') : [];
+        lines.push(...mimeBranches(shape.response, base, undefined, ctx, where, '    ', headers.length > 0));
+        return lines;
+    }
 
     // The first declared status is the fall-through, so the `switch` is exhaustive without a
     // branch for a status the service cannot return.
@@ -297,6 +302,9 @@ function statusBranch(
 /**
  * Construct the response case, dispatching on the content type when a status declares several
  * mimes. The first declared mime is the fall-through, for the same reason the first status is.
+ *
+ * `hasHeaders` passes a `headers` local to each case, so it is true only when the caller has
+ * emitted {@link readHeaderLines} ahead of these lines.
  */
 function mimeBranches(
     response: OpResponseNode,
@@ -305,7 +313,7 @@ function mimeBranches(
     ctx: RenderContext,
     where: string,
     indent: string,
-    hasHeaders = (response.headers?.length ?? 0) > 0,
+    hasHeaders: boolean,
 ): string[] {
     const bodies = response.bodies;
     const construct = (body: OpResponseBodyNode | undefined): string => {

@@ -46,13 +46,13 @@ const __dur = (v: unknown, path: string): Duration => {
 
 /**
  * A named enum, so a field default has to resolve to a member rather than its wire spelling
- * generated from [Rating](../../contracts/kitchen.ck#L16)
+ * generated from [Rating](../../contracts/kitchen.ck#L17)
 */
 export const Rating = z.enum(["good", "neutral", "bad"]);
 export type Rating = z.infer<typeof Rating>;
 
 /**
- * generated from [Doc](../../contracts/kitchen.ck#L48)
+ * generated from [Doc](../../contracts/kitchen.ck#L49)
 */
 export const Doc = z.strictObject({
     id: z.uuid(),
@@ -70,7 +70,7 @@ export function reviveDoc(raw: Doc): Doc {
 }
 
 /**
- * generated from [Card](../../contracts/kitchen.ck#L53)
+ * generated from [Card](../../contracts/kitchen.ck#L54)
 */
 export const Card = z.strictObject({
     kind: z.literal("card"),
@@ -79,7 +79,7 @@ export const Card = z.strictObject({
 export type Card = z.infer<typeof Card>;
 
 /**
- * generated from [Bank](../../contracts/kitchen.ck#L58)
+ * generated from [Bank](../../contracts/kitchen.ck#L59)
 */
 export const Bank = z.strictObject({
     kind: z.literal("bank"),
@@ -89,7 +89,7 @@ export type Bank = z.infer<typeof Bank>;
 
 /**
  * Decodes snake_case keys and encodes PascalCase ones
- * generated from [Token](../../contracts/kitchen.ck#L66)
+ * generated from [Token](../../contracts/kitchen.ck#L67)
 */
 export const Token = z.strictObject({
     AccessToken: z.string(),
@@ -108,7 +108,7 @@ export interface TokenWireInput {
 }
 
 /**
- * generated from [Owned](../../contracts/kitchen.ck#L71)
+ * generated from [Owned](../../contracts/kitchen.ck#L72)
 */
 export const Owned = z.strictObject({
     id: z.uuid(),
@@ -121,7 +121,7 @@ export const OwnedInput = z.strictObject({
 export type OwnedInput = z.infer<typeof OwnedInput>;
 
 /**
- * generated from [Named](../../contracts/kitchen.ck#L76)
+ * generated from [Named](../../contracts/kitchen.ck#L77)
 */
 export const Named = z.strictObject({
     name: z.string(),
@@ -129,7 +129,7 @@ export const Named = z.strictObject({
 export type Named = z.infer<typeof Named>;
 
 /**
- * generated from [Stamp](../../contracts/kitchen.ck#L86)
+ * generated from [Stamp](../../contracts/kitchen.ck#L87)
 */
 export const Stamp = z.strictObject({
     stampedBy: z.string(),
@@ -146,7 +146,7 @@ export function reviveStamp(raw: Stamp): Stamp {
 
 /**
  * A plain base under format(), which the schema inlines rather than extends
- * generated from [Stamped](../../contracts/kitchen.ck#L92)
+ * generated from [Stamped](../../contracts/kitchen.ck#L93)
 */
 export const Stamped = z.strictObject({
     stamped_by: z.string(),
@@ -183,7 +183,7 @@ export function reviveStampedOutput(raw: StampedOutput): StampedOutput {
 
 /**
  * format() on a contract split for readonly and writeonly fields, applied to both of its schemas
- * generated from [Ledger](../../contracts/kitchen.ck#L97)
+ * generated from [Ledger](../../contracts/kitchen.ck#L98)
 */
 export const Ledger = z.strictObject({
     id: z.uuid(),
@@ -227,7 +227,7 @@ export function reviveLedgerOutput(raw: LedgerOutput): LedgerOutput {
 /**
  * Self recursion through lazy(), mutual recursion through Doc, every container, both union
  * forms, every scalar, and field names that are keywords in the target languages
- * generated from [Folder](../../contracts/kitchen.ck#L20)
+ * generated from [Folder](../../contracts/kitchen.ck#L21)
 */
 export const Folder = z.strictObject({
     id: z.uuid(),
@@ -301,14 +301,14 @@ export function reviveFolder(raw: Folder): Folder {
 }
 
 /**
- * generated from [Instrument](../../contracts/kitchen.ck#L63)
+ * generated from [Instrument](../../contracts/kitchen.ck#L64)
 */
 export const Instrument = z.discriminatedUnion("kind", [Card, Bank]);
 export type Instrument = z.infer<typeof Instrument>;
 
 /**
  * Two flattened bases, split into a read and an input shape
- * generated from [Shared](../../contracts/kitchen.ck#L81)
+ * generated from [Shared](../../contracts/kitchen.ck#L82)
 */
 export const Shared = Owned.extend(Named.shape).extend({
     label: z.string().default("x"),

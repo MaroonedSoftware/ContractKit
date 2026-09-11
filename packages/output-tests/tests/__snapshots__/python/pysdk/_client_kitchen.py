@@ -15,6 +15,11 @@ class GetFolder200Headers(TypedDict, total=False):
     x_when: datetime  # x-when (optional)
 
 
+class ExportFolderHeaders(TypedDict, total=False):
+    x_export_id: str  # x-export-id (required)
+    x_rows: int  # x-rows (optional)
+
+
 GetFolderQuery = TypedDict("GetFolderQuery", {
     "depth": NotRequired[int],
     "tags": NotRequired[list[str]],
@@ -42,6 +47,12 @@ class GetFolder404Response(TypedDict):
     status: Literal[404]
     content_type: Literal["application/json"]
     data: Shared
+
+
+class ExportFolderResponse(TypedDict):
+    content_type: Literal["application/json", "text/csv"]
+    data: Folder | str
+    headers: ExportFolderHeaders
 
 
 _IMPORT__RESPONSE: TypeAdapter[Instrument] = TypeAdapter(Instrument)
@@ -90,3 +101,17 @@ class KitchenClient(BaseClient):
     async def list_tokens(self) -> list[Token]:
         result = await self._fetch("/tokens", method="GET")
         return _LIST_TOKENS_RESPONSE.validate_python(result)
+
+    async def export_folder(self, folder_id: UUID) -> ExportFolderResponse:
+        """
+        one status with two content types and response headers, so the headers are read before the mime dispatch
+        """
+        _status, _content_type, result, _response_headers = await self._fetch_full(f"/folders/{quote(str(folder_id), safe='')}/export", method="GET", response_kind="auto")
+        headers: ExportFolderHeaders = {}
+        if "x-export-id" in _response_headers:
+            headers["x_export_id"] = _response_headers["x-export-id"]
+        if "x-rows" in _response_headers:
+            headers["x_rows"] = int(_response_headers["x-rows"])
+        if _content_type == "text/csv":
+            return { "content_type": "text/csv", "data": result, "headers": headers }
+        return { "content_type": "application/json", "data": Folder.model_validate(result), "headers": headers }

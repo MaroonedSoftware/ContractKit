@@ -77,4 +77,18 @@ export class KitchenClient {
         const result = await this.fetch(`/tokens`, { method: 'GET' });
         return await parseJson<TokenOutput[]>(result);
     }
+
+    /** @description one status with two content types and response headers, so the headers are read before the mime dispatch */
+    async exportFolder(folderId: string): Promise<
+        | { contentType: 'application/json'; data: Folder; headers: { xExportId: string; xRows?: number } }
+        | { contentType: 'text/csv'; data: string; headers: { xExportId: string; xRows?: number } }
+    > {
+        const result = await this.fetch(`/folders/${encodeURIComponent(folderId)}/export`, { method: 'GET' });
+        switch (readContentType(result)) {
+            case 'text/csv':
+                return { contentType: 'text/csv', data: await result.text(), headers: { xExportId: result.headers.get('x-export-id')!, xRows: result.headers.get('x-rows') === null ? undefined : Number(result.headers.get('x-rows')) } };
+            default:
+                return { contentType: 'application/json', data: reviveFolder(await parseJson<Folder>(result)), headers: { xExportId: result.headers.get('x-export-id')!, xRows: result.headers.get('x-rows') === null ? undefined : Number(result.headers.get('x-rows')) } };
+        }
+    }
 }

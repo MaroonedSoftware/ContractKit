@@ -1,7 +1,8 @@
 # Every construct the generators branch on and the other fixtures leave out: both union forms, self
 # and mutual recursion, tuples, records of contracts, every scalar, format() key casing, keyword
-# field and method names, non-string header params, and a status with two content types. The C#,
-# Swift and TypeScript compile checks are what make it worth having.
+# field and method names, non-string header params, and a status with two content types, both
+# among several statuses and on its own. The C#, Swift and TypeScript compile checks are what make
+# it worth having.
 
 options {
     keys: {
@@ -197,6 +198,27 @@ operation /tokens: {
         response: {
             200: {
                 application/json: array(Token)
+            }
+        }
+    }
+}
+
+operation /folders/{folder-id}/export: {
+    params: {
+        folder-id: uuid
+    }
+
+    get: { # one status with two content types and response headers, so the headers are read before the mime dispatch
+        sdk: exportFolder
+        service: KitchenService.exportFolder
+        response: {
+            200: {
+                application/json: Folder
+                text/csv: string
+                headers: {
+                    x-export-id: string
+                    x-rows?: int
+                }
             }
         }
     }
