@@ -1177,8 +1177,45 @@ function collectInputTypeRefs(type: ContractTypeNode, out: Set<string>, modelsWi
 }
 
 /**
- * Topologically sort models so dependencies are emitted before dependents.
- * Falls back to source order for cycles (which would need z.lazy at runtime).
+ * Like core's `collectTypeRefs`, but stops at `lazy()`.
+ *
+ * A lazy reference is read when the schema parses, not when the module loads, so it places no
+ * constraint on declaration order. Counting it as one turns every recursive pair into a cycle:
+ * `Folder { readme: Doc }` and `Doc { folder: lazy(Folder) }` fell back to source order, put
+ * `Folder` first, and evaluated `Doc.optional()` before `Doc` was declared.
+ */
+function collectEagerTypeRefs(type: ContractTypeNode, out: Set<string>): void {
+    switch (type.kind) {
+        case 'ref':
+            out.add(type.name);
+            break;
+        case 'array':
+            collectEagerTypeRefs(type.item, out);
+            break;
+        case 'tuple':
+            type.items.forEach(t => collectEagerTypeRefs(t, out));
+            break;
+        case 'record':
+            collectEagerTypeRefs(type.key, out);
+            collectEagerTypeRefs(type.value, out);
+            break;
+        case 'union':
+        case 'discriminatedUnion':
+        case 'intersection':
+            type.members.forEach(t => collectEagerTypeRefs(t, out));
+            break;
+        case 'inlineObject':
+            type.fields.forEach(f => collectEagerTypeRefs(f.type, out));
+            break;
+        case 'lazy':
+            break;
+    }
+}
+
+/**
+ * Topologically sort models so dependencies are emitted before dependents. Only references
+ * evaluated at module load count; see `collectEagerTypeRefs`. Falls back to source order for a
+ * cycle of eager references, which no ordering can satisfy.
  */
 export function topoSortModels(models: ModelNode[]): ModelNode[] {
     const localNames = new Set(models.map(m => m.name));
@@ -1189,9 +1226,9 @@ export function topoSortModels(models: ModelNode[]): ModelNode[] {
     for (const model of models) {
         const refs = new Set<string>();
         if (model.bases?.[0] && localNames.has(model.bases?.[0])) refs.add(model.bases?.[0]);
-        if (model.type) collectTypeRefs(model.type, refs);
+        if (model.type) collectEagerTypeRefs(model.type, refs);
         for (const field of model.fields) {
-            collectTypeRefs(field.type, refs);
+            collectEagerTypeRefs(field.type, refs);
         }
         // Keep only local dependencies
         const localDeps = new Set<string>();
