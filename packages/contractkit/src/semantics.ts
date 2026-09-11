@@ -843,7 +843,7 @@ export function createSemantics(grammar: Grammar) {
         SingleType_withArgs(nameNode, _lp, argsNode, _rp) {
             const name = nameNode.sourceString;
             const args = argsNode.toAst(this.args.file, this.args.diag) as TypeArg[];
-            return buildCompoundType(name, args);
+            return buildCompoundType(name, args, message => this.args.diag?.error(this.args.file, getLine(this), message));
         },
 
         SingleType_simple(nameNode) {
@@ -855,7 +855,10 @@ export function createSemantics(grammar: Grammar) {
         },
 
         TypeArg_keyValue(keyNode, _eq, valNode) {
-            return { key: keyNode.sourceString, value: valNode.toAst(this.args.file, this.args.diag) };
+            const value = valNode.toAst(this.args.file, this.args.diag);
+            // Keep a number's digits as written: `bigint` and `decimal` bounds must not see the float.
+            if (typeof value === 'number') return { key: keyNode.sourceString, value, source: valNode.sourceString };
+            return { key: keyNode.sourceString, value };
         },
         TypeArg_string(node) {
             return { type: 'string', value: node.sourceString.slice(1, -1) };

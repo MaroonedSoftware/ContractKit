@@ -183,6 +183,40 @@ contract M: {
             expect(type.min).toBe(-273.15);
             expect(type.max).toBe(100);
         });
+
+        it('parses bigint bounds past 2**53 exactly', () => {
+            // A float rounds 9007199254740993 to ...992, the value the scalar exists to avoid.
+            const { root, diag } = parse('contract M: { serial: bigint(min=-9007199254740993, max=9007199254740993) }');
+            expect(diag.hasErrors()).toBe(false);
+            const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
+            expect(type.min).toBe(-9007199254740993n);
+            expect(type.max).toBe(9007199254740993n);
+        });
+
+        it('parses a quoted bigint bound', () => {
+            const { root, diag } = parse('contract M: { serial: bigint(max="18446744073709551615") }');
+            expect(diag.hasErrors()).toBe(false);
+            expect((root.models[0]!.fields[0]!.type as ScalarTypeNode).max).toBe(18446744073709551615n);
+        });
+
+        it('reports a non-integer bigint bound instead of throwing', () => {
+            const { root, diag } = parse('contract M: { serial: bigint(min=1.5, max=10) }');
+            expect(diag.getAll()).toEqual([
+                expect.objectContaining({ severity: 'error', line: 1, message: 'bigint min must be an integer, got 1.5' }),
+            ]);
+            const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
+            expect(type.min).toBeUndefined();
+            expect(type.max).toBe(10n);
+        });
+
+        it('keeps decimal bounds as written', () => {
+            // Neither the trailing zero nor the digits past a float's precision may be lost.
+            const { root, diag } = parse('contract M: { price: decimal(min=0.10, max=123456789012345678901.5) }');
+            expect(diag.hasErrors()).toBe(false);
+            const type = root.models[0]!.fields[0]!.type as ScalarTypeNode;
+            expect(type.min).toBe('0.10');
+            expect(type.max).toBe('123456789012345678901.5');
+        });
     });
 
     // ─── Compound types ──────────────────────────────────────────────

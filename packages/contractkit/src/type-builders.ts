@@ -9,8 +9,13 @@ export const OBJECT_MODES = new Set<string>(['strict', 'strip', 'loose']);
 export const ROUTE_MODIFIERS = new Set<string>(['internal', 'deprecated', 'public']);
 export const HTTP_METHODS = new Set<string>(['get', 'post', 'put', 'patch', 'delete']);
 
-/** Parsed type argument — either a key=value constraint or a positional value. */
-export type TypeArgKeyValue = { key: string; value: string | number | boolean };
+/**
+ * Parsed type argument — either a key=value constraint or a positional value.
+ *
+ * A number literal's `value` has already been through `Number()`, so `source` carries the digits as
+ * written for the bounds that must not be rounded by a float (see `coerceBound`).
+ */
+export type TypeArgKeyValue = { key: string; value: string | number | boolean; source?: string };
 export type TypeArgString = { type: 'string'; value: string };
 export type TypeArgNumber = { type: 'number'; value: number };
 export type TypeArgBoolean = { type: 'boolean'; value: boolean };
@@ -25,8 +30,13 @@ export function resolveSimpleType(name: string): ContractTypeNode {
     return { kind: 'ref', name };
 }
 
-/** Build a compound or constrained type from a type name and parsed arguments. */
-export function buildCompoundType(name: string, args: TypeArg[]): ContractTypeNode {
+/**
+ * Build a compound or constrained type from a type name and parsed arguments.
+ *
+ * `report` receives an argument the type cannot represent, such as a non-integer `bigint` bound;
+ * the argument is dropped rather than failing the whole parse.
+ */
+export function buildCompoundType(name: string, args: TypeArg[], report?: (message: string) => void): ContractTypeNode {
     switch (name) {
         case 'array':
             return buildArrayType(args);
@@ -44,7 +54,7 @@ export function buildCompoundType(name: string, args: TypeArg[]): ContractTypeNo
             return buildDiscriminatedUnionType(args);
         default: {
             if (SCALAR_NAMES.has(name)) {
-                return buildScalarWithModifiers(name as ScalarTypeNode['name'], args);
+                return buildScalarWithModifiers(name as ScalarTypeNode['name'], args, report);
             }
             return { kind: 'ref', name };
         }
@@ -129,19 +139,35 @@ function buildDiscriminatedUnionType(args: TypeArg[]): ContractTypeNode {
     return { kind: 'discriminatedUnion', discriminator, members };
 }
 
+function isKeyValue(arg: TypeArg): arg is TypeArgKeyValue {
+    return 'key' in arg;
+}
+
+/** An integer as `.ck` source spells it, and as `BigInt()` accepts it. */
+const INTEGER_LITERAL = /^-?\d+$/;
+
 /**
  * Coerce a `min=`/`max=` type argument to the representation its scalar compares against.
  *
- * `bigint` and `decimal` both carry values a JS number cannot hold exactly — `bigint` has its own
- * primitive, `decimal` keeps the source text for decimal.js to parse. Everything else is a float.
+ * `bigint` and `decimal` both carry values a JS number cannot hold exactly: `bigint` has its own
+ * primitive, and `decimal` keeps the source text for decimal.js to parse. Both read the literal as
+ * written rather than `arg.value`, which the semantics have already turned into a float, so
+ * `max=9007199254740993` would otherwise arrive as `9007199254740992`. Everything else is a float.
+ *
+ * Returns `undefined`, after reporting it, for a `bigint` bound that is not an integer.
  */
-function coerceBound(name: ScalarTypeNode['name'], value: unknown): number | bigint | string {
-    if (name === 'bigint') return BigInt(value as string | number);
-    if (name === 'duration' || name === 'decimal') return String(value);
-    return Number(value);
+function coerceBound(name: ScalarTypeNode['name'], arg: TypeArgKeyValue, report?: (message: string) => void): number | bigint | string | undefined {
+    const text = arg.source ?? String(arg.value);
+    if (name === 'bigint') {
+        if (INTEGER_LITERAL.test(text)) return BigInt(text);
+        report?.(`bigint ${arg.key} must be an integer, got ${text}`);
+        return undefined;
+    }
+    if (name === 'duration' || name === 'decimal') return text;
+    return Number(arg.value);
 }
 
-function buildScalarWithModifiers(name: ScalarTypeNode['name'], args: TypeArg[]): ScalarTypeNode {
+function buildScalarWithModifiers(name: ScalarTypeNode['name'], args: TypeArg[], report?: (message: string) => void): ScalarTypeNode {
     const scalar: ScalarTypeNode = { kind: 'scalar', name };
     for (const a of args) {
         // Positional string argument (quoted): used as format for date/time types
@@ -158,11 +184,11 @@ function buildScalarWithModifiers(name: ScalarTypeNode['name'], args: TypeArg[])
             }
             continue;
         }
-        if (!('key' in a)) continue;
+        if (!isKeyValue(a)) continue;
         // `decimal` bounds stay strings for the same reason the scalar exists: routing `0.01`
         // through `Number()` would round-trip it via a float before the bound is ever compared.
-        if (a.key === 'min') scalar.min = coerceBound(name, a.value);
-        if (a.key === 'max') scalar.max = coerceBound(name, a.value);
+        if (a.key === 'min') scalar.min = coerceBound(name, a, report);
+        if (a.key === 'max') scalar.max = coerceBound(name, a, report);
         if (a.key === 'len' || a.key === 'length') scalar.len = Number(a.value);
         if (a.key === 'scale') scalar.scale = Number(a.value);
         if (a.key === 'regex') scalar.regex = String(a.value);

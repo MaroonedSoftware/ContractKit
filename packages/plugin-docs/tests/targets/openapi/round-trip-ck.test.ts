@@ -24,7 +24,7 @@ contract Pet: {
     code?: string(regex=/^[a-z]+$/)
     status: enum(available, "on hold")
     price: decimal(min=0.01, max=999999.99, scale=2)
-    serial: bigint(min=-9007199254740991, max=9007199254740991)
+    serial: bigint(min=-9007199254740993, max=9007199254740993)
     stock: bigint = 5
 }
 
@@ -123,8 +123,8 @@ describe('ck → openapi → ck', () => {
         expect(pet.fields.find(f => f.name === 'serial')!.type).toEqual({
             kind: 'scalar',
             name: 'bigint',
-            min: -9007199254740991n,
-            max: 9007199254740991n,
+            min: -9007199254740993n,
+            max: 9007199254740993n,
         });
         expect(pet.fields.find(f => f.name === 'serial')!.type).toEqual(beforePet.fields.find(f => f.name === 'serial')!.type);
         expect(pet.fields.find(f => f.name === 'stock')!.type).toEqual({ kind: 'scalar', name: 'bigint' });

@@ -677,6 +677,27 @@ describe('round-trip — field comments', () => {
     });
 });
 
+// ─── Exact numeric literals ──────────────────────────────────────────────────
+
+describe('round-trip — exact numeric literals', () => {
+    it('keeps a bigint bound past 2**53 exact', () => {
+        // Parsed through a float, formatting rewrote this bound to 9007199254740992.
+        const source = `contract Pet: {
+    serial: bigint(min=-9007199254740993, max=9007199254740993)
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
+    it('keeps a decimal bound as written', () => {
+        const source = `contract Price: {
+    amount: decimal(min=0.10, max=123456789012345678901.5, scale=2)
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+});
+
 // ─── Idempotence ─────────────────────────────────────────────────────────────
 
 describe('round-trip — idempotence', () => {
