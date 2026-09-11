@@ -12,7 +12,7 @@ export class ReservedClient {
 
     /** @description fetch one seat */
     async getSeat(class_: string, query?: { from?: DateTime; in?: string; pageSize?: number }, customHeaders?: { from?: string }): Promise<{ data: Seat; headers: { from?: string } }> {
-        const qs = buildQueryString(query);
+        const qs = buildQueryString({ ...query, from: query?.from?.toFormat('yyyy-MM-dd') });
         const result = await this.fetch(`/seats/${encodeURIComponent(class_)}${qs}`, {
             method: 'GET',
             headers: buildHeaders(customHeaders),
