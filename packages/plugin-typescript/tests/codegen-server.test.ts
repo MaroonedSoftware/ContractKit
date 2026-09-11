@@ -5,7 +5,20 @@ import { dirname, join } from 'node:path';
 import { createTypescriptPlugin } from '../src/index.js';
 import type { PluginContext } from '@contractkit/core';
 import { SECURITY_NONE } from '@contractkit/core';
-import { opRoot, opRoute, opOperation, opParam, opRequest, opResponse, scalarType, refType, contractRoot, model, field } from './helpers.js';
+import {
+    opRoot,
+    opRoute,
+    opOperation,
+    opParam,
+    opRequest,
+    opResponse,
+    scalarType,
+    refType,
+    inlineObjectType,
+    contractRoot,
+    model,
+    field,
+} from './helpers.js';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -638,6 +651,113 @@ describe('createTypescriptPlugin (sdk) — scaffold', () => {
         expect(pkg.dependencies?.luxon).toBeUndefined();
         // zod also absent (zod not enabled) → no dependencies block at all.
         expect(pkg.dependencies).toBeUndefined();
+    });
+
+    /**
+     * Scaffold an SDK whose only model has no temporal or decimal field, so any luxon or
+     * decimal.js dependency has to come from the operations. Returns every emitted client file
+     * joined, and the parsed package.json.
+     */
+    async function scaffoldWith(ops: ReturnType<typeof opOperation>[], opts: { includeInternal?: boolean; meta?: Record<string, string> } = {}) {
+        const plugin = createTypescriptPlugin(
+            {
+                sdk: {
+                    baseDir: 'packages/sdk',
+                    scaffold: true,
+                    includeInternal: opts.includeInternal,
+                    output: { sdk: 'src/sdk.ts', clients: 'src/{filename}.client.ts', types: 'src/types/{filename}.ts' },
+                },
+            },
+            '/project',
+        );
+        const ctx = makeScaffoldCtx();
+        await plugin.generateTargets!(
+            {
+                contractRoots: [contractRoot([model('Thing', [field('id', scalarType('uuid'))])], '/project/contracts/things.ck')],
+                opRoots: [opRoot([opRoute('/things', ops)], '/project/contracts/things.ck', opts.meta)],
+                modelOutPaths: new Map<string, string>(),
+                modelsWithInput: new Set<string>(),
+                modelsWithOutput: new Set<string>(),
+            },
+            ctx,
+        );
+        const clients = [...ctx.emitted].filter(([path]) => path.endsWith('.client.ts')).map(([, v]) => v.content);
+        return { client: clients.join('\n'), pkg: JSON.parse(find(ctx.emitted, 'packages/sdk/package.json')!.content) };
+    }
+
+    it('adds luxon when the only temporal scalar is an operation query param', async () => {
+        const { client, pkg } = await scaffoldWith([
+            opOperation('get', { sdk: 'listThings', query: [opParam('since', scalarType('date'))], responses: [opResponse(200, 'Thing')] }),
+        ]);
+        // The client imports luxon for the param, so the package has to declare it.
+        expect(client).toContain("from 'luxon';");
+        expect(pkg.dependencies.luxon).toBeDefined();
+        expect(pkg.devDependencies['@types/luxon']).toBeDefined();
+        expect(pkg.dependencies['decimal.js']).toBeUndefined();
+    });
+
+    it('adds decimal.js when the only decimal is in an inline response body', async () => {
+        const { client, pkg } = await scaffoldWith([
+            opOperation('get', { sdk: 'getTotal', responses: [opResponse(200, inlineObjectType([field('total', scalarType('decimal'))]))] }),
+        ]);
+        expect(client).toContain("from 'decimal.js';");
+        expect(pkg.dependencies['decimal.js']).toBeDefined();
+        expect(pkg.dependencies.luxon).toBeUndefined();
+    });
+
+    it('adds luxon for a temporal request header', async () => {
+        const { client, pkg } = await scaffoldWith([
+            opOperation('get', { sdk: 'getThing', headers: [opParam('x-as-of', scalarType('datetime'))], responses: [opResponse(200, 'Thing')] }),
+        ]);
+        expect(client).toContain("from 'luxon';");
+        expect(pkg.dependencies.luxon).toBeDefined();
+    });
+
+    it('adds luxon for a duration in an inline request body', async () => {
+        const { client, pkg } = await scaffoldWith([
+            opOperation('post', {
+                sdk: 'schedule',
+                request: opRequest(inlineObjectType([field('every', scalarType('duration'))])),
+                responses: [opResponse(204)],
+            }),
+        ]);
+        expect(client).toContain("import { Duration } from 'luxon';");
+        expect(pkg.dependencies.luxon).toBeDefined();
+    });
+
+    it('adds luxon for an operation in an area client, not only a top-level one', async () => {
+        // An `area` with no `subarea` inlines the op's methods into `<area>.client.ts`, a
+        // different bucket from the top-level clients the other cases exercise.
+        const { client, pkg } = await scaffoldWith(
+            [opOperation('get', { sdk: 'listThings', query: [opParam('since', scalarType('time'))], responses: [opResponse(200, 'Thing')] })],
+            { meta: { area: 'catalog' } },
+        );
+        expect(client).toContain("from 'luxon';");
+        expect(pkg.dependencies.luxon).toBeDefined();
+    });
+
+    it('adds no luxon for an interval op param, which a client types as a string', async () => {
+        const { client, pkg } = await scaffoldWith([
+            opOperation('get', { sdk: 'listThings', query: [opParam('span', scalarType('interval'))], responses: [opResponse(200, 'Thing')] }),
+        ]);
+        expect(client).not.toContain('luxon');
+        expect(pkg.dependencies?.luxon).toBeUndefined();
+    });
+
+    it('ignores an internal operation the SDK does not emit, unless includeInternal is set', async () => {
+        const ops = () => [
+            opOperation('get', { sdk: 'getThing', responses: [opResponse(200, 'Thing')] }),
+            opOperation('post', {
+                sdk: 'sync',
+                modifiers: ['internal'],
+                query: [opParam('since', scalarType('datetime'))],
+                responses: [opResponse(204)],
+            }),
+        ];
+        const hidden = await scaffoldWith(ops());
+        expect(hidden.pkg.dependencies?.luxon).toBeUndefined();
+        const shown = await scaffoldWith(ops(), { includeInternal: true });
+        expect(shown.pkg.dependencies.luxon).toBeDefined();
     });
 });
 

@@ -12,11 +12,13 @@ import {
     deriveSubareaPropertyName,
     getAreaSubarea,
     hasPublicOperations,
+    opRootNeedsScalar,
     generateSdkPackageJson,
     generateSdkTsconfig,
     generateErrorBodyAliases,
 } from '../src/codegen-sdk.js';
 import { collectPublicTypeNames } from '@contractkit/core';
+import type { ContractTypeNode, OpRootNode } from '@contractkit/core';
 import { renderTsType, renderInputTsType } from '../src/ts-render.js';
 import {
     opRoot,
@@ -24,6 +26,7 @@ import {
     opOperation,
     opParam,
     paramRef,
+    paramType,
     opRequest,
     opMultiRequest,
     opResponse,
@@ -2295,6 +2298,85 @@ describe('decimal rehydration', () => {
         const out = generateSdk(root, withDecimal({ modelOutPaths: new Map([['User', '/out/types/models.ts']]) }));
         expect(out).toContain('return await parseJson<User>(result);');
         expect(out).not.toContain('revive');
+    });
+});
+
+describe('opRootNeedsScalar', () => {
+    const at = (op: ReturnType<typeof opOperation>, params?: Parameters<typeof opRoute>[2]) =>
+        opRoot([opRoute('/things/{id}', [op], params)], 'things.op');
+
+    // Each case names a scalar in exactly one inline position a client reads.
+    const cases: { where: string; build: (t: ContractTypeNode) => OpRootNode }[] = [
+        { where: 'a path param', build: t => at(opOperation('get', { responses: [opResponse(204)] }), [opParam('id', t)]) },
+        { where: 'a query param', build: t => at(opOperation('get', { query: [opParam('since', t)], responses: [opResponse(204)] })) },
+        {
+            where: 'an inline query type',
+            build: t => at(opOperation('get', { query: paramType(inlineObjectType([field('since', t)])), responses: [opResponse(204)] })),
+        },
+        { where: 'a request header', build: t => at(opOperation('get', { headers: [opParam('x-as-of', t)], responses: [opResponse(204)] })) },
+        {
+            where: 'an inline request body',
+            build: t => at(opOperation('post', { request: opRequest(inlineObjectType([field('at', t)])), responses: [opResponse(204)] })),
+        },
+        {
+            where: 'an inline response body',
+            build: t => at(opOperation('get', { responses: [opResponse(200, arrayType(inlineObjectType([field('at', t)])))] })),
+        },
+        {
+            where: 'a response header',
+            build: t =>
+                at(
+                    opOperation('get', {
+                        responses: [{ statusCode: 204, bodies: [], hasBlock: true, headers: [{ name: 'x-as-of', optional: false, type: t }] }],
+                    }),
+                ),
+        },
+    ];
+
+    for (const { where, build } of cases) {
+        it(`finds a date in ${where}, where the client names DateTime`, () => {
+            const root = build(scalarType('date'));
+            expect(opRootNeedsScalar(root, 'date')).toBe(true);
+            expect(opRootNeedsScalar(root, 'decimal')).toBe(false);
+            // The helper decides a dependency, so it has to agree with the import the client emits.
+            expect(generateSdk(root)).toContain("from 'luxon';");
+        });
+    }
+
+    for (const { where, build } of cases.filter(c => c.where !== 'a response header')) {
+        it(`finds a decimal in ${where}`, () => {
+            expect(opRootNeedsScalar(build(scalarType('decimal')), 'decimal')).toBe(true);
+        });
+    }
+
+    it('finds a duration in a query param, where the client names Duration', () => {
+        const root = at(opOperation('get', { query: [opParam('window', scalarType('duration'))], responses: [opResponse(204)] }));
+        expect(opRootNeedsScalar(root, 'duration')).toBe(true);
+        expect(generateSdk(root)).toContain("import { Duration } from 'luxon';");
+    });
+
+    it('does not follow a model reference, which its own type file covers', () => {
+        const root = at(opOperation('get', { query: paramRef('Filter'), responses: [opResponse(200, 'Event')] }));
+        expect(opRootNeedsScalar(root, 'date')).toBe(false);
+    });
+
+    it('returns false when no operation uses the scalar', () => {
+        const root = at(opOperation('get', { query: [opParam('limit', scalarType('int'))], responses: [opResponse(200, 'Event')] }));
+        expect(opRootNeedsScalar(root, 'date')).toBe(false);
+        expect(opRootNeedsScalar(root, 'decimal')).toBe(false);
+    });
+
+    it('skips an internal operation unless includeInternal is set, as generateSdk does', () => {
+        const root = at(
+            opOperation('get', { modifiers: ['internal'], query: [opParam('since', scalarType('datetime'))], responses: [opResponse(204)] }),
+        );
+        expect(opRootNeedsScalar(root, 'datetime')).toBe(false);
+        expect(opRootNeedsScalar(root, 'datetime', true)).toBe(true);
+    });
+
+    it('skips route params when every operation on the route is internal', () => {
+        const root = at(opOperation('get', { modifiers: ['internal'], responses: [opResponse(204)] }), [opParam('id', scalarType('date'))]);
+        expect(opRootNeedsScalar(root, 'date')).toBe(false);
     });
 });
 
