@@ -280,7 +280,7 @@ interface MethodParam {
     name: string;
     type: string;
     optional: boolean;
-    isModel: boolean; // Pydantic BaseModel → use .model_dump(mode="json")
+    isModel: boolean; // Pydantic BaseModel → serialized with .model_dump(...) by its contract names
 }
 
 function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCodegenOptions): string[] {
@@ -361,7 +361,11 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, opts: ClientCod
             // Pass-through: caller supplies a str / bytes payload that goes on the wire as-is.
             fetchKwargs.push('body=body');
         } else if (bodyParam?.isModel) {
-            fetchKwargs.push('body=body.model_dump(mode="json")');
+            // `by_alias` puts each field on the wire under its contract name (`unitPrice`, not
+            // `unit_price`), which a strict server schema requires. `exclude_unset` leaves out an
+            // optional the caller never set, rather than sending it as null for `.optional()` to
+            // reject; a required nullable field is always set by the constructor, so its null stays.
+            fetchKwargs.push('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
         } else {
             fetchKwargs.push('body=body');
         }

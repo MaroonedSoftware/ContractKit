@@ -212,7 +212,10 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('body: PaymentInput');
-        expect(output).toContain('body=body.model_dump(mode="json")');
+        // by_alias: a renamed field goes out as `unitPrice`, not `unit_price`, which a strict server
+        // schema rejects. exclude_unset: an optional the caller never set is omitted rather than
+        // sent as null, which `.optional()` rejects.
+        expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
     });
 
     it('sends a urlencoded body as form data, not JSON', () => {
@@ -229,6 +232,8 @@ describe('generatePythonClient', () => {
         // document under a form Content-Type.
         expect(output).toContain('body_kind="form"');
         expect(output).toContain('content_type="application/x-www-form-urlencoded"');
+        // Form keys are contract names too, and an unset optional must not become `note=`.
+        expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
     });
 
     it('sends a multipart body through files= and lets httpx own the Content-Type', () => {
@@ -428,7 +433,7 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root, { modelsWithInput });
         expect(output).toContain('body: PaymentInput');
-        expect(output).toContain('body=body.model_dump(mode="json")');
+        expect(output).toContain('body=body.model_dump(mode="json", by_alias=True, exclude_unset=True)');
     });
 
     describe('observable-set returns', () => {

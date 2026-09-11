@@ -32,7 +32,7 @@ class BillingClient(BaseClient):
         """
         create a payment
         """
-        result, _response_headers = await self._fetch_with_headers("/payments", method="POST", body=body.model_dump(mode="json"))
+        result, _response_headers = await self._fetch_with_headers("/payments", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         headers: CreatePaymentHeaders = {}
         if "x-request-id" in _response_headers:
             headers["x_request_id"] = _response_headers["x-request-id"]
@@ -62,7 +62,7 @@ class BillingClient(BaseClient):
         """
         update a payment with form data
         """
-        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="POST", body=body.model_dump(mode="json"), content_type="application/x-www-form-urlencoded", body_kind="form")
+        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True), content_type="application/x-www-form-urlencoded", body_kind="form")
         return None
 
     async def delete_payment(self, payment_id: UUID) -> None:
@@ -91,12 +91,12 @@ class BillingClient(BaseClient):
         """
         store a credential
         """
-        result = await self._fetch("/credentials", method="POST", body=body.model_dump(mode="json"))
+        result = await self._fetch("/credentials", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Credential.model_validate(result)
 
     async def create_session(self, body: SessionInput) -> Session:
         """
         open a session
         """
-        result = await self._fetch("/sessions", method="POST", body=body.model_dump(mode="json"))
+        result = await self._fetch("/sessions", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Session.model_validate(result)
