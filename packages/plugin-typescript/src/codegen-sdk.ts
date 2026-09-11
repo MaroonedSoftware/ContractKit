@@ -36,6 +36,7 @@ import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { reviveFnName, renderInlineReviver, typeReachesDecimal, coerceDeclsFor, coerceLuxonImports } from './codegen-revive.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
 import { typeReachesBigInt } from './bigint-runtime.js';
+import { bindIdentifiers } from './reserved-words.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Body strategy ────────────────────────────────────────────────────────
@@ -454,7 +455,8 @@ function generateMethod(
     const { modelsWithInput, modelsWithOutput } = options;
 
     // Build method parameters (request-side — use Input variants, and WireInput where format(input=) re-keys)
-    const params = buildMethodParams(route, op, modelsWithInput, options.modelsWithWireInput);
+    const pathBindings = bindSdkPathParams(route);
+    const params = buildMethodParams(route, op, pathBindings, modelsWithInput, options.modelsWithWireInput);
     const paramStr = params.map(p => `${p.name}${p.optional ? '?' : ''}: ${p.type}`).join(', ');
 
     // Determine return type — response side uses Output variants (post-transform wire shape).
@@ -526,7 +528,7 @@ function generateMethod(
     }
 
     // Build URL with path params
-    const urlExpr = buildUrlExpression(route.path, route.params);
+    const urlExpr = buildUrlExpression(route.path, route.params, pathBindings);
 
     // Query string
     const hasQuery = !!op.query;
@@ -956,10 +958,10 @@ export function generateErrorBodyAliases(root: OpRootNode, options: SdkCodegenOp
  * `[a-zA-Z_]\w*`, so a hyphenated `{payment-id}` is interpolated instead of being left in the URL
  * verbatim. Such a name is not a valid property accessor either, hence the bracket form.
  */
-function buildUrlExpression(path: string, params?: ParamSource): string {
+function buildUrlExpression(path: string, params: ParamSource | undefined, bindings: Map<string, string>): string {
     return path.replace(PATH_PARAM_RE_G, (_m, name: string) => {
         // Spread across the signature: interpolate the identifier `buildMethodParams` bound.
-        if (!params || params.kind === 'params') return `\${encodeURIComponent(${toIdentifier(name)})}`;
+        if (!params || params.kind === 'params') return `\${encodeURIComponent(${bindings.get(name) ?? toIdentifier(name)})}`;
         // Behind one `params` argument: read the model's field, which keeps its declared spelling
         // and so may need bracket access. `String(...)` because that field may be typed something
         // `encodeURIComponent` does not accept.
@@ -970,13 +972,68 @@ function buildUrlExpression(path: string, params?: ParamSource): string {
 
 // ─── Method parameters ────────────────────────────────────────────────────
 
+/**
+ * Identifiers a generated method binds or reads besides its path parameters: the other arguments
+ * `buildMethodParams` can declare, the locals `generateMethod` declares, and the globals and
+ * `sdk-options` helpers its body calls. A path parameter spread into the signature under one of
+ * these names would duplicate an argument (`putNote(body: string, body: Note)`), be redeclared by
+ * a local, or shadow the function the URL expression calls.
+ */
+const SDK_METHOD_LOCALS = [
+    'body',
+    'options',
+    'query',
+    'customHeaders',
+    'params',
+    'qs',
+    'result',
+    'data',
+    '__contentType',
+    '__serialized',
+    '__isFormData',
+    'encodeURIComponent',
+    'String',
+    'Number',
+    'BigInt',
+    'JSON',
+    'FormData',
+    'URLSearchParams',
+    'DateTime',
+    'Duration',
+    'Decimal',
+    'bigIntReplacer',
+    'parseJson',
+    'buildQueryString',
+    'buildHeaders',
+    'readContentType',
+] as const;
+
+/**
+ * The argument name each inline path parameter is spread into the signature under, keyed by its
+ * declared name. Positional, so a rename changes nothing for a caller; empty when the route has no
+ * inline params.
+ */
+function bindSdkPathParams(route: OpRouteNode): Map<string, string> {
+    if (route.params?.kind !== 'params') return new Map();
+    return bindIdentifiers(
+        route.params.nodes.map(p => p.name),
+        SDK_METHOD_LOCALS,
+    );
+}
+
 interface MethodParam {
     name: string;
     type: string;
     optional: boolean;
 }
 
-function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithInput?: Set<string>, modelsWithWireInput?: Set<string>): MethodParam[] {
+function buildMethodParams(
+    route: OpRouteNode,
+    op: OpOperationNode,
+    bindings: Map<string, string>,
+    modelsWithInput?: Set<string>,
+    modelsWithWireInput?: Set<string>,
+): MethodParam[] {
     const params: MethodParam[] = [];
     // Path params are interpolated value by value, so their keys never reach the wire and they keep
     // the declared names. Everything serialized as an object below uses `wire`.
@@ -986,7 +1043,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
     if (route.params) {
         if (route.params.kind === 'params') {
             for (const p of route.params.nodes) {
-                params.push({ name: toIdentifier(p.name), type: renderInputTsType(p.type, modelsWithInput), optional: false });
+                params.push({ name: bindings.get(p.name)!, type: renderInputTsType(p.type, modelsWithInput), optional: false });
             }
         } else if (route.params.kind === 'ref') {
             const typeName = modelsWithInput?.has(route.params.name) ? `${route.params.name}Input` : route.params.name;

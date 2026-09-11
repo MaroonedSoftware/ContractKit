@@ -1581,6 +1581,50 @@ describe('generateSdk — path param shapes', () => {
     });
 });
 
+describe('generateSdk — path params that would not bind', () => {
+    const seatRoute = (name: string, overrides: Parameters<typeof opOperation>[1] = {}) =>
+        opRoute(
+            `/seats/{${name}}`,
+            [opOperation('get', { sdk: 'getSeat', responses: [opResponse(200, 'Seat', 'application/json')], ...overrides })],
+            [opParam(name, scalarType('string'))],
+        );
+
+    it('suffixes a param named after a reserved word, in the signature and the URL alike', () => {
+        const out = generateSdk(opRoot([seatRoute('class')]));
+        // `async getSeat(class: string)` is TS1390, and cascades into parse errors for the whole file.
+        expect(out).toContain('async getSeat(class_: string): Promise<Seat>');
+        expect(out).toContain('`/seats/${encodeURIComponent(class_)}`');
+    });
+
+    it('suffixes a param named like the request-body argument', () => {
+        const root = opRoot([
+            opRoute(
+                '/notes/{body}',
+                [opOperation('put', { sdk: 'putNote', request: opRequest('Note'), responses: [opResponse(200, 'Note', 'application/json')] })],
+                [opParam('body', scalarType('string'))],
+            ),
+        ]);
+        const out = generateSdk(root);
+        expect(out).toContain('async putNote(body_: string, body: Note): Promise<Note>');
+        expect(out).toContain('`/notes/${encodeURIComponent(body_)}`');
+        expect(out).toContain('body: JSON.stringify(body, bigIntReplacer)');
+    });
+
+    it.each(['query', 'customHeaders', 'result', 'qs', 'encodeURIComponent'])(
+        'suffixes a param named `%s`, which the method already binds or calls',
+        name => {
+            const out = generateSdk(opRoot([seatRoute(name, { query: [opParam('page', scalarType('int'), { optional: true })] })]));
+            expect(out).toContain(`async getSeat(${name}_: string`);
+            expect(out).toContain(`encodeURIComponent(${name}_)`);
+        },
+    );
+
+    it('leaves a contextual keyword alone', () => {
+        const out = generateSdk(opRoot([seatRoute('from')]));
+        expect(out).toContain('async getSeat(from: string)');
+    });
+});
+
 describe('generateSdk — headers shapes', () => {
     it('handles string-typed headers (model ref)', () => {
         const root = opRoot([

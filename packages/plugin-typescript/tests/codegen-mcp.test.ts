@@ -145,6 +145,54 @@ describe('generateMcpFile', () => {
             expect(out).toContain('const { body } = await parseAndValidate(args, CreatePaymentArgs);');
         });
 
+        it('keeps a keyword path param as the args key but destructures it under an alias', () => {
+            const root = opRoot([
+                opRoute(
+                    '/seats/{class}',
+                    [opOperation('get', { sdk: 'getSeat', mcp: true, responses: [opResponse(200, 'Seat', 'application/json')] })],
+                    [opParam('class', scalarType('string'))],
+                ),
+            ]);
+            const out = generateMcpFile(root);
+            expect(out).toContain('const GetSeatArgs = z.object({ class: z.string() });');
+            expect(out).toContain('const { class: class_ } = await parseAndValidate(args, GetSeatArgs);');
+            expect(out).toContain('await this.service.getById(class_)');
+        });
+
+        it('gives a path param named `body` its own args key, so the schema does not declare `body` twice', () => {
+            const root = opRoot([
+                opRoute(
+                    '/notes/{body}',
+                    [
+                        opOperation('put', {
+                            sdk: 'putNote',
+                            mcp: true,
+                            request: opRequest('Note'),
+                            responses: [opResponse(200, 'Note', 'application/json')],
+                        }),
+                    ],
+                    [opParam('body', scalarType('string'))],
+                ),
+            ]);
+            const out = generateMcpFile(root);
+            expect(out).toContain('const PutNoteArgs = z.object({ body_: z.string(), body: Note });');
+            expect(out).toContain('const { body_, body } = await parseAndValidate(args, PutNoteArgs);');
+            expect(out).toContain('await this.service.replace(body_, body)');
+        });
+
+        it('renames a path param that would shadow a handle() local', () => {
+            const root = opRoot([
+                opRoute(
+                    '/results/{result}',
+                    [opOperation('get', { sdk: 'getResult', mcp: true, responses: [opResponse(200, 'Result', 'application/json')] })],
+                    [opParam('result', scalarType('string'))],
+                ),
+            ]);
+            const out = generateMcpFile(root);
+            expect(out).toContain('const { result: result_ } = await parseAndValidate(args, GetResultArgs);');
+            expect(out).toContain('const result = await this.service.getById(result_);');
+        });
+
         it('underscores the args param when the op takes no arguments', () => {
             const root = opRoot([opRoute('/health', [opOperation('get', { mcp: true, responses: [opResponse(200, 'Health', 'application/json')] })])]);
             const out = generateMcpFile(root);
