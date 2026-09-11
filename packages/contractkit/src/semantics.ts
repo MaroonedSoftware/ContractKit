@@ -14,6 +14,7 @@ import type {
     OpResponseBodyNode,
     OpResponseHeaderNode,
     ContractTypeNode,
+    FieldDefault,
     FieldNode,
     ParamSource,
     SecurityNode,
@@ -30,7 +31,15 @@ import type {
     OpBodyKey,
 } from './ast.js';
 import { SECURITY_NONE } from './ast.js';
-import { buildCompoundType, resolveSimpleType, extractNullability, typeNodeToParamSource, OBJECT_MODES, type TypeArg } from './type-builders.js';
+import {
+    buildCompoundType,
+    coerceDefault,
+    resolveSimpleType,
+    extractNullability,
+    typeNodeToParamSource,
+    OBJECT_MODES,
+    type TypeArg,
+} from './type-builders.js';
 import type { DiagnosticCollector } from './diagnostics.js';
 
 /**
@@ -743,7 +752,7 @@ export function createSemantics(grammar: Grammar) {
                 visibility: 'readonly' | 'writeonly' | 'normal';
                 deprecated?: boolean;
                 override?: boolean;
-                default?: string | number | boolean;
+                default?: FieldDefault;
             };
             const { type, nullable } = extractNullability(body.type);
             const field: FieldNode = { name, optional, nullable, visibility: body.visibility, type, default: body.default, loc: { file, line } };
@@ -781,9 +790,11 @@ export function createSemantics(grammar: Grammar) {
                 }
             }
             const type = typeExprNode.toAst(file, diag) as ContractTypeNode;
-            let defaultVal: string | number | boolean | undefined;
+            let defaultVal: FieldDefault | undefined;
             if ((defaultValOpt as IterationNode).numChildren > 0) {
-                defaultVal = (defaultValOpt as IterationNode).child(0).toAst(file, diag);
+                const defaultNode = (defaultValOpt as IterationNode).child(0);
+                const report = (message: string) => diag?.error(file, getLine(defaultNode), message);
+                defaultVal = coerceDefault(type, defaultNode.toAst(file, diag), defaultNode.sourceString, report);
             }
             return { type, visibility, deprecated, override, default: defaultVal };
         },
@@ -843,7 +854,7 @@ export function createSemantics(grammar: Grammar) {
         SingleType_withArgs(nameNode, _lp, argsNode, _rp) {
             const name = nameNode.sourceString;
             const args = argsNode.toAst(this.args.file, this.args.diag) as TypeArg[];
-            return buildCompoundType(name, args);
+            return buildCompoundType(name, args, message => this.args.diag?.error(this.args.file, getLine(this), message));
         },
 
         SingleType_simple(nameNode) {
@@ -855,7 +866,10 @@ export function createSemantics(grammar: Grammar) {
         },
 
         TypeArg_keyValue(keyNode, _eq, valNode) {
-            return { key: keyNode.sourceString, value: valNode.toAst(this.args.file, this.args.diag) };
+            const value = valNode.toAst(this.args.file, this.args.diag);
+            // Keep a number's digits as written: `bigint` and `decimal` bounds must not see the float.
+            if (typeof value === 'number') return { key: keyNode.sourceString, value, source: valNode.sourceString };
+            return { key: keyNode.sourceString, value };
         },
         TypeArg_string(node) {
             return { type: 'string', value: node.sourceString.slice(1, -1) };
@@ -959,7 +973,7 @@ export function createSemantics(grammar: Grammar) {
                 visibility: 'readonly' | 'writeonly' | 'normal';
                 deprecated?: boolean;
                 override?: boolean;
-                default?: string | number | boolean;
+                default?: FieldDefault;
             };
             const { type, nullable } = extractNullability(body.type);
             const field: FieldNode = { name, optional, nullable, visibility: body.visibility, type, default: body.default, loc: { file, line } };

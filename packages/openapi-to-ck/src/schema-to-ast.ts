@@ -1,4 +1,4 @@
-import type { ContractTypeNode, ScalarTypeNode, ModelNode, FieldNode, SourceLocation } from '@contractkit/core';
+import type { ContractTypeNode, FieldDefault, ScalarTypeNode, ModelNode, FieldNode, SourceLocation } from '@contractkit/core';
 import type { NormalizedSchema } from './types.js';
 import { extractRefName } from './circular-refs.js';
 import type { WarningCollector } from './warnings.js';
@@ -391,14 +391,15 @@ function schemaPropertiesToFields(schema: NormalizedSchema, ctx: SchemaContext):
  * A property's `default`, as the `.ck` field default it came from.
  *
  * A `bigint` default is written as a digit string, to match the `type: string` the scalar is
- * documented as, but a `.ck` source spells it as a bare number (`= 5`), and that is what parsing
- * one produces. Turning it back keeps a round trip byte-stable.
+ * documented as, but a `.ck` source spells it as a bare number (`= 5`), and parsing one produces a
+ * `bigint`. Turning it back keeps a round trip byte-stable, and reading it with `BigInt()` keeps
+ * the digits a `Number()` would round past 2**53.
  */
-function fieldDefault(value: unknown, type: ContractTypeNode): string | number | boolean | undefined {
+function fieldDefault(value: unknown, type: ContractTypeNode): FieldDefault | undefined {
     if (type.kind === 'scalar' && type.name === 'bigint' && typeof value === 'string' && /^-?\d+n?$/.test(value)) {
-        return Number(value.replace(/n$/, ''));
+        return BigInt(value.replace(/n$/, ''));
     }
-    return value as string | number | boolean | undefined;
+    return value as FieldDefault | undefined;
 }
 
 function normalizeTypeField(schema: NormalizedSchema): { baseType: string; nullable: boolean } | null {

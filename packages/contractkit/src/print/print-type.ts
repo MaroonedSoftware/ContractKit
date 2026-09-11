@@ -1,4 +1,4 @@
-import type { ContractTypeNode, FieldNode, InlineObjectTypeNode } from '../ast.js';
+import type { ContractTypeNode, FieldDefault, FieldNode, InlineObjectTypeNode } from '../ast.js';
 import { INDENT } from './indent.js';
 
 // ─── Type expression printer ────────────────────────────────────────────────
@@ -172,9 +172,12 @@ export function formatEnumValue(v: string): string {
     return quoteString(v);
 }
 
-/** Format a default value: quote strings that aren't valid bare identifiers. */
-export function formatDefault(val: string | number | boolean): string {
-    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+/**
+ * Format a default value: quote strings that aren't valid bare identifiers. A `bigint` prints as the
+ * bare digits a `.ck` source writes (`= 5`), without JS's `n` suffix.
+ */
+export function formatDefault(val: FieldDefault): string {
+    if (typeof val !== 'string') return String(val);
     // If it looks like a bare identifier (enum value, unquoted token), keep it bare.
     if (/^[a-zA-Z_$][a-zA-Z0-9_$\-.]*$/.test(val)) return val;
     return quoteString(val);

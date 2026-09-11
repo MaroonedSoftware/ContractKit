@@ -1,4 +1,4 @@
-import type { ContractRootNode, ContractTypeNode, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
+import type { ContractRootNode, ContractTypeNode, FieldDefault, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
 import { buildModelIndex, computeModelsWithInput, resolveEffectiveFields, topoSortModels } from '@contractkit/core';
 import type { HoistedDecl, HoistResult } from './hoist.js';
 import { quoteCSharpString, safeMemberName, toCSharpEnumMemberName, toCSharpPropertyName, xmlDocLines } from './naming.js';
@@ -272,6 +272,18 @@ function literalCSharpType(value: string | number | boolean, ctx: RenderContext)
 
 // ─── Default values ────────────────────────────────────────────────────────
 
+const MIN_SAFE_BIGINT = BigInt(Number.MIN_SAFE_INTEGER);
+const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+
+/**
+ * Whether a `bigint` field's default is written as `new BigInteger(<literal>)` rather than parsed
+ * from a string. A number past 2**53 has already lost digits, so it cannot be written as a literal;
+ * a bigint keeps the same cutoff so a value renders one way whichever form it arrives in.
+ */
+function isSafeInteger(value: number | bigint): boolean {
+    return typeof value === 'bigint' ? value >= MIN_SAFE_BIGINT && value <= MAX_SAFE_BIGINT : Number.isSafeInteger(value);
+}
+
 /**
  * Render a contract default as a C# expression of the field's own type. Returns `undefined` when the
  * value cannot be expressed, so the field is emitted as `required` rather than with an initializer
@@ -284,7 +296,7 @@ function literalCSharpType(value: string | number | boolean, ctx: RenderContext)
  * `Nullable<Rating>`. An enum a member would shadow is written from the global namespace instead.
  */
 function renderDefault(
-    value: string | number | boolean,
+    value: FieldDefault,
     type: ContractTypeNode,
     ctx: RenderContext,
     memberNames: ReadonlySet<string> = new Set(),
@@ -295,7 +307,8 @@ function renderDefault(
 
     if (typeof value === 'boolean') return String(value);
 
-    if (typeof value === 'number') {
+    // A `bigint` value comes from a `bigint` field, whose case below writes it from its exact digits.
+    if (typeof value === 'number' || typeof value === 'bigint') {
         if (inner.kind === 'scalar') {
             switch (inner.name) {
                 case 'int':
@@ -305,7 +318,7 @@ function renderDefault(
                 case 'decimal':
                     return `${value}m`;
                 case 'bigint':
-                    return Number.isSafeInteger(value) ? `new BigInteger(${value})` : `BigInteger.Parse("${value}")`;
+                    return isSafeInteger(value) ? `new BigInteger(${value})` : `BigInteger.Parse("${value}")`;
             }
         }
         return Number.isInteger(value) ? `${value}L` : `${value}d`;

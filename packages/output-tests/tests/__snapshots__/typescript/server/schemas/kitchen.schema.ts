@@ -17,7 +17,7 @@ export const Rating = z.enum(["good", "neutral", "bad"]);
 export type Rating = z.infer<typeof Rating>;
 
 /**
- * generated from [Doc](../../contracts/kitchen.ck#L49)
+ * generated from [Doc](../../contracts/kitchen.ck#L50)
 */
 export const Doc = z.strictObject({
     id: z.uuid(),
@@ -26,7 +26,7 @@ export const Doc = z.strictObject({
 export type Doc = z.infer<typeof Doc>;
 
 /**
- * generated from [Card](../../contracts/kitchen.ck#L54)
+ * generated from [Card](../../contracts/kitchen.ck#L55)
 */
 export const Card = z.strictObject({
     kind: z.literal("card"),
@@ -35,7 +35,7 @@ export const Card = z.strictObject({
 export type Card = z.infer<typeof Card>;
 
 /**
- * generated from [Bank](../../contracts/kitchen.ck#L59)
+ * generated from [Bank](../../contracts/kitchen.ck#L60)
 */
 export const Bank = z.strictObject({
     kind: z.literal("bank"),
@@ -45,20 +45,22 @@ export type Bank = z.infer<typeof Bank>;
 
 /**
  * Decodes snake_case keys and encodes PascalCase ones
- * generated from [Token](../../contracts/kitchen.ck#L67)
+ * generated from [Token](../../contracts/kitchen.ck#L68)
 */
 export const Token = z.strictObject({
     AccessToken: z.string(),
     ExpiresIn: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()).default(3600),
+    RefreshAfter: z.preprocess((val) => typeof val === 'string' && /^-?\d+n?$/.test(val) ? BigInt(val.replace(/n$/, '')) : val, z.bigint()).default(9007199254740993n),
 }).transform(data => ({
     access_token: data.AccessToken,
     ...(data.ExpiresIn != null ? { expires_in: data.ExpiresIn } : {}),
+    ...(data.RefreshAfter != null ? { refresh_after: data.RefreshAfter } : {}),
 }));
 export type Token = z.output<typeof Token>;
 export type TokenOutput = z.output<typeof Token>;
 
 /**
- * generated from [Owned](../../contracts/kitchen.ck#L72)
+ * generated from [Owned](../../contracts/kitchen.ck#L74)
 */
 export const Owned = z.strictObject({
     id: z.uuid(),
@@ -71,7 +73,7 @@ export const OwnedInput = z.strictObject({
 export type OwnedInput = z.infer<typeof OwnedInput>;
 
 /**
- * generated from [Named](../../contracts/kitchen.ck#L77)
+ * generated from [Named](../../contracts/kitchen.ck#L79)
 */
 export const Named = z.strictObject({
     name: z.string(),
@@ -79,7 +81,7 @@ export const Named = z.strictObject({
 export type Named = z.infer<typeof Named>;
 
 /**
- * generated from [Stamp](../../contracts/kitchen.ck#L87)
+ * generated from [Stamp](../../contracts/kitchen.ck#L89)
 */
 export const Stamp = z.strictObject({
     stampedBy: z.string(),
@@ -89,7 +91,7 @@ export type Stamp = z.infer<typeof Stamp>;
 
 /**
  * A plain base under format(), which the schema inlines rather than extends
- * generated from [Stamped](../../contracts/kitchen.ck#L93)
+ * generated from [Stamped](../../contracts/kitchen.ck#L95)
 */
 export const Stamped = z.strictObject({
     stamped_by: z.string(),
@@ -105,7 +107,7 @@ export type StampedOutput = z.output<typeof Stamped>;
 
 /**
  * format() on a contract split for readonly and writeonly fields, applied to both of its schemas
- * generated from [Ledger](../../contracts/kitchen.ck#L98)
+ * generated from [Ledger](../../contracts/kitchen.ck#L100)
 */
 export const Ledger = z.strictObject({
     id: z.uuid(),
@@ -150,6 +152,7 @@ export const Folder = z.strictObject({
     y: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number()),
 }).optional(),
     size: z.preprocess((val) => typeof val === 'string' && /^-?\d+n?$/.test(val) ? BigInt(val.replace(/n$/, '')) : val, z.bigint()),
+    generation: z.preprocess((val) => typeof val === 'string' && /^-?\d+n?$/.test(val) ? BigInt(val.replace(/n$/, '')) : val, z.bigint().min(0n).max(9007199254740993n)).default(9007199254740993n),
     price: _ZodDecimal.refine((v) => v.decimalPlaces() <= 2, { message: 'Must be at most 2 decimal places' }),
     day: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })).optional(),
     at: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'HH:mm:ss') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a time in format HH:mm:ss' })).optional(),
@@ -161,14 +164,14 @@ export const Folder = z.strictObject({
 export type Folder = z.infer<typeof Folder>;
 
 /**
- * generated from [Instrument](../../contracts/kitchen.ck#L64)
+ * generated from [Instrument](../../contracts/kitchen.ck#L65)
 */
 export const Instrument = z.discriminatedUnion("kind", [Card, Bank]);
 export type Instrument = z.infer<typeof Instrument>;
 
 /**
  * Two flattened bases, split into a read and an input shape
- * generated from [Shared](../../contracts/kitchen.ck#L82)
+ * generated from [Shared](../../contracts/kitchen.ck#L84)
 */
 export const Shared = Owned.extend(Named.shape).extend({
     label: z.string().default("x"),

@@ -636,6 +636,15 @@ describe('generateOpenCollection', () => {
         expect(yml!.content).toContain('"priority": 1');
     });
 
+    it('writes a bigint default in the body as a digit string, exactly', () => {
+        // `JSON.stringify` throws on a bigint, and a JSON number would round this one anyway.
+        const bodyType = inlineObjectType([field('serial', scalarType('bigint'), { default: 9007199254740993n })]);
+        const root = opRoot([opRoute('/items', [opOperation('post', { request: opRequest(bodyType) })])], 'items.op');
+        const files = generateOpenCollection([root], { collectionName: 'API' });
+        const yml = files.find(f => f.relativePath === 'items/post-items.yml');
+        expect(yml!.content).toContain('"serial": "9007199254740993"');
+    });
+
     it('uses field default value in body for optional fields', () => {
         const bodyType = inlineObjectType([
             field('status', enumType('pending', 'active'), { optional: true, default: 'pending' }),

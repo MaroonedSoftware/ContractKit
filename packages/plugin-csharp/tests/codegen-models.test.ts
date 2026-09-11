@@ -133,6 +133,15 @@ describe('optional, nullable, default and literal', () => {
         expect(render(one('M', field('f', scalarType('bigint'), { default: 7 })))).toContain('= new BigInteger(7);');
     });
 
+    it('initializes a bigint default from its exact digits', () => {
+        // The AST carries a bigint default as a JS bigint: small ones keep the constructor a number
+        // default gets, and one past 2**53 is parsed from the digits a number could not hold.
+        expect(render(one('M', field('f', scalarType('bigint'), { default: 7n })))).toContain('= new BigInteger(7);');
+        expect(render(one('M', field('f', scalarType('bigint'), { default: 9007199254740993n })))).toContain(
+            '= BigInteger.Parse("9007199254740993");',
+        );
+    });
+
     it('leaves a field required when its default has no C# literal form', () => {
         const out = render(one('M', field('f', scalarType('uuid'), { default: 'not-a-literal' })));
         expect(out).toContain('public required Guid F { get; init; }');
