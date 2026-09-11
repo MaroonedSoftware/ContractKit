@@ -466,6 +466,10 @@ function renderField(field: FieldNode, allModelsWithInput: Set<string>, imports:
     if (field.default !== undefined) {
         const def = typeof field.default === 'string' ? JSON.stringify(field.default) : String(field.default);
         fieldAnnotations.push(`default=${def}`);
+    } else if (field.optional && needsAlias) {
+        // The alias moves the right-hand side into `Field(...)`, so the bare `= None` an optional
+        // field gets below never applies, and to Pydantic a `Field` without a default is required.
+        fieldAnnotations.push('default=None');
     }
 
     if (field.deprecated) lines.push(`    # @deprecated`);

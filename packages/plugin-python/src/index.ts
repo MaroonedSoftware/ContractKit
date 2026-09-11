@@ -47,7 +47,7 @@ export interface PythonSdkPluginConfig {
  * `codegenVersion`, so a plugin upgrade forces full regeneration even when no
  * `.ck` files have changed.
  */
-export const PYTHON_CODEGEN_VERSION = '2';
+export const PYTHON_CODEGEN_VERSION = '3';
 
 /** Filename for the persisted Python manifest under the CLI cache directory. */
 const CACHE_MANIFEST_FILENAME = 'python-manifest.json';

@@ -59,7 +59,7 @@ Instrument = Annotated[Card | Bank, Field(discriminator="kind")]
 class Stamped(Stamp):
     model_config = ConfigDict(populate_by_name=True)
 
-    stamp_note: str | None = Field(alias="stampNote")
+    stamp_note: str | None = Field(alias="stampNote", default=None)
 
 # Two flattened bases, split into a read and an input shape
 class Shared(Owned, Named):
@@ -82,7 +82,7 @@ class Folder(BaseModel):
     parent: Folder | None = None
     readme: Doc | None = None
     children: list[Folder]
-    by_name: dict[str, Folder] | None = Field(alias="byName")
+    by_name: dict[str, Folder] | None = Field(alias="byName", default=None)
     span: tuple[int, int] | None = None
     stamped: tuple[UUID, datetime, bool] | None = None
     label: str | int
