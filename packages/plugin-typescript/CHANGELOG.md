@@ -1,5 +1,25 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.38.11
+
+### Patch Changes
+
+- 4bed654: An MCP tool whose arguments intersect a `format()` model now compiles, in its `query:`, `headers:` and `params:` arguments, its request body and its inline output schema.
+
+    The router already built an intersection such as `query: SnakeFilter & { q: string }` from the member's own object, `SnakeFilter.in`, but the MCP generator still emitted `SnakeFilter.extend({ q: z.string() })` and `Plain.extend(SnakeFilter.shape)`, which failed `tsc` with TS2339 because a `format()` schema is a `ZodPipe`. The `.mcp.ts` file now builds the same chain as the router, so a tool's args parse `from_date` and `q` and the service receives `{ fromDate, q }`, exactly as it does over HTTP.
+
+    A tools file's cache fingerprint now covers the `format()` models it reads through and the keys each one parses, so a model in another `.ck` file gaining a field regenerates the tools that intersect it.
+
+- 0007d1e: An MCP tool whose result is a `format()` model no longer publishes an `outputSchema`, and returns its result as text content only.
+
+    MCP requires a tool's `outputSchema` to be `type: 'object'`. A `format()` model's schema is a pipe ending in the transform that renames its keys, which `z.toJSONSchema` renders as `{}`, so such a tool published an output schema with no `type` at all. A client built on the MCP SDK validates the whole `tools/list` result, and one such tool made it reject the list, hiding every tool on the server. This covers a model with its own or an inherited `format()`, and an alias of an intersection with a `format()` member. A tool returning any other model, or an inline object, publishes its output schema and `structuredContent` as before.
+
+- 832cedf: An MCP tool now publishes its arguments as a caller sends them: `inputSchema` is `z.toJSONSchema(Args, { unrepresentable: 'any', io: 'input' })`.
+
+    A `format()` model's schema is a pipe ending in the transform that renames its keys, and JSON Schema cannot describe a transform, so on the default output side an argument such as `query: SnakeFilter` was published as `{}`. A client was told nothing about the `from_date` key the tool requires, and rejected with an unrecognized key when it sent `fromDate`. The input side is the object the pipe parses, so the published schema now names `from_date`, as the router's request does.
+
+    Every other argument is published as before, except that a field with a default is no longer listed in `required`, since a caller may leave it out.
+
 ## 0.38.10
 
 ### Patch Changes
