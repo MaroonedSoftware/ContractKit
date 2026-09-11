@@ -11,5 +11,3 @@ Send query and header params in the forms a ContractKit router parses, including
 **Headers.** httpx accepts only text header values, so any inline header typed `int`, `boolean`, `date` or `uuid` raised `TypeError` before the request was sent. Header values are now sent as text, booleans as `true`/`false`, lists comma-joined.
 
 The base client's `params` and `extra_headers` parameters are typed `Mapping[str, Any] | BaseModel | None`, which accepts a `TypedDict` or a model.
-
-No bump to `PYTHON_CODEGEN_VERSION` is needed; it was already raised to `3` earlier in this batch.
