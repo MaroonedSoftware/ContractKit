@@ -11,7 +11,7 @@ export const ReservedRouter = ServerKitRouter();
 
 /**
  * fetch one seat
- * from [reserved.ck](../../contracts/reserved.ck#L32)
+ * from [reserved.ck](../../contracts/reserved.ck#L33)
 */
 ReservedRouter.get('/seats/:seatId', requirePolicy(), async ctx => {
     const { seatId } = await parseAndValidate(
@@ -40,7 +40,7 @@ ReservedRouter.get('/seats/:seatId', requirePolicy(), async ctx => {
 
 /**
  * fetch a row by its seat class
- * from [reserved.ck](../../contracts/reserved.ck#L53)
+ * from [reserved.ck](../../contracts/reserved.ck#L54)
 */
 ReservedRouter.get('/rows/:class', requirePolicy(), async ctx => {
     const params = await parseAndValidate(ctx.params, SeatRef.strict());

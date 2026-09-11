@@ -23,6 +23,7 @@ interface Report {
     syntax: { file: string; message: string }[];
     unbound: { file: string; function: string; name: string }[];
     literal: { file: string; function: string; url: string }[];
+    shadowed: { file: string; class: string; field: string; name: string }[];
 }
 
 function runChecker(): Report {
@@ -36,13 +37,14 @@ function runChecker(): Report {
 }
 
 describe.skipIf(!hasPython3)('generated Python', () => {
-    it('parses, and every interpolated name is one the method binds', () => {
-        const { syntax, unbound, literal } = runChecker();
+    it('parses, binds every interpolated name, and shadows no annotated type', () => {
+        const { syntax, unbound, literal, shadowed } = runChecker();
 
         const lines = [
             ...syntax.map(s => `syntax ${s.file}: ${s.message}`),
             ...unbound.map(u => `unbound ${u.file}: ${u.function}() interpolates '${u.name}', which nothing binds`),
             ...literal.map(l => `literal ${l.file}: ${l.function}() requests '${l.url}' with the placeholder unsubstituted`),
+            ...shadowed.map(s => `shadowed ${s.file}: ${s.class}.${s.field} annotates with '${s.name}', which the class body assigns`),
         ].sort();
 
         expect(lines).toEqual([]);

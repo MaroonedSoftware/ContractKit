@@ -645,7 +645,16 @@ function buildUrlExpression(path: string, params?: ParamSource): string {
     PATH_PLACEHOLDER.lastIndex = 0;
 
     const interpolated = path.replace(PATH_PLACEHOLDER, (_m, name: string) => {
-        const expr = params && params.kind !== 'params' ? `params.${toPythonFieldName(name)}` : toPathParamName(name);
+        let expr: string;
+        if (params?.kind === 'ref') {
+            // Looked up by contract name rather than as `params.<attribute>`: the model generator
+            // picks the attribute name knowing the model's other fields, which this one does not.
+            expr = `params.model_dump(by_alias=True)['${name}']`;
+        } else if (params?.kind === 'type') {
+            expr = `params.${toPythonFieldName(name)}`;
+        } else {
+            expr = toPathParamName(name);
+        }
         return `{quote(str(${expr}), safe='')}`;
     });
     return `f"${interpolated}"`;

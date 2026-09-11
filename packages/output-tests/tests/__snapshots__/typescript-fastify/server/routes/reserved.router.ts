@@ -12,7 +12,7 @@ export const ReservedRoutes: FastifyPluginAsync = async app => {
 
     /**
      * fetch one seat
-     * from [reserved.ck](../../contracts/reserved.ck#L32)
+     * from [reserved.ck](../../contracts/reserved.ck#L33)
     */
     app.get('/seats/:seatId', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { seatId } = await parseAndValidate(
@@ -41,7 +41,7 @@ export const ReservedRoutes: FastifyPluginAsync = async app => {
 
     /**
      * fetch a row by its seat class
-     * from [reserved.ck](../../contracts/reserved.ck#L53)
+     * from [reserved.ck](../../contracts/reserved.ck#L54)
     */
     app.get('/rows/:class', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const params = await parseAndValidate(request.params, SeatRef.strict());

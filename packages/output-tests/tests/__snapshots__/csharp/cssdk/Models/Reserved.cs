@@ -23,6 +23,10 @@ public sealed record Seat
     [JsonPropertyName("date")]
     public required DateOnly Date { get; init; }
 
+    [JsonPropertyName("time")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TimeOnly? Time { get; init; }
+
     [JsonPropertyName("copy")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Copy { get; init; }
