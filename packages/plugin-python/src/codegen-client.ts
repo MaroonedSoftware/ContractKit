@@ -645,11 +645,23 @@ function buildUrlExpression(path: string, params?: ParamSource): string {
     PATH_PLACEHOLDER.lastIndex = 0;
 
     const interpolated = path.replace(PATH_PLACEHOLDER, (_m, name: string) => {
-        const field = toPythonFieldName(name);
-        const expr = params && params.kind !== 'params' ? `params.${field}` : field;
+        const expr = params && params.kind !== 'params' ? `params.${toPythonFieldName(name)}` : toPathParamName(name);
         return `{quote(str(${expr}), safe='')}`;
     });
     return `f"${interpolated}"`;
+}
+
+/**
+ * Names a spread path param cannot take, because the method already uses them: its own other
+ * parameters (a second `body` is a duplicate-argument SyntaxError) and the functions the URL
+ * expression calls (a `quote` argument would shadow `urllib.parse.quote` and fail at call time).
+ */
+const METHOD_RESERVED_NAMES: ReadonlySet<string> = new Set(['self', 'body', 'query', 'custom_headers', 'quote', 'str']);
+
+/** The method argument a spread path param becomes. Signature and URL both go through here. */
+function toPathParamName(name: string): string {
+    const py = toPythonFieldName(name);
+    return METHOD_RESERVED_NAMES.has(py) ? `${py}_` : py;
 }
 
 // ─── Parameter building ───────────────────────────────────────────────────
@@ -662,7 +674,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, modelsWithIn
         if (route.params.kind === 'params') {
             for (const p of route.params.nodes) {
                 params.push({
-                    name: toPythonFieldName(p.name),
+                    name: toPathParamName(p.name),
                     type: renderPyType(p.type, modelsWithInput),
                     optional: false,
                     isModel: false,

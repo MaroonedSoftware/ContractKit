@@ -1,0 +1,21 @@
+info:
+  name: "/rows/{class}"
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/rows/:class"
+  params:
+    - name: class
+      value: ""
+      type: path
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+docs: |-
+  fetch a row by its seat class
