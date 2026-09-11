@@ -6,6 +6,7 @@ from uuid import UUID
 from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 from decimal import Decimal
+from ._scalars import BigInt
 
 # A named enum, so a field default has to resolve to a member rather than its wire spelling
 Rating = Literal["good", "neutral", "bad"]
@@ -89,7 +90,7 @@ class Folder(BaseModel):
     pinned: Doc | Folder | None
     instrument: Card | Bank | None = None
     origin: dict[str, Any] | None = None
-    size: int
+    size: BigInt
     price: Decimal
     day: date | None = None
     at: time | None = None

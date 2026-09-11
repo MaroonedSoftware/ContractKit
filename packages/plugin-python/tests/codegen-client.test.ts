@@ -201,6 +201,21 @@ describe('generatePythonClient', () => {
         expect(output).toContain('    "kind": NotRequired[Annotated[Card | Bank, Field(discriminator="type")]],');
     });
 
+    it('imports BigInt wherever a request or response type carries a bigint', () => {
+        const root = opRoot([
+            opRoute('/counts', [
+                opOperation('get', {
+                    query: [opParam('since', scalarType('bigint'), { optional: true })],
+                    responses: [opResponse(200, arrayType(scalarType('bigint')))],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        // The TypedDict evaluates `BigInt` at import, so the name has to be really imported.
+        expect(output).toContain('from ._scalars import BigInt');
+        expect(output).toContain('    "since": NotRequired[BigInt],');
+    });
+
     it('keys query and header TypedDicts by the names that go on the wire', () => {
         const root = opRoot([
             opRoute('/payments', [

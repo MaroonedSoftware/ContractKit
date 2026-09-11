@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generatePydanticModels, renderPyType, toPythonFieldName, deriveModelsModuleName } from '../src/codegen-models.js';
+import { generatePydanticModels, renderPyType, toPythonFieldName, deriveModelsModuleName, SCALARS_PY } from '../src/codegen-models.js';
 import {
     scalarType,
     arrayType,
@@ -23,7 +23,7 @@ describe('renderPyType', () => {
         expect(renderPyType(scalarType('string'))).toBe('str');
         expect(renderPyType(scalarType('number'))).toBe('float');
         expect(renderPyType(scalarType('int'))).toBe('int');
-        expect(renderPyType(scalarType('bigint'))).toBe('int');
+        expect(renderPyType(scalarType('bigint'))).toBe('BigInt');
         expect(renderPyType(scalarType('boolean'))).toBe('bool');
         expect(renderPyType(scalarType('date'))).toBe('date');
         expect(renderPyType(scalarType('time'))).toBe('time');
@@ -370,6 +370,14 @@ describe('generatePydanticModels', () => {
         expect(output).toContain('timeout: timedelta');
     });
 
+    it('types a bigint field as the shared BigInt, imported after the stdlib', () => {
+        const root = contractRoot([model('Order', [field('quantity', scalarType('bigint')), field('total', scalarType('decimal'))])]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('    quantity: BigInt');
+        // Relative imports come last, so the order does not depend on which field is scanned first.
+        expect(output).toMatch(/from decimal import Decimal\nfrom \._scalars import BigInt/);
+    });
+
     it('generates the Decimal import for decimal fields', () => {
         const root = contractRoot([model('Payslip', [field('gross', scalarType('decimal'))])]);
         const output = generatePydanticModels(root);
@@ -462,5 +470,12 @@ describe('multi-line descriptions', () => {
         expect(output).toContain('# Lifecycle status.');
         expect(output).toContain('# Extra detail line.');
         expect(output).not.toMatch(/^Extra detail line\.$/m);
+    });
+});
+
+describe('SCALARS_PY', () => {
+    it('reads every form a bigint arrives in and writes a digit string in JSON mode only', () => {
+        expect(SCALARS_PY).toContain('return int(text[:-1] if text.endswith("n") else text)');
+        expect(SCALARS_PY).toContain('BigInt = Annotated[int, BeforeValidator(_parse_bigint), PlainSerializer(str, return_type=str, when_used="json")]');
     });
 });
