@@ -204,7 +204,9 @@ shapes change it.
 
 **Declared response headers** pair the body with a typed struct. Values arrive as text and are
 converted to the type the contract declares. A required header the service omits raises `SdkError`,
-because the caller was promised a value.
+because the caller was promised a value. The struct is `<Method>Headers`, or
+`<Method>ResponseHeaders` when the operation also declares request `headers:`, which keep
+`<Method>Headers`.
 
 ```swift
 let result = try await sdk.billing.createPayment(body: payment)

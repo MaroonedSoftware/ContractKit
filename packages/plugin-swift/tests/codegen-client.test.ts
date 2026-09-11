@@ -341,3 +341,84 @@ describe('generateSdkSwift', () => {
         expect(out).toContain('public convenience init(baseURL: URL, headers: @escaping @Sendable () async throws -> [String: String] = { [:] }) {');
     });
 });
+
+// ─── Names that would not bind ─────────────────────────────────────────────
+
+describe('path params that would not bind', () => {
+    it('backticks a path param named after a Swift reserved word, in the signature and the path alike', () => {
+        const out = gen(opRoot([opRoute('/seats/{class}', [opOperation('get', { sdk: 'getSeat' })], [opParam('class', scalarType('string'))])]));
+        expect(out).toContain('public func getSeat(`class`: String) async throws {');
+        expect(out).toContain('path: ["seats", http.segment(`class`)]');
+    });
+
+    it('suffixes a path param named like the request body argument, which would repeat a label', () => {
+        const out = gen(
+            opRoot([
+                opRoute(
+                    '/notes/{body}',
+                    [opOperation('put', { sdk: 'putNote', request: opRequest('Payment') })],
+                    [opParam('body', scalarType('string'))],
+                ),
+            ]),
+        );
+        expect(out).toContain('public func putNote(body_: String, body: Payment) async throws {');
+        expect(out).toContain('http.segment(body_)');
+        expect(out).toContain('try http.setJSONBody(&request, body, contentType: "application/json")');
+    });
+
+    it.each(['query', 'customHeaders', 'request', 'response', 'headers', 'http', 'params'])(
+        'suffixes a path param named `%s`, which the method already binds or reads',
+        name => {
+            const out = gen(opRoot([opRoute(`/things/{${name}}`, [opOperation('get', { sdk: 'getThing' })], [opParam(name, scalarType('string'))])]));
+            expect(out).toContain(`public func getThing(${name}_: String) async throws {`);
+            expect(out).toContain(`http.segment(${name}_)`);
+        },
+    );
+});
+
+describe('request and response headers on one operation', () => {
+    const requestHeaders = [opParam('from', scalarType('string'), { optional: true })];
+    const responseHeaders = [{ name: 'x-request-id', optional: false, type: scalarType('string') }];
+
+    it('gives the response side its own struct name, so the module does not declare GetHeaders twice', () => {
+        const out = gen(
+            opRoot([
+                opRoute('/x', [
+                    opOperation('get', {
+                        sdk: 'get',
+                        headers: requestHeaders,
+                        responses: [{ ...opResponse(200, 'Payment'), headers: responseHeaders }],
+                    }),
+                ]),
+            ]),
+        );
+        expect(out.match(/public struct GetHeaders:/g)).toHaveLength(1);
+        expect(out).toContain('customHeaders: GetHeaders? = nil');
+        expect(out).toContain('public struct GetResponseHeaders: Equatable, Sendable {');
+        expect(out).toContain('public let headers: GetResponseHeaders');
+        expect(out).toContain('let headers = try GetResponseHeaders(');
+    });
+
+    it('returns the renamed struct when the status carries headers and no body', () => {
+        const out = gen(
+            opRoot([
+                opRoute('/x', [
+                    opOperation('get', {
+                        sdk: 'get',
+                        headers: requestHeaders,
+                        responses: [{ statusCode: 204, bodies: [], headers: responseHeaders }],
+                    }),
+                ]),
+            ]),
+        );
+        expect(out).toContain('async throws -> GetResponseHeaders {');
+    });
+
+    it('keeps GetHeaders for the response side when the operation declares no request headers', () => {
+        const out = gen(
+            opRoot([opRoute('/x', [opOperation('get', { sdk: 'get', responses: [{ ...opResponse(200, 'Payment'), headers: responseHeaders }] })])]),
+        );
+        expect(out).toContain('public struct GetHeaders: Equatable, Sendable {');
+        expect(out).not.toContain('GetResponseHeaders');
+    });
+});

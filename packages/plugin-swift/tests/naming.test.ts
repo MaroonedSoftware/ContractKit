@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     RESERVED_TYPE_NAMES,
     SWIFT_RESERVED_WORDS,
+    bindSwiftParameterNames,
     deriveSwiftFileBase,
     docLines,
     escapeSwiftIdentifier,
@@ -47,6 +48,32 @@ describe('toSwiftPropertyName', () => {
 
     it('escapes a name that lands on a reserved word', () => {
         expect(toSwiftPropertyName('class')).toBe('`class`');
+    });
+});
+
+describe('bindSwiftParameterNames', () => {
+    it('converts and escapes like toSwiftPropertyName when nothing collides', () => {
+        expect(bindSwiftParameterNames(['invoice-id', 'class', 'self'], [])).toEqual(
+            new Map([
+                ['invoice-id', 'invoiceId'],
+                ['class', '`class`'],
+                ['self', 'self_'],
+            ]),
+        );
+    });
+
+    it('suffixes a name that lands on one already taken', () => {
+        expect(bindSwiftParameterNames(['body'], ['body']).get('body')).toBe('body_');
+    });
+
+    it('compares the unescaped spelling, since `class` in backticks is still class', () => {
+        expect(bindSwiftParameterNames(['class'], ['class']).get('class')).toBe('class_');
+    });
+
+    it('keeps two names distinct when a suffix would collapse them onto one', () => {
+        const bindings = bindSwiftParameterNames(['body', 'body_'], ['body']);
+        expect(bindings.get('body')).toBe('body_');
+        expect(bindings.get('body_')).toBe('body__');
     });
 });
 
