@@ -116,6 +116,21 @@ describe('toYaml', () => {
         expect(toYaml('0.0.1')).toBe("'0.0.1'");
     });
 
+    it('quotes strings a YAML parser would read as a signed or dotted number', () => {
+        // A negative bigint bound written bare came back from the parser as a rounded float.
+        for (const s of ['-9007199254740993', '-0.10', '.5', '-.5', '.inf', '-.Inf', '.NaN']) {
+            const yaml = toYaml({ value: s });
+            expect(yaml).toBe(`value: '${s}'`);
+            expect(parseDocument(yaml).get('value')).toBe(s);
+        }
+    });
+
+    it('keeps strings that merely contain a dash or dot plain', () => {
+        expect(toYaml('-abc')).toBe('-abc');
+        expect(toYaml('.well-known')).toBe('.well-known');
+        expect(toYaml('.information')).toBe('.information');
+    });
+
     it('serializes flat objects', () => {
         const result = toYaml({ name: 'test', count: 5 });
         expect(result).toContain('name: test');
