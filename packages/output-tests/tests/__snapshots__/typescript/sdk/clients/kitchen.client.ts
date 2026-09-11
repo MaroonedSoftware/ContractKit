@@ -1,6 +1,6 @@
 import type { SdkFetch } from '../sdk-options.js';
 import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString, buildHeaders, readContentType } from '../sdk-options.js';
-import type { Folder, Instrument, Shared, SharedInput, Token, TokenOutput } from '../types/kitchen.types.js';
+import type { Folder, Instrument, Shared, SharedInput, TokenOutput, TokenWireInput } from '../types/kitchen.types.js';
 import { reviveFolder } from '../types/kitchen.types.js';
 import { DateTime } from 'luxon';
 
@@ -46,7 +46,7 @@ export class KitchenClient {
         return await parseJson<Instrument>(result);
     }
 
-    async mint(body: Token): Promise<TokenOutput> {
+    async mint(body: TokenWireInput): Promise<TokenOutput> {
         const result = await this.fetch(`/tokens`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

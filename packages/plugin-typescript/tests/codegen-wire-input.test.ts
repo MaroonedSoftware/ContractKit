@@ -4,7 +4,8 @@ import type { ContractRootNode } from '@contractkit/core';
 import { computeModelsWithWireInput } from '../src/codegen-wire-input.js';
 import { generateContract } from '../src/codegen-contract.js';
 import { generatePlainTypes } from '../src/codegen-plain-types.js';
-import { contractRoot, field, model, refType, scalarType } from './helpers.js';
+import { generateSdk } from '../src/codegen-sdk.js';
+import { contractRoot, field, model, opOperation, opRequest, opResponse, opRoot, opRoute, refType, scalarType } from './helpers.js';
 
 /**
  * `format(input=)` on the request side: an SDK has to send the keys the server's schema parses,
@@ -233,5 +234,52 @@ contract Child: Order & { extraNote: string }
         expect(schemas.Token!.safeParse({ access_token: 'a' }).success).toBe(false);
         expect(schemas.Wrapper!.safeParse({ token: { access_token: 'a' } }).success).toBe(false);
         expect(schemas.Holds!.safeParse({ receipt: { issued_to: 'me' } }).success).toBe(false);
+    });
+});
+
+describe('generateSdk request types', () => {
+    const wire = new Set(['Token', 'Filter', 'Trace']);
+    const options = { modelsWithOutput: new Set(['Token']), modelsWithWireInput: wire };
+
+    it('types a request body with the WireInput variant and keeps the response in the output casing', () => {
+        const root = opRoot([
+            opRoute('/tokens', [
+                opOperation('post', { sdk: 'mint', request: opRequest('Token'), responses: [opResponse(201, 'Token', 'application/json')] }),
+            ]),
+        ]);
+        const out = generateSdk(root, options);
+        expect(out).toContain('async mint(body: TokenWireInput): Promise<TokenOutput>');
+        // `Token` itself is no longer named anywhere, so it is not imported either.
+        expect(out).toMatch(/import type \{ TokenOutput, TokenWireInput \}/);
+    });
+
+    it('substitutes inside an inline body', () => {
+        const root = opRoot([
+            opRoute('/wrap', [
+                opOperation('post', {
+                    sdk: 'wrap',
+                    request: opRequest({ kind: 'inlineObject', fields: [field('token', refType('Token'))] }),
+                    responses: [opResponse(204)],
+                }),
+            ]),
+        ]);
+        expect(generateSdk(root, options)).toContain('async wrap(body: { token: TokenWireInput })');
+    });
+
+    it('types query and header objects by their WireInput variant too', () => {
+        const root = opRoot([
+            opRoute('/search', [opOperation('get', { sdk: 'search', query: 'Filter', headers: 'Trace', responses: [opResponse(204)] })]),
+        ]);
+        const out = generateSdk(root, options);
+        expect(out).toContain('query?: FilterWireInput');
+        expect(out).toContain('customHeaders?: TraceWireInput');
+        expect(out).toMatch(/import type \{[^}]*FilterWireInput[^}]*TraceWireInput/);
+    });
+
+    it('leaves a path-params model alone: the URL reads its fields by their declared names', () => {
+        const root = opRoot([opRoute('/filters/{id}', [opOperation('get', { sdk: 'getFilter', responses: [opResponse(204)] })], 'Filter')]);
+        const out = generateSdk(root, options);
+        expect(out).toContain('async getFilter(params: Filter)');
+        expect(out).toContain('${encodeURIComponent(String(params.id))}');
     });
 });

@@ -79,6 +79,22 @@ the service already returns the post-transform shape. Note that `modelsWithOutpu
 set to test for this — it seeds only from `outputCase`, since only that case needs an `Output`
 type alias. Use `computeModelsWithCaseTransform`, which covers both directions.
 
+On the wire, a request travels in the `input` casing and a response in the `output` casing.
+Every SDK plugin encodes a request body under `format(input=)` and decodes a response under
+`format(output=)`. In the TypeScript SDK the model's own type is the wrong request type: for a
+Zod SDK it is `z.output` (post-transform keys), and for a plain one it has the declared keys.
+So SDK type files emit **`ModelWireInput`**, a rendered interface in the input casing, and
+request bodies, query objects and header objects use it. Path params don't, because the URL
+reads their fields by declared name. Which models get one is `computeModelsWithWireInput` in
+`codegen-wire-input.ts`, and it differs by SDK flavour. A Zod SDK also needs one for a plain
+model nesting an output-only model, since `z.infer` gives the nested model's output keys. It is
+not `z.input<typeof X>`: that types every coercing scalar (`int`, `datetime`, `decimal`) as
+`unknown`.
+
+Only the single-schema path applies `format()` on the server. A model split for
+`readonly`/`writeonly` renders its `Input` schema with declared keys, and so does a type alias.
+`ModelWireInput` mirrors what the server parses, not what the contract says.
+
 ## Discriminated unions
 
 `discriminated(by=<field>, A | B | C)` compiles to `z.discriminatedUnion("field", [...])`
