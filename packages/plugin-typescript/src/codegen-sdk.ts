@@ -561,7 +561,7 @@ function generateMethod(
     }
 
     // Build URL with path params
-    const urlExpr = buildUrlExpression(route.path, route.params, pathBindings);
+    const urlExpr = buildUrlExpression(route.path, route.params, pathBindings, options.modelMap);
 
     // Query string
     const hasQuery = !!op.query;
@@ -993,17 +993,55 @@ export function generateErrorBodyAliases(root: OpRootNode, options: SdkCodegenOp
  * The placeholder pattern matches what the `.ck` grammar allows rather than just
  * `[a-zA-Z_]\w*`, so a hyphenated `{payment-id}` is interpolated instead of being left in the URL
  * verbatim. Such a name is not a valid property accessor either, hence the bracket form.
+ *
+ * A value `String` would mangle, a `date`, `time` or `decimal`, is written in the text the router
+ * parses; see {@link wireValueExpr}.
  */
-function buildUrlExpression(path: string, params: ParamSource | undefined, bindings: Map<string, string>): string {
+function buildUrlExpression(path: string, params: ParamSource | undefined, bindings: Map<string, string>, modelMap?: Map<string, ModelNode>): string {
     return path.replace(PATH_PARAM_RE_G, (_m, name: string) => {
         // Spread across the signature: interpolate the identifier `buildMethodParams` bound.
-        if (!params || params.kind === 'params') return `\${encodeURIComponent(${bindings.get(name) ?? toIdentifier(name)})}`;
+        if (!params || params.kind === 'params') {
+            const binding = bindings.get(name) ?? toIdentifier(name);
+            const type = params?.nodes.find(p => p.name === name)?.type;
+            return `\${encodeURIComponent(${type ? spreadPathValue(type, binding, modelMap) : binding})}`;
+        }
         // Behind one `params` argument: read the model's field, which keeps its declared spelling
         // and so may need bracket access. `String(...)` because that field may be typed something
         // `encodeURIComponent` does not accept.
         const access = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? `params.${name}` : `params[${JSON.stringify(name)}]`;
-        return `\${encodeURIComponent(String(${access}))}`;
+        const field = pathParamFields(params, modelMap).find(f => f.name === name);
+        const wire = field && wireValueExpr(field.type, access, Boolean(field.optional || field.nullable), modelMap);
+        return `\${encodeURIComponent(String(${wire ?? access}))}`;
     });
+}
+
+/**
+ * An inline path parameter as `encodeURIComponent` takes it.
+ *
+ * Its TypeScript type is the scalar's, and the global accepts only `string | number | boolean`, so
+ * a `datetime`, `duration` or `bigint` argument did not compile. Those go through `String`, whose
+ * output the router parses. Everything else is passed as it always was.
+ */
+function spreadPathValue(type: ContractTypeNode, binding: string, modelMap?: Map<string, ModelNode>): string {
+    const wire = wireValueExpr(type, binding, false, modelMap);
+    if (wire) return wire;
+    const resolved = resolveParamType(type, modelMap);
+    const needsString = resolved.kind === 'scalar' && (resolved.name === 'datetime' || resolved.name === 'duration' || resolved.name === 'bigint');
+    return needsString ? `String(${binding})` : binding;
+}
+
+/**
+ * The fields behind a `params: Model` or inline-object argument, under their declared names: the
+ * URL reads each one by the placeholder's name, so no `format(input=)` casing applies.
+ */
+function pathParamFields(params: ParamSource, modelMap?: Map<string, ModelNode>): FieldNode[] {
+    if (params.kind === 'params') return [];
+    if (params.kind === 'type') {
+        const node = resolveParamType(params.node, modelMap);
+        return node.kind === 'inlineObject' ? node.fields : [];
+    }
+    const model = modelMap?.get(params.name);
+    return model ? requestWireFields(model, modelMap!).map(f => f.field) : [];
 }
 
 // ─── Method parameters ────────────────────────────────────────────────────
@@ -1197,7 +1235,7 @@ function resolveParamType(type: ContractTypeNode, modelMap?: Map<string, ModelNo
 /**
  * The text one scalar value has to go out as, where `String(value)` gets it wrong.
  *
- * The router parses a query or header value from the text it receives, and for most scalars
+ * The router parses a query, header or path value from the text it receives, and for most scalars
  * `String` already produces what it parses: a number, a boolean, a bigint, and a `datetime` or
  * `duration`, whose luxon `toString()` is the ISO form `fromISO` reads back. Three do not:
  *
@@ -1318,13 +1356,14 @@ function serializedParamArg(arg: string, argOptional: boolean, source: ParamSour
 
 /**
  * Every parameter serialization the clients for `root` emit that depends on a model rather than on
- * `root` itself, for the incremental cache. A `query: Filter` argument is written field by field
- * from `Filter`'s declaration, so a field of `Filter` becoming a `date`, or changing its `format`,
- * changes the client even though the client's own AST did not move.
+ * `root` itself, for the incremental cache. A `query: Filter` or `params: Key` argument is written
+ * field by field from the model's declaration, so a field becoming a `date`, or changing its
+ * `format`, changes the client even though the client's own AST did not move.
  */
 export function sdkParamSerializationKey(root: OpRootNode, modelMap: Map<string, ModelNode>): string[] {
     const out: string[] = [];
     for (const route of root.routes) {
+        out.push(buildUrlExpression(route.path, route.params, bindSdkPathParams(route), modelMap));
         for (const op of route.operations) {
             if (op.query) out.push(serializedParamArg('query', false, op.query, modelMap));
             if (op.headers) out.push(serializedParamArg('customHeaders', false, op.headers, modelMap));

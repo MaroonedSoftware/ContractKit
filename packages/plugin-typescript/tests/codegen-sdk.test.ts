@@ -2498,24 +2498,24 @@ describe('generateSdk — path parameter names that are not identifiers', () => 
 
 // ─── Query and header param wire format ───────────────────────────────────
 
+function parseSource(source: string) {
+    const diag = new DiagnosticCollector();
+    const parsed = decomposeCk(parseCk(source, 'test.ck', diag));
+    expect(diag.getAll().filter(d => d.severity === 'error')).toEqual([]);
+    return parsed;
+}
+
+/** The SDK client for `.ck` source, with the model context the plugin passes in. */
+function sdkFor(source: string): string {
+    const { contract, op } = parseSource(source);
+    return generateSdk(op, {
+        modelMap: new Map(contract.models.map(m => [m.name, m])),
+        modelsWithInput: computeModelsWithInput(contract.models),
+        modelsWithWireInput: computeModelsWithWireInput(contract.models, 'zod'),
+    });
+}
+
 describe('generateSdk: query and header values in the wire format the router parses', () => {
-    /** The SDK client for `.ck` source, with the model context the plugin passes in. */
-    function sdkFor(source: string): string {
-        const { contract, op } = parseSource(source);
-        return generateSdk(op, {
-            modelMap: new Map(contract.models.map(m => [m.name, m])),
-            modelsWithInput: computeModelsWithInput(contract.models),
-            modelsWithWireInput: computeModelsWithWireInput(contract.models, 'zod'),
-        });
-    }
-
-    function parseSource(source: string) {
-        const diag = new DiagnosticCollector();
-        const parsed = decomposeCk(parseCk(source, 'test.ck', diag));
-        expect(diag.getAll().filter(d => d.severity === 'error')).toEqual([]);
-        return parsed;
-    }
-
     /** An operation `GET /reports` declaring `block` (a `query:` or `headers:` entry), plus any models. */
     const reportsOp = (block: string, models = '') => `${models}
 operation /reports: {
@@ -2693,31 +2693,92 @@ contract ReportFilter: Window & {
     });
 });
 
-describe('sdkParamSerializationKey', () => {
-    function keyFor(models: string): string[] {
-        const diag = new DiagnosticCollector();
-        const source = `${models}
-operation /reports: {
+describe('generateSdk: path params in the wire format the router parses', () => {
+    /** `GET <path>` declaring `params`, plus any models. */
+    const pathOp = (path: string, params: string, models = '') => `${models}
+operation ${path}: {
+    params: ${params}
     get: {
-        sdk: listReports
-        service: ReportService.list
-        query: ReportFilter
+        sdk: getReport
+        service: ReportService.get
         response: {
             204:
         }
     }
 }
 `;
-        const { contract, op } = decomposeCk(parseCk(source, 'test.ck', diag));
-        return sdkParamSerializationKey(op, new Map(contract.models.map(m => [m.name, m])));
-    }
 
-    it("changes when a referenced model's field changes, though the client's own AST does not", () => {
+    it('formats an inline date or time path param, honouring a custom format', () => {
+        const out = sdkFor(pathOp('/reports/{day}/{at}', '{\n        day: date\n        at: time("HH:mm")\n    }'));
+        // `encodeURIComponent(day)` with a DateTime did not compile, and at run time sent toISO().
+        expect(out).toContain("`/reports/${encodeURIComponent(day.toFormat('yyyy-MM-dd'))}/${encodeURIComponent(at.toFormat('HH:mm'))}`");
+    });
+
+    it('formats with exactly the format string the router parses a path param with', () => {
+        const source = pathOp('/reports/{day}/{at}', '{\n        day: date("MM-dd-yyyy")\n        at: time\n    }');
+        const router = generateOp(parseSource(source).op);
+        const formats = (text: string, re: RegExp) => [...text.matchAll(re)].map(m => m[1]).sort();
+        const parsed = formats(router, /DateTime\.fromFormat\(val, '([^']+)'\)/g);
+        expect(parsed).toEqual(['HH:mm:ss', 'MM-dd-yyyy']);
+        expect(formats(sdkFor(source), /toFormat\('([^']+)'\)/g)).toEqual(parsed);
+    });
+
+    it('passes a datetime, duration or bigint through String, which encodeURIComponent requires', () => {
+        const out = sdkFor(pathOp('/runs/{at}/{ttl}/{seq}', '{\n        at: datetime\n        ttl: duration\n        seq: bigint\n    }'));
+        expect(out).toContain('`/runs/${encodeURIComponent(String(at))}/${encodeURIComponent(String(ttl))}/${encodeURIComponent(String(seq))}`');
+    });
+
+    it('leaves a string or numeric path param as it was', () => {
+        const out = sdkFor(pathOp('/users/{id}/{page}', '{\n        id: uuid\n        page: int\n    }'));
+        expect(out).toContain('`/users/${encodeURIComponent(id)}/${encodeURIComponent(page)}`');
+    });
+
+    it("formats a params model's date field, read under its declared name", () => {
+        const models = `contract ReportKey: {
+    region: string
+    day: date("yyyyMMdd")
+}
+`;
+        const out = sdkFor(pathOp('/reports/{region}/{day}', 'ReportKey', models));
+        expect(out).toContain(
+            "`/reports/${encodeURIComponent(String(params.region))}/${encodeURIComponent(String(params.day.toFormat('yyyyMMdd')))}`",
+        );
+    });
+});
+
+describe('sdkParamSerializationKey', () => {
+    const keyFor = (source: string) => {
+        const { contract, op } = parseSource(source);
+        return sdkParamSerializationKey(op, new Map(contract.models.map(m => [m.name, m]))).join();
+    };
+    /** `GET /reports/{day}` with `params` at the route and `query` (if any) on the method. */
+    const withModel = (model: string, params: string, query = '') => `${model}
+operation /reports/{day}: {
+    params: ${params}
+    get: {
+        sdk: listReports
+        service: ReportService.list
+        ${query}
+        response: {
+            204:
+        }
+    }
+}
+`;
+
+    it("changes when a referenced query model's field changes, though the client's own AST does not", () => {
         // The incremental cache fingerprints a client by its own AST; a `query: X` argument is
         // written from X's fields, so the key has to carry them or the client goes stale.
-        const asString = keyFor('contract ReportFilter: {\n    from?: string\n}\n');
-        const asDate = keyFor('contract ReportFilter: {\n    from?: date\n}\n');
-        const asOtherFormat = keyFor('contract ReportFilter: {\n    from?: date("dd.MM.yyyy")\n}\n');
-        expect(new Set([asString.join(), asDate.join(), asOtherFormat.join()]).size).toBe(3);
+        const keys = ['from?: string', 'from?: date', 'from?: date("dd.MM.yyyy")'].map(f =>
+            keyFor(withModel(`contract ReportFilter: {\n    ${f}\n}`, '{\n        day: string\n    }', 'query: ReportFilter')),
+        );
+        expect(new Set(keys).size).toBe(3);
+    });
+
+    it("changes when a params model's field changes", () => {
+        const keys = ['day: string', 'day: date', 'day: date("dd.MM.yyyy")'].map(f =>
+            keyFor(withModel(`contract ReportKey: {\n    ${f}\n}`, 'ReportKey')),
+        );
+        expect(new Set(keys).size).toBe(3);
     });
 });
