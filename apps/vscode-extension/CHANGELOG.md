@@ -1,5 +1,12 @@
 # @contractkit/vscode-extension
 
+## 0.14.14
+
+### Patch Changes
+
+- Updated dependencies [05679dd]
+    - @contractkit/explorer-ui@0.5.6
+
 ## 0.14.13
 
 ### Patch Changes
