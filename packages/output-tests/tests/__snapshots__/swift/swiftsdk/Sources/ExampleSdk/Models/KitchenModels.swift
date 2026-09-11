@@ -189,8 +189,8 @@ public struct Stamp: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(stampedBy, forKey: .stampedBy)
-        try container.encode(stampedAt, forKey: .stampedAt)
+        try container.encode(self.stampedBy, forKey: .stampedBy)
+        try container.encode(self.stampedAt, forKey: .stampedAt)
     }
 }
 
@@ -217,8 +217,8 @@ public struct Ledger: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(postedAt, forKey: .postedAt)
+        try container.encode(self.id, forKey: .id)
+        try container.encode(self.postedAt, forKey: .postedAt)
     }
 }
 
@@ -245,8 +245,8 @@ public struct LedgerInput: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(entryCode, forKey: .entryCode)
-        try container.encode(postedAt, forKey: .postedAt)
+        try container.encode(self.entryCode, forKey: .entryCode)
+        try container.encode(self.postedAt, forKey: .postedAt)
     }
 }
 
@@ -283,9 +283,9 @@ public struct Stamped: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: EncodingKeys.self)
-        try container.encode(stampedBy, forKey: .stampedBy)
-        try container.encode(stampedAt, forKey: .stampedAt)
-        try container.encodeIfPresent(stampNote, forKey: .stampNote)
+        try container.encode(self.stampedBy, forKey: .stampedBy)
+        try container.encode(self.stampedAt, forKey: .stampedAt)
+        try container.encodeIfPresent(self.stampNote, forKey: .stampNote)
     }
 }
 
