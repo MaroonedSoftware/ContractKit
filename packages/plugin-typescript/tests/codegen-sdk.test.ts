@@ -39,6 +39,7 @@ import {
     lazyType,
     unionType,
     field,
+    loc,
 } from './helpers.js';
 
 describe('generateSdk', () => {
@@ -1622,6 +1623,104 @@ describe('generateSdk — path params that would not bind', () => {
     it('leaves a contextual keyword alone', () => {
         const out = generateSdk(opRoot([seatRoute('from')]));
         expect(out).toContain('async getSeat(from: string)');
+    });
+});
+
+describe('generateSdk — luxon and decimal.js imports', () => {
+    const withOptions = { outPath: '/sdk/clients/seats.client.ts', sdkOptionsPath: '/sdk/sdk-options.ts' };
+
+    it('imports DateTime for a date query param, which the signature types as DateTime', () => {
+        const root = opRoot([
+            opRoute('/seats', [
+                opOperation('get', {
+                    sdk: 'listSeats',
+                    query: [opParam('from', scalarType('date'), { optional: true })],
+                    responses: [opResponse(200, 'Seat', 'application/json')],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root, withOptions);
+        expect(out).toContain('query?: { from?: DateTime }');
+        expect(out).toContain("import { DateTime } from 'luxon';");
+    });
+
+    it('imports Duration and Decimal for header params typed with them', () => {
+        const root = opRoot([
+            opRoute('/seats', [
+                opOperation('get', {
+                    sdk: 'listSeats',
+                    headers: [opParam('x-timeout', scalarType('duration')), opParam('x-price', scalarType('decimal'))],
+                    responses: [opResponse(200, 'Seat', 'application/json')],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root, withOptions);
+        expect(out).toContain("import { Duration } from 'luxon';");
+        expect(out).toContain("import { Decimal } from 'decimal.js';");
+    });
+
+    it('imports DateTime once for both a path param and a response header conversion', () => {
+        const root = opRoot([
+            opRoute(
+                '/days/{day}',
+                [
+                    opOperation('get', {
+                        sdk: 'getDay',
+                        responses: [
+                            {
+                                ...opResponse(200, 'Day', 'application/json'),
+                                headers: [{ name: 'last-modified', type: scalarType('datetime'), optional: false, loc: loc() }],
+                            },
+                        ],
+                    }),
+                ],
+                [opParam('day', scalarType('date'))],
+            ),
+        ]);
+        const out = generateSdk(root, withOptions);
+        expect(out.match(/from 'luxon'/g)).toHaveLength(1);
+        expect(out).toContain("import { DateTime } from 'luxon';");
+    });
+
+    it('adds no import for a class named only in a doc comment or as an inline object key', () => {
+        const root = opRoot([
+            opRoute('/seats', [
+                opOperation('get', {
+                    sdk: 'listSeats',
+                    description: 'Filters by DateTime and Decimal',
+                    query: [opParam('page', scalarType('int'), { optional: true })],
+                    responses: [opResponse(200, inlineObjectType([field('DateTime', scalarType('string'))]), 'application/json')],
+                }),
+            ]),
+        ]);
+        const out = generateSdk(root, withOptions);
+        expect(out).not.toContain("from 'luxon'");
+        expect(out).not.toContain("from 'decimal.js'");
+    });
+
+    it('imports DateTime into an area client whose inlined method takes a date', () => {
+        const root = opRoot(
+            [
+                opRoute('/seats', [
+                    opOperation('get', {
+                        sdk: 'listSeats',
+                        query: [opParam('from', scalarType('date'), { optional: true })],
+                        responses: [opResponse(200, 'Seat', 'application/json')],
+                    }),
+                ]),
+            ],
+            'seats.ck',
+            { area: 'venue' },
+        );
+        const out = generateAreaClient({
+            area: 'venue',
+            outPath: '/out/venue/venue.client.ts',
+            inlineFiles: [{ root, codegenOptions: { outPath: '/out/venue/venue.client.ts', sdkOptionsPath: '/out/sdk-options.ts' } }],
+            subareaClients: [],
+            sdkOptionsPath: '/out/sdk-options.ts',
+        });
+        expect(out).toContain('query?: { from?: DateTime }');
+        expect(out).toContain("import { DateTime } from 'luxon';");
     });
 });
 
