@@ -284,7 +284,7 @@ Response headers:
 ##### Attributes
 
 <details>
-<summary>Attributes (4)</summary>
+<summary>Attributes (5)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -292,6 +292,7 @@ Response headers:
 | `ids` | `string[]` | No |  |
 | `since` | `string` | No |  |
 | `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
+| `xCorrelationId` | `string` | No |  |
 
 </details>
 
@@ -862,14 +863,15 @@ Extends [`Credential`](#credential)
 
 #### TenantHeaders
 
-> Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+> Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.
 
 <details>
-<summary>Attributes (1)</summary>
+<summary>Attributes (2)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
 | `x-tenant` | `string` | Yes |  |
+| `xCorrelationId` | `string` | No |  |
 
 </details>
 

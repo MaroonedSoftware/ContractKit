@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateOp } from '../src/codegen-operation.js';
+import { FASTIFY_SERVER_FRAMEWORK } from '../src/server-framework-fastify.js';
 import { SECURITY_NONE } from '@contractkit/core';
 import type { ContractTypeNode, ModelNode } from '@contractkit/core';
 import {
@@ -780,6 +781,75 @@ describe('generateOperation', () => {
             ]);
             const output = generateOp(root);
             expect(output).toContain('z.strictObject({');
+        });
+
+        describe('a declared name that is not lowercase', () => {
+            // Node lowercases every incoming header name, so `ctx.headers` holds `xtenant`, never `xTenant`.
+            const models = (...ms: ModelNode[]) => new Map(ms.map(m => [m.name, m]));
+
+            it('is read from its lowercase key in an inline block', () => {
+                const root = opRoot([
+                    opRoute('/users', [
+                        opOperation('get', { headers: [opParam('xTenant', scalarType('string')), opParam('x-request-id', scalarType('string'))] }),
+                    ]),
+                ]);
+                const output = generateOp(root);
+                expect(output).toContain(
+                    [
+                        '    const headers = await parseAndValidate(',
+                        "        { ...ctx.headers, xTenant: ctx.headers['xtenant'] },",
+                        '        z.object({',
+                        '            xTenant: z.string(),',
+                    ].join('\n'),
+                );
+            });
+
+            it('is read from its lowercase key in a model, its bases included', () => {
+                const root = opRoot([opRoute('/users', [opOperation('get', { headers: 'Tenant' })])]);
+                const output = generateOp(root, {
+                    models: models(
+                        model('BaseHeaders', [field('Authorization', scalarType('string'), { optional: true })]),
+                        model('Tenant', [field('xTenant', scalarType('string')), field('x-request-id', scalarType('string'))], {
+                            bases: ['BaseHeaders'],
+                        }),
+                    ),
+                });
+                expect(output).toContain(
+                    [
+                        '    const headers = await parseAndValidate(',
+                        "        { ...ctx.headers, Authorization: ctx.headers['authorization'], xTenant: ctx.headers['xtenant'] },",
+                        '        Tenant.strip(),',
+                        '    );',
+                    ].join('\n'),
+                );
+            });
+
+            it('is read from its lowercase key in a model inside an intersection', () => {
+                const root = opRoot([
+                    opRoute('/users', [
+                        opOperation('get', {
+                            headers: intersectionType(
+                                refType('Tenant'),
+                                inlineObjectType([field('xTrace', scalarType('string'), { optional: true })]),
+                            ),
+                        }),
+                    ]),
+                ]);
+                const output = generateOp(root, { models: models(model('Tenant', [field('xTenant', scalarType('string'))])) });
+                expect(output).toContain("{ ...ctx.headers, xTenant: ctx.headers['xtenant'], xTrace: ctx.headers['xtrace'] },");
+            });
+
+            it('goes through the adapter, reading request.headers on Fastify', () => {
+                const root = opRoot([opRoute('/users', [opOperation('get', { headers: [opParam('xTenant', scalarType('string'))] })])]);
+                const output = generateOp(root, { framework: FASTIFY_SERVER_FRAMEWORK });
+                expect(output).toContain("{ ...request.headers, xTenant: request.headers['xtenant'] },");
+            });
+
+            it('leaves a block whose names are all lowercase reading the headers object directly', () => {
+                const root = opRoot([opRoute('/users', [opOperation('get', { headers: 'TenantHeaders' })])]);
+                const output = generateOp(root, { models: models(model('TenantHeaders', [field('x-tenant', scalarType('string'))])) });
+                expect(output).toContain('const headers = await parseAndValidate(ctx.headers, TenantHeaders.strip());');
+            });
         });
 
         it('uses strip mode for headers when specified', () => {

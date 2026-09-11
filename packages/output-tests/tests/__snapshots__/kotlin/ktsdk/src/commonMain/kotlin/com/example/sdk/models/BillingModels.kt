@@ -85,10 +85,11 @@ data class PaymentFilter(
     val ids: List<Uuid>? = null,
 )
 
-/** Request headers declared as a model. Hyphenated, because a server sees header names lowercased. */
+/** Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches. */
 @Serializable
 data class TenantHeaders(
     @SerialName("x-tenant") val xTenant: String,
+    val xCorrelationId: String? = null,
 )
 
 /** Extends a writeonly base and is itself writeonly */

@@ -304,26 +304,31 @@ public struct PaymentFilter: Codable, Equatable, Sendable {
     }
 }
 
-/// Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+/// Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.
 public struct TenantHeaders: Codable, Equatable, Sendable {
     public var xTenant: String
+    public var xCorrelationId: String?
 
-    public init(xTenant: String) {
+    public init(xTenant: String, xCorrelationId: String? = nil) {
         self.xTenant = xTenant
+        self.xCorrelationId = xCorrelationId
     }
 
     private enum CodingKeys: String, CodingKey {
         case xTenant = "x-tenant"
+        case xCorrelationId = "xCorrelationId"
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.xTenant = try container.decode(String.self, forKey: .xTenant)
+        self.xCorrelationId = try container.decodeIfPresent(String.self, forKey: .xCorrelationId)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(self.xTenant, forKey: .xTenant)
+        try container.encodeIfPresent(self.xCorrelationId, forKey: .xCorrelationId)
     }
 }
 

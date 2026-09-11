@@ -615,4 +615,50 @@ operation /items: {
             await expect(call('get /items', { query: 'tags=x&other=1' })).rejects.toThrow('Unrecognized key');
         });
     });
+
+    describe('headers declared with names that are not lowercase', () => {
+        const source = `
+contract Tenant: {
+    xTenant: string
+    x-request-id?: string
+}
+
+operation /model: {
+    get: {
+        service: ItemService.model
+        headers: Tenant
+        response: { 204: }
+    }
+}
+
+operation /inline: {
+    get: {
+        service: ItemService.inline
+        headers: {
+            xTenant: string
+            Authorization?: string
+        }
+        response: { 204: }
+    }
+}
+`;
+
+        it('finds a camelCase header however the client cased it, and hands it over under its declared name', async () => {
+            const call = await compileRouter(source);
+            for (const name of ['xTenant', 'XTENANT', 'xtenant']) {
+                expect(await call('get /model', { headers: { [name]: 't1', 'X-Request-Id': 'r1' } })).toEqual([
+                    { xTenant: 't1', 'x-request-id': 'r1' },
+                ]);
+            }
+            expect(await call('get /inline', { headers: { xTenant: 't1', Authorization: 'Bearer z' } })).toEqual([
+                { xTenant: 't1', Authorization: 'Bearer z' },
+            ]);
+        });
+
+        it('still rejects a request that leaves the header out', async () => {
+            const call = await compileRouter(source);
+            await expect(call('get /model', { headers: {} })).rejects.toThrow('xTenant');
+            await expect(call('get /inline', { headers: { Authorization: 'Bearer z' } })).rejects.toThrow('xTenant');
+        });
+    });
 });

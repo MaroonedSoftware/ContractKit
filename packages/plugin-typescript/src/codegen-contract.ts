@@ -1206,7 +1206,7 @@ function queryArrayOverrides(members: readonly ContractTypeNode[], modelsWithInp
  * `format()` renames keys, or it is an alias of one that does. A pipe has no `.shape`, `.extend()` or
  * `.strict()`.
  */
-function compilesToPipe(name: string, models: Map<string, ModelNode>, seen = new Set<string>()): boolean {
+export function compilesToPipe(name: string, models: Map<string, ModelNode>, seen = new Set<string>()): boolean {
     const model = models.get(name);
     if (!model || seen.has(name)) return false;
     if (model.type) return model.type.kind === 'ref' && compilesToPipe(model.type.name, models, seen.add(name));

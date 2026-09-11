@@ -57,9 +57,10 @@ contract PaymentFilter: {
     ids?: array(uuid)
 }
 
-# Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+# Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.
 contract TenantHeaders: {
     x-tenant: string
+    xCorrelationId?: string
 }
 
 # ─── Payment endpoints ────────────────────────────────────────────────────────

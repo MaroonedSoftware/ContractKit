@@ -66,11 +66,12 @@ class PaymentFilter(BaseModel):
     since: datetime | None = None
     ids: list[UUID] | None = None
 
-# Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+# Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.
 class TenantHeaders(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     x_tenant: str = Field(alias="x-tenant")
+    x_correlation_id: str | None = Field(alias="xCorrelationId", default=None)
 
 # Extends a writeonly base and is itself writeonly
 class AdminCredential(Credential):

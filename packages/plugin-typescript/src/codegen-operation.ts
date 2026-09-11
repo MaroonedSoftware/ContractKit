@@ -19,9 +19,18 @@ import {
     PATH_PARAM_RE_G,
     toIdentifier,
     classifyContentType,
+    resolveEffectiveFields,
 } from '@contractkit/core';
-import { renderType, renderInputType, renderQueryType, applyFieldModifiers, pascalToDotCase, modeToWrapper } from './codegen-contract.js';
-import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, sourceLink } from './ts-render.js';
+import {
+    renderType,
+    renderInputType,
+    renderQueryType,
+    applyFieldModifiers,
+    pascalToDotCase,
+    modeToWrapper,
+    compilesToPipe,
+} from './codegen-contract.js';
+import { renderOutputTsType, quoteKey, headerNameToProperty, escapeJsDocLines, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { BIGINT_REPLACER_IMPORT, typeReachesBigInt } from './bigint-runtime.js';
 import { basename, dirname, relative } from 'path';
@@ -400,7 +409,18 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
             options.models,
         ),
     );
-    lines.push(...generateParamValidation(op.headers, 'headers', framework.request.headers, op.headersMode ?? 'strip', '', modelsWithInput));
+    lines.push(
+        ...generateParamValidation(
+            op.headers,
+            'headers',
+            framework.request.headers,
+            op.headersMode ?? 'strip',
+            '',
+            modelsWithInput,
+            undefined,
+            options.models,
+        ),
+    );
 
     // Body validation (request-side — use Input variants)
     if (hasBody && op.request) {
@@ -911,6 +931,9 @@ function generateParamValidation(
     // Path params are destructured and spread into the service call; query and headers pass as
     // whole objects. The variable the block declares is named after the kind either way.
     const isPathParams = kind === 'params';
+    // What the block validates: the framework's own object, except that a header declared with a
+    // name that is not lowercase has to be read from the lowercase key the server delivers it under.
+    const input = kind === 'headers' ? headerSource(sourceExpr, declaredHeaderNames(source, models)) : sourceExpr;
     if (source.kind === 'ref') {
         // Type reference — apply mode as a method call on the schema. A query goes through
         // renderQueryType, which re-wraps the model's array fields with the split an inline query
@@ -920,7 +943,7 @@ function generateParamValidation(
             : modelsWithInput?.has(source.name)
               ? `${source.name}Input`
               : source.name;
-        lines.push(...validationCall(kind, sourceExpr, `${typeName}.${mode}()`));
+        lines.push(...validationCall(kind, input, `${typeName}.${mode}()`));
         lines.push('');
     } else if (source.kind === 'params') {
         // Inline param declarations — wrap with the appropriate z.*Object constructor
@@ -938,7 +961,7 @@ function generateParamValidation(
                       .join(', ')} }`
                 : kind;
             lines.push(`    const ${lhs} = await parseAndValidate(`);
-            lines.push(`        ${sourceExpr},`);
+            lines.push(`        ${input},`);
             lines.push(`        ${modeToWrapper(mode)}({`);
             for (const param of source.nodes) {
                 // For path params the key must match the name in the route pattern above, which
@@ -961,22 +984,53 @@ function generateParamValidation(
         // ContractTypeNode — use query-aware rendering for query params (coerces single string → array),
         // otherwise use Input variant rendering; apply mode as a method call
         const schema = isQuery ? renderQueryType(source.node, modelsWithInput, undefined, models) : renderInputType(source.node, modelsWithInput);
-        lines.push(...validationCall(kind, sourceExpr, `(${schema}).${mode}()`));
+        lines.push(...validationCall(kind, input, `(${schema}).${mode}()`));
         lines.push('');
     }
     return lines;
 }
 
 /**
+ * The names a headers block declares, as its schema keys them. A model's come from `models`, so
+ * there are none without it. A `format()` model contributes none either: its schema is a pipe keyed
+ * by the recased names, and has no mode method to validate with in the first place.
+ */
+function declaredHeaderNames(source: ParamSource, models?: Map<string, ModelNode>): string[] {
+    switch (source.kind) {
+        case 'params':
+            return source.nodes.map(n => n.name);
+        case 'ref':
+            return !models || compilesToPipe(source.name, models) ? [] : resolveEffectiveFields(source.name, models).fields.map(f => f.name);
+        case 'type':
+            return resolveEffectiveFields(source.node, models ?? new Map()).fields.map(f => f.name);
+    }
+}
+
+/**
+ * The request's headers, with each declared name that is not lowercase copied over from its
+ * lowercase key: `{ ...ctx.headers, xTenant: ctx.headers['xtenant'] }`. Node lowercases every
+ * incoming header name, so a schema keyed `xTenant` would otherwise never find it, whatever the
+ * client sent. The spread keeps every other header for a block that passes them on. Returns
+ * `sourceExpr` itself when every name is already lowercase.
+ */
+function headerSource(sourceExpr: string, names: readonly string[]): string {
+    const cased = [...new Set(names.filter(n => n !== n.toLowerCase()))];
+    if (cased.length === 0) return sourceExpr;
+    const copies = cased.map(n => `${quoteKey(n)}: ${sourceExpr}['${escapeSingleQuoted(n.toLowerCase())}']`);
+    return `{ ...${sourceExpr}, ${copies.join(', ')} }`;
+}
+
+/**
  * `const <kind> = await parseAndValidate(<source>, <schema>);` on one line, or with each argument on
- * its own line when the schema spans several, indented to sit inside the call.
+ * its own line when the schema spans several or the source is a remapped header object, indented to
+ * sit inside the call.
  *
  * One array element per output line, never a string with a newline in it: a framework whose routes
  * sit inside the router's function body (Fastify) indents the handler element by element.
  */
 function validationCall(kind: ParamKind, sourceExpr: string, schema: string): string[] {
     const schemaLines = schema.split('\n');
-    if (schemaLines.length === 1) return [`    const ${kind} = await parseAndValidate(${sourceExpr}, ${schema});`];
+    if (schemaLines.length === 1 && !sourceExpr.startsWith('{')) return [`    const ${kind} = await parseAndValidate(${sourceExpr}, ${schema});`];
     schemaLines[schemaLines.length - 1] += ',';
     return [`    const ${kind} = await parseAndValidate(`, `        ${sourceExpr},`, ...schemaLines.map(l => `        ${l}`), `    );`];
 }

@@ -99,11 +99,12 @@ export const PaymentFilter = z.strictObject({
 export type PaymentFilter = z.infer<typeof PaymentFilter>;
 
 /**
- * Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+ * Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.
  * generated from [TenantHeaders](../../contracts/billing.ck#L61)
 */
 export const TenantHeaders = z.strictObject({
     'x-tenant': z.string(),
+    xCorrelationId: z.string().optional(),
 });
 export type TenantHeaders = z.infer<typeof TenantHeaders>;
 

@@ -645,8 +645,10 @@ components:
       properties:
         x-tenant:
           type: string
+        xCorrelationId:
+          type: string
       required: [x-tenant]
-      description: 'Request headers declared as a model. Hyphenated, because a server sees header names lowercased.'
+      description: 'Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.'
     Invoice:
       type: object
       properties:

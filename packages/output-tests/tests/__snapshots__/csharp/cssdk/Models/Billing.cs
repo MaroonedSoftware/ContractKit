@@ -131,11 +131,15 @@ public sealed record PaymentFilter
     public List<Guid>? Ids { get; init; }
 }
 
-/// <summary>Request headers declared as a model. Hyphenated, because a server sees header names lowercased.</summary>
+/// <summary>Request headers declared as a model. Header names are case-insensitive, so any casing of `xCorrelationId` matches.</summary>
 public sealed record TenantHeaders
 {
     [JsonPropertyName("x-tenant")]
     public required string XTenant { get; init; }
+
+    [JsonPropertyName("xCorrelationId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? XCorrelationId { get; init; }
 }
 
 /// <summary>Extends a writeonly base and is itself writeonly</summary>

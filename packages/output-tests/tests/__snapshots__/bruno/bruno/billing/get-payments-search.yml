@@ -22,6 +22,9 @@ http:
   headers:
     - name: x-tenant
       value: ""
+    - name: xCorrelationId
+      value: ""
+      disabled: true
 
 runtime:
   assertions:

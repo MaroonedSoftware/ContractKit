@@ -15,7 +15,7 @@ SDK method: `searchPayments`
 ## Attributes
 
 <details>
-<summary>Attributes (4)</summary>
+<summary>Attributes (5)</summary>
 
 | Attribute | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -23,6 +23,7 @@ SDK method: `searchPayments`
 | `ids` | `string[]` | No |  |
 | `since` | `string` | No |  |
 | `status` | `'pending' \| 'completed' \| 'failed'` | No |  |
+| `xCorrelationId` | `string` | No |  |
 
 </details>
 
