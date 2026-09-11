@@ -6,10 +6,12 @@ package com.example.sdk.clients
 import com.example.sdk.models.AdminCredentialInput
 import com.example.sdk.models.Credential
 import com.example.sdk.models.Payment
+import com.example.sdk.models.PaymentFilter
 import com.example.sdk.models.PaymentInput
 import com.example.sdk.models.PaymentRef
 import com.example.sdk.models.Session
 import com.example.sdk.models.SessionInput
+import com.example.sdk.models.TenantHeaders
 import com.example.sdk.models.UpdatePaymentForm
 import com.example.sdk.runtime.SdkHttp
 import io.ktor.http.HttpMethod
@@ -45,6 +47,16 @@ class BillingClient(private val http: SdkHttp) {
     suspend fun listPayments(query: ListPaymentsQuery, customHeaders: ListPaymentsHeaders): List<Payment> {
         val response = http.execute(HttpMethod.Get) {
             path("payments")
+            params(query)
+            headers(customHeaders)
+        }
+        return http.decodeJson(response)
+    }
+
+    /** search payments with a filter model */
+    suspend fun searchPayments(query: PaymentFilter? = null, customHeaders: TenantHeaders? = null): List<Payment> {
+        val response = http.execute(HttpMethod.Get) {
+            path("payments", "search")
             params(query)
             headers(customHeaders)
         }

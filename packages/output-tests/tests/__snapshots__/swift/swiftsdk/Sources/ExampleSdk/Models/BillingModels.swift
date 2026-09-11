@@ -271,6 +271,57 @@ public struct UploadReceiptForm: Codable, Equatable, Sendable {
     }
 }
 
+/// Query params declared as a model, referenced via `query: PaymentFilter`
+public struct PaymentFilter: Codable, Equatable, Sendable {
+    public var status: PaymentFilterStatus?
+    public var since: Date?
+
+    public init(status: PaymentFilterStatus? = nil, since: Date? = nil) {
+        self.status = status
+        self.since = since
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status = "status"
+        case since = "since"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.status = try container.decodeIfPresent(PaymentFilterStatus.self, forKey: .status)
+        self.since = try container.decodeIfPresent(Date.self, forKey: .since)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(since, forKey: .since)
+    }
+}
+
+/// Request headers declared as a model. Hyphenated, because a server sees header names lowercased.
+public struct TenantHeaders: Codable, Equatable, Sendable {
+    public var xTenant: String
+
+    public init(xTenant: String) {
+        self.xTenant = xTenant
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case xTenant = "x-tenant"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.xTenant = try container.decode(String.self, forKey: .xTenant)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(xTenant, forKey: .xTenant)
+    }
+}
+
 /// Extends a writeonly base and is itself writeonly
 public struct AdminCredential: Codable, Equatable, Sendable {
     public var id: UUID
@@ -333,6 +384,12 @@ public struct AdminCredentialInput: Codable, Equatable, Sendable {
 }
 
 public enum PaymentStatus: String, Codable, CaseIterable, Sendable {
+    case pending = "pending"
+    case completed = "completed"
+    case failed = "failed"
+}
+
+public enum PaymentFilterStatus: String, Codable, CaseIterable, Sendable {
     case pending = "pending"
     case completed = "completed"
     case failed = "failed"

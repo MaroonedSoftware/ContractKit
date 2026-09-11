@@ -49,6 +49,18 @@ public sealed class BillingClient(SdkHttp http)
         return http.ReadJson<List<Payment>>(response);
     }
 
+    /// <summary>search payments with a filter model</summary>
+    public async Task<List<Payment>> SearchPaymentsAsync(PaymentFilter? query = null, TenantHeaders? customHeaders = null, CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Get,
+            http.Path("payments", "search"),
+            query: http.Params(query),
+            headers: http.Params(customHeaders),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<List<Payment>>(response);
+    }
+
     /// <summary>create several payments at once</summary>
     public async Task<List<Payment>> CreatePaymentsAsync(List<PaymentInput> body, CancellationToken cancellationToken = default)
     {

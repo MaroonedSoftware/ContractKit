@@ -44,8 +44,8 @@ class GetFolder404Response(TypedDict):
     data: Shared
 
 
-_IMPORT__RESPONSE = TypeAdapter(Instrument)
-_LIST_TOKENS_RESPONSE = TypeAdapter(list[Token])
+_IMPORT__RESPONSE: TypeAdapter[Instrument] = TypeAdapter(Instrument)
+_LIST_TOKENS_RESPONSE: TypeAdapter[list[Token]] = TypeAdapter(list[Token])
 
 
 class KitchenClient(BaseClient):
