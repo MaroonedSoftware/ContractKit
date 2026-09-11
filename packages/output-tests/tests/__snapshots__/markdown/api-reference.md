@@ -530,7 +530,7 @@ Accepts a [Token](#token) object.
 | `id` | `string` | Yes | *read-only* |
 | `amount` | `number` | Yes |  |
 | `unitPrice` | `Decimal` | Yes |  |
-| `quantity` | `bigint` | Yes |  |
+| `quantity` | `bigint` | Yes | *sent as a digit string, "123" or "123n"* |
 | `createdAt` | `string` | Yes |  |
 | `processingTime` | `string` | No |  |
 | `status` | `'pending' \| 'completed' \| 'failed'` | Yes | *default: `pending`* |
@@ -651,7 +651,7 @@ type Rating = 'good' | 'neutral' | 'bad'
 | `pinned` | `Doc \| Folder` | Yes | *nullable* |
 | `instrument` | `Card \| Bank` | No |  |
 | `origin` | `{ x: number; y: number }` | No |  |
-| `size` | `bigint` | Yes |  |
+| `size` | `bigint` | Yes | *sent as a digit string, "123" or "123n"* |
 | `price` | `Decimal` | Yes |  |
 | `day` | `string` | No |  |
 | `at` | `string` | No |  |

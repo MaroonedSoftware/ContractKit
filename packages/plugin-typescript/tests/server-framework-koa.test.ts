@@ -130,6 +130,10 @@ describe('KOA_SERVER_FRAMEWORK', () => {
             expect(koa.response.send(undefined)).toEqual([]);
         });
 
+        it('stringifies a bigint JSON body with the replacer, since Koa has no serializer hook', () => {
+            expect(koa.response.sendBigIntJson('result')).toEqual(['ctx.body = JSON.stringify(result, bigIntReplacer);']);
+        });
+
         it('closes a status case with a break', () => {
             expect(koa.response.caseEnd()).toEqual(['break;']);
         });

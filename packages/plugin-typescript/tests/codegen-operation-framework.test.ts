@@ -2,7 +2,21 @@ import { describe, it, expect } from 'vitest';
 import { generateOp } from '../src/codegen-operation.js';
 import type { RouteMiddleware, ServerFramework } from '../src/server-framework.js';
 import { FASTIFY_SERVER_FRAMEWORK } from '../src/server-framework-fastify.js';
-import { scalarType, refType, opParam, opRequest, opMultiRequest, opResponse, opResponseMulti, opOperation, opRoute, opRoot } from './helpers.js';
+import {
+    scalarType,
+    refType,
+    arrayType,
+    inlineObjectType,
+    field,
+    opParam,
+    opRequest,
+    opMultiRequest,
+    opResponse,
+    opResponseMulti,
+    opOperation,
+    opRoute,
+    opRoot,
+} from './helpers.js';
 
 /**
  * A framework whose every string is unmistakable. Rendering a router through it and finding no Koa
@@ -49,6 +63,7 @@ const STUB: ServerFramework = {
         header: (name, valueExpr) => `rs.putHeader('${name}', ${valueExpr});`,
         type: expr => `rs.setMedia(${expr});`,
         send: bodyExpr => (bodyExpr === undefined ? ['return rs.finish();'] : [`return rs.deliver(${bodyExpr});`]),
+        sendBigIntJson: bodyExpr => [`return rs.deliverBigIntJson(${bodyExpr});`],
         caseEnd: () => [],
     },
     mcpRouter: ({ path }) => `// stub mcp at ${path}\n`,
@@ -208,5 +223,112 @@ describe('generateOp — Fastify', () => {
         const statusSwitch = output.slice(output.indexOf('switch (result.status) {'));
         expect(statusSwitch).toContain('case 202:');
         expect(statusSwitch).not.toContain('break;');
+    });
+});
+
+/**
+ * `JSON.stringify` throws on a `bigint`, and both frameworks hand an object body to exactly that, so
+ * a response that can carry one has to go out through `bigIntReplacer` or the request 500s.
+ */
+describe('generateOp — bigint JSON responses', () => {
+    const modelsWithBigInt = new Set(['Ledger']);
+    const REPLACER_IMPORT = "import { bigIntReplacer } from '@maroonedsoftware/utilities';";
+    const render = (op: ReturnType<typeof opOperation>, extra: Parameters<typeof generateOp>[1] = {}) =>
+        generateOp(opRoot([opRoute('/ledgers', [op])]), { modelsWithBigInt, ...extra });
+
+    it('serializes a body whose model carries a bigint, and imports the replacer', () => {
+        const out = render(opOperation('get', { responses: [opResponse(200, 'Ledger')] }));
+        expect(out).toContain('ctx.body = JSON.stringify(result, bigIntReplacer);');
+        expect(out).toContain(REPLACER_IMPORT);
+    });
+
+    it('leaves a body with no bigint to the framework, with no import', () => {
+        const out = render(opOperation('get', { responses: [opResponse(200, 'User')] }));
+        expect(out).toContain('ctx.body = result;');
+        expect(out).not.toContain('bigIntReplacer');
+    });
+
+    it('finds a bigint the model set cannot know about: inline, or inside an array', () => {
+        const inline = render(opOperation('get', { responses: [opResponse(200, inlineObjectType([field('total', scalarType('bigint'))]))] }));
+        expect(inline).toContain('ctx.body = JSON.stringify(result, bigIntReplacer);');
+        const list = render(opOperation('get', { responses: [opResponse(200, arrayType(scalarType('bigint')))] }));
+        expect(list).toContain('ctx.body = JSON.stringify(result, bigIntReplacer);');
+        const listOfModels = render(opOperation('get', { responses: [opResponse(200, 'array(Ledger)')] }));
+        expect(listOfModels).toContain('ctx.body = JSON.stringify(result, bigIntReplacer);');
+    });
+
+    it('writes the body of a status that also declares headers through the replacer', () => {
+        const out = render(
+            opOperation('get', {
+                responses: [
+                    opResponseMulti(200, [{ contentType: 'application/json', bodyType: 'Ledger' }], {
+                        headers: [{ name: 'etag', optional: false, type: scalarType('string') }],
+                    }),
+                ],
+            }),
+        );
+        expect(out).toContain('ctx.body = JSON.stringify(result.body, bigIntReplacer);');
+    });
+
+    it('covers a +json structured suffix, but not a non-JSON mime', () => {
+        const problem = render(opOperation('get', { responses: [opResponse(200, 'Ledger', 'application/vnd.ledger+json')] }));
+        expect(problem).toContain('ctx.body = JSON.stringify(result, bigIntReplacer);');
+        const text = render(opOperation('get', { responses: [opResponse(200, scalarType('bigint'), 'text/plain')] }));
+        expect(text).toContain('ctx.body = result;');
+        expect(text).not.toContain('bigIntReplacer');
+    });
+
+    it('branches on the content type when a status mixes a bigint JSON body with another mime', () => {
+        const out = render(
+            opOperation('get', {
+                responses: [
+                    opResponseMulti(200, [
+                        { contentType: 'application/json', bodyType: 'Ledger' },
+                        { contentType: 'text/csv', bodyType: scalarType('string') },
+                    ]),
+                ],
+            }),
+        );
+        expect(out).toContain(
+            [
+                "    if (result.contentType === 'application/json') {",
+                '        ctx.body = JSON.stringify(result.body, bigIntReplacer);',
+                '    } else {',
+                '        ctx.body = result.body;',
+                '    }',
+            ].join('\n'),
+        );
+    });
+
+    it('decides per status in the multi-status switch', () => {
+        const out = render(
+            opOperation('get', {
+                responses: [
+                    opResponseMulti(200, [{ contentType: 'application/json', bodyType: 'Ledger' }]),
+                    opResponseMulti(202, [{ contentType: 'application/json', bodyType: 'User' }]),
+                ],
+            }),
+        );
+        const case200 = out.slice(out.indexOf('case 200:'), out.indexOf('case 202:'));
+        const case202 = out.slice(out.indexOf('case 202:'));
+        expect(case200).toContain('ctx.body = JSON.stringify(result.body, bigIntReplacer);');
+        expect(case202).toContain('ctx.body = result.body;');
+    });
+
+    it('serializes the validated value when validateResponses is on', () => {
+        const out = render(opOperation('get', { responses: [opResponse(200, 'Ledger')] }), { validateResponses: true });
+        expect(out).toContain('ctx.body = JSON.stringify(await parseAndValidate(result, Ledger, 500), bigIntReplacer);');
+    });
+
+    it('sets a per-reply serializer on Fastify rather than pre-stringifying the body', () => {
+        const out = render(opOperation('get', { responses: [opResponse(200, 'Ledger')] }), { framework: FASTIFY_SERVER_FRAMEWORK });
+        expect(out).toContain('return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result);');
+        expect(out).toContain(REPLACER_IMPORT);
+    });
+
+    it('renders the write through the adapter', () => {
+        const out = render(opOperation('get', { responses: [opResponse(200, 'Ledger')] }), { framework: STUB });
+        expect(out).toContain('return rs.deliverBigIntJson(result);');
+        expect(out).not.toMatch(/\bctx\b/);
     });
 });

@@ -35,6 +35,7 @@ import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { reviveFnName, renderInlineReviver, typeReachesDecimal, coerceDeclsFor, coerceLuxonImports } from './codegen-revive.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
+import { typeReachesBigInt } from './bigint-runtime.js';
 import { basename, dirname, relative } from 'path';
 
 // ─── Body strategy ────────────────────────────────────────────────────────
@@ -1395,38 +1396,12 @@ function sdkParsesJsonResponse(root: OpRootNode, includeInternal = false): boole
  * "123n" silently converted.
  */
 function sdkResponsesUseBigInt(root: OpRootNode, options: SdkCodegenOptions, includeInternal = false): boolean {
-    const tainted = options.modelsWithBigInt;
-    const reachesBigInt = (type: ContractTypeNode): boolean => {
-        // `typeNeedsScalar` stops at a `ref` leaf, so the transitive answer has to come from the
-        // precomputed set — a bigint two models down still arrives on the wire as `123n`.
-        switch (type.kind) {
-            case 'ref':
-                return tainted?.has(type.name) ?? false;
-            case 'array':
-                return reachesBigInt(type.item);
-            case 'lazy':
-                return reachesBigInt(type.inner);
-            case 'tuple':
-                return type.items.some(reachesBigInt);
-            case 'record':
-                return reachesBigInt(type.value);
-            case 'union':
-            case 'discriminatedUnion':
-            case 'intersection':
-                return type.members.some(reachesBigInt);
-            case 'inlineObject':
-                return type.fields.some(f => reachesBigInt(f.type));
-            default:
-                return typeNeedsScalar(type, 'bigint');
-        }
-    };
-
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             for (const resp of op.responses) {
                 for (const body of resp.bodies) {
-                    if (classifyContentType(body.contentType) === 'json' && reachesBigInt(body.bodyType)) return true;
+                    if (classifyContentType(body.contentType) === 'json' && typeReachesBigInt(body.bodyType, options.modelsWithBigInt)) return true;
                 }
             }
         }

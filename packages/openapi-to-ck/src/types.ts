@@ -80,9 +80,9 @@ export interface NormalizedSchema {
     externalDocs?: unknown;
     not?: unknown;
     /**
-     * `decimal` bounds and scale, as emitted by plugin-docs' `openapi` target. JSON Schema's numeric
-     * `minimum`/`maximum` are ignored on a string type and would round-trip the value through a
-     * float, so the exact values ride in extensions instead.
+     * `decimal` bounds and scale, and `bigint` bounds, as emitted by plugin-docs' `openapi` target.
+     * Both scalars are documented as `type: string`, where JSON Schema's numeric `minimum`/`maximum`
+     * are ignored, and a float would not hold the exact values anyway, so they ride in extensions.
      */
     'x-contractkit-scale'?: number;
     'x-contractkit-min'?: string;

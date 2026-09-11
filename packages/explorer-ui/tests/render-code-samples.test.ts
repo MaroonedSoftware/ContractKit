@@ -116,6 +116,22 @@ describe('renderCodeSamples', () => {
         expect(html).toMatch(/&quot;gross&quot;: &quot;\d+\.\d{2}&quot;/);
     });
 
+    it('produces a quoted digit string for a bigint scalar, never a JSON number', () => {
+        // Every ContractKit client sends a bigint as a string, and the server rejects a number, so
+        // a numeric sample would be a request body, and a Try-It pre-fill, that cannot succeed.
+        const html = renderCodeSamples(
+            resolvedOp('/orders', op('get', {
+                responses: [{
+                    statusCode: 200,
+                    hasBlock: true,
+                    bodies: [{ contentType: 'application/json', bodyType: inlineObj([field('quantity', scalar('bigint'))]) }],
+                }],
+            })),
+            'https://api.example.com',
+        );
+        expect(html).toMatch(/&quot;quantity&quot;: &quot;-?\d+&quot;/);
+    });
+
     it('produces an ISO datetime for a datetime scalar', () => {
         const html = renderCodeSamples(
             resolvedOp('/events', op('get', {

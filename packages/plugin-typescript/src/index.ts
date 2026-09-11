@@ -60,7 +60,7 @@ export {
 export { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 export { FASTIFY_SERVER_FRAMEWORK } from './server-framework-fastify.js';
 
-/** Taint set for the SDK's bigint response reviver. */
+/** Taint set for the SDK's bigint response reviver and the server's bigint response replacer. */
 const BIGINT_SCALARS: ReadonlySet<ScalarTypeNode['name']> = new Set(['bigint']);
 import {
     generateMcpFile,
@@ -211,7 +211,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '2';
+export const TYPESCRIPT_CODEGEN_VERSION = '3';
 
 // The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
 // temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
@@ -455,6 +455,9 @@ function collectServerOutput(
     // needs an `Output` type alias. A `format(input=...)`-only model is just as untouchable for
     // response validation — its schema's input casing is not what the service hands back.
     const modelsWithTransform = computeModelsWithCaseTransform(inputs.contractRoots.flatMap(r => r.models));
+    // Which response bodies go out through `bigIntReplacer`. Cross-file for the same reason as the
+    // SDK's copy of this set: the bigint may sit in a model another .ck file declares.
+    const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
     const modelMap = buildModelMap(inputs.contractRoots);
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
@@ -529,6 +532,8 @@ function collectServerOutput(
             // Not covered by `sub`: adding `format(input=snake)` to a *different* .ck file changes
             // this router's output with no change to `root` or the config.
             modelsWithTransform: sliceModelSet(refs, new Set(), modelsWithTransform),
+            // Same: a bigint added to a model in another .ck file changes how this router writes it.
+            modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
             validateResponses: config.validateResponses ?? false,
             // Covered by `sub` already, which is the whole sub-config; explicit for the same reason
             // `validateResponses` is — the inputs that change a router's text read at a glance.
@@ -548,6 +553,7 @@ function collectServerOutput(
                         modelsWithInput,
                         modelsWithOutput,
                         modelsWithTransform,
+                        modelsWithBigInt,
                         includeInternal: config.includeInternal,
                         validateResponses: config.validateResponses,
                         framework,
@@ -1172,6 +1178,8 @@ function collectMcpOutput(
     const includeInternal = config.includeInternal ?? false;
 
     const modelOutPaths = resolveMcpModelOutPaths(fullConfig, rootDir, inputs.contractRoots, commonRoot, modelsWithInput, modelsWithOutput);
+    // Which tool results go out through `bigIntReplacer`; cross-file, like the router's copy.
+    const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
 
     // ── Per-op-root tool-handler units (only files with MCP-exposed ops) ──
     const entries: { outPath: string; registerFn: string }[] = [];
@@ -1187,6 +1195,7 @@ function collectMcpOutput(
             outPathSlice: sliceOutPathMap(refs, modelOutPaths, modelsWithInput, modelsWithOutput),
             modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
+            modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
             servicePathTemplate: config.servicePathTemplate ?? null,
             includeInternal,
             sub: subConfigKey,
@@ -1204,6 +1213,7 @@ function collectMcpOutput(
                         modelsWithOutput,
                         servicePathTemplate: config.servicePathTemplate,
                         includeInternal,
+                        modelsWithBigInt,
                     }),
                 },
             ],
