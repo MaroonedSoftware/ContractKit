@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { webcrypto } from 'node:crypto';
+import ts from 'typescript';
 import {
     generateSdk,
     generateSdkOptions,
@@ -832,10 +834,11 @@ describe('generateSdk', () => {
             expect(out).not.toContain('SdkCallOptions');
         });
 
-        it('defaults to crypto.randomUUID and injects X-Request-ID per request', () => {
+        it('defaults to randomRequestId and injects X-Request-ID per request', () => {
             const root = opRoot([opRoute('/users', [opOperation('get', { responses: [opResponse(200, 'User', 'application/json')] })])]);
             const out = generateSdk(root);
-            expect(out).toContain('requestIdFactory ?? (() => crypto.randomUUID())');
+            expect(out).toContain('function randomRequestId(): string {');
+            expect(out).toContain('requestIdFactory ?? randomRequestId;');
             expect(out).toContain("'X-Request-ID': getRequestId()");
         });
     });
@@ -1083,11 +1086,57 @@ describe('generateSdkOptions', () => {
         expect(out).toContain('throw new SdkError(res.status, res.statusText, body, res.headers)');
         expect(out).toContain('export type SdkFetch');
         expect(out).toContain('export function createSdkFetch(options: SdkOptions): SdkFetch');
-        expect(out).toContain('requestIdFactory ?? (() => crypto.randomUUID())');
+        expect(out).toContain('function randomRequestId(): string {');
+        expect(out).toContain('requestIdFactory ?? randomRequestId;');
         expect(out).toContain("'X-Request-ID': getRequestId()");
         // SecurityContext/securityHandler removed — auth is handled via headers option
         expect(out).not.toContain('SecurityContext');
         expect(out).not.toContain('securityHandler');
+    });
+
+    describe('default X-Request-ID', () => {
+        const V4_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+        /**
+         * The emitted `createSdkFetch`, run for real against a stand-in `crypto` and a `fetch` that
+         * records the X-Request-ID it was sent.
+         */
+        async function sentRequestIds(cryptoImpl: Partial<Crypto>, count = 1): Promise<string[]> {
+            const js = ts.transpileModule(generateSdkOptions(), {
+                compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+            }).outputText;
+            const sent: string[] = [];
+            const fetchStub = async (_url: string, init: { headers: Record<string, string> }) => {
+                sent.push(init.headers['X-Request-ID']!);
+                return new Response('{}', { status: 200 });
+            };
+            const exports: { createSdkFetch?: (options: { baseUrl: string }) => (url: string, init: object) => Promise<Response> } = {};
+            new Function('exports', 'crypto', 'fetch', js)(exports, cryptoImpl, fetchStub);
+            const sdkFetch = exports.createSdkFetch!({ baseUrl: 'http://192.168.1.10:8080' });
+            for (let i = 0; i < count; i++) await sdkFetch('/users', {});
+            return sent;
+        }
+
+        it('uses crypto.randomUUID when the context defines it', async () => {
+            const sent = await sentRequestIds({ randomUUID: () => '11111111-2222-4333-8444-555555555555' });
+            expect(sent).toEqual(['11111111-2222-4333-8444-555555555555']);
+        });
+
+        it('builds a v4 UUID from getRandomValues when randomUUID is absent, as over plain HTTP', async () => {
+            // A browser page served from a LAN address over http:// is not a secure context, so
+            // crypto.randomUUID is undefined there and the old default threw before fetch ran.
+            const sent = await sentRequestIds({ getRandomValues: webcrypto.getRandomValues.bind(webcrypto) as Crypto['getRandomValues'] }, 50);
+            expect(sent).toHaveLength(50);
+            for (const id of sent) expect(id).toMatch(V4_UUID);
+            expect(new Set(sent).size).toBe(50);
+        });
+
+        it('sets the version and variant bits whatever the random bytes are', async () => {
+            /** A getRandomValues that sets every byte to `byte`. */
+            const fill = (byte: number) => ((array: Uint8Array) => array.fill(byte)) as unknown as Crypto['getRandomValues'];
+            expect(await sentRequestIds({ getRandomValues: fill(0xff) })).toEqual(['ffffffff-ffff-4fff-bfff-ffffffffffff']);
+            expect(await sentRequestIds({ getRandomValues: fill(0x00) })).toEqual(['00000000-0000-4000-8000-000000000000']);
+        });
     });
 });
 

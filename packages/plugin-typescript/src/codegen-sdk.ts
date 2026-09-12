@@ -310,8 +310,10 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push("    return res.headers.get('content-type')?.split(';')[0]?.trim() ?? '';");
         lines.push('}');
         lines.push('');
+        lines.push(...RANDOM_REQUEST_ID_DECL);
+        lines.push('');
         lines.push('export function createSdkFetch(options: SdkOptions): SdkFetch {');
-        lines.push('    const getRequestId = options.requestIdFactory ?? (() => crypto.randomUUID());');
+        lines.push('    const getRequestId = options.requestIdFactory ?? randomRequestId;');
         lines.push('    return async (url: string, init: SdkRequestInit): Promise<Response> => {');
         lines.push("        const baseHeaders = typeof options.headers === 'function'");
         lines.push('            ? await options.headers()');
@@ -1769,6 +1771,26 @@ const PARSE_BIGINT_HEADER_DECL: readonly string[] = [
     '}',
 ];
 
+/**
+ * The runtime helper behind `createSdkFetch`'s default X-Request-ID. The default used to be
+ * `crypto.randomUUID()`, which a browser defines only in a secure context (HTTPS or localhost). An
+ * app served over plain HTTP from a LAN address has it undefined, so every request threw a
+ * TypeError before `fetch` ran. `crypto.getRandomValues` has no such restriction, so without
+ * `randomUUID` this builds the same RFC 9562 version 4 UUID from 16 random bytes: the high nibble
+ * of byte 6 is the version (0100) and the top two bits of byte 8 are the variant (10).
+ */
+const RANDOM_REQUEST_ID_DECL: readonly string[] = [
+    '/** A v4 UUID. `crypto.randomUUID` exists only in a secure context, so plain HTTP builds one by hand. */',
+    'function randomRequestId(): string {',
+    "    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();",
+    '    const bytes = crypto.getRandomValues(new Uint8Array(16));',
+    '    bytes[6] = (bytes[6]! & 0x0f) | 0x40;',
+    '    bytes[8] = (bytes[8]! & 0x3f) | 0x80;',
+    "    const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');",
+    '    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;',
+    '}',
+];
+
 /** Whether emitted method lines read a `bigint` response header, and so import its helper. */
 function usesParseBigIntHeader(lines: readonly string[]): boolean {
     return lines.some(l => l.includes('parseBigIntHeader('));
@@ -2059,8 +2081,10 @@ export function generateSdkOptions(): string {
         "    return res.headers.get('content-type')?.split(';')[0]?.trim() ?? '';",
         '}',
         '',
+        ...RANDOM_REQUEST_ID_DECL,
+        '',
         'export function createSdkFetch(options: SdkOptions): SdkFetch {',
-        '    const getRequestId = options.requestIdFactory ?? (() => crypto.randomUUID());',
+        '    const getRequestId = options.requestIdFactory ?? randomRequestId;',
         '    return async (url: string, init: SdkRequestInit): Promise<Response> => {',
         "        const baseHeaders = typeof options.headers === 'function'",
         '            ? await options.headers()',
