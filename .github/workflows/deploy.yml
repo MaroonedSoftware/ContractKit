@@ -17,7 +17,7 @@ jobs:
             group: deploy-${{ github.sha }}
             cancel-in-progress: false
         runs-on: ubuntu-latest
-        timeout-minutes: 10
+        timeout-minutes: 20
         steps:
             - name: Retrieve build cache
               id: cache
@@ -46,7 +46,10 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             # The extension is `private: true`, so `pnpm publish -r` above skips it and it
-            # never reaches npm. Changesets still versions it, so publish it here.
+            # never reaches npm. Changesets still versions it, so publish it here, to the
+            # VS Marketplace (VS Code) and to Open VSX (Cursor, VSCodium, Windsurf, which
+            # cannot use the VS Marketplace). Each registry is gated on its own token, so
+            # a missing secret skips only that registry.
             #
             # `hasChangesets == 'false'` is what makes this a release-only step. When
             # changesets are pending, the action above has already rewritten every
@@ -61,6 +64,9 @@ jobs:
             # goes into the VSIX, leaving out the `version` field and CHANGELOG.md (the two
             # things every bump touches), and publish only a fingerprint not published yet.
             # The build is deterministic, so an unchanged extension hashes the same.
+            # Each registry records the fingerprints it has published separately, so a
+            # failed publish to one is retried on the next release without republishing
+            # to the other.
             #
             # Binaries are invoked directly rather than through `pnpm run`/`pnpm exec`:
             # this job restores node_modules from the build cache without running an
@@ -72,10 +78,20 @@ jobs:
               working-directory: apps/vscode-extension
               env:
                   VSCE_PAT: ${{ secrets.VSCE_PAT }}
+                  OVSX_PAT: ${{ secrets.OVSX_PAT }}
               run: |
                   set -euo pipefail
                   if [ -z "${VSCE_PAT:-}" ]; then
-                      echo "VSCE_PAT is not set; skipping the marketplace publish."
+                      echo "VSCE_PAT is not set; skipping the VS Marketplace publish."
+                  else
+                      echo "marketplace=true" >> "$GITHUB_OUTPUT"
+                  fi
+                  if [ -z "${OVSX_PAT:-}" ]; then
+                      echo "OVSX_PAT is not set; skipping the Open VSX publish."
+                  else
+                      echo "openvsx=true" >> "$GITHUB_OUTPUT"
+                  fi
+                  if [ -z "${VSCE_PAT:-}" ] && [ -z "${OVSX_PAT:-}" ]; then
                       exit 0
                   fi
                   node esbuild.mjs --production
@@ -93,28 +109,52 @@ jobs:
 
             # A cache entry keyed on the fingerprint records that it was published. A miss,
             # including an entry GitHub has evicted, only costs a redundant publish, which
-            # `--skip-duplicate` below keeps harmless.
-            - name: Look up published fingerprint
-              id: vscode-published
-              if: steps.vscode.outputs.fingerprint != ''
+            # `--skip-duplicate` below keeps harmless. The VS Marketplace key predates Open
+            # VSX support and keeps its original name so existing records stay valid.
+            - name: Look up VS Marketplace fingerprint
+              id: marketplace-published
+              if: steps.vscode.outputs.marketplace == 'true'
               uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
               with:
                   path: ${{ runner.temp }}/vscode-published
                   key: vscode-extension-published-${{ steps.vscode.outputs.fingerprint }}
                   lookup-only: true
 
+            - name: Look up Open VSX fingerprint
+              id: openvsx-published
+              if: steps.vscode.outputs.openvsx == 'true'
+              uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+              with:
+                  path: ${{ runner.temp }}/vscode-published
+                  key: vscode-extension-openvsx-published-${{ steps.vscode.outputs.fingerprint }}
+                  lookup-only: true
+
+            # Package once and publish that one VSIX everywhere, so both registries serve
+            # identical files for a given version.
+            - name: Package VS Code extension
+              id: vscode-package
+              if: >-
+                  (steps.vscode.outputs.marketplace == 'true' && steps.marketplace-published.outputs.cache-hit != 'true') ||
+                  (steps.vscode.outputs.openvsx == 'true' && steps.openvsx-published.outputs.cache-hit != 'true')
+              working-directory: apps/vscode-extension
+              run: |
+                  set -euo pipefail
+                  ./node_modules/.bin/vsce package --no-dependencies --out "$RUNNER_TEMP/contractkit.vsix"
+                  mkdir -p "$RUNNER_TEMP/vscode-published"
+                  jq -r .version package.json > "$RUNNER_TEMP/vscode-published/version"
+
             # `--skip-duplicate` keeps a re-run idempotent. vsce has no retry or timeout
             # flag and the gallery API intermittently times out after 180s, so retry here.
-            - name: Publish VS Code extension
-              id: vscode-publish
-              if: steps.vscode.outputs.fingerprint != '' && steps.vscode-published.outputs.cache-hit != 'true'
+            - name: Publish to VS Marketplace
+              id: marketplace-publish
+              if: steps.vscode-package.outcome == 'success' && steps.vscode.outputs.marketplace == 'true' && steps.marketplace-published.outputs.cache-hit != 'true'
               working-directory: apps/vscode-extension
               env:
                   VSCE_PAT: ${{ secrets.VSCE_PAT }}
               run: |
                   set -euo pipefail
                   for attempt in 1 2 3; do
-                      if ./node_modules/.bin/vsce publish --no-dependencies --skip-duplicate; then
+                      if ./node_modules/.bin/vsce publish --packagePath "$RUNNER_TEMP/contractkit.vsix" --skip-duplicate; then
                           exit 0
                       fi
                       echo "Attempt $attempt failed."
@@ -123,15 +163,38 @@ jobs:
                   echo "vsce publish failed after 3 attempts." >&2
                   exit 1
 
-            - name: Mark fingerprint as published
-              if: steps.vscode-publish.outcome == 'success'
-              run: |
-                  mkdir -p "$RUNNER_TEMP/vscode-published"
-                  jq -r .version apps/vscode-extension/package.json > "$RUNNER_TEMP/vscode-published/version"
-
-            - name: Record published fingerprint
-              if: steps.vscode-publish.outcome == 'success'
+            # Recorded before the Open VSX publish runs, so an Open VSX failure does not
+            # cost the VS Marketplace its record.
+            - name: Record VS Marketplace fingerprint
+              if: steps.marketplace-publish.outcome == 'success'
               uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
               with:
                   path: ${{ runner.temp }}/vscode-published
                   key: vscode-extension-published-${{ steps.vscode.outputs.fingerprint }}
+
+            # The namespace (`publisher` in package.json) must already exist on Open VSX,
+            # or this fails with an unknown-namespace error.
+            - name: Publish to Open VSX
+              id: openvsx-publish
+              if: steps.vscode-package.outcome == 'success' && steps.vscode.outputs.openvsx == 'true' && steps.openvsx-published.outputs.cache-hit != 'true'
+              working-directory: apps/vscode-extension
+              env:
+                  OVSX_PAT: ${{ secrets.OVSX_PAT }}
+              run: |
+                  set -euo pipefail
+                  for attempt in 1 2 3; do
+                      if ./node_modules/.bin/ovsx publish --packagePath "$RUNNER_TEMP/contractkit.vsix" --skip-duplicate; then
+                          exit 0
+                      fi
+                      echo "Attempt $attempt failed."
+                      if [ "$attempt" -lt 3 ]; then sleep 30; fi
+                  done
+                  echo "ovsx publish failed after 3 attempts." >&2
+                  exit 1
+
+            - name: Record Open VSX fingerprint
+              if: steps.openvsx-publish.outcome == 'success'
+              uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+              with:
+                  path: ${{ runner.temp }}/vscode-published
+                  key: vscode-extension-openvsx-published-${{ steps.vscode.outputs.fingerprint }}
