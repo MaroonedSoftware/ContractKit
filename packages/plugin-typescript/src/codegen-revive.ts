@@ -1,5 +1,6 @@
 import type { ContractTypeNode, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
 import { flattenFormatChain } from './codegen-wire-input.js';
+import { SDK_DECIMAL_NAME } from './decimal-runtime.js';
 
 /**
  * Emitters for the `reviveX` functions that rehydrate `decimal` fields in an SDK response.
@@ -50,6 +51,10 @@ export interface ReviveCodegenOptions {
  * Each one takes the raw JSON value and throws a `TypeError` naming the path rather than
  * returning something invalid, because a silently wrong `DateTime` surfaces much further from
  * the cause than a throw at the boundary does.
+ *
+ * `__dec` builds through the SDK's private constructor, which it does not declare: a zod-mode
+ * types file declares that constructor for `_ZodDecimal` as well, so each file adds it once, from
+ * `sdkDecimalCloneFor` or `SDK_DECIMAL_PRELUDE_LINES`.
  */
 export const COERCE_DECLS: Record<string, string[]> = {
     '__dec(': [
@@ -58,7 +63,7 @@ export const COERCE_DECLS: Record<string, string[]> = {
         `        throw new TypeError(\`ContractKit: expected a decimal string at '\${path}', received \${typeof v} — decimals must be sent as quoted JSON strings.\`);`,
         `    }`,
         `    try {`,
-        `        return new Decimal(v);`,
+        `        return new ${SDK_DECIMAL_NAME}(v);`,
         `    } catch {`,
         `        throw new TypeError(\`ContractKit: '\${v}' at '\${path}' is not a valid decimal.\`);`,
         `    }`,

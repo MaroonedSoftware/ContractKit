@@ -35,6 +35,7 @@ declare module 'decimal.js' {
     export class Decimal {
         constructor(value: string | number | Decimal);
         static set(config: any): void;
+        static clone(config?: any): typeof Decimal;
         static isDecimal(value: unknown): value is Decimal;
         [key: string]: any;
     }

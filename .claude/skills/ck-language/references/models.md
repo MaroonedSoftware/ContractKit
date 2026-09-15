@@ -141,6 +141,9 @@ least two members are required. Failures emit **warnings, not errors**.
   `scale=` is a validation constraint (at most N decimal places), **not** formatting: the
   wire form is decimal.js-normalized, so `"1250.00"` reads back as `"1250"`. The router
   cannot make it otherwise — Koa serializes `ctx.body` with a `JSON.stringify` we have no
-  replacer for, which is also why the prelude sets `Decimal.set({ toExpNeg, toExpPos })` to
-  keep values out of exponential notation. `min`/`max` are kept as source strings, never
+  replacer for, which is also why the server prelude sets `Decimal.set({ toExpNeg, toExpPos })`
+  to keep values out of exponential notation. SDK files never call `Decimal.set`, since that
+  would reconfigure the consumer's own decimal.js: they build through a private
+  `__Decimal = Decimal.clone({ defaults: true, toExpNeg, toExpPos })` (`decimal-runtime.ts`)
+  and send request values with `toFixed()`. `min`/`max` are kept as source strings, never
   coerced through `Number()`.

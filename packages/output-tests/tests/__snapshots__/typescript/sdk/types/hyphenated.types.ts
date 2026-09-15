@@ -1,15 +1,15 @@
 import { z } from 'zod';
 import { Decimal } from 'decimal.js';
 
-Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });
-const _ZodDecimal = z.preprocess((val) => { if (typeof val !== 'string') return val; try { return new Decimal(val); } catch { return val; } }, z.custom<Decimal>((val) => Decimal.isDecimal(val), { message: 'Must be an exact decimal sent as a quoted string, e.g. "1250.00"' }));
+const __Decimal = Decimal.clone({ defaults: true, toExpNeg: -9e15, toExpPos: 9e15 });
+const _ZodDecimal = z.preprocess((val) => { if (typeof val !== 'string') return val; try { return new __Decimal(val); } catch { return val; } }, z.custom<Decimal>((val) => Decimal.isDecimal(val), { message: 'Must be an exact decimal sent as a quoted string, e.g. "1250.00"' }));
 
 const __dec = (v: unknown, path: string): Decimal => {
     if (typeof v !== 'string') {
         throw new TypeError(`ContractKit: expected a decimal string at '${path}', received ${typeof v} — decimals must be sent as quoted JSON strings.`);
     }
     try {
-        return new Decimal(v);
+        return new __Decimal(v);
     } catch {
         throw new TypeError(`ContractKit: '${v}' at '${path}' is not a valid decimal.`);
     }
