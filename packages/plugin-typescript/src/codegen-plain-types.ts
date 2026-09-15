@@ -14,7 +14,7 @@ import { renderTsType, renderInputTsType, renderOutputTsType, quoteKey, escapeJs
 import type { TsRenderTarget } from './ts-render.js';
 import { collectExternalWireInputRefs, flattenFormatChain, renderWireInputModel } from './codegen-wire-input.js';
 import type { WireInputRenderContext } from './codegen-wire-input.js';
-import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
+import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE, sdkDecimalCloneFor } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
 import { renderSerializeFunction, requestTypeName, serializerImportLines, wireDeclsFor } from './codegen-serialize.js';
 
@@ -107,12 +107,16 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
     ].filter(ref => !declaredRefs.has(ref) && mentions(ref));
     const allExternalRefs = [...new Set([...declaredRefs, ...flattenedRefs])].sort();
 
+    // Same rule as in `generateContract`: a helper is emitted only if the revivers or serializers
+    // actually reference it, so the two cannot drift and trip `noUnusedLocals`.
+    const coerceDecls = [...coerceDeclsFor(bodyLines), ...wireDeclsFor(bodyLines)];
+    // `__dec`, which SDK revivers call, builds through the SDK's private decimal.js clone.
+    const decimalClone = sdkDecimalCloneFor(coerceDecls);
+
     // Not `import type`: `renderTsScalar` maps `decimal` to `Decimal` in this mode too, so the class
     // is a real runtime dependency of any consumer holding one — same position as in
     // `generateContract`, which emits it ahead of the external model refs.
-    const needsDecimal =
-        needs('decimal', 'Decimal') ||
-        (context?.emitRevivers && context.modelsWithDecimal ? root.models.some(m => context.modelsWithDecimal!.has(m.name)) : false);
+    const needsDecimal = needs('decimal', 'Decimal') || decimalClone.length > 0;
     if (needsDecimal) lines.push(DECIMAL_IMPORT);
 
     // Likewise for the temporal scalars: `renderTsScalar` maps them to Luxon classes, which are a
@@ -147,16 +151,18 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
         lines.push('');
     }
 
-    // Global decimal.js config belongs in any file holding a `Decimal`: there is no Zod schema in
-    // this mode, but `String(value)` and `JSON.stringify` still have to stay out of exponential form.
-    if (needsDecimal) {
+    // Values built here must stay out of exponential form under `String(value)` and `JSON.stringify`.
+    // An SDK file gets that from its private clone, and must not touch the decimal.js it shares with
+    // the consumer's app; an SDK file that builds no `Decimal` needs neither. Any other file holding
+    // a `Decimal` keeps the global config: there is no Zod schema in this mode to carry it.
+    if (decimalClone.length > 0) {
+        lines.push('');
+        lines.push(...decimalClone);
+    } else if (needsDecimal && !context?.emitRevivers) {
         lines.push('');
         lines.push(DECIMAL_CONFIG_LINE);
     }
 
-    // Same rule as in `generateContract`: a helper is emitted only if the revivers or serializers
-    // actually reference it, so the two cannot drift and trip `noUnusedLocals`.
-    const coerceDecls = [...coerceDeclsFor(bodyLines), ...wireDeclsFor(bodyLines)];
     if (coerceDecls.length > 0) {
         lines.push(...coerceDecls);
         lines.push('');

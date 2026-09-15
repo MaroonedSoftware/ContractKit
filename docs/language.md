@@ -283,9 +283,13 @@ same number. Format at the display edge if you need trailing zeros. This is the 
 `scale` carries in OpenAPI `pattern`, pydantic `condecimal(decimal_places=)`, and Prisma
 `@db.Decimal(_, n)`.
 
-Generated code sets `Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 })` so values never serialize in
-exponential notation — without it `0.00000001` would go out as `"1e-8"`. Note this is global
-decimal.js configuration and affects every `Decimal` in the consuming process.
+Generated code keeps values out of exponential notation, which would otherwise send `0.00000001`
+as `"1e-8"`. Server code (routers, MCP servers and server types) does it with
+`Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 })`. That is global decimal.js configuration and
+affects every `Decimal` in the server process, which is what reaches the values a handler builds
+and returns. The TypeScript SDK leaves the global alone, because it runs inside someone else's
+app: it builds the decimals it revives with a private `Decimal.clone()` carrying those settings,
+and writes request values with `toFixed()`.
 
 ---
 

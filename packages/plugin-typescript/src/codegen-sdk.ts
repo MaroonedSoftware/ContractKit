@@ -38,7 +38,7 @@ import { pascalToDotCase, typeNeedsScalar } from './codegen-contract.js';
 import { bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { reviveFnName, renderInlineReviver, typeReachesDecimal, coerceDeclsFor } from './codegen-revive.js';
 import { calledSerializerModels, renderInlineSerializer, serializeFnName, temporalWireFormat, wireDeclsFor } from './codegen-serialize.js';
-import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE } from './decimal-runtime.js';
+import { DECIMAL_IMPORT, sdkDecimalCloneFor } from './decimal-runtime.js';
 import { typeReachesBigInt } from './bigint-runtime.js';
 import { bindIdentifiers } from './reserved-words.js';
 import { basename, dirname, relative } from 'path';
@@ -439,15 +439,16 @@ export function generateClientMethods(
  * Declarations a client file needs for the inline revivers and serializers it carries.
  *
  * An inline wrapper calls `__dec`, `__wireDt` and the like, which are file-local to the *types*
- * module and not exported, so a client file that has one needs its own copy, along with the global
- * decimal.js config, since nothing else in the file necessarily pulls it in. The imports these
- * declarations need are left to {@link scalarClassImports}, which reads them off the emitted text.
+ * module and not exported, so a client file that has one needs its own copy, along with the
+ * private decimal.js clone `__dec` builds through, since nothing else in the file declares it. The
+ * imports these declarations need are left to {@link scalarClassImports}, which reads them off the
+ * emitted text.
  */
 function inlinePreludeFor(declLines: string[]): string[] {
     const decls = [...coerceDeclsFor(declLines), ...wireDeclsFor(declLines)];
     if (decls.length === 0) return [];
-    // The global config keeps decimals out of exponential notation; only decimal.js needs it.
-    const preamble = declLines.some(l => l.includes('__dec(')) ? [DECIMAL_CONFIG_LINE, ''] : [];
+    const clone = sdkDecimalCloneFor(decls);
+    const preamble = clone.length > 0 ? [...clone, ''] : [];
     return [...preamble, ...decls];
 }
 

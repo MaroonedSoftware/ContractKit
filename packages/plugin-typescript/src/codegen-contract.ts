@@ -27,7 +27,7 @@ import { escapeJsDocLines, escapeSingleQuoted, sourceLink } from './ts-render.js
 import { applyKeyCase, collectExternalWireInputRefs, flattenFormatChain, renamingCase, renderWireInputModel } from './codegen-wire-input.js';
 import type { WireInputRenderContext } from './codegen-wire-input.js';
 import type { TsRenderTarget } from './ts-render.js';
-import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
+import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES, SDK_DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
 import { renderSerializeFunction, requestTypeName, serializerImportLines, wireDeclsFor } from './codegen-serialize.js';
 
@@ -83,6 +83,9 @@ export interface ContractCodegenContext {
     /**
      * Emit `reviveX()` hydration functions alongside the schemas. Set only for SDK type files: a
      * server handler receives decimals already parsed by `_ZodDecimal`, so it has nothing to revive.
+     *
+     * Also marks the file as SDK code for decimal.js: it builds its decimals with a private clone
+     * and leaves the global `Decimal.set` to the server, since an SDK runs inside someone else's app.
      */
     emitRevivers?: boolean;
     /**
@@ -248,7 +251,10 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
         );
     }
     if (needsDecimal) {
-        lines.push(...DECIMAL_PRELUDE_LINES);
+        // An SDK types file (the only kind that emits revivers) builds its decimals with a private
+        // clone rather than reconfiguring the decimal.js the consumer's app shares with it. Its
+        // `__dec` builds through the same clone, which this declares for both.
+        lines.push(...(context?.emitRevivers ? SDK_DECIMAL_PRELUDE_LINES : DECIMAL_PRELUDE_LINES));
     }
     if (needsJson) {
         lines.push(`type _JsonValue = string | number | boolean | null | _JsonValue[] | { [key: string]: _JsonValue };`);

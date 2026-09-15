@@ -2325,9 +2325,11 @@ describe('decimal rehydration', () => {
         const out = generateSdk(root, withDecimal({ modelsWithDecimal: new Set(['Invoice']) }));
         expect(out).toMatch(/function __reviveGetTotals200\(/);
         // The wrapper calls `__dec`, which is file-local to the types module, so the client file
-        // needs its own copy plus the decimal.js import and global config.
+        // needs its own copy plus the decimal.js import and the private clone `__dec` builds with.
+        // Never the global config: that would reconfigure the consumer's own decimal.js.
         expect(out).toContain(`import { Decimal } from 'decimal.js';`);
-        expect(out).toContain('Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });');
+        expect(out).toContain('const __Decimal = Decimal.clone({ defaults: true, toExpNeg: -9e15, toExpPos: 9e15 });');
+        expect(out).not.toContain('Decimal.set(');
         expect(out).toContain('const __dec = (v: unknown, path: string): Decimal =>');
     });
 
