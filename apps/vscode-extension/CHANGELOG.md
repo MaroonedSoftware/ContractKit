@@ -1,5 +1,14 @@
 # @contractkit/vscode-extension
 
+## 0.14.16
+
+### Patch Changes
+
+- Updated dependencies [b1bb346]
+    - @contractkit/core@0.31.1
+    - @contractkit/prettier-plugin@0.14.11
+    - @contractkit/explorer-ui@0.5.8
+
 ## 0.14.15
 
 ### Patch Changes
