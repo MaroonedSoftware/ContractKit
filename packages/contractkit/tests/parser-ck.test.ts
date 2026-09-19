@@ -683,6 +683,82 @@ describe('operations', () => {
         });
     });
 
+    // ─── Operation doc comments ────────────────────────────────────
+
+    describe('operation doc comments', () => {
+        // The grammar's `"{" comment?` skips newlines, so it used to take the first comment below the
+        // brace as an inline one, and file the rest of the run as prose above the first key.
+        it('keeps every line of a doc comment that opens the body', () => {
+            const { root, diag } = parse(`\
+operation /engines: {
+    get: {
+        # Every declared engine, whether or not it is running.
+        # Never spawns one.
+        sdk: engines
+        response: {
+            200:
+        }
+    }
+}
+`);
+            expect(diag.hasErrors()).toBe(false);
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.description).toBe('Every declared engine, whether or not it is running.\nNever spawns one.');
+            expect(op.descriptionInline).toBe(false);
+            expect(op.descriptionInBody).toBe(true);
+            expect(op.bodyLeadingComments).toBeUndefined();
+        });
+
+        it('takes a body with nothing but the doc comment', () => {
+            const { root } = parse(`\
+operation /ping: {
+    get: {
+        # First.
+        # Second.
+    }
+}
+`);
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.description).toBe('First.\nSecond.');
+            expect(op.bodyTrailingComments).toBeUndefined();
+        });
+
+        it('still reads a comment on the brace line as inline, and the run below it as prose', () => {
+            const { root } = parse(`\
+operation /pet: {
+    put: { # update an existing pet
+        # about the response
+        response: {
+            200:
+        }
+    }
+}
+`);
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.description).toBe('update an existing pet');
+            expect(op.descriptionInline).toBe(true);
+            expect(op.descriptionInBody).toBeUndefined();
+            expect(op.bodyLeadingComments).toEqual({ responses: ['about the response'] });
+        });
+
+        it('keeps the comment above the verb as leading prose when the body opens with the doc comment', () => {
+            const { root } = parse(`\
+operation /pet: {
+    # why this verb is public
+    get: {
+        # fetch a pet
+        response: {
+            200:
+        }
+    }
+}
+`);
+            const op = root.routes[0]!.operations[0]!;
+            expect(op.description).toBe('fetch a pet');
+            expect(op.leadingComments).toEqual(['why this verb is public']);
+        });
+    });
+
     // ─── Params block ───────────────────────────────────────────────
 
     describe('params block', () => {

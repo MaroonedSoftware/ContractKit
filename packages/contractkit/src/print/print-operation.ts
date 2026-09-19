@@ -188,15 +188,19 @@ function printOperation(op: OpOperationNode): string[] {
     // A doc comment written above the method line goes back above it; only an inline one is
     // re-emitted as a trailing `#` on the header. Nodes built programmatically carry no placement,
     // and default to inline — the form most `.ck` sources use and one that round-trips as written.
-    const inlineDescription = op.descriptionInline ?? true;
+    const inBody = op.descriptionInBody === true;
+    const inlineDescription = !inBody && (op.descriptionInline ?? true);
     // Standalone prose above the verb, kept apart from the doc comment when the verb carries an
     // inline one. Emitted first so it stays above the line it was written above.
     for (const c of op.leadingComments ?? []) lines.push(`${I1}# ${c}`);
-    if (op.description && !inlineDescription) {
+    if (op.description && !inlineDescription && !inBody) {
         for (const line of op.description.split('\n')) lines.push(`${I1}# ${line}`);
     }
     const commentSuffix = op.description && inlineDescription ? ` # ${inlineComment(op.description)}` : '';
     lines.push(`${I1}${op.method}${modPart}: {${commentSuffix}`);
+    if (op.description && inBody) {
+        for (const line of op.description.split('\n')) lines.push(`${I2}# ${line}`);
+    }
 
     // Emit in source order when the parser recorded it, so formatting never reorders a user's keys.
     // Any key the source order doesn't mention (e.g. added by a later AST pass) follows in canonical order.

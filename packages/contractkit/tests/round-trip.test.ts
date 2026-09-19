@@ -98,6 +98,21 @@ contract Pet: {
         expect(format(source)).toBe(source);
     });
 
+    it('keeps a multi-line operation doc comment at the top of the body', () => {
+        const source = `operation /engines: {
+    get: {
+        # Every declared engine, whether or not it is running.
+        # Never spawns one.
+        sdk: engines
+        response: {
+            200:
+        }
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+
     it('keeps an operation doc comment inline when written inline', () => {
         const source = `operation /pet: {
     put: { # update an existing pet

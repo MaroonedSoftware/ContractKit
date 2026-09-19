@@ -530,7 +530,9 @@ contract User: {
 - A `#` comment may sit **above** the `options` keyword, as a file header
 - A `#` comment may sit inside a `security { ... }` block, above or below `policy:`, and above a
   `security:` key on a verb. This is where the reason for a policy floor is normally written
-- A `#` comment may sit above any key in an operation body, and after the last one
+- A `#` comment run that **opens** an operation body, on the lines below the verb's `{` and above
+  its first key, is the operation's description, every line of it
+- A `#` comment may sit above any other key in an operation body, and after the last one
 - A `#` comment may sit above a verb that already has its own inline `# ...`; the two are
   separate, and only the inline one becomes the operation's description
 - A `#` comment may sit **after the last declaration** in a file
@@ -679,6 +681,21 @@ post: {
     ...
 }
 ```
+
+So does a comment run that opens the block, on the lines below `{`. Every line of it is kept, which
+makes it the place for a description too long for one line:
+
+```
+get: {
+    # Every declared user, active or not. Never pages: the list is what an admin
+    # reads to find an account, and it is short.
+    service: UserService.list
+    ...
+}
+```
+
+A comment on the `{` line itself is the inline form above, and a run below that one is prose above
+the first key, not part of the description.
 
 ### Operation Modifiers
 

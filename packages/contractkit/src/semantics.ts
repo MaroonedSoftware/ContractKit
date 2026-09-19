@@ -1170,9 +1170,13 @@ export function createSemantics(grammar: Grammar) {
             for (let i = 0; i < commentNodes.numChildren; i++) {
                 comments.push(commentNodes.child(i));
             }
-            const inlineComment =
-                (inlineCommentOpt as IterationNode).numChildren > 0 ? commentText((inlineCommentOpt as IterationNode).child(0)) : undefined;
-            const description = inlineComment ?? (comments.length > 0 ? comments.map(commentText).join('\n') : undefined);
+            // The grammar's `"{" comment?` is a syntactic rule, so it skips newlines too: it takes the
+            // first comment anywhere after the brace, not only one on the brace's own line. Only a
+            // comment on that line is inline; one below it opens the body, and is read further down.
+            const afterBrace = (inlineCommentOpt as IterationNode).numChildren > 0 ? (inlineCommentOpt as IterationNode).child(0) : undefined;
+            const onBraceLine = afterBrace !== undefined && getLine(afterBrace) === getLine(_lb);
+            const inlineComment = afterBrace !== undefined && onBraceLine ? commentText(afterBrace) : undefined;
+            let description = inlineComment ?? (comments.length > 0 ? comments.map(commentText).join('\n') : undefined);
 
             const methodText = httpMethodCallNode.sourceString.trim();
             const modMatch = methodText.match(/\((\w+)\)$/);
@@ -1199,7 +1203,26 @@ export function createSemantics(grammar: Grammar) {
                 security?: SecurityNode;
                 plugins?: Record<string, PluginValue>;
                 keyOrder?: OpBodyKey[];
+                bodyLeadingComments?: Partial<Record<OpBodyKey, string[]>>;
+                bodyTrailingComments?: string[];
             };
+
+            // A comment run opening the body is the operation's doc comment, all of it. The body filed
+            // every line after the first as prose above its first key, which cut a three-line
+            // description down to its first line in every generated SDK and OpenAPI document.
+            let descriptionInBody = false;
+            if (afterBrace !== undefined && !onBraceLine) {
+                const first = body.keyOrder?.[0];
+                const run = first !== undefined ? body.bodyLeadingComments?.[first] : body.bodyTrailingComments;
+                description = [commentText(afterBrace), ...(run ?? [])].join('\n');
+                descriptionInBody = true;
+                if (first !== undefined && body.bodyLeadingComments) {
+                    delete body.bodyLeadingComments[first];
+                    if (Object.keys(body.bodyLeadingComments).length === 0) body.bodyLeadingComments = undefined;
+                } else {
+                    body.bodyTrailingComments = undefined;
+                }
+            }
 
             const op: OpOperationNode = {
                 method,
@@ -1209,6 +1232,7 @@ export function createSemantics(grammar: Grammar) {
                 loc: { file, line },
             };
             if (description !== undefined) op.descriptionInline = inlineComment !== undefined;
+            if (descriptionInBody) op.descriptionInBody = true;
 
             return { _type: 'operation', value: op };
         },
