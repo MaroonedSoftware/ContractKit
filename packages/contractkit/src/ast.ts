@@ -388,6 +388,9 @@ export interface OpOperationNode {
     /** True when `description` was written inline on the method line (`get: { # doc`) rather than on
      * its own line above it. Preserved so the formatter reproduces the source form. */
     descriptionInline?: boolean;
+    /** True when `description` was written as the comment run opening the body, on the lines below
+     * `get: {` and above its first key. Preserved so the formatter puts it back there. */
+    descriptionInBody?: boolean;
     /** True when a blank line separated this operation from whatever preceded it inside the route.
      * Preserved so the formatter neither inserts nor removes the author's spacing. */
     blankLineBefore?: boolean;
