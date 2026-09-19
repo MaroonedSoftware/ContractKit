@@ -1,5 +1,12 @@
 # @contractkit/plugin-docs
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [b1bb346]
+    - @contractkit/core@0.31.1
+
 ## 0.4.1
 
 ### Patch Changes
