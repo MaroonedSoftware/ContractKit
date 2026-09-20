@@ -14,6 +14,9 @@ import { buildOnce, buildWithPlugin, ROOT_DIR, type EmittedFiles } from './harne
  * were compile errors a real toolchain would have caught. `-warnaserror` is deliberate: the
  * generator's own invariant is that every property is `required` or initialized, so a nullable
  * warning means the generator has a gap.
+ *
+ * CI installs the SDK, so these run there. The `dotnet` gate below is for a contributor's machine
+ * that has none, not an exemption: a change that only compiles locally still fails the build.
  */
 
 const dotnet = spawnSync('dotnet', ['--version'], { encoding: 'utf-8' });
