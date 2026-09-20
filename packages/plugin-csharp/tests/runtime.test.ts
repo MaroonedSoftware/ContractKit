@@ -23,6 +23,10 @@ describe('generateRuntimeCs', () => {
         expect(out).toContain('public IEnumerable<KeyValuePair<string, string>> Params<T>(T value)');
     });
 
+    it('carries a PATCH verb of its own, the one HttpMethod does not spell on every framework', () => {
+        expect(out).toContain('public static readonly HttpMethod Patch = new HttpMethod("PATCH");');
+    });
+
     it('offers a content factory per request body kind', () => {
         expect(out).toContain('public HttpContent JsonContent<T>(T value, string mediaType)');
         expect(out).toContain('public HttpContent FormContent<T>(T value)');
@@ -73,7 +77,8 @@ describe('generateConvertersCs', () => {
 
     it('reads the bigint forms every other ContractKit SDK writes', () => {
         expect(out).toContain("BigInteger.Parse(text.TrimEnd('n'), NumberStyles.Integer, CultureInfo.InvariantCulture)");
-        expect(out).toContain('reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan');
+        // Both branches copy to an array: the span overload of GetString is not on every framework.
+        expect(out).toContain('reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray()');
     });
 
     it('carries a duration as ISO 8601 rather than the BCL default', () => {

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';
 import { KitchenService } from '#src/services/kitchen.service.js';
-import { Folder, Instrument, LedgerInput, LedgerOutput, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
+import { Folder, Instrument, LedgerInput, LedgerOutput, Named, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
@@ -92,7 +92,29 @@ KitchenRouter.put('/folders/:folderId', requirePolicy(), bodyParserMiddleware(['
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L154)
+ * the one verb with no HttpMethod static of its own on every C# target framework
+ * from [kitchen.ck](../../contracts/kitchen.ck#L152)
+*/
+KitchenRouter.patch('/folders/:folderId', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
+    const { folderId } = await parseAndValidate(
+        ctx.params,
+        z.strictObject({
+            folderId: z.uuid(),
+        }),
+    );
+
+    const body = await parseAndValidate(ctx.parsedBody, Named);
+
+    const service = ctx.container.get(KitchenService);
+    const result: Folder = await service.touchFolder(folderId, body);
+
+    ctx.status = 200;
+    ctx.type = 'application/json';
+    ctx.body = JSON.stringify(result, bigIntReplacer);
+});
+
+/**
+ * from [kitchen.ck](../../contracts/kitchen.ck#L167)
 */
 KitchenRouter.post('/ledgers', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, LedgerInput);
@@ -106,7 +128,7 @@ KitchenRouter.post('/ledgers', requirePolicy(), bodyParserMiddleware(['json']), 
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L169)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L182)
 */
 KitchenRouter.post('/stamps', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, Stamped);
@@ -120,7 +142,7 @@ KitchenRouter.post('/stamps', requirePolicy(), bodyParserMiddleware(['json']), a
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L184)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L197)
 */
 KitchenRouter.post('/tokens', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const body = await parseAndValidate(ctx.parsedBody, Token);
@@ -134,7 +156,7 @@ KitchenRouter.post('/tokens', requirePolicy(), bodyParserMiddleware(['json']), a
 });
 
 /**
- * from [kitchen.ck](../../contracts/kitchen.ck#L198)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L211)
 */
 KitchenRouter.get('/tokens', requirePolicy(), async ctx => {
     const service = ctx.container.get(KitchenService);
@@ -147,7 +169,7 @@ KitchenRouter.get('/tokens', requirePolicy(), async ctx => {
 
 /**
  * one status with two content types and response headers, so the headers are read before the mime dispatch
- * from [kitchen.ck](../../contracts/kitchen.ck#L214)
+ * from [kitchen.ck](../../contracts/kitchen.ck#L227)
 */
 KitchenRouter.get('/folders/:folderId/export', requirePolicy(), async ctx => {
     const { folderId } = await parseAndValidate(

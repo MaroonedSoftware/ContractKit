@@ -1,7 +1,7 @@
 ---
 title: "Mint"
 sidebar_label: "Mint"
-sidebar_position: 5
+sidebar_position: 6
 mdx:
     format: "md"
 ---

@@ -85,6 +85,21 @@ describe('class and method shape', () => {
         expect(out).not.toContain('var response = await');
     });
 
+    it('names the verb through HttpMethod, and PATCH through the runtime static instead', () => {
+        const verbs: [Parameters<typeof opOperation>[0], string][] = [
+            ['get', 'HttpMethod.Get'],
+            ['post', 'HttpMethod.Post'],
+            ['put', 'HttpMethod.Put'],
+            ['delete', 'HttpMethod.Delete'],
+            // `HttpMethod.Patch` does not exist on netstandard2.0, so the runtime spells this one.
+            ['patch', 'SdkHttp.Patch'],
+        ];
+        for (const [method, expression] of verbs) {
+            const root = opRoot([opRoute('/payments', [opOperation(method, { sdk: 'act' })])]);
+            expect(render(root, { contracts })).toContain(`        ${expression},`);
+        }
+    });
+
     it('sends the Input variant of a body model', () => {
         const root = opRoot([opRoute('/payments', [opOperation('post', { sdk: 'create', request: opRequest('Payment') })])]);
         const out = render(root, { contracts, modelsWithInput: new Set(['Payment']) });

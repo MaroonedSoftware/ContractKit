@@ -211,6 +211,16 @@ public sealed class SdkHttp : IDisposable
     public JsonSerializerOptions Json { get; }
 
     /// <summary>
+    /// The PATCH verb.
+    /// </summary>
+    /// <remarks>
+    /// <c>HttpMethod</c> carries a static for every other verb a contract can declare, but not for
+    /// this one on every framework the SDK builds against, so it is spelled once here rather than
+    /// allocated per call.
+    /// </remarks>
+    public static readonly HttpMethod Patch = new HttpMethod("PATCH");
+
+    /// <summary>
     /// Send one request and read its body.
     /// </summary>
     /// <remarks>

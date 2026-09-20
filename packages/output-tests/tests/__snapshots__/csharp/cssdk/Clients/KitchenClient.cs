@@ -70,6 +70,17 @@ public sealed class KitchenClient(SdkHttp http)
         return http.ReadJson<Instrument>(response);
     }
 
+    /// <summary>the one verb with no HttpMethod static of its own on every C# target framework</summary>
+    public async Task<Folder> TouchFolderAsync(Guid folderId, Named body, CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            SdkHttp.Patch,
+            http.Path("folders", http.Segment(folderId)),
+            content: http.JsonContent(body, "application/json"),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<Folder>(response);
+    }
+
     public async Task<Ledger> PostLedgerAsync(LedgerInput body, CancellationToken cancellationToken = default)
     {
         var response = await http.ExecuteAsync(

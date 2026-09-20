@@ -65,7 +65,7 @@ using Acme.Sdk.Runtime;
 using var sdk = new AcmeSdk(new SdkOptions
 {
     BaseUrl = "https://api.example.com",
-    Headers = _ => ValueTask.FromResult<IReadOnlyDictionary<string, string>>(
+    Headers = _ => new ValueTask<IReadOnlyDictionary<string, string>>(
         new Dictionary<string, string> { ["authorization"] = $"Bearer {token}" }),
 });
 

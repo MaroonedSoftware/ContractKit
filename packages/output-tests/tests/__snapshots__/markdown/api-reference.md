@@ -31,10 +31,11 @@
 </details>
 
 <details>
-<summary><strong>Kitchen</strong> (7)</summary>
+<summary><strong>Kitchen</strong> (8)</summary>
 
 - [Several statuses, and two content types on one of them](#several-statuses-and-two-content-types-on-one-of-them)
 - [A method name that is a keyword in the target languages](#a-method-name-that-is-a-keyword-in-the-target-languages)
+- [The one verb with no HttpMethod static of its own on every C# target framework](#the-one-verb-with-no-httpmethod-static-of-its-own-on-every-c-target-framework)
 - [Post ledger](#post-ledger)
 - [Stamp](#stamp)
 - [Mint](#mint)
@@ -647,6 +648,35 @@ Accepts a [Shared](#shared) object.
 ##### Response
 
 `200 OK` — Returns a [Instrument](#instrument) object.
+
+
+---
+
+#### The one verb with no HttpMethod static of its own on every C# target framework
+
+**`PATCH`** `/folders/{folder-id}`
+
+> [!NOTE]
+> SDK method: `touchFolder`
+
+##### Attributes
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `folder-id` | `string` | Yes | Path parameter. |
+
+</details>
+
+##### Request body (`application/json`)
+
+Accepts a [Named](#named) object.
+
+##### Response
+
+`200 OK` — Returns a [Folder](#folder) object.
 
 
 ---

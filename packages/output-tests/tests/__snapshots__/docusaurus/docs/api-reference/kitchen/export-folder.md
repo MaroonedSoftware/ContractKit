@@ -1,7 +1,7 @@
 ---
 title: "One status with two content types and response headers, so the headers are read before the mime dispatch"
 sidebar_label: "One status with two content types and response headers, so the headers are read before the mime dispatch"
-sidebar_position: 7
+sidebar_position: 8
 mdx:
     format: "md"
 ---

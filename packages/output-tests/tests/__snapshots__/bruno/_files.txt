@@ -20,6 +20,7 @@ bruno/kitchen/folder.yml
 bruno/kitchen/get-folders-folder-id-export.yml
 bruno/kitchen/get-folders-folder-id.yml
 bruno/kitchen/get-tokens.yml
+bruno/kitchen/patch-folders-folder-id.yml
 bruno/kitchen/post-ledgers.yml
 bruno/kitchen/post-stamps.yml
 bruno/kitchen/post-tokens.yml

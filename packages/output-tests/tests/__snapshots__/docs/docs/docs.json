@@ -50,6 +50,7 @@
                         "pages": [
                             "api-reference/kitchen/get-folder",
                             "api-reference/kitchen/import",
+                            "api-reference/kitchen/touch-folder",
                             "api-reference/kitchen/post-ledger",
                             "api-reference/kitchen/stamp",
                             "api-reference/kitchen/mint",

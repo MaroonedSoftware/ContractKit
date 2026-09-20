@@ -70,8 +70,9 @@ public sealed class BigIntegerConverter : JsonConverter<BigInteger>
         if (reader.TokenType == JsonTokenType.Number)
         {
             // Read the raw token rather than a long: the value may be wider than any BCL integer,
-            // which is the whole reason the contract called it a bigint.
-            var raw = Encoding.UTF8.GetString(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
+            // which is the whole reason the contract called it a bigint. Copied to an array rather
+            // than handed to the span overload of GetString, which netstandard2.0 does not have.
+            var raw = Encoding.UTF8.GetString(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray());
             return BigInteger.Parse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture);
         }
 

@@ -419,6 +419,29 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Instrument'
+    patch:
+      operationId: touchFolder
+      description: 'the one verb with no HttpMethod static of its own on every C# target framework'
+      parameters:
+        - name: folder-id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Named'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Folder'
   '/ledgers':
     post:
       operationId: postLedger

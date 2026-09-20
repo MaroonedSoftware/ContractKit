@@ -24,6 +24,7 @@ docs/api-reference/kitchen/list-tokens.mdx
 docs/api-reference/kitchen/mint.mdx
 docs/api-reference/kitchen/post-ledger.mdx
 docs/api-reference/kitchen/stamp.mdx
+docs/api-reference/kitchen/touch-folder.mdx
 docs/api-reference/models/billing/admin-credential.mdx
 docs/api-reference/models/billing/credential.mdx
 docs/api-reference/models/billing/payment-filter.mdx

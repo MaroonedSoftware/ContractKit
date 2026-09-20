@@ -213,7 +213,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderCont
     lines.push(`public async ${returnType === 'void' ? 'Task' : `Task<${returnType}>`} ${methodName}(${signature})`);
     lines.push('{');
 
-    const callArgs: string[] = [`HttpMethod.${httpMethodConstant(op.method)}`, buildPathExpression(route.path, route.params, pathBindings)];
+    const callArgs: string[] = [httpMethodExpression(op.method), buildPathExpression(route.path, route.params, pathBindings)];
     if (op.query) callArgs.push('query: http.Params(query)');
     if (op.headers) callArgs.push('headers: http.Params(customHeaders)');
     const content = bodyArgument(op);
@@ -590,10 +590,16 @@ function methodDoc(route: OpRouteNode, op: OpOperationNode, observable: OpRespon
     return lines;
 }
 
-/** `System.Net.Http.HttpMethod` spells its verbs as `HttpMethod.Get`, `HttpMethod.Delete`, and so on. */
-function httpMethodConstant(method: string): string {
+/**
+ * How a verb is spelled at the call site.
+ *
+ * `System.Net.Http.HttpMethod` carries a static for every verb the grammar allows except PATCH,
+ * which netstandard2.0 does not have, so PATCH goes through the runtime's own `SdkHttp.Patch`.
+ */
+function httpMethodExpression(method: string): string {
     const lower = method.toLowerCase();
-    return lower.charAt(0).toUpperCase() + lower.slice(1);
+    if (lower === 'patch') return 'SdkHttp.Patch';
+    return `HttpMethod.${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
 }
 
 // ─── Path building ─────────────────────────────────────────────────────────
