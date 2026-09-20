@@ -1,6 +1,6 @@
 import type { SdkFetch } from '../sdk-options.js';
 import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString, buildHeaders, readContentType, parseBigIntHeader } from '../sdk-options.js';
-import type { Folder, Instrument, LedgerOutput, LedgerWireInput, Shared, SharedInput, StampedOutput, StampedWireInput, TokenOutput, TokenWireInput } from '../types/kitchen.types.js';
+import type { Folder, Instrument, LedgerOutput, LedgerWireInput, Named, Shared, SharedInput, StampedOutput, StampedWireInput, TokenOutput, TokenWireInput } from '../types/kitchen.types.js';
 import { reviveFolder, reviveLedgerOutput, reviveStampedOutput } from '../types/kitchen.types.js';
 import { DateTime } from 'luxon';
 
@@ -44,6 +44,16 @@ export class KitchenClient {
             body: JSON.stringify(body, bigIntReplacer),
         });
         return await parseJson<Instrument>(result);
+    }
+
+    /** @description the one verb with no HttpMethod static of its own on every C# target framework */
+    async touchFolder(folderId: string, body: Named): Promise<Folder> {
+        const result = await this.fetch(`/folders/${encodeURIComponent(folderId)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body, bigIntReplacer),
+        });
+        return reviveFolder(await parseJson<Folder>(result));
     }
 
     async postLedger(body: LedgerWireInput): Promise<LedgerOutput> {

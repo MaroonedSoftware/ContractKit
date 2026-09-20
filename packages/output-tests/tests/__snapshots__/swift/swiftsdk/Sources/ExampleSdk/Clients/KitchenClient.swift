@@ -43,6 +43,14 @@ public final class KitchenClient: Sendable {
         return try http.decodeJSON(Instrument.self, from: response)
     }
 
+    /// the one verb with no HttpMethod static of its own on every C# target framework
+    public func touchFolder(folderId: UUID, body: Named) async throws -> Folder {
+        var request = try SdkRequest(method: "PATCH", path: ["folders", http.segment(folderId)])
+        try http.setJSONBody(&request, body, contentType: "application/json")
+        let response = try await http.execute(request)
+        return try http.decodeJSON(Folder.self, from: response)
+    }
+
     public func postLedger(body: LedgerInput) async throws -> Ledger {
         var request = SdkRequest(method: "POST", path: ["ledgers"])
         try http.setJSONBody(&request, body, contentType: "application/json")

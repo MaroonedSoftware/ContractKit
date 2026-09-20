@@ -5,9 +5,24 @@ import { quoteCSharpString, safeMemberName, toCSharpEnumMemberName, toCSharpProp
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
+/**
+ * Which C# type a contract's `date` maps to.
+ *
+ * `dateonly` is `DateOnly`, the type the framework added for exactly this. `datetime` is `DateTime`
+ * at midnight with an unspecified kind, for a UI stack whose date controls bind to that and nothing
+ * else — XAML's `DatePicker` among them. The choice applies to every framework the SDK is built for,
+ * so the public surface never differs between them.
+ *
+ * `time` is `TimeOnly` either way: `duration` already maps to `TimeSpan`, and serialization dispatches
+ * on the CLR type, so a `time` carried as a `TimeSpan` would go out as `PT9H30M`.
+ */
+export type CSharpDateTypes = 'dateonly' | 'datetime';
+
 export interface CSharpModelCodegenOptions {
     /** Root namespace the SDK is generated into. Models land in `<namespace>.Models`. */
     namespace: string;
+    /** Which C# type a `date` maps to (default: `dateonly`). */
+    dateTypes?: CSharpDateTypes;
     /** Model names that have a distinct `Input` variant, including ones declared in other files. */
     modelsWithInput?: ReadonlySet<string>;
     /**
@@ -26,6 +41,11 @@ export interface CSharpModelCodegenOptions {
  * There is no import tracker, unlike the Kotlin plugin: every type the models can name is in the
  * base class library, so the set is fixed. An unused `using` is not a compiler warning, and pinning
  * the block keeps the output stable and free of the ordering churn a tracker would produce.
+ *
+ * The SDK's own runtime namespace is added to this list per file, because it needs the namespace
+ * name. It is where `DateOnly` and `TimeOnly` come from on a framework too old to have them: the
+ * polyfills are declared there and nowhere else, so the same short spelling resolves to the
+ * framework's type wherever the framework has one, with no conditional code in a model.
  */
 const MODEL_USINGS = [
     'using System;',
@@ -50,6 +70,7 @@ export function generateCSharpModels(root: ContractRootNode, opts: CSharpModelCo
 
     const ctx: RenderContext = {
         namespace: opts.namespace,
+        dateTypes: opts.dateTypes ?? 'dateonly',
         modelsWithInput,
         modelIndex,
         hoisted: opts.hoisted,
@@ -67,7 +88,7 @@ export function generateCSharpModels(root: ContractRootNode, opts: CSharpModelCo
     for (const model of topoSortModels(root.models)) append(generateModel(model, ctx));
     for (const decl of opts.hoisted?.byFile.get(root.file) ?? []) append(generateHoisted(decl, ctx));
 
-    return renderFile(`${opts.namespace}.Models`, ctx.globalAliases, [...MODEL_USINGS], bodies);
+    return renderFile(`${opts.namespace}.Models`, ctx.globalAliases, [...MODEL_USINGS, `using ${opts.namespace}.Runtime;`], bodies);
 }
 
 /**
@@ -86,6 +107,7 @@ export function resolveModelsWithInput(models: readonly ModelNode[], external: R
 
 interface RenderContext {
     namespace: string;
+    dateTypes: CSharpDateTypes;
     modelsWithInput: ReadonlySet<string>;
     modelIndex: ReadonlyMap<string, ModelNode>;
     hoisted?: HoistResult;
@@ -100,6 +122,7 @@ interface RenderContext {
 export function createRenderContext(opts: CSharpModelCodegenOptions & { modelsWithInput: ReadonlySet<string> }): RenderContext {
     return {
         namespace: opts.namespace,
+        dateTypes: opts.dateTypes ?? 'dateonly',
         modelsWithInput: opts.modelsWithInput,
         modelIndex: opts.modelIndex ?? new Map(),
         hoisted: opts.hoisted,
@@ -238,8 +261,9 @@ export function renderScalar(name: ScalarTypeNode['name'], ctx: RenderContext): 
             return qualify('decimal', 'System.Decimal', ctx);
         case 'boolean':
             return qualify('bool', 'System.Boolean', ctx);
+        // Both carried as the wire form by a converter: `yyyy-MM-dd` and `HH:mm:ss`.
         case 'date':
-            return qualify('DateOnly', 'System.DateOnly', ctx);
+            return ctx.dateTypes === 'datetime' ? qualify('DateTime', 'System.DateTime', ctx) : qualify('DateOnly', 'System.DateOnly', ctx);
         case 'time':
             return qualify('TimeOnly', 'System.TimeOnly', ctx);
         case 'datetime':
@@ -541,7 +565,33 @@ function addAlias(name: string, type: ContractTypeNode, ctx: RenderContext, forI
                 `'${name}' is generated as '${aliased}'. Declare the nullability at each use site instead.`,
         );
     }
+    const polyfilled = polyfillAliasTarget(aliased, ctx);
+    if (polyfilled) {
+        // A using alias has to name its target in full, which is the one place the short spelling
+        // cannot do the work: `System.DateOnly` does not exist on netstandard2.0, so the alias is
+        // written per framework rather than resolved by the file's imports.
+        ctx.globalAliases.push(`#if NETSTANDARD2_0\nglobal using ${name} = ${polyfilled};\n#else\nglobal using ${name} = ${aliased};\n#endif`);
+        return;
+    }
+
     ctx.globalAliases.push(`global using ${name} = ${aliased};`);
+}
+
+/** The framework types the SDK carries a polyfill for, by their fully-qualified spelling. */
+const POLYFILLED_TYPES: readonly string[] = ['System.DateOnly', 'System.TimeOnly'];
+
+/**
+ * The netstandard2.0 spelling of an alias target, or undefined when it names no polyfilled type.
+ *
+ * Substring replacement rather than a lookup, because the target may be a container: `array(date)`
+ * aliases to `System.Collections.Generic.List<System.DateOnly>`.
+ */
+function polyfillAliasTarget(target: string, ctx: RenderContext): string | undefined {
+    let out = target;
+    for (const full of POLYFILLED_TYPES) {
+        out = out.split(full).join(`${ctx.namespace}.Runtime.${full.slice('System.'.length)}`);
+    }
+    return out === target ? undefined : out;
 }
 
 /** Whether `type` renders as a nullable *value* type, which is a legal alias target. */
@@ -563,6 +613,7 @@ const VALUE_TYPES: ReadonlySet<string> = new Set([
     'BigInteger',
     'DateOnly',
     'TimeOnly',
+    'DateTime',
     'DateTimeOffset',
     'TimeSpan',
     'Guid',

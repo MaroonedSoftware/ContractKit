@@ -7,6 +7,7 @@ import com.example.sdk.models.Folder
 import com.example.sdk.models.Instrument
 import com.example.sdk.models.Ledger
 import com.example.sdk.models.LedgerInput
+import com.example.sdk.models.Named
 import com.example.sdk.models.Shared
 import com.example.sdk.models.SharedInput
 import com.example.sdk.models.Stamped
@@ -53,6 +54,15 @@ class KitchenClient(private val http: SdkHttp) {
     /** a method name that is a keyword in the target languages */
     suspend fun import(folderId: Uuid, body: SharedInput): Instrument {
         val response = http.execute(HttpMethod.Put) {
+            path("folders", segment(folderId))
+            jsonBody(body, "application/json")
+        }
+        return http.decodeJson(response)
+    }
+
+    /** the one verb with no HttpMethod static of its own on every C# target framework */
+    suspend fun touchFolder(folderId: Uuid, body: Named): Folder {
+        val response = http.execute(HttpMethod.Patch) {
             path("folders", segment(folderId))
             jsonBody(body, "application/json")
         }

@@ -8,7 +8,7 @@ from typing import Literal, NotRequired, TypedDict
 from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError  # noqa: F401
 from ._scalars import BigInt
-from ._models_kitchen import Folder, Instrument, Ledger, LedgerInput, Shared, SharedInput, Stamped, Token
+from ._models_kitchen import Folder, Instrument, Ledger, LedgerInput, Named, Shared, SharedInput, Stamped, Token
 
 
 class GetFolder200Headers(TypedDict, total=False):
@@ -89,6 +89,13 @@ class KitchenClient(BaseClient):
         """
         result = await self._fetch(f"/folders/{quote(str(folder_id), safe='')}", method="PUT", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return _IMPORT__RESPONSE.validate_python(result)
+
+    async def touch_folder(self, folder_id: UUID, body: Named) -> Folder:
+        """
+        the one verb with no HttpMethod static of its own on every C# target framework
+        """
+        result = await self._fetch(f"/folders/{quote(str(folder_id), safe='')}", method="PATCH", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
+        return Folder.model_validate(result)
 
     async def post_ledger(self, body: LedgerInput) -> Ledger:
         result = await self._fetch("/ledgers", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))

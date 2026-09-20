@@ -64,6 +64,25 @@ describe('assertValidConfig', () => {
         expect(() => assertValidConfig({ scaffold: 'yes' as never })).toThrow(/scaffold must be a boolean/);
         expect(() => assertValidConfig({ includeInternal: 1 as never })).toThrow(/includeInternal must be a boolean/);
     });
+
+    it('accepts the frameworks the scaffold knows, in either order', () => {
+        expect(() => assertValidConfig({ targetFrameworks: ['net10.0'] })).not.toThrow();
+        expect(() => assertValidConfig({ targetFrameworks: ['netstandard2.0'] })).not.toThrow();
+        expect(() => assertValidConfig({ targetFrameworks: ['netstandard2.0', 'net10.0'] })).not.toThrow();
+    });
+
+    it('rejects a targetFrameworks list that is empty, unknown, or repeated', () => {
+        expect(() => assertValidConfig({ targetFrameworks: [] })).toThrow(/must be a non-empty array/);
+        expect(() => assertValidConfig({ targetFrameworks: 'net10.0' as never })).toThrow(/must be a non-empty array/);
+        expect(() => assertValidConfig({ targetFrameworks: ['net48' as never] })).toThrow(/is not supported/);
+        expect(() => assertValidConfig({ targetFrameworks: ['net10.0', 'net10.0'] })).toThrow(/lists 'net10.0' twice/);
+    });
+
+    it('accepts either date mapping and rejects anything else', () => {
+        expect(() => assertValidConfig({ dateTypes: 'dateonly' })).not.toThrow();
+        expect(() => assertValidConfig({ dateTypes: 'datetime' })).not.toThrow();
+        expect(() => assertValidConfig({ dateTypes: 'DateTime' as never })).toThrow(/dateTypes "DateTime" is not supported/);
+    });
 });
 
 describe('generateTargets', () => {
@@ -113,6 +132,30 @@ describe('generateTargets', () => {
         expect(on.emitted.get('cssdk/AcmeSdk.csproj')).toContain('<AssemblyName>AcmeSdk</AssemblyName>');
         // Write-once: the CLI must be told not to overwrite a file the user has since edited.
         expect(on.ifAbsent).toEqual(['cssdk/AcmeSdk.csproj']);
+    });
+
+    it('emits the polyfills only for a build that includes netstandard2.0', async () => {
+        const off = makeCtx();
+        await createCSharpSdkPlugin({ baseDir: 'cssdk' }, ROOT_DIR).generateTargets!(INPUTS, off);
+        expect(off.emitted.has('cssdk/Runtime/Polyfills.cs')).toBe(false);
+
+        const on = makeCtx();
+        await createCSharpSdkPlugin({ baseDir: 'cssdk', namespace: 'Acme.Sdk', targetFrameworks: ['netstandard2.0', 'net10.0'] }, ROOT_DIR)
+            .generateTargets!(INPUTS, on);
+        const polyfills = on.emitted.get('cssdk/Runtime/Polyfills.cs');
+        expect(polyfills).toContain('namespace Acme.Sdk.Runtime');
+        expect(polyfills).toContain('public readonly struct DateOnly');
+        // The whole file is conditional, so the net10.0 leg of the same build compiles none of it.
+        expect(polyfills?.includes('#if NETSTANDARD2_0')).toBe(true);
+    });
+
+    it('multi-targets the scaffolded project file when the config asks for netstandard2.0', async () => {
+        const ctx = makeCtx();
+        await createCSharpSdkPlugin(
+            { baseDir: 'cssdk', sdkName: 'AcmeSdk', scaffold: true, targetFrameworks: ['netstandard2.0', 'net10.0'] },
+            ROOT_DIR,
+        ).generateTargets!(INPUTS, ctx);
+        expect(ctx.emitted.get('cssdk/AcmeSdk.csproj')).toContain('<TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>');
     });
 
     it('surfaces an invalid namespace as a build error rather than emitting broken C#', async () => {

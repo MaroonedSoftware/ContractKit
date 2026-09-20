@@ -3,7 +3,9 @@
 Generates a C#/.NET SDK client from ContractKit `.ck` files.
 
 The output is built on `System.Text.Json` and `HttpClient` from the shared framework and takes **no
-NuGet dependencies at all**, so a generated SDK restores and builds with no feed reachable.
+NuGet dependencies at all**, so a generated SDK restores and builds with no feed reachable. It can
+also be built for `netstandard2.0`, which is what a UWP or .NET Framework project can reference; see
+[Older frameworks](#older-frameworks).
 
 ## Install
 
@@ -26,13 +28,15 @@ pnpm add -D @contractkit/plugin-csharp
 }
 ```
 
-| Option            | Default           | Meaning                                                                 |
-| ----------------- | ----------------- | ----------------------------------------------------------------------- |
-| `baseDir`         | `csharp-sdk`      | Output directory, relative to the config's `rootDir`.                   |
-| `namespace`       | `ContractKit.Sdk` | Root namespace for the generated sources.                               |
-| `sdkName`         | `Sdk`             | Aggregator class name, and the assembly name when scaffolding.          |
-| `includeInternal` | `false`           | Emit client methods for operations marked `internal`.                   |
-| `scaffold`        | `false`           | Write `<SdkName>.csproj` once, as a user-owned file. Never overwritten. |
+| Option             | Default           | Meaning                                                                 |
+| ------------------ | ----------------- | ----------------------------------------------------------------------- |
+| `baseDir`          | `csharp-sdk`      | Output directory, relative to the config's `rootDir`.                   |
+| `namespace`        | `ContractKit.Sdk` | Root namespace for the generated sources.                               |
+| `sdkName`          | `Sdk`             | Aggregator class name, and the assembly name when scaffolding.          |
+| `includeInternal`  | `false`           | Emit client methods for operations marked `internal`.                   |
+| `scaffold`         | `false`           | Write `<SdkName>.csproj` once, as a user-owned file. Never overwritten. |
+| `targetFrameworks` | `["net10.0"]`     | The frameworks the SDK is built for. Add `netstandard2.0` for UWP.      |
+| `dateTypes`        | `dateonly`        | Which C# type a `date` maps to: `dateonly` or `datetime`.               |
 
 Config arrives as JSON, so it is validated at run time: an invalid namespace, a namespace segment
 that is a C# keyword, or a non-boolean flag fails the build rather than emitting C# that cannot
@@ -44,6 +48,7 @@ compile.
 <baseDir>/
     Runtime/SdkRuntime.cs     SdkHttp, SdkOptions, SdkException, SdkResponse, SdkPart
     Runtime/Converters.cs     SdkJson.Options and the scalar converters
+    Runtime/Polyfills.cs      only with `netstandard2.0` in `targetFrameworks`
     Models/<File>.cs          one file per contract file
     Clients/<File>Client.cs   one client per operations file
     <SdkName>.cs              the aggregator
@@ -65,7 +70,7 @@ using Acme.Sdk.Runtime;
 using var sdk = new AcmeSdk(new SdkOptions
 {
     BaseUrl = "https://api.example.com",
-    Headers = _ => ValueTask.FromResult<IReadOnlyDictionary<string, string>>(
+    Headers = _ => new ValueTask<IReadOnlyDictionary<string, string>>(
         new Dictionary<string, string> { ["authorization"] = $"Bearer {token}" }),
 });
 
@@ -86,7 +91,7 @@ the converters registered there.
 
 | `.ck`                                | C#                      | `.ck`                       | C#               |
 | ------------------------------------ | ----------------------- | --------------------------- | ---------------- |
-| `string`, `email`, `url`, `interval` | `string`                | `date`                      | `DateOnly`       |
+| `string`, `email`, `url`, `interval` | `string`                | `date`                      | `DateOnly`¹      |
 | `number`                             | `double`                | `time`                      | `TimeOnly`       |
 | `int`                                | `long`                  | `datetime`                  | `DateTimeOffset` |
 | `bigint`                             | `BigInteger`            | `duration`                  | `TimeSpan`       |
@@ -94,6 +99,13 @@ the converters registered there.
 | `boolean`                            | `bool`                  | `binary`                    | `byte[]`         |
 | `array(T)`                           | `List<T>`               | `null`                      | `object?`        |
 | `record(string, V)`                  | `Dictionary<string, V>` | `unknown`, `json`, `object` | `JsonElement`    |
+
+¹ `dateTypes: "datetime"` maps `date` to a `DateTime` at midnight with an unspecified kind instead,
+on every framework the SDK is built for, so the surface never differs between them. It is there for a
+UI stack whose date controls bind to `DateTime` and nothing else, XAML's `DatePicker` among them. The
+wire form is `yyyy-MM-dd` either way. `time` stays `TimeOnly` in both: `duration` is already a
+`TimeSpan`, and serialization dispatches on the CLR type, so a `time` carried as one would go out as
+`PT9H30M`.
 
 `int` is a JavaScript safe integer in the source language, which overflows a 32-bit `int`, so it
 maps to `long`. `decimal` travels as a quoted JSON string and refuses to read an unquoted number,
@@ -154,9 +166,66 @@ comes back as a value; everything else throws `SdkException`, and the method doc
 
 ## Scaffolding
 
-`scaffold: true` writes `<SdkName>.csproj` once, targeting `net10.0` with nullable enabled and no
-package reference. It is emitted `ifAbsent`, so it is created once and never regenerated: add a
-package id, a version or an analyzer set and the next build leaves them alone.
+`scaffold: true` writes `<SdkName>.csproj` once, targeting what `targetFrameworks` names, with
+nullable enabled. On `net10.0` alone there is no package reference at all. It is emitted `ifAbsent`,
+so it is created once and never regenerated: add a package id, a version or an analyzer set and the
+next build leaves them alone.
+
+## Older frameworks
+
+A UWP project targets .NET Standard 2.0 and the .NET Native toolchain, so it cannot reference an SDK
+built only for `net10.0`. Name the framework and it can:
+
+```json
+{
+    "plugins": {
+        "@contractkit/plugin-csharp": {
+            "targetFrameworks": ["netstandard2.0", "net10.0"],
+            "scaffold": true
+        }
+    }
+}
+```
+
+That adds `Runtime/Polyfills.cs` to the output and, in a fresh scaffold, multi-targets the project
+file. The generated sources are the same either way: everything framework-specific is behind
+`#if NETSTANDARD2_0`, so the same files compile on both legs and the public surface is the same on
+both. .NET Standard 2.0 does not carry `System.Text.Json`, so that one leg takes a package reference
+and needs a feed to restore; `net10.0` keeps its dependency-free build.
+
+**An existing project keeps its own `.csproj`** — the file is never regenerated. Set the option,
+rebuild to pick up `Runtime/Polyfills.cs`, then edit the project file by hand:
+
+```xml
+  <PropertyGroup>
+    <!-- replacing <TargetFramework>net10.0</TargetFramework> -->
+    <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <LangVersion>12.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="System.Text.Json" Version="10.0.12" />
+  </ItemGroup>
+```
+
+Three things to know on the consuming side:
+
+1. **The consuming project needs `<LangVersion>11</LangVersion>` or higher.** A legacy UWP project
+   defaults to C# 7.3, which cannot construct a type with `required` members or set an `init`
+   property — and every generated model has both. The error names the language version, not the SDK.
+2. **`DateOnly` and `TimeOnly` are the SDK's own types on this framework**, declared in
+   `<namespace>.Runtime` rather than in `System`, so they cannot collide with a package that
+   backfills `System.DateOnly` for your own code. Importing `<namespace>.Runtime` gives you the same
+   short spelling your `net10.0` code uses. Both convert to a `DateTime` or `TimeSpan` in one call,
+   for binding to a XAML picker; `dateTypes: "datetime"` skips the conversion for dates entirely.
+3. **A .NET Native Release build may need runtime directives.** `System.Text.Json` reflects over the
+   model types unless a source generator is used, which the generated SDK does not use. If a Release
+   build loses properties that a Debug build serializes, add an `rd.xml` entry for the SDK assembly.
+
+Minimum UWP target is 10.0.16299, which is where .NET Standard 2.0 support arrived.
 
 ## Status and known limitations
 
@@ -172,3 +241,7 @@ package id, a version or an analyzer set and the next build leaves them alone.
 6. **Only the first declared request mime is used**, since a method has one signature.
 7. **A type switch is not exhaustive.** C# has no compiler check that a union switch covers every
    member, so each generated converter ends in a `default` that throws.
+8. **The netstandard2.0 leg is verified by build and by serialization, not on a device.** The output
+   tests compile both legs with warnings as errors and round-trip every scalar through the old one.
+   No UWP or .NET Native Release build is part of that, so smoke-test one call from the app before
+   relying on it.

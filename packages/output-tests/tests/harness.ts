@@ -228,6 +228,24 @@ export function parsedFixtures(): { contractRoots: ContractRootNode[]; opRoots: 
     return parseFixtures(new DiagnosticCollector());
 }
 
+/**
+ * Run one plugin over the fixtures on its own, outside the snapshot build.
+ *
+ * For a configuration worth compiling but not worth a second golden tree: the snapshot tree carries
+ * each plugin's default shape, and a variant would double the review surface for the same contracts.
+ */
+export async function buildWithPlugin(plugin: ContractKitPlugin): Promise<EmittedFiles> {
+    const diag = new DiagnosticCollector();
+    const { contractRoots, opRoots } = parseFixtures(diag);
+    const models = contractRoots.flatMap(r => r.models);
+    const ctx = makeCtx(mkdtempSync(join(tmpdir(), 'ck-output-tests-')));
+    await plugin.generateTargets!(
+        { contractRoots, opRoots, modelsWithInput: computeModelsWithInput(models), modelsWithOutput: computeModelsWithOutput(models) },
+        ctx,
+    );
+    return ctx.emitted;
+}
+
 let cached: Promise<BuildResult> | undefined;
 
 /** Shared single build — every test file reads the same emitted output. */

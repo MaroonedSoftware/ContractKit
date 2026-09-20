@@ -1,8 +1,8 @@
 # Every construct the generators branch on and the other fixtures leave out: both union forms, self
 # and mutual recursion, tuples, records of contracts, every scalar, format() key casing, keyword
-# field and method names, non-string header params, and a status with two content types, both
-# among several statuses and on its own. The C#, Swift and TypeScript compile checks are what make
-# it worth having.
+# field and method names, non-string header params, every verb, and a status with two content types,
+# both among several statuses and on its own. The C#, Swift and TypeScript compile checks are what
+# make it worth having.
 
 options {
     keys: {
@@ -145,6 +145,19 @@ operation /folders/{folder-id}: {
         response: {
             200: {
                 application/json: Instrument
+            }
+        }
+    }
+
+    patch: { # the one verb with no HttpMethod static of its own on every C# target framework
+        sdk: touchFolder
+        service: KitchenService.touchFolder
+        request: {
+            application/json: Named
+        }
+        response: {
+            200: {
+                application/json: Folder
             }
         }
     }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContractRootNode, ScalarTypeNode } from '@contractkit/core';
 import { buildModelIndex } from '@contractkit/core';
-import { generateCSharpModels } from '../src/codegen-models.js';
+import { generateCSharpModels, type CSharpDateTypes } from '../src/codegen-models.js';
 import { collectHoistedTypes } from '../src/hoist.js';
 import {
     arrayType,
@@ -21,13 +21,18 @@ import {
 /** Render a root the way the plugin does: hoist across the project, then generate. */
 function render(
     root: ContractRootNode,
-    opts: { modelsWithInput?: Set<string>; warn?: (m: string) => void; roots?: ContractRootNode[] } = {},
+    opts: {
+        modelsWithInput?: Set<string>;
+        warn?: (m: string) => void;
+        roots?: ContractRootNode[];
+        dateTypes?: CSharpDateTypes;
+    } = {},
 ): string {
     const roots = opts.roots ?? [root];
     const modelIndex = buildModelIndex(roots.flatMap(r => r.models));
     const modelsWithInput = opts.modelsWithInput ?? new Set<string>();
     const hoisted = collectHoistedTypes(roots, { modelIndex, modelsWithInput, warn: message => opts.warn?.(message) });
-    return generateCSharpModels(root, { namespace: 'Acme.Sdk', modelsWithInput, modelIndex, hoisted, warn: opts.warn });
+    return generateCSharpModels(root, { namespace: 'Acme.Sdk', dateTypes: opts.dateTypes, modelsWithInput, modelIndex, hoisted, warn: opts.warn });
 }
 
 function one(name: string, ...fields: Parameters<typeof field>[] extends never ? never : ReturnType<typeof field>[]): ContractRootNode {
@@ -78,6 +83,20 @@ describe('scalar mapping', () => {
 
     it('maps a null scalar to a nullable object', () => {
         expect(render(one('M', field('f', scalarType('null'))))).toContain('public required object? F { get; init; }');
+    });
+
+    it('maps date to DateTime under dateTypes, and leaves time alone', () => {
+        const root = contractRoot([model('M', [field('d', scalarType('date')), field('t', scalarType('time'))])]);
+        const out = render(root, { dateTypes: 'datetime' });
+        expect(out).toContain('public required DateTime D { get; init; }');
+        // `duration` is already TimeSpan and serialization dispatches on the CLR type, so a time
+        // carried as one would go out as PT9H30M.
+        expect(out).toContain('public required TimeOnly T { get; init; }');
+    });
+
+    it('treats a DateTime date as a value type, so an optional one is Nullable rather than a reference', () => {
+        const root = contractRoot([model('M', [field('d', scalarType('date'), { optional: true })])]);
+        expect(render(root, { dateTypes: 'datetime' })).toContain('public DateTime? D { get; init; }');
     });
 });
 
@@ -253,6 +272,24 @@ describe('declarations', () => {
     it('qualifies a generic alias target too', () => {
         const root = contractRoot([model('P', [field('id', scalarType('string'))]), model('Ps', [], { type: arrayType(refType('P')) })]);
         expect(render(root)).toContain('global using Ps = System.Collections.Generic.List<Acme.Sdk.Models.P>;');
+    });
+
+    it('names both spellings of a polyfilled alias target, the one thing a file import cannot cover', () => {
+        const root = contractRoot([model('Day', [], { type: scalarType('date') }), model('Days', [], { type: arrayType(scalarType('time')) })]);
+        const out = render(root);
+        expect(out).toContain(
+            '#if NETSTANDARD2_0\nglobal using Day = Acme.Sdk.Runtime.DateOnly;\n#else\nglobal using Day = System.DateOnly;\n#endif',
+        );
+        // A container around the polyfilled type is rewritten in place rather than missed.
+        expect(out).toContain('global using Days = System.Collections.Generic.List<Acme.Sdk.Runtime.TimeOnly>;');
+        expect(out).toContain('global using Days = System.Collections.Generic.List<System.TimeOnly>;');
+    });
+
+    it('imports the runtime namespace, which is where DateOnly comes from on an older framework', () => {
+        const root = contractRoot([model('Slot', [field('day', scalarType('date'))])]);
+        const out = render(root);
+        expect(out).toContain('using Acme.Sdk.Runtime;');
+        expect(out).toContain('public required DateOnly Day { get; init; }');
     });
 
     it('drops nullability from an alias, which C# cannot express, and says so', () => {

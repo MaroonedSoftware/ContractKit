@@ -28,7 +28,8 @@ Multiple files mapping to the same `(area, subarea)` are merged into one client.
 Python, Kotlin, Swift and C# SDKs with the same operation coverage are available via
 `@contractkit/plugin-python`, `@contractkit/plugin-kotlin`, `@contractkit/plugin-swift` and
 `@contractkit/plugin-csharp`. None of them groups clients by area yet; all four emit one client per
-`.ck` file.
+`.ck` file. The C# SDK can also be built for `netstandard2.0`, which is what a UWP or .NET Framework
+project can reference.
 
 ---
 

@@ -372,17 +372,22 @@ Kotlin data classes cannot extend one another, so a contract's bases are flatten
 Emits one `Codable` models file per contract file and one `async throws` client per operation file, into a single Swift module that depends on nothing but Foundation. Method names follow the same priority as the TS SDK (`sdk:` → `name:` → derived from HTTP verb + path), kept in `camelCase` and backtick-escaped when they land on a Swift reserved word.
 
 A Swift struct cannot extend another, so a contract's bases are flattened into the generated struct, and one that would contain itself is routed through a generated box. Unions become `indirect` enums. Every struct writes its own `CodingKeys`, `init(from:)` and `encode(to:)`, so an optional field, a required nullable one, a default and a `literal()` each mean on the wire exactly what the contract says. The scaffold file is written once and never overwritten — it is yours to edit.
+
 ### `@contractkit/plugin-csharp`
 
-| Field             | Type      | Description                                                                   |
-| ----------------- | --------- | ----------------------------------------------------------------------------- |
-| `baseDir`         | `string`  | Output directory relative to `rootDir`. Default: `csharp-sdk`                 |
-| `namespace`       | `string`  | Root namespace for the generated sources. Default: `ContractKit.Sdk`          |
-| `sdkName`         | `string`  | Aggregator class name, and the assembly name when scaffolding. Default: `Sdk` |
-| `includeInternal` | `boolean` | Whether to emit client methods for `internal` operations. Default: `false`.   |
-| `scaffold`        | `boolean` | Emit `<SdkName>.csproj` once. Default: `false`.                               |
+| Field              | Type       | Description                                                                   |
+| ------------------ | ---------- | ----------------------------------------------------------------------------- |
+| `baseDir`          | `string`   | Output directory relative to `rootDir`. Default: `csharp-sdk`                 |
+| `namespace`        | `string`   | Root namespace for the generated sources. Default: `ContractKit.Sdk`          |
+| `sdkName`          | `string`   | Aggregator class name, and the assembly name when scaffolding. Default: `Sdk` |
+| `includeInternal`  | `boolean`  | Whether to emit client methods for `internal` operations. Default: `false`.   |
+| `scaffold`         | `boolean`  | Emit `<SdkName>.csproj` once. Default: `false`.                               |
+| `targetFrameworks` | `string[]` | Frameworks to build for: `netstandard2.0`, `net10.0`. Default: `["net10.0"]`  |
+| `dateTypes`        | `string`   | Which C# type a `date` maps to: `dateonly` or `datetime`. Default: `dateonly` |
 
 Emits one `System.Text.Json` models file per contract file and one `HttpClient`-based client per operation file. Method names follow the same priority as the TS SDK (`sdk:` → `name:` → derived from HTTP verb + path), spelled `PascalCase` with an `Async` suffix; a parameter that lands on a C# keyword is `@`-escaped. The generated SDK targets `net10.0` and takes no NuGet dependencies, so it restores and builds with no feed reachable.
+
+Adding `netstandard2.0` to `targetFrameworks` makes the output referenceable from a UWP or .NET Framework project: an emitted `Runtime/Polyfills.cs` supplies what that framework lacks, and a fresh scaffold multi-targets and references `System.Text.Json` on that leg alone. The generated sources and the public surface are the same on both. `dateTypes: "datetime"` maps a `date` to a `DateTime` at midnight for a UI stack that binds to one, on every framework rather than only the old one. See the plugin's README for what the consuming project has to set.
 
 Bases are flattened into each record. An optional field and a required nullable field are told apart per property, so a null the contract requires is written and an absent field is omitted. A plain union becomes an abstract record with one member record each; a discriminated union becomes an interface its members implement, so one contract can belong to several unions. The project file is written once and never overwritten — it is yours to edit.
 

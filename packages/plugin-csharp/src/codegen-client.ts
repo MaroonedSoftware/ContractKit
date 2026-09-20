@@ -10,7 +10,7 @@ import type {
 } from '@contractkit/core';
 import { classifyContentType, observableResponses, resolveModifiers } from '@contractkit/core';
 import type { HoistResult } from './hoist.js';
-import { createRenderContext, renderCSharpType, renderFile, type RenderContext } from './codegen-models.js';
+import { createRenderContext, renderCSharpType, renderFile, type CSharpDateTypes, type RenderContext } from './codegen-models.js';
 import {
     bindCSharpParameterNames,
     deriveCSharpFileBase,
@@ -24,6 +24,8 @@ import {
 
 export interface CSharpClientCodegenOptions {
     namespace: string;
+    /** Which C# type a `date` maps to (default: `dateonly`). Applies to response headers too. */
+    dateTypes?: CSharpDateTypes;
     modelsWithInput: ReadonlySet<string>;
     modelIndex?: ReadonlyMap<string, ModelNode>;
     hoisted?: HoistResult;
@@ -213,7 +215,7 @@ function generateMethod(route: OpRouteNode, op: OpOperationNode, ctx: RenderCont
     lines.push(`public async ${returnType === 'void' ? 'Task' : `Task<${returnType}>`} ${methodName}(${signature})`);
     lines.push('{');
 
-    const callArgs: string[] = [`HttpMethod.${httpMethodConstant(op.method)}`, buildPathExpression(route.path, route.params, pathBindings)];
+    const callArgs: string[] = [httpMethodExpression(op.method), buildPathExpression(route.path, route.params, pathBindings)];
     if (op.query) callArgs.push('query: http.Params(query)');
     if (op.headers) callArgs.push('headers: http.Params(customHeaders)');
     const content = bodyArgument(op);
@@ -435,7 +437,7 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
     const headerRecord = (headers: OpResponseHeaderNode[], name: string): void => {
         const parameters = headers
             .map(header => {
-                const reader = headerReader(header, place);
+                const reader = headerReader(header, place, ctx.dateTypes);
                 const type = header.optional ? `${reader.type}?` : reader.type;
                 return `${type} ${safeMemberName(toCSharpPropertyName(header.name), name)}`;
             })
@@ -505,7 +507,7 @@ function responseDeclarations(route: OpRouteNode, op: OpOperationNode, ctx: Rend
  *
  * @throws {Error} When the header's declared type cannot be read from an HTTP header.
  */
-function headerReader(header: OpResponseHeaderNode, place: string): { type: string; read: (raw: string) => string } {
+function headerReader(header: OpResponseHeaderNode, place: string, dateTypes: CSharpDateTypes): { type: string; read: (raw: string) => string } {
     const scalar = header.type.kind === 'scalar' ? header.type.name : undefined;
     switch (scalar) {
         case 'string':
@@ -525,7 +527,9 @@ function headerReader(header: OpResponseHeaderNode, place: string): { type: stri
         case 'uuid':
             return { type: 'Guid', read: raw => `Guid.Parse(${raw})` };
         case 'date':
-            return { type: 'DateOnly', read: raw => `DateOnly.Parse(${raw}, CultureInfo.InvariantCulture)` };
+            return dateTypes === 'datetime'
+                ? { type: 'DateTime', read: raw => `DateTime.Parse(${raw}, CultureInfo.InvariantCulture)` }
+                : { type: 'DateOnly', read: raw => `DateOnly.Parse(${raw}, CultureInfo.InvariantCulture)` };
         case 'time':
             return { type: 'TimeOnly', read: raw => `TimeOnly.Parse(${raw}, CultureInfo.InvariantCulture)` };
         case 'datetime':
@@ -564,7 +568,7 @@ function readHeaderLines(
         bound,
     );
     const args = headers.map(header => {
-        const reader = headerReader(header, place);
+        const reader = headerReader(header, place, ctx.dateTypes);
         const name = quoteCSharpString(header.name);
         // A required header the service omitted is a broken contract, not a null the caller has to
         // handle; an optional one simply stays absent.
@@ -590,10 +594,16 @@ function methodDoc(route: OpRouteNode, op: OpOperationNode, observable: OpRespon
     return lines;
 }
 
-/** `System.Net.Http.HttpMethod` spells its verbs as `HttpMethod.Get`, `HttpMethod.Delete`, and so on. */
-function httpMethodConstant(method: string): string {
+/**
+ * How a verb is spelled at the call site.
+ *
+ * `System.Net.Http.HttpMethod` carries a static for every verb the grammar allows except PATCH,
+ * which netstandard2.0 does not have, so PATCH goes through the runtime's own `SdkHttp.Patch`.
+ */
+function httpMethodExpression(method: string): string {
     const lower = method.toLowerCase();
-    return lower.charAt(0).toUpperCase() + lower.slice(1);
+    if (lower === 'patch') return 'SdkHttp.Patch';
+    return `HttpMethod.${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
 }
 
 // ─── Path building ─────────────────────────────────────────────────────────

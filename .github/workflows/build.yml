@@ -23,6 +23,16 @@ jobs:
                   node-version: latest
                   cache: pnpm
 
+            # The C# output tests build the generated SDK for real, and skip themselves when no
+            # `dotnet` is on PATH. Without this step they skipped here and the only evidence that the
+            # generated C# compiles came from whichever machine ran it locally. The version is the one
+            # the scaffold targets; the netstandard2.0 leg of a multi-target SDK also restores
+            # System.Text.Json from nuget.org.
+            - name: Setup .NET
+              uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+              with:
+                  dotnet-version: 10.0.x
+
             - name: Get pnpm store directory
               id: pnpm-cache
               shell: bash

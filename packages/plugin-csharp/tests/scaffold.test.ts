@@ -25,4 +25,26 @@ describe('generateCsproj', () => {
     it('says it is never regenerated, since the file is the user’s after the first run', () => {
         expect(generateCsproj('Acme.Sdk', 'AcmeSdk')).toContain('never regenerated');
     });
+
+    it('keeps the single-framework output identical however the one framework is spelled', () => {
+        expect(generateCsproj('Acme.Sdk', 'AcmeSdk', ['net10.0'])).toBe(generateCsproj('Acme.Sdk', 'AcmeSdk'));
+    });
+
+    it('multi-targets, pins the language version and references System.Text.Json for netstandard2.0', () => {
+        const out = generateCsproj('Acme.Sdk', 'AcmeSdk', ['netstandard2.0', 'net10.0']);
+        expect(out).toContain('<TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>');
+        expect(out).not.toContain('<TargetFramework>');
+        // Both conditioned on the old framework, so net10.0 keeps its default language version and
+        // its dependency-free restore.
+        expect(out).toContain(`<PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">`);
+        expect(out).toContain(`<LangVersion>${SCAFFOLD_VERSIONS.netstandardLangVersion}</LangVersion>`);
+        expect(out).toContain(`<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">`);
+        expect(out).toContain(`<PackageReference Include="System.Text.Json" Version="${SCAFFOLD_VERSIONS.systemTextJson}" />`);
+    });
+
+    it('can target netstandard2.0 on its own', () => {
+        const out = generateCsproj('Acme.Sdk', 'AcmeSdk', ['netstandard2.0']);
+        expect(out).toContain('<TargetFramework>netstandard2.0</TargetFramework>');
+        expect(out).toContain('<PackageReference Include="System.Text.Json"');
+    });
 });
