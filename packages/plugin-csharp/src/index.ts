@@ -28,7 +28,8 @@ import { generateSdkCs, type SdkAggregatorClient } from './codegen-sdk.js';
 import { collectHoistedTypes } from './hoist.js';
 import { generateRuntimeCs } from './runtime.js';
 import { generateConvertersCs } from './runtime-converters.js';
-import { generateCsproj } from './scaffold.js';
+import { generatePolyfillsCs } from './runtime-polyfills.js';
+import { DEFAULT_TARGET_FRAMEWORKS, generateCsproj, type CSharpTargetFramework } from './scaffold.js';
 import { CSHARP_KEYWORDS, deriveCSharpFileBase } from './naming.js';
 
 export interface CSharpSdkPluginConfig {
@@ -45,13 +46,23 @@ export interface CSharpSdkPluginConfig {
     includeInternal?: boolean;
     /** Emit `<SdkName>.csproj` once, as a user-owned file. Never overwritten. */
     scaffold?: boolean;
+    /**
+     * The frameworks the SDK is built for (default: `["net10.0"]`).
+     *
+     * Naming `netstandard2.0` is what makes the output usable from a UWP or .NET Framework project:
+     * `Runtime/Polyfills.cs` is emitted alongside the rest, and a scaffolded `.csproj` multi-targets
+     * and references `System.Text.Json` on that leg. Convention puts the oldest framework first.
+     */
+    targetFrameworks?: CSharpTargetFramework[];
 }
 
 /**
  * Bumped when the C# codegen output shape changes in a way that should invalidate every per-file
  * fingerprint, so a plugin upgrade forces full regeneration even when no `.ck` file has changed.
  */
-export const CSHARP_CODEGEN_VERSION = '1';
+export const CSHARP_CODEGEN_VERSION = '2';
+
+export type { CSharpTargetFramework } from './scaffold.js';
 
 const CACHE_MANIFEST_FILENAME = 'csharp-manifest.json';
 const DEFAULT_BASE_DIR = 'csharp-sdk';
@@ -111,6 +122,29 @@ export function assertValidConfig(config: CSharpSdkPluginConfig): void {
             throw new Error(`plugin-csharp: ${key} must be a boolean — got ${JSON.stringify(value)}.`);
         }
     }
+    assertValidTargetFrameworks(config.targetFrameworks);
+}
+
+/** Every framework the scaffold knows how to write a project file for. */
+const TARGET_FRAMEWORKS: readonly CSharpTargetFramework[] = ['netstandard2.0', 'net10.0'];
+
+function assertValidTargetFrameworks(frameworks: CSharpSdkPluginConfig['targetFrameworks']): void {
+    if (frameworks === undefined) return;
+    if (!Array.isArray(frameworks) || frameworks.length === 0) {
+        throw new Error(`plugin-csharp: targetFrameworks must be a non-empty array — got ${JSON.stringify(frameworks)}.`);
+    }
+    const seen = new Set<string>();
+    for (const framework of frameworks) {
+        if (typeof framework !== 'string' || !TARGET_FRAMEWORKS.includes(framework)) {
+            throw new Error(
+                `plugin-csharp: targetFrameworks entry ${JSON.stringify(framework)} is not supported — expected one of ${TARGET_FRAMEWORKS.join(', ')}.`,
+            );
+        }
+        if (seen.has(framework)) {
+            throw new Error(`plugin-csharp: targetFrameworks lists '${framework}' twice.`);
+        }
+        seen.add(framework);
+    }
 }
 
 /**
@@ -131,6 +165,7 @@ async function runCSharpCodegen(
     const { contractRoots } = inputs;
     const namespaceName = config.namespace ?? DEFAULT_NAMESPACE;
     const sdkName = config.sdkName ?? DEFAULT_SDK_NAME;
+    const targetFrameworks = config.targetFrameworks ?? DEFAULT_TARGET_FRAMEWORKS;
     const outDir = resolve(rootDir, config.baseDir ?? DEFAULT_BASE_DIR);
     const manifestPath = resolve(ctx.cacheDir, CACHE_MANIFEST_FILENAME);
 
@@ -260,10 +295,20 @@ async function runCSharpCodegen(
         { relativePath: `${sdkName}.cs`, content: generateSdkCs(namespaceName, sdkName, clients) },
     ];
 
+    // Only a build that includes netstandard2.0 has anything to fill in. Dropping the framework from
+    // the config drops the file, which the incremental pass then deletes as an orphan.
+    if (targetFrameworks.includes('netstandard2.0')) {
+        globalFiles.push({ relativePath: 'Runtime/Polyfills.cs', content: generatePolyfillsCs(namespaceName) });
+    }
+
     // `ifAbsent` marks this user-owned: written once, never overwritten, and never removed as an
     // orphan when the generated tree changes around it.
     if (config.scaffold) {
-        globalFiles.push({ relativePath: `${sdkName}.csproj`, content: generateCsproj(namespaceName, sdkName), ifAbsent: true });
+        globalFiles.push({
+            relativePath: `${sdkName}.csproj`,
+            content: generateCsproj(namespaceName, sdkName, targetFrameworks),
+            ifAbsent: true,
+        });
     }
 
     const result = runIncrementalCodegen({

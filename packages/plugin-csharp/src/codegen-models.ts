@@ -26,6 +26,11 @@ export interface CSharpModelCodegenOptions {
  * There is no import tracker, unlike the Kotlin plugin: every type the models can name is in the
  * base class library, so the set is fixed. An unused `using` is not a compiler warning, and pinning
  * the block keeps the output stable and free of the ordering churn a tracker would produce.
+ *
+ * The SDK's own runtime namespace is added to this list per file, because it needs the namespace
+ * name. It is where `DateOnly` and `TimeOnly` come from on a framework too old to have them: the
+ * polyfills are declared there and nowhere else, so the same short spelling resolves to the
+ * framework's type wherever the framework has one, with no conditional code in a model.
  */
 const MODEL_USINGS = [
     'using System;',
@@ -67,7 +72,7 @@ export function generateCSharpModels(root: ContractRootNode, opts: CSharpModelCo
     for (const model of topoSortModels(root.models)) append(generateModel(model, ctx));
     for (const decl of opts.hoisted?.byFile.get(root.file) ?? []) append(generateHoisted(decl, ctx));
 
-    return renderFile(`${opts.namespace}.Models`, ctx.globalAliases, [...MODEL_USINGS], bodies);
+    return renderFile(`${opts.namespace}.Models`, ctx.globalAliases, [...MODEL_USINGS, `using ${opts.namespace}.Runtime;`], bodies);
 }
 
 /**
@@ -541,7 +546,33 @@ function addAlias(name: string, type: ContractTypeNode, ctx: RenderContext, forI
                 `'${name}' is generated as '${aliased}'. Declare the nullability at each use site instead.`,
         );
     }
+    const polyfilled = polyfillAliasTarget(aliased, ctx);
+    if (polyfilled) {
+        // A using alias has to name its target in full, which is the one place the short spelling
+        // cannot do the work: `System.DateOnly` does not exist on netstandard2.0, so the alias is
+        // written per framework rather than resolved by the file's imports.
+        ctx.globalAliases.push(`#if NETSTANDARD2_0\nglobal using ${name} = ${polyfilled};\n#else\nglobal using ${name} = ${aliased};\n#endif`);
+        return;
+    }
+
     ctx.globalAliases.push(`global using ${name} = ${aliased};`);
+}
+
+/** The framework types the SDK carries a polyfill for, by their fully-qualified spelling. */
+const POLYFILLED_TYPES: readonly string[] = ['System.DateOnly', 'System.TimeOnly'];
+
+/**
+ * The netstandard2.0 spelling of an alias target, or undefined when it names no polyfilled type.
+ *
+ * Substring replacement rather than a lookup, because the target may be a container: `array(date)`
+ * aliases to `System.Collections.Generic.List<System.DateOnly>`.
+ */
+function polyfillAliasTarget(target: string, ctx: RenderContext): string | undefined {
+    let out = target;
+    for (const full of POLYFILLED_TYPES) {
+        out = out.split(full).join(`${ctx.namespace}.Runtime.${full.slice('System.'.length)}`);
+    }
+    return out === target ? undefined : out;
 }
 
 /** Whether `type` renders as a nullable *value* type, which is a legal alias target. */

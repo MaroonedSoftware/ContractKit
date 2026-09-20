@@ -62,7 +62,13 @@ public sealed class SdkOptions
 public class SdkException : HttpRequestException
 {
     public SdkException(int status, string body, HttpResponseHeaders? responseHeaders = null, string? message = null)
+#if NETSTANDARD2_0
+        // .NET Standard 2.0's HttpRequestException carries no status of its own. Status below does,
+        // so nothing is lost but the base type's own StatusCode property.
+        : base(message ?? $"Request failed with status {status}")
+#else
         : base(message ?? $"Request failed with status {status}", null, ToStatusCode(status))
+#endif
     {
         Status = status;
         Body = body;
@@ -121,8 +127,10 @@ public class SdkException : HttpRequestException
         }
     }
 
+#if !NETSTANDARD2_0
     private static HttpStatusCode? ToStatusCode(int status) =>
         status is >= 100 and <= 599 ? (HttpStatusCode)status : null;
+#endif
 }
 
 /// <summary>
@@ -258,7 +266,13 @@ public sealed class SdkHttp : IDisposable
         }
 
         var message = await Client.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false);
+#if NETSTANDARD2_0
+        // The cancellable overload arrived in .NET 5. ResponseContentRead above has already buffered
+        // the body, so this read is a copy rather than a wait on the network.
+        var bytes = await message.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+#else
         var bytes = await message.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+#endif
         var response = new SdkResponse(message, bytes);
 
         var status = response.Status;

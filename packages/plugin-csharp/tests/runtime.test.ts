@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateRuntimeCs } from '../src/runtime.js';
 import { generateConvertersCs } from '../src/runtime-converters.js';
+import { generatePolyfillsCs } from '../src/runtime-polyfills.js';
 import { generateSdkCs } from '../src/codegen-sdk.js';
 
 describe('generateRuntimeCs', () => {
@@ -57,6 +58,55 @@ describe('generateRuntimeCs', () => {
         expect(out).toContain('_ownsClient = options.HttpClient is null;');
         expect(out).toContain('if (_ownsClient) Client.Dispose();');
     });
+
+    it('takes the older spelling of the two members netstandard2.0 declares differently', () => {
+        // HttpRequestException gained a status-carrying constructor in .NET 5, and
+        // ReadAsByteArrayAsync a cancellable overload; both have a fallback on the old framework.
+        expect(out).toContain('        : base(message ?? $"Request failed with status {status}")\n#else');
+        expect(out).toContain('var bytes = await message.Content.ReadAsByteArrayAsync().ConfigureAwait(false);');
+        // The status conversion has no caller on the old framework, so it is not compiled there.
+        expect(out).toContain('#if !NETSTANDARD2_0\n    private static HttpStatusCode? ToStatusCode(int status)');
+    });
+});
+
+describe('generatePolyfillsCs', () => {
+    const out = generatePolyfillsCs('Acme.Sdk');
+
+    it('compiles on netstandard2.0 alone, so a project with no old leg carries nothing', () => {
+        expect(out).toContain('#if NETSTANDARD2_0');
+        expect(out.trimEnd().endsWith('#endif')).toBe(true);
+    });
+
+    it('declares the attributes the compiler looks for before it accepts init and required', () => {
+        expect(out).toContain('namespace System.Runtime.CompilerServices');
+        expect(out).toContain('internal static class IsExternalInit');
+        expect(out).toContain('internal sealed class RequiredMemberAttribute : Attribute');
+        expect(out).toContain('internal sealed class CompilerFeatureRequiredAttribute : Attribute');
+        expect(out).toContain('internal sealed class SetsRequiredMembersAttribute : Attribute');
+    });
+
+    it('declares the date and time types in the SDK’s own namespace, not in System', () => {
+        expect(out).toContain('namespace Acme.Sdk.Runtime');
+        expect(out).toContain('public readonly struct DateOnly : IEquatable<DateOnly>, IComparable<DateOnly>, IComparable');
+        expect(out).toContain('public readonly struct TimeOnly : IEquatable<TimeOnly>, IComparable<TimeOnly>, IComparable');
+        expect(out).not.toContain('namespace System;');
+    });
+
+    it('writes the same wire form the framework types do, so one service reads either leg', () => {
+        expect(out).toContain(`_value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)`);
+        expect(out).toContain(`_value.ToString("hh':'mm':'ss", CultureInfo.InvariantCulture)`);
+        // Seven digits, not the trimmed form: System.Text.Json writes 09:30:15.2500000.
+        expect(out).toContain(`_value.ToString("hh':'mm':'ss'.'fffffff", CultureInfo.InvariantCulture)`);
+        // Reading stays lenient, so a body written by a trimming client still parses.
+        expect(out).toContain(`{ "HH:mm:ss.FFFFFFF", "HH:mm" }`);
+    });
+
+    it('converts to the types a XAML picker binds to', () => {
+        expect(out).toContain('public DateTime ToDateTime()');
+        expect(out).toContain('public TimeSpan ToTimeSpan()');
+        expect(out).toContain('public static TimeOnly FromTimeSpan(TimeSpan value)');
+        expect(out).toContain('public static DateOnly FromDateTime(DateTime value)');
+    });
 });
 
 describe('generateConvertersCs', () => {
@@ -84,6 +134,14 @@ describe('generateConvertersCs', () => {
     it('carries a duration as ISO 8601 rather than the BCL default', () => {
         expect(out).toContain('XmlConvert.ToTimeSpan(text)');
         expect(out).toContain('writer.WriteStringValue(XmlConvert.ToString(value));');
+    });
+
+    it('registers a date and time converter only where those types are the SDK’s own', () => {
+        expect(out).toContain('#if NETSTANDARD2_0');
+        expect(out).toContain('options.Converters.Add(new DateOnlyConverter());');
+        expect(out).toContain('options.Converters.Add(new TimeOnlyConverter());');
+        expect(out).toContain('public sealed class DateOnlyConverter : JsonConverter<DateOnly>');
+        expect(out).toContain('public sealed class TimeOnlyConverter : JsonConverter<TimeOnly>');
     });
 });
 

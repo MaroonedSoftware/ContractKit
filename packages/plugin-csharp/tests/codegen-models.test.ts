@@ -255,6 +255,24 @@ describe('declarations', () => {
         expect(render(root)).toContain('global using Ps = System.Collections.Generic.List<Acme.Sdk.Models.P>;');
     });
 
+    it('names both spellings of a polyfilled alias target, the one thing a file import cannot cover', () => {
+        const root = contractRoot([model('Day', [], { type: scalarType('date') }), model('Days', [], { type: arrayType(scalarType('time')) })]);
+        const out = render(root);
+        expect(out).toContain(
+            '#if NETSTANDARD2_0\nglobal using Day = Acme.Sdk.Runtime.DateOnly;\n#else\nglobal using Day = System.DateOnly;\n#endif',
+        );
+        // A container around the polyfilled type is rewritten in place rather than missed.
+        expect(out).toContain('global using Days = System.Collections.Generic.List<Acme.Sdk.Runtime.TimeOnly>;');
+        expect(out).toContain('global using Days = System.Collections.Generic.List<System.TimeOnly>;');
+    });
+
+    it('imports the runtime namespace, which is where DateOnly comes from on an older framework', () => {
+        const root = contractRoot([model('Slot', [field('day', scalarType('date'))])]);
+        const out = render(root);
+        expect(out).toContain('using Acme.Sdk.Runtime;');
+        expect(out).toContain('public required DateOnly Day { get; init; }');
+    });
+
     it('drops nullability from an alias, which C# cannot express, and says so', () => {
         const warnings: string[] = [];
         const root = contractRoot([model('MaybeName', [], { type: unionType(scalarType('string'), scalarType('null')) })]);
