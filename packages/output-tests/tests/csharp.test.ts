@@ -66,6 +66,13 @@ function build(tree: EmittedFiles): { status: number | null; diagnostics: string
  */
 const BUILD_TIMEOUT_MS = 180_000;
 
+/** The fixtures through the C# plugin again, with a configuration the snapshot tree does not carry. */
+function emit(config: Partial<Parameters<typeof createCSharpSdkPlugin>[0]>): Promise<EmittedFiles> {
+    return buildWithPlugin(
+        createCSharpSdkPlugin({ baseDir: 'cssdk', namespace: 'Example.Sdk', sdkName: 'KitchenSink', scaffold: true, ...config }, ROOT_DIR),
+    );
+}
+
 describe.skipIf(!hasDotnet)('generated C#', () => {
     it(
         'compiles with no errors and no warnings',
@@ -88,18 +95,7 @@ describe.skipIf(!hasDotnet)('generated C#', () => {
     it(
         'compiles for netstandard2.0 alongside net10.0',
         async ctx => {
-            const tree = await buildWithPlugin(
-                createCSharpSdkPlugin(
-                    {
-                        baseDir: 'cssdk',
-                        namespace: 'Example.Sdk',
-                        sdkName: 'KitchenSink',
-                        scaffold: true,
-                        targetFrameworks: ['netstandard2.0', 'net10.0'],
-                    },
-                    ROOT_DIR,
-                ),
-            );
+            const tree = await emit({ targetFrameworks: ['netstandard2.0', 'net10.0'] });
             expect(tree.has('cssdk/Runtime/Polyfills.cs')).toBe(true);
 
             const { status, diagnostics, output } = build(tree);
@@ -107,6 +103,22 @@ describe.skipIf(!hasDotnet)('generated C#', () => {
                 ctx.skip(`no NuGet feed reachable, so the netstandard2.0 leg cannot restore:\n${output}`);
             }
 
+            expect(diagnostics).toEqual([]);
+            expect(status, output).toBe(0);
+        },
+        BUILD_TIMEOUT_MS,
+    );
+
+    /**
+     * `dateTypes: "datetime"` moves every `date` in the fixtures, in a model, a query record and a
+     * response header alike, and adds an options-level converter for a type nothing else uses. Only a
+     * compile says whether those still agree with each other.
+     */
+    it(
+        'compiles with a date mapped to DateTime',
+        async () => {
+            const tree = await emit({ dateTypes: 'datetime' });
+            const { status, diagnostics, output } = build(tree);
             expect(diagnostics).toEqual([]);
             expect(status, output).toBe(0);
         },

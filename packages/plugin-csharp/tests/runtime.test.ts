@@ -143,6 +143,25 @@ describe('generateConvertersCs', () => {
         expect(out).toContain('public sealed class DateOnlyConverter : JsonConverter<DateOnly>');
         expect(out).toContain('public sealed class TimeOnlyConverter : JsonConverter<TimeOnly>');
     });
+
+    describe('under dateTypes: datetime', () => {
+        const dt = generateConvertersCs('Acme.Sdk', 'datetime');
+
+        it('carries a date as the date part of a DateTime, on every framework', () => {
+            expect(dt).toContain('options.Converters.Add(new IsoDateConverter());');
+            expect(dt).toContain('public sealed class IsoDateConverter : JsonConverter<DateTime>');
+            expect(dt).toContain(`writer.WriteStringValue(value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));`);
+            // Options-level rather than per-property, which is only safe because `datetime` maps to
+            // DateTimeOffset and so nothing else in a generated model is a DateTime.
+            expect(dt).not.toContain('JsonConverter<DateTimeOffset>');
+        });
+
+        it('drops the DateOnly converter, which no generated type would reach any more', () => {
+            expect(dt).not.toContain('DateOnlyConverter');
+            // TimeOnly is unchanged by the option, so its netstandard2.0 converter stays.
+            expect(dt).toContain('options.Converters.Add(new TimeOnlyConverter());');
+        });
+    });
 });
 
 describe('generateSdkCs', () => {

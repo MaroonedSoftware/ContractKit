@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContractRootNode, ScalarTypeNode } from '@contractkit/core';
 import { buildModelIndex } from '@contractkit/core';
-import { generateCSharpModels } from '../src/codegen-models.js';
+import { generateCSharpModels, type CSharpDateTypes } from '../src/codegen-models.js';
 import { collectHoistedTypes } from '../src/hoist.js';
 import {
     arrayType,
@@ -21,13 +21,18 @@ import {
 /** Render a root the way the plugin does: hoist across the project, then generate. */
 function render(
     root: ContractRootNode,
-    opts: { modelsWithInput?: Set<string>; warn?: (m: string) => void; roots?: ContractRootNode[] } = {},
+    opts: {
+        modelsWithInput?: Set<string>;
+        warn?: (m: string) => void;
+        roots?: ContractRootNode[];
+        dateTypes?: CSharpDateTypes;
+    } = {},
 ): string {
     const roots = opts.roots ?? [root];
     const modelIndex = buildModelIndex(roots.flatMap(r => r.models));
     const modelsWithInput = opts.modelsWithInput ?? new Set<string>();
     const hoisted = collectHoistedTypes(roots, { modelIndex, modelsWithInput, warn: message => opts.warn?.(message) });
-    return generateCSharpModels(root, { namespace: 'Acme.Sdk', modelsWithInput, modelIndex, hoisted, warn: opts.warn });
+    return generateCSharpModels(root, { namespace: 'Acme.Sdk', dateTypes: opts.dateTypes, modelsWithInput, modelIndex, hoisted, warn: opts.warn });
 }
 
 function one(name: string, ...fields: Parameters<typeof field>[] extends never ? never : ReturnType<typeof field>[]): ContractRootNode {
@@ -78,6 +83,20 @@ describe('scalar mapping', () => {
 
     it('maps a null scalar to a nullable object', () => {
         expect(render(one('M', field('f', scalarType('null'))))).toContain('public required object? F { get; init; }');
+    });
+
+    it('maps date to DateTime under dateTypes, and leaves time alone', () => {
+        const root = contractRoot([model('M', [field('d', scalarType('date')), field('t', scalarType('time'))])]);
+        const out = render(root, { dateTypes: 'datetime' });
+        expect(out).toContain('public required DateTime D { get; init; }');
+        // `duration` is already TimeSpan and serialization dispatches on the CLR type, so a time
+        // carried as one would go out as PT9H30M.
+        expect(out).toContain('public required TimeOnly T { get; init; }');
+    });
+
+    it('treats a DateTime date as a value type, so an optional one is Nullable rather than a reference', () => {
+        const root = contractRoot([model('M', [field('d', scalarType('date'), { optional: true })])]);
+        expect(render(root, { dateTypes: 'datetime' })).toContain('public DateTime? D { get; init; }');
     });
 });
 

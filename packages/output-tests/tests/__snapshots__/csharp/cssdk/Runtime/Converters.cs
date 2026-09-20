@@ -32,8 +32,8 @@ public static class SdkJson
         options.Converters.Add(new DecimalStringConverter());
         options.Converters.Add(new IsoTimeSpanConverter());
 #if NETSTANDARD2_0
-        // DateOnly and TimeOnly are the SDK's own types on this framework, so System.Text.Json has
-        // no built-in converter for them. On net10.0 both are handled by the framework.
+        // These are the SDK's own types on this framework, so System.Text.Json has no built-in
+        // converter for them. On net10.0 the framework handles them and these are not compiled.
         options.Converters.Add(new DateOnlyConverter());
         options.Converters.Add(new TimeOnlyConverter());
 #endif
@@ -170,11 +170,11 @@ public sealed class DateOnlyConverter : JsonConverter<DateOnly>
 }
 
 /// <summary>
-/// A time of day, as <c>HH:mm:ss</c> with a fraction only when there is one.
+/// A time of day, as <c>HH:mm:ss</c>, with a seven-digit fraction when there is one.
 /// </summary>
 /// <remarks>
-/// Compiled only where <c>TimeOnly</c> is the SDK's own polyfill, for the same reason as
-/// <see cref="DateOnlyConverter"/>.
+/// Compiled only where <c>TimeOnly</c> is the SDK's own polyfill, and writing what the framework's
+/// own converter writes on net10.0, so a service reads a body from either leg of the build.
 /// </remarks>
 public sealed class TimeOnlyConverter : JsonConverter<TimeOnly>
 {

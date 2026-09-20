@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildModelIndex } from '@contractkit/core';
 import type { ContractRootNode, OpRootNode } from '@contractkit/core';
 import { buildPathExpression, deriveClientClassName, deriveMethodName, generateCSharpClient, hasPublicOperations } from '../src/codegen-client.js';
+import type { CSharpDateTypes } from '../src/codegen-models.js';
 import { collectHoistedTypes } from '../src/hoist.js';
 import {
     contractRoot,
@@ -18,12 +19,22 @@ import {
     scalarType,
 } from './helpers.js';
 
-function render(root: OpRootNode, opts: { contracts?: ContractRootNode[]; modelsWithInput?: Set<string>; includeInternal?: boolean } = {}): string {
+function render(
+    root: OpRootNode,
+    opts: { contracts?: ContractRootNode[]; modelsWithInput?: Set<string>; includeInternal?: boolean; dateTypes?: CSharpDateTypes } = {},
+): string {
     const contracts = opts.contracts ?? [];
     const modelIndex = buildModelIndex(contracts.flatMap(r => r.models));
     const modelsWithInput = opts.modelsWithInput ?? new Set<string>();
     const hoisted = collectHoistedTypes(contracts, { modelIndex, modelsWithInput });
-    return generateCSharpClient(root, { namespace: 'Acme.Sdk', modelsWithInput, modelIndex, hoisted, includeInternal: opts.includeInternal });
+    return generateCSharpClient(root, {
+        namespace: 'Acme.Sdk',
+        dateTypes: opts.dateTypes,
+        modelsWithInput,
+        modelIndex,
+        hoisted,
+        includeInternal: opts.includeInternal,
+    });
 }
 
 describe('naming', () => {
@@ -286,9 +297,9 @@ describe('responses', () => {
 describe('response headers', () => {
     const contracts = [contractRoot([model('Payment', [field('id', scalarType('uuid'))])])];
 
-    function withHeaders(headers: { name: string; optional: boolean; type: ReturnType<typeof scalarType> }[]): string {
+    function withHeaders(headers: { name: string; optional: boolean; type: ReturnType<typeof scalarType> }[], dateTypes?: CSharpDateTypes): string {
         const root = opRoot([opRoute('/payments', [opOperation('get', { sdk: 'get', responses: [{ ...opResponse(200, 'Payment'), headers }] })])]);
-        return render(root, { contracts });
+        return render(root, { contracts, dateTypes });
     }
 
     it('requires a declared header and parses it to its type', () => {
@@ -313,6 +324,14 @@ describe('response headers', () => {
         expect(withHeaders([{ name: 'h', optional: false, type: scalarType('datetime') }])).toContain('DateTimeOffset.Parse(');
         expect(withHeaders([{ name: 'h', optional: false, type: scalarType('duration') }])).toContain('XmlConvert.ToTimeSpan(');
         expect(withHeaders([{ name: 'h', optional: false, type: scalarType('bigint') }])).toContain('BigInteger.Parse(');
+        expect(withHeaders([{ name: 'h', optional: false, type: scalarType('date') }])).toContain('DateOnly.Parse(');
+        expect(withHeaders([{ name: 'h', optional: false, type: scalarType('time') }])).toContain('TimeOnly.Parse(');
+    });
+
+    it('reads a date header as the type dateTypes asked for, so a header matches its model field', () => {
+        const out = withHeaders([{ name: 'x-day', optional: false, type: scalarType('date') }], 'datetime');
+        expect(out).toContain('DateTime.Parse(http.RequireHeader(response, "x-day"), CultureInfo.InvariantCulture)');
+        expect(out).toContain('public sealed record GetHeaders(DateTime XDay);');
     });
 
     it('renames an optional header pattern variable that would redeclare a parameter', () => {

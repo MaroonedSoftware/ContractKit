@@ -22,7 +22,7 @@ import {
     runIncrementalCodegen,
     serializeIncrementalManifest,
 } from '@contractkit/core';
-import { generateCSharpModels, resolveModelsWithInput } from './codegen-models.js';
+import { generateCSharpModels, resolveModelsWithInput, type CSharpDateTypes } from './codegen-models.js';
 import { deriveClientClassName, deriveClientPropertyName, generateCSharpClient, hasPublicOperations } from './codegen-client.js';
 import { generateSdkCs, type SdkAggregatorClient } from './codegen-sdk.js';
 import { collectHoistedTypes } from './hoist.js';
@@ -54,6 +54,17 @@ export interface CSharpSdkPluginConfig {
      * and references `System.Text.Json` on that leg. Convention puts the oldest framework first.
      */
     targetFrameworks?: CSharpTargetFramework[];
+    /**
+     * Which C# type a contract's `date` maps to (default: `"dateonly"`).
+     *
+     * `"datetime"` maps it to `DateTime` at midnight with an unspecified kind, for a UI stack whose
+     * date controls bind to that and nothing else — XAML's `DatePicker` among them. It applies to
+     * every framework the SDK is built for, so the public surface never differs between them.
+     *
+     * `time` is `TimeOnly` either way, because `duration` already maps to `TimeSpan` and a `time`
+     * carried as one would go out as `PT9H30M`.
+     */
+    dateTypes?: CSharpDateTypes;
 }
 
 /**
@@ -63,11 +74,13 @@ export interface CSharpSdkPluginConfig {
 export const CSHARP_CODEGEN_VERSION = '2';
 
 export type { CSharpTargetFramework } from './scaffold.js';
+export type { CSharpDateTypes } from './codegen-models.js';
 
 const CACHE_MANIFEST_FILENAME = 'csharp-manifest.json';
 const DEFAULT_BASE_DIR = 'csharp-sdk';
 const DEFAULT_NAMESPACE = 'ContractKit.Sdk';
 const DEFAULT_SDK_NAME = 'Sdk';
+const DEFAULT_DATE_TYPES: CSharpDateTypes = 'dateonly';
 
 const plugin: ContractKitPlugin = {
     name: 'csharp-sdk',
@@ -123,7 +136,13 @@ export function assertValidConfig(config: CSharpSdkPluginConfig): void {
         }
     }
     assertValidTargetFrameworks(config.targetFrameworks);
+    if (config.dateTypes !== undefined && !DATE_TYPES.includes(config.dateTypes)) {
+        throw new Error(`plugin-csharp: dateTypes ${JSON.stringify(config.dateTypes)} is not supported — expected one of ${DATE_TYPES.join(', ')}.`);
+    }
 }
+
+/** The C# types a contract's `date` can map to. */
+const DATE_TYPES: readonly CSharpDateTypes[] = ['dateonly', 'datetime'];
 
 /** Every framework the scaffold knows how to write a project file for. */
 const TARGET_FRAMEWORKS: readonly CSharpTargetFramework[] = ['netstandard2.0', 'net10.0'];
@@ -166,6 +185,7 @@ async function runCSharpCodegen(
     const namespaceName = config.namespace ?? DEFAULT_NAMESPACE;
     const sdkName = config.sdkName ?? DEFAULT_SDK_NAME;
     const targetFrameworks = config.targetFrameworks ?? DEFAULT_TARGET_FRAMEWORKS;
+    const dateTypes = config.dateTypes ?? DEFAULT_DATE_TYPES;
     const outDir = resolve(rootDir, config.baseDir ?? DEFAULT_BASE_DIR);
     const manifestPath = resolve(ctx.cacheDir, CACHE_MANIFEST_FILENAME);
 
@@ -217,6 +237,7 @@ async function runCSharpCodegen(
             v: CSHARP_CODEGEN_VERSION,
             relPath,
             namespace: namespaceName,
+            dateTypes,
             root,
             externalBases,
             modelsWithInput: relevantInputModels,
@@ -232,6 +253,7 @@ async function runCSharpCodegen(
                     relativePath: relPath,
                     content: generateCSharpModels(root, {
                         namespace: namespaceName,
+                        dateTypes,
                         modelsWithInput,
                         modelIndex,
                         hoisted,
@@ -262,6 +284,7 @@ async function runCSharpCodegen(
             v: CSHARP_CODEGEN_VERSION,
             relPath,
             namespace: namespaceName,
+            dateTypes,
             root,
             referencedModels,
             modelsWithInput: relevantInputModels,
@@ -276,6 +299,7 @@ async function runCSharpCodegen(
                     relativePath: relPath,
                     content: generateCSharpClient(root, {
                         namespace: namespaceName,
+                        dateTypes,
                         modelsWithInput,
                         modelIndex,
                         hoisted,
@@ -290,7 +314,7 @@ async function runCSharpCodegen(
     // The runtime is a constant, and the aggregator depends only on the list of public clients.
     // Both are small enough that rewriting them every run beats a cache entry.
     const globalFiles: IncrementalOutputFile[] = [
-        { relativePath: 'Runtime/Converters.cs', content: generateConvertersCs(namespaceName) },
+        { relativePath: 'Runtime/Converters.cs', content: generateConvertersCs(namespaceName, dateTypes) },
         { relativePath: 'Runtime/SdkRuntime.cs', content: generateRuntimeCs(namespaceName) },
         { relativePath: `${sdkName}.cs`, content: generateSdkCs(namespaceName, sdkName, clients) },
     ];

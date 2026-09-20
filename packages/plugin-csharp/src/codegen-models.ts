@@ -5,9 +5,24 @@ import { quoteCSharpString, safeMemberName, toCSharpEnumMemberName, toCSharpProp
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
+/**
+ * Which C# type a contract's `date` maps to.
+ *
+ * `dateonly` is `DateOnly`, the type the framework added for exactly this. `datetime` is `DateTime`
+ * at midnight with an unspecified kind, for a UI stack whose date controls bind to that and nothing
+ * else — XAML's `DatePicker` among them. The choice applies to every framework the SDK is built for,
+ * so the public surface never differs between them.
+ *
+ * `time` is `TimeOnly` either way: `duration` already maps to `TimeSpan`, and serialization dispatches
+ * on the CLR type, so a `time` carried as a `TimeSpan` would go out as `PT9H30M`.
+ */
+export type CSharpDateTypes = 'dateonly' | 'datetime';
+
 export interface CSharpModelCodegenOptions {
     /** Root namespace the SDK is generated into. Models land in `<namespace>.Models`. */
     namespace: string;
+    /** Which C# type a `date` maps to (default: `dateonly`). */
+    dateTypes?: CSharpDateTypes;
     /** Model names that have a distinct `Input` variant, including ones declared in other files. */
     modelsWithInput?: ReadonlySet<string>;
     /**
@@ -55,6 +70,7 @@ export function generateCSharpModels(root: ContractRootNode, opts: CSharpModelCo
 
     const ctx: RenderContext = {
         namespace: opts.namespace,
+        dateTypes: opts.dateTypes ?? 'dateonly',
         modelsWithInput,
         modelIndex,
         hoisted: opts.hoisted,
@@ -91,6 +107,7 @@ export function resolveModelsWithInput(models: readonly ModelNode[], external: R
 
 interface RenderContext {
     namespace: string;
+    dateTypes: CSharpDateTypes;
     modelsWithInput: ReadonlySet<string>;
     modelIndex: ReadonlyMap<string, ModelNode>;
     hoisted?: HoistResult;
@@ -105,6 +122,7 @@ interface RenderContext {
 export function createRenderContext(opts: CSharpModelCodegenOptions & { modelsWithInput: ReadonlySet<string> }): RenderContext {
     return {
         namespace: opts.namespace,
+        dateTypes: opts.dateTypes ?? 'dateonly',
         modelsWithInput: opts.modelsWithInput,
         modelIndex: opts.modelIndex ?? new Map(),
         hoisted: opts.hoisted,
@@ -243,8 +261,9 @@ export function renderScalar(name: ScalarTypeNode['name'], ctx: RenderContext): 
             return qualify('decimal', 'System.Decimal', ctx);
         case 'boolean':
             return qualify('bool', 'System.Boolean', ctx);
+        // Both carried as the wire form by a converter: `yyyy-MM-dd` and `HH:mm:ss`.
         case 'date':
-            return qualify('DateOnly', 'System.DateOnly', ctx);
+            return ctx.dateTypes === 'datetime' ? qualify('DateTime', 'System.DateTime', ctx) : qualify('DateOnly', 'System.DateOnly', ctx);
         case 'time':
             return qualify('TimeOnly', 'System.TimeOnly', ctx);
         case 'datetime':
@@ -594,6 +613,7 @@ const VALUE_TYPES: ReadonlySet<string> = new Set([
     'BigInteger',
     'DateOnly',
     'TimeOnly',
+    'DateTime',
     'DateTimeOffset',
     'TimeSpan',
     'Guid',

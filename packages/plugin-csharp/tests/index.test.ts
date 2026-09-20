@@ -77,6 +77,12 @@ describe('assertValidConfig', () => {
         expect(() => assertValidConfig({ targetFrameworks: ['net48' as never] })).toThrow(/is not supported/);
         expect(() => assertValidConfig({ targetFrameworks: ['net10.0', 'net10.0'] })).toThrow(/lists 'net10.0' twice/);
     });
+
+    it('accepts either date mapping and rejects anything else', () => {
+        expect(() => assertValidConfig({ dateTypes: 'dateonly' })).not.toThrow();
+        expect(() => assertValidConfig({ dateTypes: 'datetime' })).not.toThrow();
+        expect(() => assertValidConfig({ dateTypes: 'DateTime' as never })).toThrow(/dateTypes "DateTime" is not supported/);
+    });
 });
 
 describe('generateTargets', () => {
