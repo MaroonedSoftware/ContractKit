@@ -1,6 +1,6 @@
 import type { ContractTypeNode, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
 import { escapeSingleQuoted } from './ts-render.js';
-import { appliedCasing, applyKeyCase, requestWireFields } from './codegen-wire-input.js';
+import { appliedCasing, applyKeyCase, requestWireFields, responseWireFields } from './codegen-wire-input.js';
 
 /**
  * Emitters for the `serializeX` functions that put an SDK request body into the text the server
@@ -33,7 +33,24 @@ import { appliedCasing, applyKeyCase, requestWireFields } from './codegen-wire-i
  * spelled out so a types file needs no luxon or decimal.js import it would not otherwise have: a
  * model's serializer walks the fields it inherits from a base in another file, whose scalars this
  * file may never name.
+ *
+ * The same emitter runs in the other direction for the server: a router hands the framework a
+ * service result whose `date` and `time` fields are `DateTime`s, and the framework's own
+ * `JSON.stringify` writes them as `toJSON()`'s timestamp, which every SDK's reader rejects. A server
+ * types file therefore declares a response-direction `serializeX` too, which the router calls on
+ * the result before writing it. It differs from the request one in three ways:
+ *
+ * - It walks the fields a response carries (readonly included, writeonly left out) under the keys
+ *   the service returns them in, which is the `format(output=)` casing, where a request uses
+ *   `format(input=)`'s.
+ * - It leaves a `decimal` alone. A server file sets decimal.js's `toExpNeg`/`toExpPos` globally, so a
+ *   decimal's own `toJSON()` is already in normal notation and `toFixed()` would write the same text.
+ * - An inline object below a `format()` model is keyed by its declared names, since the schema
+ *   transforms those back before the service ever sees them.
  */
+
+/** Which way a serializer writes: an SDK request body, or a server response body. */
+export type SerializeDirection = 'request' | 'response';
 
 /** A key casing that renames something. */
 type KeyCase = 'snake' | 'pascal' | undefined;
@@ -46,6 +63,8 @@ export interface SerializeCodegenOptions {
      * discriminated-union member's tag.
      */
     modelMap: Map<string, ModelNode>;
+    /** Which way the serializers write. Default `'request'`. */
+    direction?: SerializeDirection;
 }
 
 /** `serializeInvoice`. */
@@ -158,7 +177,8 @@ function emit(slot: string, type: ContractTypeNode, keyCase: KeyCase, opts: Seri
         case 'scalar': {
             const fmt = temporalWireFormat(type);
             if (fmt !== undefined) return [`${slot} = __wireDt(${slot}, '${escapeSingleQuoted(fmt)}');`];
-            if (type.name === 'decimal') return [`${slot} = __wireDec(${slot});`];
+            // A server response leaves decimals to their own `toJSON()`: see the file comment.
+            if (type.name === 'decimal' && opts.direction !== 'response') return [`${slot} = __wireDec(${slot});`];
             return [];
         }
 
@@ -297,7 +317,7 @@ function discriminatorTag(
         key = applyKeyCase(discriminator, keyCase);
     } else if (member.kind === 'ref') {
         const model = opts.modelMap.get(member.name);
-        const wire = model ? requestWireFields(model, opts.modelMap).find(f => f.field.name === discriminator) : undefined;
+        const wire = model ? wireFields(model, opts).find(f => f.field.name === discriminator) : undefined;
         field = wire?.field;
         key = wire?.key;
     }
@@ -323,15 +343,25 @@ function fieldStatements(objVar: string, key: string, field: FieldNode, keyCase:
     return inner;
 }
 
+/** The fields `model` carries in `opts.direction`, each under the key it travels by. */
+function wireFields(model: ModelNode, opts: SerializeCodegenOptions): { key: string; field: FieldNode }[] {
+    return opts.direction === 'response' ? responseWireFields(model, opts.modelMap) : requestWireFields(model, opts.modelMap);
+}
+
 /**
- * Statements for every field a request carries for `model`, under the keys its `XWireInput` (or
- * `XInput`) spells: inherited fields included, readonly ones left out, as `requestWireFields`
- * reads them. Walking the inherited fields here rather than calling a base's serializer is what
- * keeps an `override` that changes a field's type or format correct.
+ * Statements for every field `model` carries in `opts.direction`, under the keys it travels by.
+ *
+ * A request uses the keys its `XWireInput` (or `XInput`) spells: inherited fields included, readonly
+ * ones left out, as `requestWireFields` reads them. A response uses the ones the service returns,
+ * from `responseWireFields`. Walking the inherited fields here rather than calling a base's
+ * serializer is what keeps an `override` that changes a field's type or format correct.
+ *
+ * The casing passed down to inline objects is `format(input=)`'s for a request, which re-keys them
+ * too. A response passes none: the schema has already transformed them back to their declared names.
  */
 function modelFieldStatements(model: ModelNode, objVar: string, opts: SerializeCodegenOptions, scope: Scope): string[] {
-    const keyCase = appliedCasing(model, opts.modelMap).input;
-    return requestWireFields(model, opts.modelMap).flatMap(({ key, field }) => fieldStatements(objVar, key, field, keyCase, opts, scope));
+    const keyCase = opts.direction === 'response' ? undefined : appliedCasing(model, opts.modelMap).input;
+    return wireFields(model, opts).flatMap(({ key, field }) => fieldStatements(objVar, key, field, keyCase, opts, scope));
 }
 
 /** Whether `model` has anything to rewrite, given the models known so far to have a serializer. */
@@ -343,6 +373,7 @@ function modelNeedsSerializer(model: ModelNode, opts: SerializeCodegenOptions): 
 /**
  * Which models get a `serializeX`: those whose request form holds a `date`, `time` or `decimal` in
  * a position a serializer can reach, directly, through a base, or through a model they reference.
+ * In the `response` direction, those whose response form holds a `date` or `time`.
  *
  * Decided by the emitter itself rather than by a scalar scan, so a model that holds one only in a
  * readonly field, or in a union member no value can be told apart as, gets no empty function that
@@ -353,9 +384,10 @@ function modelNeedsSerializer(model: ModelNode, opts: SerializeCodegenOptions): 
 export function computeModelsWithSerializer(
     models: ModelNode[],
     modelMap: Map<string, ModelNode> = new Map(models.map(m => [m.name, m])),
+    direction: SerializeDirection = 'request',
 ): Set<string> {
     const result = new Set<string>();
-    const opts = { modelsWithSerializer: result, modelMap };
+    const opts: SerializeCodegenOptions = { modelsWithSerializer: result, modelMap, direction };
     // Adding a model can only make more of the others need one, so this settles.
     let changed = true;
     while (changed) {
@@ -377,13 +409,18 @@ export function typeNeedsSerializer(type: ContractTypeNode, opts: SerializeCodeg
 /**
  * The `serializeX` declaration for one model, or `[]` if it has none.
  *
- * @param paramType The type the SDK sends the model as: its `XWireInput`, `XInput` or own name.
+ * @param paramType The type the serializer takes. For a request, what the SDK sends the model as:
+ *   its `XWireInput`, `XInput` or own name. For a response, what the service returns: its `XOutput`
+ *   or own name.
  */
 export function renderSerializeFunction(model: ModelNode, paramType: string, opts: SerializeCodegenOptions): string[] {
     if (!opts.modelsWithSerializer.has(model.name)) return [];
     const scope = new Scope();
     const fnName = serializeFnName(model.name);
-    const doc = `/** ${model.name} as a request body sends it, with every \`date\`, \`time\` and \`decimal\` in the text the server parses. Returns a copy; \`value\` is not modified. */`;
+    const doc =
+        opts.direction === 'response'
+            ? `/** ${model.name} as a response body writes it, with every \`date\` and \`time\` in the text the SDK parses. Returns a copy; \`value\` is not modified. */`
+            : `/** ${model.name} as a request body sends it, with every \`date\`, \`time\` and \`decimal\` in the text the server parses. Returns a copy; \`value\` is not modified. */`;
 
     // A type-alias model has no fields: rewrite the aliased type as a whole.
     if (model.type) {
@@ -420,7 +457,9 @@ export function renderInlineSerializer(fnName: string, tsType: string, type: Con
     const body = emit('__v', type, undefined, opts, new Scope());
     if (body.length === 0) return null;
     return [
-        `/** One request body as it is sent, with every \`date\`, \`time\` and \`decimal\` in the text the server parses. Returns a copy. */`,
+        opts.direction === 'response'
+            ? `/** One response body as it is written, with every \`date\` and \`time\` in the text the SDK parses. Returns a copy. */`
+            : `/** One request body as it is sent, with every \`date\`, \`time\` and \`decimal\` in the text the server parses. Returns a copy. */`,
         `function ${fnName}(value: ${tsType}): unknown {`,
         `    let __v: unknown = value;`,
         ...indent(body),
