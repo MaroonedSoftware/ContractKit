@@ -89,7 +89,7 @@ export function temporalWireFormat(type: ScalarTypeNode): string | undefined {
  */
 export const WIRE_DECLS: Record<string, string[]> = {
     '__wireDt(': [
-        `/** A luxon DateTime in \`fmt\`, as the server's \`DateTime.fromFormat\` reads it. Anything else is returned as it is. */`,
+        `/** A luxon DateTime in \`fmt\`, as the reader's \`DateTime.fromFormat\` parses it. Anything else is returned as it is. */`,
         `const __wireDt = (v: unknown, fmt: string): unknown =>`,
         `    (v as { isLuxonDateTime?: unknown } | null | undefined)?.isLuxonDateTime === true ? (v as { toFormat(fmt: string): string }).toFormat(fmt) : v;`,
     ],
@@ -489,6 +489,26 @@ export function calledSerializerModels(lines: string[], modelsWithSerializer: Se
 export function requestTypeName(name: string, modelsWithInput?: Set<string>, modelsWithWireInput?: Set<string>): string {
     if (modelsWithWireInput?.has(name)) return `${name}WireInput`;
     return modelsWithInput?.has(name) ? `${name}Input` : name;
+}
+
+/**
+ * The type a response writes `name` as, which is what its response serializer takes: its `XOutput`
+ * where a `format(output=)` re-keys it or a model it references, else itself. The same choice the
+ * router makes when it annotates the service result.
+ */
+export function responseTypeName(name: string, modelsWithOutput?: Set<string>): string {
+    return modelsWithOutput?.has(name) ? `${name}Output` : name;
+}
+
+/** The type a serializer for `name` takes in `direction`. */
+export function serializerParamType(
+    name: string,
+    direction: SerializeDirection | undefined,
+    sets: { modelsWithInput?: Set<string>; modelsWithWireInput?: Set<string>; modelsWithOutput?: Set<string> },
+): string {
+    return direction === 'response'
+        ? responseTypeName(name, sets.modelsWithOutput)
+        : requestTypeName(name, sets.modelsWithInput, sets.modelsWithWireInput);
 }
 
 /**

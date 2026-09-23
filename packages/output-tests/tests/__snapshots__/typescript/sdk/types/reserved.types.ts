@@ -9,7 +9,7 @@ const __dtf = (v: unknown, path: string, fmt: string): DateTime => {
     if (!d.isValid) throw new TypeError(`ContractKit: '${v}' at '${path}' does not match format ${fmt}.`);
     return d;
 };
-/** A luxon DateTime in `fmt`, as the server's `DateTime.fromFormat` reads it. Anything else is returned as it is. */
+/** A luxon DateTime in `fmt`, as the reader's `DateTime.fromFormat` parses it. Anything else is returned as it is. */
 const __wireDt = (v: unknown, fmt: string): unknown =>
     (v as { isLuxonDateTime?: unknown } | null | undefined)?.isLuxonDateTime === true ? (v as { toFormat(fmt: string): string }).toFormat(fmt) : v;
 

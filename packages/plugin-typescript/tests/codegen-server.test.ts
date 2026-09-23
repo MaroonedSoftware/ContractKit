@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createTypescriptPlugin } from '../src/index.js';
 import type { PluginContext } from '@contractkit/core';
-import { DiagnosticCollector, SECURITY_NONE, computeModelsWithInput, decomposeCk, parseCk } from '@contractkit/core';
+import { DiagnosticCollector, SECURITY_NONE, computeModelsWithInput, computeModelsWithOutput, decomposeCk, parseCk } from '@contractkit/core';
 import {
     opRoot,
     opRoute,
@@ -1338,5 +1338,95 @@ operation /reports: {
             m => evaluate(m[1]!) as Record<string, unknown>,
         );
         expect(published).toEqual([expect.objectContaining({ type: 'object', required: ['region'] })]);
+    });
+});
+
+describe('createTypescriptPlugin: date and time response bodies', () => {
+    /** Every file the server sub-generator emits for `.ck` sources, keyed by the path under /project. */
+    async function serverFiles(sources: Record<string, string>, zod = true): Promise<Map<string, string>> {
+        const diag = new DiagnosticCollector();
+        const parsed = Object.entries(sources).map(([name, source]) => decomposeCk(parseCk(source, `/project/contracts/${name}.ck`, diag)));
+        expect(diag.getAll().filter(d => d.severity === 'error')).toEqual([]);
+        const contractRoots = parsed.map(p => p.contract);
+        const models = contractRoots.flatMap(r => r.models);
+        const ctx = makeCtx('/project');
+        await createTypescriptPlugin({ server: { zod, output: { types: 'types/{filename}.ts' } } }, '/project').generateTargets!(
+            {
+                contractRoots,
+                opRoots: parsed.map(p => p.op).filter(op => op.routes.length > 0),
+                modelOutPaths: new Map<string, string>(),
+                modelsWithInput: computeModelsWithInput(models),
+                modelsWithOutput: computeModelsWithOutput(models),
+            },
+            ctx,
+        );
+        return new Map([...ctx.emitted].map(([p, c]) => [p.replace('/project/', ''), c]));
+    }
+
+    const RELEASE = `
+contract Release: {
+    version: string
+    date: date
+    at: time("HH:mm")
+    price: decimal
+}
+`;
+
+    it.each([true, false])('declares a response serializer beside a model with a date (zod: %s)', async zod => {
+        const types = (await serverFiles({ releases: RELEASE }, zod)).get('types/releases.ts')!;
+        expect(types).toContain('export function serializeRelease(value: Release): unknown {');
+        expect(types).toContain(`__o0["date"] = __wireDt(__o0["date"], 'yyyy-MM-dd');`);
+        expect(types).toContain(`__o0["at"] = __wireDt(__o0["at"], 'HH:mm');`);
+        expect(types).toContain('const __wireDt = ');
+        // A server writes decimals through its own global decimal.js config, and revives nothing.
+        expect(types).not.toContain('__wireDec');
+        expect(types).not.toContain('revive');
+    });
+
+    it('takes the Output type of a model format(output=) re-keys, which is what the service returns', async () => {
+        const types = (await serverFiles({ reports: 'contract format(output=snake) Report: { runOn: date }' })).get('types/reports.ts')!;
+        expect(types).toContain('export function serializeReport(value: ReportOutput): unknown {');
+        expect(types).toContain(`__o0["run_on"] = __wireDt(__o0["run_on"], 'yyyy-MM-dd');`);
+    });
+
+    it('declares nothing for a model with no date or time', async () => {
+        const types = (await serverFiles({ notes: 'contract Note: { text: string, at: datetime }' })).get('types/notes.ts')!;
+        expect(types).not.toContain('serialize');
+        expect(types).not.toContain('__wireDt');
+    });
+
+    it("re-emits a child's types file when a base in another .ck file gains a date", async () => {
+        const rootDir = mkdtempSync(join(tmpdir(), 'ck-date-'));
+        const plugin = createTypescriptPlugin({ server: { zod: true, output: { types: 'types/{filename}.ts' } } }, rootDir);
+        const childPath = join(rootDir, 'types/child.ts');
+        const run = (baseType: 'string' | 'date') => ({
+            contractRoots: [
+                contractRoot([model('Base', [field('on', scalarType(baseType))])], join(rootDir, 'contracts/base.ck')),
+                contractRoot([model('Child', [field('label', scalarType('string'))], { bases: ['Base'] })], join(rootDir, 'contracts/child.ck')),
+            ],
+            opRoots: [],
+            modelOutPaths: new Map<string, string>(),
+            modelsWithInput: new Set<string>(),
+            modelsWithOutput: new Set<string>(),
+        });
+        const diskCtx = () => {
+            const ctx = makeCtx(rootDir);
+            const emitted = ctx.emitted;
+            ctx.emitFile = (outPath: string, content: string) => {
+                mkdirSync(dirname(outPath), { recursive: true });
+                writeFileSync(outPath, content, 'utf-8');
+                emitted.set(outPath, content);
+            };
+            return ctx;
+        };
+
+        const first = diskCtx();
+        await plugin.generateTargets!(run('string'), first);
+        expect(first.emitted.get(childPath)).not.toContain('serializeChild');
+
+        // Only base.ck changed. child.ck's own AST did not, but Child now carries a date.
+        const second = diskCtx();
+        await plugin.generateTargets!(run('date'), second);
+        expect(second.emitted.get(childPath)).toContain('export function serializeChild(value: Child): unknown {');
     });
 });

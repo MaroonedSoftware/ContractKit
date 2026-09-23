@@ -16,7 +16,7 @@ import { collectExternalWireInputRefs, flattenFormatChain, renderWireInputModel 
 import type { WireInputRenderContext } from './codegen-wire-input.js';
 import { DECIMAL_IMPORT, DECIMAL_CONFIG_LINE, sdkDecimalCloneFor } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
-import { renderSerializeFunction, requestTypeName, serializerImportLines, wireDeclsFor } from './codegen-serialize.js';
+import { renderSerializeFunction, serializerImportLines, serializerParamType, wireDeclsFor } from './codegen-serialize.js';
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
@@ -54,7 +54,10 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
         context?.emitRevivers && context.modelsWithDecimal
             ? { modelsWithDecimal: context.modelsWithDecimal, modelsWithOutput: allModelsWithOutput, modelMap }
             : undefined;
-    const serializeOpts = context?.modelsWithSerializer ? { modelsWithSerializer: context.modelsWithSerializer, modelMap } : undefined;
+    const serializeDirection = context?.serializeDirection;
+    const serializeOpts = context?.modelsWithSerializer
+        ? { modelsWithSerializer: context.modelsWithSerializer, modelMap, direction: serializeDirection }
+        : undefined;
 
     const bodyLines: string[] = [];
     for (const model of topoSortModels(root.models)) {
@@ -73,7 +76,11 @@ export function generatePlainTypes(root: ContractRootNode, context?: ContractCod
         if (serializeOpts) {
             const serializer = renderSerializeFunction(
                 model,
-                requestTypeName(model.name, allModelsWithInput, context?.modelsWithWireInput),
+                serializerParamType(model.name, serializeDirection, {
+                    modelsWithInput: allModelsWithInput,
+                    modelsWithWireInput: context?.modelsWithWireInput,
+                    modelsWithOutput: allModelsWithOutput,
+                }),
                 serializeOpts,
             );
             if (serializer.length > 0) {

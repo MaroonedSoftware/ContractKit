@@ -41,7 +41,7 @@ const __dur = (v: unknown, path: string): Duration => {
     if (!d.isValid) throw new TypeError(`ContractKit: '${v}' at '${path}' is not a valid ISO 8601 duration.`);
     return d;
 };
-/** A luxon DateTime in `fmt`, as the server's `DateTime.fromFormat` reads it. Anything else is returned as it is. */
+/** A luxon DateTime in `fmt`, as the reader's `DateTime.fromFormat` parses it. Anything else is returned as it is. */
 const __wireDt = (v: unknown, fmt: string): unknown =>
     (v as { isLuxonDateTime?: unknown } | null | undefined)?.isLuxonDateTime === true ? (v as { toFormat(fmt: string): string }).toFormat(fmt) : v;
 /** A decimal.js value in normal notation, which its `toString()` is not at every magnitude. Anything else is returned as it is. */

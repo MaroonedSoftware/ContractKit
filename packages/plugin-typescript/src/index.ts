@@ -52,7 +52,7 @@ import {
 import { generatePlainTypes } from './codegen-plain-types.js';
 import { computeModelsWithWireInput, flattenFormatChain } from './codegen-wire-input.js';
 import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
-import { computeModelsWithSerializer, renderSerializeFunction, requestTypeName } from './codegen-serialize.js';
+import { computeModelsWithSerializer, renderSerializeFunction, requestTypeName, responseTypeName, serializeFnName } from './codegen-serialize.js';
 import { resolveServerFramework, SERVER_FRAMEWORK_NAMES, type ServerFrameworkName } from './server-framework.js';
 export {
     SERVER_FRAMEWORK_NAMES,
@@ -217,7 +217,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '12';
+export const TYPESCRIPT_CODEGEN_VERSION = '13';
 
 // The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
 // temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
@@ -510,6 +510,15 @@ function collectServerOutput(
     // SDK's copy of this set: the bigint may sit in a model another .ck file declares.
     const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
     const modelMap = buildModelMap(inputs.contractRoots);
+    // Which models get a response-direction `serializeX` in their types file, for the router to write
+    // a `date` or `time` in its contract format rather than as `DateTime.toJSON()`'s timestamp.
+    // Cross-file, since the date may sit in a base or a referenced model another .ck file declares.
+    const modelsWithSerializer = computeModelsWithSerializer(
+        inputs.contractRoots.flatMap(r => r.models),
+        modelMap,
+        'response',
+    );
+    const serializeOpts = { modelsWithSerializer, modelMap, direction: 'response' as const };
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
     const subConfigKey = stableSubConfig(config);
@@ -527,6 +536,8 @@ function collectServerOutput(
                 serverModelOutPaths.set(model.name, typeOutPath);
                 if (modelsWithInput.has(model.name)) serverModelOutPaths.set(`${model.name}Input`, typeOutPath);
                 if (modelsWithOutput.has(model.name)) serverModelOutPaths.set(`${model.name}Output`, typeOutPath);
+                // So a router imports it through the same lookup as the model's own type.
+                if (modelsWithSerializer.has(model.name)) serverModelOutPaths.set(serializeFnName(model.name), typeOutPath);
             }
         }
     }
@@ -547,6 +558,9 @@ function collectServerOutput(
             // Not covered by `root`: an intersection with a model from another .ck file is built from
             // that model's object and keys once it compiles to a `format()` pipe.
             pipeModels: pipeModelKeys(refs, modelMap, modelsWithInput),
+            // Not covered by `root`: a serializer walks the fields a base in another .ck file
+            // contributes, so the rendered serializers themselves are the key.
+            serializers: ast.models.flatMap(m => renderSerializeFunction(m, responseTypeName(m.name, modelsWithOutput), serializeOpts)),
             sub: subConfigKey,
         });
         units.push({
@@ -561,6 +575,8 @@ function collectServerOutput(
                     modelMap,
                     // These types are consumed by server handlers, so `binary` is a Buffer, not a Blob.
                     target: 'server' as const,
+                    modelsWithSerializer,
+                    serializeDirection: 'response' as const,
                 };
                 const content = config.zod ? generateContract(ast, renderCtx) : generatePlainTypes(ast, renderCtx);
                 return [{ relativePath: typeOutPath, content }];

@@ -29,7 +29,8 @@ import type { WireInputRenderContext } from './codegen-wire-input.js';
 import type { TsRenderTarget } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES, SDK_DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { renderReviveFunctions, reviveFnName, coerceDeclsFor } from './codegen-revive.js';
-import { renderSerializeFunction, requestTypeName, serializerImportLines, wireDeclsFor } from './codegen-serialize.js';
+import { renderSerializeFunction, serializerImportLines, serializerParamType, wireDeclsFor } from './codegen-serialize.js';
+import type { SerializeDirection } from './codegen-serialize.js';
 
 /**
  * Maps a ContractKit object mode to its Zod constructor name.
@@ -89,11 +90,14 @@ export interface ContractCodegenContext {
      */
     emitRevivers?: boolean;
     /**
-     * Models that get a `serializeX()` beside their schema, from `computeModelsWithSerializer`. Set
-     * for SDK type files only: it is the SDK that has to write a request body the way the router
-     * parses it.
+     * Models that get a `serializeX()` beside their schema, from `computeModelsWithSerializer` in the
+     * same {@link serializeDirection}. An SDK type file gets request serializers, so it writes a
+     * request body the way the router parses it; a server type file gets response serializers, so
+     * the router writes a response body the way every SDK parses it.
      */
     modelsWithSerializer?: Set<string>;
+    /** Which way the `serializeX()` functions write. Default `'request'`. */
+    serializeDirection?: SerializeDirection;
 }
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -268,7 +272,10 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
         context?.emitRevivers && context.modelsWithDecimal
             ? { modelsWithDecimal: context.modelsWithDecimal, modelsWithOutput: allModelsWithOutput, modelMap }
             : undefined;
-    const serializeOpts = context?.modelsWithSerializer ? { modelsWithSerializer: context.modelsWithSerializer, modelMap } : undefined;
+    const serializeDirection = context?.serializeDirection;
+    const serializeOpts = context?.modelsWithSerializer
+        ? { modelsWithSerializer: context.modelsWithSerializer, modelMap, direction: serializeDirection }
+        : undefined;
 
     const bodyLines: string[] = [];
     // Sorted on the effective models: a flattened contract depends on its inherited fields' types,
@@ -290,7 +297,11 @@ export function generateContract(root: ContractRootNode, context?: ContractCodeg
         if (serializeOpts) {
             const serializer = renderSerializeFunction(
                 model,
-                requestTypeName(model.name, allModelsWithInput, context?.modelsWithWireInput),
+                serializerParamType(model.name, serializeDirection, {
+                    modelsWithInput: allModelsWithInput,
+                    modelsWithWireInput: context?.modelsWithWireInput,
+                    modelsWithOutput: allModelsWithOutput,
+                }),
                 serializeOpts,
             );
             if (serializer.length > 0) {

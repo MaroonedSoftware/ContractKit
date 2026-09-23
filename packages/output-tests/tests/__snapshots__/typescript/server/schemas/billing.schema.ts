@@ -7,6 +7,10 @@ const _ZodDatetime = z.preprocess((val) => typeof val === 'string' ? DateTime.fr
 Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });
 const _ZodDecimal = z.preprocess((val) => { if (typeof val !== 'string') return val; try { return new Decimal(val); } catch { return val; } }, z.custom<Decimal>((val) => Decimal.isDecimal(val), { message: 'Must be an exact decimal sent as a quoted string, e.g. "1250.00"' }));
 
+/** A luxon DateTime in `fmt`, as the reader's `DateTime.fromFormat` parses it. Anything else is returned as it is. */
+const __wireDt = (v: unknown, fmt: string): unknown =>
+    (v as { isLuxonDateTime?: unknown } | null | undefined)?.isLuxonDateTime === true ? (v as { toFormat(fmt: string): string }).toFormat(fmt) : v;
+
 /**
  * A customer payment
  * generated from [Payment](../../contracts/billing.ck#L11)
@@ -123,6 +127,15 @@ export const SnakeFilter = z.strictObject({
 }));
 export type SnakeFilter = z.output<typeof SnakeFilter>;
 
+/** SnakeFilter as a response body writes it, with every `date` and `time` in the text the SDK parses. Returns a copy; `value` is not modified. */
+export function serializeSnakeFilter(value: SnakeFilter): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    if (__o0["fromDate"] != null) {
+        __o0["fromDate"] = __wireDt(__o0["fromDate"], 'yyyy-MM-dd');
+    }
+    return __o0;
+}
+
 /**
  * generated from [SnakeHeaders](../../contracts/billing.ck#L235)
 */
@@ -174,6 +187,13 @@ export const SavedSearch = z.strictObject({
 });
 export type SavedSearch = z.infer<typeof SavedSearch>;
 
+/** SavedSearch as a response body writes it, with every `date` and `time` in the text the SDK parses. Returns a copy; `value` is not modified. */
+export function serializeSavedSearch(value: SavedSearch): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    __o0["filter"] = serializeSnakeFilter(__o0["filter"] as never);
+    return __o0;
+}
+
 /**
  * An alias of such an intersection, which is a pipe itself
  * generated from [ScopedFilter](../../contracts/billing.ck#L262)
@@ -183,3 +203,10 @@ export const ScopedFilter = SnakeFilter.in.extend(PaymentScope.shape).transform(
     ...SnakeFilter.out.parse({ from_date: _0, tag_ids: _1 }),
 }));
 export type ScopedFilter = z.infer<typeof ScopedFilter>;
+
+/** ScopedFilter as a response body writes it, with every `date` and `time` in the text the SDK parses. Returns a copy; `value` is not modified. */
+export function serializeScopedFilter(value: ScopedFilter): unknown {
+    let __v: unknown = value;
+    __v = serializeSnakeFilter(__v as never);
+    return __v;
+}
