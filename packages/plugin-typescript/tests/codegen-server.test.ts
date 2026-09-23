@@ -1430,3 +1430,52 @@ contract Release: {
         expect(second.emitted.get(childPath)).toContain('export function serializeChild(value: Child): unknown {');
     });
 });
+
+describe('createTypescriptPlugin: date and time in MCP tool results', () => {
+    const tool = (response: string, extra = '') => `
+contract Release: {
+    version: string
+    date: date
+}
+contract Note: { text: string }
+
+operation /releases: {
+    get: {
+        service: ReleaseService.latest
+        mcp: true
+        ${extra}
+        response: {
+            ${response}
+        }
+    }
+}
+`;
+
+    it("reports a model result through the model's serializer, imported beside its schema", async () => {
+        const { tools } = await buildReports(tool('200: { application/json: Release }'));
+        expect(tools).toContain('const resultJson = JSON.stringify(serializeRelease(result));');
+        expect(tools).toContain(`return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };`);
+        expect(tools).toContain("import { Release, serializeRelease } from './types/reports.js';");
+    });
+
+    it('wraps an inline result in a function the tools file declares, with the helper it calls', async () => {
+        const { tools } = await buildReports(tool('200: { application/json: array({ on: date }) }'));
+        expect(tools).toContain('const resultJson = JSON.stringify(__serializeGetReleasesMcpToolResult(result));');
+        expect(tools).toContain('function __serializeGetReleasesMcpToolResult(value: unknown): unknown {');
+        expect(tools).toContain('const __wireDt = ');
+    });
+
+    it('serializes the body of a result that also carries headers', async () => {
+        const { tools } = await buildReports(
+            tool('200: {\n                headers: { x-total: int }\n                application/json: Release\n            }'),
+        );
+        expect(tools).toContain('const resultJson = JSON.stringify({ ...result, body: serializeRelease(result.body) });');
+    });
+
+    it('reports a result with no date or time exactly as before', async () => {
+        const { tools } = await buildReports(tool('200: { application/json: Note }'));
+        expect(tools).toContain(`return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };`);
+        expect(tools).not.toContain('serialize');
+        expect(tools).not.toContain('__wireDt');
+    });
+});

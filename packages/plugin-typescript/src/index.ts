@@ -1302,6 +1302,20 @@ function collectMcpOutput(
     const modelOutPaths = resolveMcpModelOutPaths(fullConfig, rootDir, inputs.contractRoots, commonRoot, modelsWithInput, modelsWithOutput);
     // Which tool results go out through `bigIntReplacer`; cross-file, like the router's copy.
     const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
+    // Which tool results a model's response serializer writes. Only the server types file declares
+    // one, so a tools file reading its schemas from anywhere else wraps inline bodies only.
+    const schemasFromServerTypes = !fullConfig.mcp?.output?.types && !!fullConfig.server?.zod && !!fullConfig.server.output?.types;
+    const modelsWithSerializer = schemasFromServerTypes
+        ? computeModelsWithSerializer(
+              inputs.contractRoots.flatMap(r => r.models),
+              modelMap,
+              'response',
+          )
+        : new Set<string>();
+    for (const name of modelsWithSerializer) {
+        const path = modelOutPaths.get(name);
+        if (path) modelOutPaths.set(serializeFnName(name), path);
+    }
 
     // ── Per-op-root tool-handler units (only files with MCP-exposed ops) ──
     const entries: { outPath: string; registerFn: string }[] = [];
@@ -1318,6 +1332,8 @@ function collectMcpOutput(
             modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
             modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
+            // Same: a date added to a model in another .ck file makes a tool call its serializer.
+            modelsWithSerializer: sliceModelSet(refs, new Set(), modelsWithSerializer),
             // Not covered by `root`: a tool's args build an intersection with a `format()` model from
             // another .ck file out of that model's object, and rename its keys one by one.
             pipeModels: pipeModelKeys(refs, modelMap, modelsWithInput),
@@ -1339,6 +1355,7 @@ function collectMcpOutput(
                         servicePathTemplate: config.servicePathTemplate,
                         includeInternal,
                         modelsWithBigInt,
+                        modelsWithSerializer,
                         models: modelMap,
                     }),
                 },

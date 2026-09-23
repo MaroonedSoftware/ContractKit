@@ -12,7 +12,7 @@ import type {
 } from '@contractkit/core';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses } from '@contractkit/core';
 import { renderType, renderInputType, pascalToDotCase, compilesToPipe } from './codegen-contract.js';
-import { inferService, deriveModulePath, buildArgs, deriveBaseName } from './codegen-operation.js';
+import { inferService, deriveModulePath, buildArgs, deriveBaseName, bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
 import { BIGINT_REPLACER_IMPORT, typeReachesBigInt } from './bigint-runtime.js';
@@ -21,6 +21,7 @@ import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 import { policyGuard } from './route-guards.js';
 import { bindIdentifiers } from './reserved-words.js';
+import { namesSerializer, responseWireExpr, serializeFnName, wireDeclsFor } from './codegen-serialize.js';
 
 /**
  * Source location for a `SecurityNode` this generator builds rather than reads off a `.ck` file.
@@ -48,6 +49,13 @@ export interface McpCodegenOptions {
      * can reach one serializes it with `bigIntReplacer`: a bare `JSON.stringify` throws on a `bigint`.
      */
     modelsWithBigInt?: Set<string>;
+    /**
+     * Models whose types file declares a response-direction `serializeX`, as the router takes them.
+     * A tool writes its result through it, so a `date` or `time` is reported in its contract format
+     * rather than as `DateTime.toJSON()`'s full timestamp. Pass an empty set where the schemas come
+     * from a file that declares none: an inline body still gets a wrapper in the tools file.
+     */
+    modelsWithSerializer?: Set<string>;
     /**
      * Every model a ref may name, across all files. An intersection with a `format()` member is built
      * from that member's object rather than its schema, which is a pipe with no `.extend()` or
@@ -238,6 +246,30 @@ function primaryResponseBody(op: OpOperationNode): ContractTypeNode | undefined 
         if (resp.bodies[0]) return resp.bodies[0].bodyType;
     }
     return undefined;
+}
+
+/**
+ * The service result a tool reports, with every `date` and `time` in it passed through the response
+ * serializer its type calls for, or `undefined` when nothing needs rewriting.
+ *
+ * Covers an operation that answers with one status whose mimes share a body type, which is what a
+ * tool is almost always built on: the result is the body itself, or `{ body, ... }` when the status
+ * declares headers or several mimes. An operation choosing between several statuses is reported as
+ * the service returned it, since which body the result holds is known only per status.
+ */
+function resultWireExpr(op: OpOperationNode, wrapperName: string, options: McpCodegenOptions, inline: Map<string, string[]>): string | undefined {
+    if (!options.modelsWithSerializer) return undefined;
+    const emitted = emittedResponses(op);
+    const resp = emitted[0];
+    if (emitted.length !== 1 || !resp || resp.bodies.length === 0) return undefined;
+    const bodyType = resp.bodies[0]!.bodyType;
+    if (!resp.bodies.every(b => bodyTypesStructurallyEqual(b.bodyType, bodyType))) return undefined;
+    const opts = { modelsWithSerializer: options.modelsWithSerializer, modelMap: options.models ?? new Map(), direction: 'response' as const };
+    const wrapped = (resp.headers ?? []).length > 0 || resp.bodies.length > 1;
+    const value = wrapped ? 'result.body' : 'result';
+    const wire = responseWireExpr(bodyType, value, wrapperName, opts, inline);
+    if (wire === value) return undefined;
+    return wrapped ? `{ ...result, body: ${wire} }` : wire;
 }
 
 /**
@@ -463,7 +495,11 @@ function toolPolicyCheck(security: SecurityNode | undefined): string | undefined
     return `await requireMcpPolicy(context, this.policies, { policy: '${escapeSingleQuoted(policy)}' });`;
 }
 
-function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOptions): string[] {
+/**
+ * @param inline The tools file's wrappers for results with no `serializeX` of their own, which a tool
+ *   adds to for the file to declare.
+ */
+function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOptions, inline: Map<string, string[]>): string[] {
     const { route, op, toolName, className, argsConstName } = plan;
     const cfg = mcpConfig(op);
     const lines: string[] = [];
@@ -527,7 +563,19 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
         lines.push(`        return { content: [{ type: 'text', text: 'OK' }] };`);
     } else {
         lines.push(`        const result = await this.service.${service.methodName}(${callArgs});`);
-        if (!resultReachesBigInt(op, options.modelsWithBigInt)) {
+        const wire = resultWireExpr(op, `__serialize${className}Result`, options, inline);
+        const bigint = resultReachesBigInt(op, options.modelsWithBigInt);
+        if (wire) {
+            // The text and the structured content report the same serialized result. The structured
+            // content is the parsed-back JSON, as in the bigint case below: the serialized value is
+            // typed `unknown`, and the dispatcher serializes it again.
+            lines.push(`        const resultJson = JSON.stringify(${wire}${bigint ? ', bigIntReplacer' : ''});`);
+            lines.push(
+                structured
+                    ? `        return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };`
+                    : `        return { content: [{ type: 'text', text: resultJson }] };`,
+            );
+        } else if (!bigint) {
             if (structured) {
                 lines.push(`        return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };`);
             } else {
@@ -565,7 +613,8 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     const argsConsts = plans.map(p => `const ${p.argsConstName} = ${argsSchemaExpr(buildArgsProps(p.route, p.op, options))};`);
 
     // Tool classes.
-    const classes = plans.map(p => renderToolClass(p, root.file, options).join('\n'));
+    const inlineSerializers = new Map<string, string[]>();
+    const classes = plans.map(p => renderToolClass(p, root.file, options, inlineSerializers).join('\n'));
 
     // Per-file register fn.
     const registerFn: string[] = [];
@@ -574,10 +623,11 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     for (const p of plans) registerFn.push(`    map.set('${escapeSingleQuoted(p.toolName)}', container.get(${p.className}));`);
     registerFn.push('}');
 
-    const bodyCore = [argsConsts.join('\n'), classes.join('\n\n'), registerFn.join('\n')].filter(Boolean).join('\n\n');
+    const serializerDecls = [...inlineSerializers.values()].map(decl => decl.join('\n'));
+    const bodyCore = [argsConsts.join('\n'), ...serializerDecls, classes.join('\n\n'), registerFn.join('\n')].filter(Boolean).join('\n\n');
 
     // Zod scalar helper consts (must precede the args consts that reference them).
-    const helperConsts = scalarHelperLines(bodyCore);
+    const helperConsts = [...scalarHelperLines(bodyCore), ...wireDeclsFor([bodyCore])];
     const bodyWithHelpers = [helperConsts.join('\n'), bodyCore].filter(Boolean).join('\n\n');
 
     // ── Imports ──
@@ -622,7 +672,10 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     }
 
     // Schema imports.
-    imports.push(...schemaImportLines(collectSchemaIds(plans, options), options));
+    // A model's response serializer lives beside its schema, so it is imported the same way.
+    const schemaIds = collectSchemaIds(plans, options);
+    for (const m of options.modelsWithSerializer ?? []) if (namesSerializer(bodyWithHelpers, m)) schemaIds.add(serializeFnName(m));
+    imports.push(...schemaImportLines(schemaIds, options));
 
     const header = `// Auto-generated MCP tools\n// generated from ${sourceLink(basename(root.file), options.outPath, root.file)}`;
 
