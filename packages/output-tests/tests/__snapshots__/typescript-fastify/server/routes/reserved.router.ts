@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { FastifyPluginAsync } from 'fastify';
 import { requirePolicy } from '@maroonedsoftware/fastify';
 import { SeatService } from '#src/services/seat.service.js';
-import { Note, Seat, SeatRef } from '../schemas/reserved.schema.js';
+import { Note, Seat, SeatRef, serializeSeat } from '../schemas/reserved.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 
@@ -45,7 +45,7 @@ export const ReservedRoutes: FastifyPluginAsync = async app => {
         reply.status(200);
         if (result.headers["from"] !== undefined) reply.header('from', String(result.headers["from"]));
         reply.type('application/json');
-        return reply.send(result.body);
+        return reply.send(serializeSeat(result.body));
     });
 
     /**
@@ -60,7 +60,7 @@ export const ReservedRoutes: FastifyPluginAsync = async app => {
 
         reply.status(200);
         reply.type('application/json');
-        return reply.send(result);
+        return reply.send(serializeSeat(result));
     });
 
     /**

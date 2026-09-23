@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { FastifyPluginAsync } from 'fastify';
 import { requirePolicy } from '@maroonedsoftware/fastify';
 import { KitchenService } from '#src/services/kitchen.service.js';
-import { Folder, Instrument, LedgerInput, LedgerOutput, Named, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
+import { Folder, Instrument, LedgerInput, LedgerOutput, Named, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput, serializeFolder } from '../schemas/kitchen.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
@@ -56,7 +56,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
                 if (result.headers["xSeq"] !== undefined) reply.header('x-seq', String(result.headers["xSeq"]));
                 reply.type(result.contentType);
                 if (result.contentType === 'application/json') {
-                    return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result.body);
+                    return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(serializeFolder(result.body));
                 } else {
                     return reply.send(result.body);
                 }
@@ -109,7 +109,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
         reply.status(200);
         reply.type('application/json');
-        return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result);
+        return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(serializeFolder(result));
     });
 
     /**
@@ -186,7 +186,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
         if (result.headers["xRows"] !== undefined) reply.header('x-rows', String(result.headers["xRows"]));
         reply.type(result.contentType);
         if (result.contentType === 'application/json') {
-            return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(result.body);
+            return reply.serializer((payload: unknown) => JSON.stringify(payload, bigIntReplacer)).send(serializeFolder(result.body));
         } else {
             return reply.send(result.body);
         }

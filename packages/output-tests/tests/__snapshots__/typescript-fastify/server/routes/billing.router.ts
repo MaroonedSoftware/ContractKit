@@ -2,11 +2,18 @@ import { z } from 'zod';
 import type { FastifyPluginAsync } from 'fastify';
 import { requirePolicy } from '@maroonedsoftware/fastify';
 import { PaymentService } from '#src/services/payment.service.js';
-import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm } from '../schemas/billing.schema.js';
+import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm, serializeSavedSearch, serializeSnakeFilter } from '../schemas/billing.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
 import { MultipartBody } from '@maroonedsoftware/multipart';
+
+/** One response body as it is written, with every `date` and `time` in the text the SDK parses. Returns a copy. */
+function __serializeSearchScoped200(value: unknown): unknown {
+    let __v: unknown = value;
+    __v = serializeSnakeFilter(__v as never);
+    return __v;
+}
 
 /**
  * generated from [billing.ck](../../contracts/billing.ck)
@@ -289,7 +296,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
         reply.status(200);
         reply.type('application/json');
-        return reply.send(result);
+        return reply.send(__serializeSearchScoped200(result));
     });
 
     /**
@@ -314,7 +321,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
         reply.status(200);
         reply.type('application/json');
-        return reply.send(result);
+        return reply.send(serializeSavedSearch(result));
     });
 
 };

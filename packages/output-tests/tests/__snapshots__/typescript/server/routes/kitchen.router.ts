@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';
 import { KitchenService } from '#src/services/kitchen.service.js';
-import { Folder, Instrument, LedgerInput, LedgerOutput, Named, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput } from '../schemas/kitchen.schema.js';
+import { Folder, Instrument, LedgerInput, LedgerOutput, Named, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput, serializeFolder } from '../schemas/kitchen.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
@@ -55,7 +55,7 @@ KitchenRouter.get('/folders/:folderId', requirePolicy(), async ctx => {
             if (result.headers["xSeq"] !== undefined) ctx.set('x-seq', String(result.headers["xSeq"]));
             ctx.type = result.contentType;
             if (result.contentType === 'application/json') {
-                ctx.body = JSON.stringify(result.body, bigIntReplacer);
+                ctx.body = JSON.stringify(serializeFolder(result.body), bigIntReplacer);
             } else {
                 ctx.body = result.body;
             }
@@ -110,7 +110,7 @@ KitchenRouter.patch('/folders/:folderId', requirePolicy(), bodyParserMiddleware(
 
     ctx.status = 200;
     ctx.type = 'application/json';
-    ctx.body = JSON.stringify(result, bigIntReplacer);
+    ctx.body = JSON.stringify(serializeFolder(result), bigIntReplacer);
 });
 
 /**
@@ -187,7 +187,7 @@ KitchenRouter.get('/folders/:folderId/export', requirePolicy(), async ctx => {
     if (result.headers["xRows"] !== undefined) ctx.set('x-rows', String(result.headers["xRows"]));
     ctx.type = result.contentType;
     if (result.contentType === 'application/json') {
-        ctx.body = JSON.stringify(result.body, bigIntReplacer);
+        ctx.body = JSON.stringify(serializeFolder(result.body), bigIntReplacer);
     } else {
         ctx.body = result.body;
     }

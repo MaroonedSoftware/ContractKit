@@ -519,6 +519,9 @@ function collectServerOutput(
         'response',
     );
     const serializeOpts = { modelsWithSerializer, modelMap, direction: 'response' as const };
+    // A router calls a model's serializer only from a types file this run generates; a hand-written
+    // one declares none. It can still wrap an inline body itself, which the empty set leaves it to do.
+    const routerSerializers = config.output?.types ? modelsWithSerializer : new Set<string>();
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
     const subConfigKey = stableSubConfig(config);
@@ -604,6 +607,8 @@ function collectServerOutput(
             modelsWithTransform: sliceModelSet(refs, new Set(), modelsWithTransform),
             // Same: a bigint added to a model in another .ck file changes how this router writes it.
             modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
+            // Same: a date added to a model in another .ck file makes this router call its serializer.
+            modelsWithSerializer: sliceModelSet(refs, new Set(), routerSerializers),
             // Same: an array field added to a query model re-wraps it in this router, and a header
             // model's camelCase field is read from its lowercase key.
             paramModelFields: paramModelFields(ast, modelMap),
@@ -630,6 +635,7 @@ function collectServerOutput(
                         modelsWithOutput,
                         modelsWithTransform,
                         modelsWithBigInt,
+                        modelsWithSerializer: routerSerializers,
                         includeInternal: config.includeInternal,
                         validateResponses: config.validateResponses,
                         framework,

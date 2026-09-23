@@ -469,6 +469,54 @@ export function renderInlineSerializer(fnName: string, tsType: string, type: Con
 }
 
 /**
+ * The expression a server writes a response body with: `value` passed through the response
+ * serializer its type calls for, or `value` itself when nothing in it needs rewriting.
+ *
+ * The response-side mirror of the SDK's `bodyWireExpr`: a model's own `serializeX` from its types
+ * file, `.map` of one over an array of them, or a wrapper for anything else, declared under
+ * `inlineName` in `inline` for the caller to emit into its own file. A wrapper whose name is taken
+ * by a different declaration gets a numbered one instead, so two bodies cannot share a name.
+ *
+ * @param value An expression holding the body, possibly `await parseAndValidate(...)`, which is
+ *   parenthesized where needed.
+ * @param opts Serializer options in the `response` direction.
+ */
+export function responseWireExpr(
+    bodyType: ContractTypeNode,
+    value: string,
+    inlineName: string,
+    opts: SerializeCodegenOptions,
+    inline: Map<string, string[]>,
+): string {
+    const refName = (t: ContractTypeNode): string | null => (t.kind === 'ref' ? t.name : t.kind === 'lazy' ? refName(t.inner) : null);
+    const direct = refName(bodyType);
+    if (direct && opts.modelsWithSerializer.has(direct)) return `${serializeFnName(direct)}(${value})`;
+    const item = bodyType.kind === 'array' ? refName(bodyType.item) : null;
+    if (item && opts.modelsWithSerializer.has(item)) {
+        return `${/^[\w$.]+$/.test(value) ? value : `(${value})`}.map(${serializeFnName(item)})`;
+    }
+
+    const declFor = (name: string) => renderInlineSerializer(name, 'unknown', bodyType, opts);
+    let name = inlineName;
+    let decl = declFor(name);
+    if (!decl) return value;
+    for (let n = 2; inline.has(name) && inline.get(name)!.join('\n') !== decl.join('\n'); n++) {
+        name = `${inlineName}_${n}`;
+        decl = declFor(name)!;
+    }
+    inline.set(name, decl);
+    return `${name}(${value})`;
+}
+
+/**
+ * Whether `text` calls or passes `serializeX`, read the way {@link calledSerializerModels} reads it,
+ * so a service method of the same name (`service.serializeX(`) does not count.
+ */
+export function namesSerializer(text: string, model: string): boolean {
+    return new RegExp(`(?<![A-Za-z0-9_$.])${serializeFnName(model).replace(/\$/g, '\\$')}(?![A-Za-z0-9_$])`).test(text);
+}
+
+/**
  * The models whose `serializeX` the emitted `lines` name, called or passed to `.map`. Only ever
  * given generated serializer code and call-site expressions, never a client class body, whose
  * method names could spell `serializeSomething(` too.

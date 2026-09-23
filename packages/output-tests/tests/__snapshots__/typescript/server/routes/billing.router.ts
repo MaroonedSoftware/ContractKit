@@ -1,11 +1,18 @@
 import { z } from 'zod';
 import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';
 import { PaymentService } from '#src/services/payment.service.js';
-import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm } from '../schemas/billing.schema.js';
+import { AdminCredentialInput, Credential, Payment, PaymentFilter, PaymentInput, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm, serializeSavedSearch, serializeSnakeFilter } from '../schemas/billing.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
 import { MultipartBody } from '@maroonedsoftware/multipart';
+
+/** One response body as it is written, with every `date` and `time` in the text the SDK parses. Returns a copy. */
+function __serializeSearchScoped200(value: unknown): unknown {
+    let __v: unknown = value;
+    __v = serializeSnakeFilter(__v as never);
+    return __v;
+}
 
 /**
  * generated from [billing.ck](../../contracts/billing.ck)
@@ -285,7 +292,7 @@ BillingRouter.get('/payments/by-date/scoped', requirePolicy(), async ctx => {
 
     ctx.status = 200;
     ctx.type = 'application/json';
-    ctx.body = result;
+    ctx.body = __serializeSearchScoped200(result);
 });
 
 /**
@@ -310,5 +317,5 @@ BillingRouter.post('/payments/by-date/scoped', requirePolicy(), bodyParserMiddle
 
     ctx.status = 200;
     ctx.type = 'application/json';
-    ctx.body = result;
+    ctx.body = serializeSavedSearch(result);
 });

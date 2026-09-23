@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';
 import { SeatService } from '#src/services/seat.service.js';
-import { Note, Seat, SeatRef } from '../schemas/reserved.schema.js';
+import { Note, Seat, SeatRef, serializeSeat } from '../schemas/reserved.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 
@@ -44,7 +44,7 @@ ReservedRouter.get('/seats/:class', requirePolicy(), async ctx => {
     ctx.status = 200;
     if (result.headers["from"] !== undefined) ctx.set('from', String(result.headers["from"]));
     ctx.type = 'application/json';
-    ctx.body = result.body;
+    ctx.body = serializeSeat(result.body);
 });
 
 /**
@@ -59,7 +59,7 @@ ReservedRouter.get('/rows/:class', requirePolicy(), async ctx => {
 
     ctx.status = 200;
     ctx.type = 'application/json';
-    ctx.body = result;
+    ctx.body = serializeSeat(result);
 });
 
 /**
