@@ -9,7 +9,7 @@ import { PolicyService } from '@maroonedsoftware/policies';
 import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { SeatService } from '#src/services/seat.service.js';
-import { Note, Seat } from './schemas/reserved.schema.js';
+import { Note, Seat, serializeSeat } from './schemas/reserved.schema.js';
 
 const GetSeatArgs = z.object({ class: z.string(), query: z.object({ from: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })), in: z.string(), pageSize: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()) }).optional(), headers: z.object({ from: z.string() }).optional() });
 const PutNoteArgs = z.object({ body_: z.string(), body: Note });
@@ -32,7 +32,8 @@ export class GetSeatMcpTool implements McpToolHandler {
         await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
         const { class: class_, query, headers } = await parseAndValidate(args, GetSeatArgs);
         const result = await this.service.getSeat(class_, query, headers);
-        return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
+        const resultJson = JSON.stringify({ ...result, body: serializeSeat(result.body) });
+        return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
     }
 }
 

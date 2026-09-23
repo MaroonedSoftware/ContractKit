@@ -121,6 +121,24 @@ export function requestWireFields(model: ModelNode, modelMap: Map<string, ModelN
         .map(field => ({ key: applyKeyCase(field.name, input), field }));
 }
 
+/**
+ * Every field a response carries for `model`, its bases' included, under the key the service hands
+ * the router: the `format(output=)` spelling where one applies, else the declared name. Writeonly
+ * fields are left out, as the model's read schema leaves them out. Empty for a type alias.
+ *
+ * The response-side mirror of {@link requestWireFields}. Only the model's own keys are renamed: an
+ * inline object below it is transformed back to its declared names on the way in, and a referenced
+ * model keys itself, so neither takes this casing.
+ */
+export function responseWireFields(model: ModelNode, modelMap: Map<string, ModelNode>): { key: string; field: FieldNode }[] {
+    if (model.type) return [];
+    const effective = flattenFormatChain(model, modelMap);
+    const { output } = appliedCasing(model, modelMap);
+    return inheritedFields(effective, modelMap, new Set())
+        .filter(f => f.visibility !== 'writeonly')
+        .map(field => ({ key: applyKeyCase(field.name, output), field }));
+}
+
 /** Every model name `model` mentions: its fields, its bases, and a type alias's expression. */
 function directRefs(model: ModelNode): Set<string> {
     const refs = new Set<string>();

@@ -38,6 +38,8 @@ import type { RouteMiddleware, ServerFramework } from './server-framework.js';
 import { KOA_SERVER_FRAMEWORK } from './server-framework-koa.js';
 import { policyGuard, signatureGuard } from './route-guards.js';
 import { bindIdentifiers } from './reserved-words.js';
+import { namesSerializer, responseWireExpr, serializeFnName, temporalWireFormat, wireDeclsFor } from './codegen-serialize.js';
+import type { SerializeCodegenOptions } from './codegen-serialize.js';
 
 /** Which request-side object a validation block reads from. Names the variable the block declares. */
 export type ParamKind = 'params' | 'query' | 'headers';
@@ -183,6 +185,18 @@ export interface OpCodegenOptions {
      */
     modelsWithBigInt?: Set<string>;
     /**
+     * Models whose types file declares a response-direction `serializeX`, from
+     * `computeModelsWithSerializer(..., 'response')`. A JSON response body reaching a `date` or `time`
+     * is written through it, so the value goes out in its contract format rather than as
+     * `DateTime.toJSON()`'s full timestamp, which every SDK rejects. A body with no serializer of its
+     * own (an inline object, a record, a bare `date`) gets a wrapper in the router file instead.
+     *
+     * Pass an empty set where no types file is generated: a hand-written one declares no
+     * `serializeX`, but the router can still wrap what it declares inline. Leave it unset to write
+     * every body as the service returned it.
+     */
+    modelsWithSerializer?: Set<string>;
+    /**
      * Which HTTP framework the emitted router targets. Every framework-specific string in the output
      * comes from here. Defaults to Koa; pass `FASTIFY_SERVER_FRAMEWORK` (or resolve a configured
      * `server.framework` name via `resolveServerFramework`) to target Fastify instead.
@@ -201,8 +215,12 @@ export interface OpCodegenOptions {
     models?: Map<string, ModelNode>;
 }
 
-/** {@link OpCodegenOptions} after {@link generateOp} has filled in the framework default. */
-type ResolvedOpCodegenOptions = OpCodegenOptions & { framework: ServerFramework };
+/**
+ * {@link OpCodegenOptions} after {@link generateOp} has filled in the framework default, plus the
+ * per-file wrappers the handlers call to serialize a response body that has no `serializeX` of its
+ * own, keyed by name, for {@link generateOp} to emit once the handlers are written.
+ */
+type ResolvedOpCodegenOptions = OpCodegenOptions & { framework: ServerFramework; responseSerializers: Map<string, string[]> };
 
 /**
  * Generate a server router module for every operation in `root`, including the imports, type
@@ -216,7 +234,11 @@ type ResolvedOpCodegenOptions = OpCodegenOptions & { framework: ServerFramework 
 export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): string {
     // Resolved once here rather than defaulted at each use, so every helper below reads a framework
     // that is definitely present and no branch can quietly fall back to a different one.
-    const resolved: ResolvedOpCodegenOptions = { ...options, framework: options.framework ?? KOA_SERVER_FRAMEWORK };
+    const resolved: ResolvedOpCodegenOptions = {
+        ...options,
+        framework: options.framework ?? KOA_SERVER_FRAMEWORK,
+        responseSerializers: new Map(),
+    };
     const framework = resolved.framework;
     // Collect all referenced types across all routes
     const types = collectTypes(root, options.modelsWithInput, options.modelsWithOutput);
@@ -288,6 +310,13 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
         );
     }
 
+    // Wrappers for response bodies with no `serializeX` of their own, and the leaf helper they call.
+    const responseSerializerDecls = [...resolved.responseSerializers.values()].flatMap((decl, i) => (i === 0 ? decl : ['', ...decl]));
+    if (responseSerializerDecls.length > 0) {
+        if (helpers.length > 0) helpers.push('');
+        helpers.push(...wireDeclsFor(responseSerializerDecls), ...responseSerializerDecls);
+    }
+
     const generated = [...(helpers.length ? ['', ...helpers] : []), ...lines].join('\n');
     const uses = (symbol: string) => new RegExp(`\\b${symbol}\\b`).test(generated);
 
@@ -306,7 +335,9 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
         body.push(`import { ${svc} } from '${modulePath}';`);
     }
 
-    const usedTypes = types.filter(uses);
+    // A model's response serializer lives in its types file, so it is imported beside the model.
+    const usedSerializers = [...(options.modelsWithSerializer ?? [])].filter(m => namesSerializer(generated, m)).map(serializeFnName);
+    const usedTypes = [...types.filter(uses), ...usedSerializers];
     if (usedTypes.length > 0) {
         body.push(...generateTypeImports(usedTypes, root.file, options));
     }
@@ -485,10 +516,12 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     const serviceParts = inferService(op, route, file);
     const call = `await service.${serviceParts.methodName}(${buildArgs(route, op, pathBindings)})`;
 
+    // Names a response wrapper after the service method it serializes the result of.
+    const wrapperHint = `__serialize${upperFirst(serviceParts.methodName)}`;
     if (emitted.length > 1) {
-        lines.push(...generateMultiStatusResult(emitted, serviceParts.className, call, options));
+        lines.push(...generateMultiStatusResult(emitted, serviceParts.className, call, wrapperHint, options));
     } else {
-        lines.push(...generateSingleStatusResult(emitted[0], op, serviceParts.className, call, options));
+        lines.push(...generateSingleStatusResult(emitted[0], op, serviceParts.className, call, wrapperHint, options));
     }
 
     lines.push(...framework.routeClose());
@@ -508,6 +541,7 @@ function generateSingleStatusResult(
     op: OpOperationNode,
     className: string,
     call: string,
+    wrapperHint: string,
     options: ResolvedOpCodegenOptions,
 ): string[] {
     const framework = options.framework;
@@ -556,10 +590,12 @@ function generateSingleStatusResult(
 
     if (bodies.length === 1) {
         lines.push(`    ${framework.response.type(`'${bodies[0]!.contentType}'`)}`);
-        lines.push(...indent(sendBody(bodies, responseBodyExpr(hasRespHeaders ? 'result.body' : 'result', bodySchema), options), '    '));
+        const value = responseBodyExpr(hasRespHeaders ? 'result.body' : 'result', bodySchema);
+        lines.push(...indent(sendBody(bodies, value, `${wrapperHint}${resp!.statusCode}`, options), '    '));
     } else if (bodies.length > 1) {
         lines.push(`    ${framework.response.type('result.contentType')}`);
-        lines.push(...indent(sendBody(bodies, responseBodyExpr('result.body', bodySchema), options), '    '));
+        const value = responseBodyExpr('result.body', bodySchema);
+        lines.push(...indent(sendBody(bodies, value, `${wrapperHint}${resp!.statusCode}`, options), '    '));
     } else {
         // Nothing to write, but a framework that ends a response by returning still needs a statement.
         lines.push(...indent(framework.response.send(undefined), '    '));
@@ -573,7 +609,13 @@ function generateSingleStatusResult(
  * `status`, and the handler switches on it so each status writes only its own headers, mime
  * and body.
  */
-function generateMultiStatusResult(emitted: OpResponseNode[], className: string, call: string, options: ResolvedOpCodegenOptions): string[] {
+function generateMultiStatusResult(
+    emitted: OpResponseNode[],
+    className: string,
+    call: string,
+    wrapperHint: string,
+    options: ResolvedOpCodegenOptions,
+): string[] {
     const framework = options.framework;
     const lines: string[] = [];
     const members: string[] = [];
@@ -601,7 +643,8 @@ function generateMultiStatusResult(emitted: OpResponseNode[], className: string,
         lines.push(...headerSetLines(resp.headers ?? [], '            ', framework));
         if (resp.bodies.length > 0) {
             lines.push(`            ${framework.response.type('result.contentType')}`);
-            lines.push(...indent(sendBody(resp.bodies, responseBodyExpr('result.body', bodySchemas.get(resp.statusCode)), options), '            '));
+            const value = responseBodyExpr('result.body', bodySchemas.get(resp.statusCode));
+            lines.push(...indent(sendBody(resp.bodies, value, `${wrapperHint}${resp.statusCode}`, options), '            '));
         } else {
             lines.push(...indent(framework.response.send(undefined), '            '));
         }
@@ -667,33 +710,79 @@ function renderHeadersAnnotation(headers: OpResponseHeaderNode[], modelsWithOutp
 }
 
 /**
- * The terminal write for one status's body: {@link ServerFramework.response.sendBigIntJson} for a
- * JSON mime whose type can carry a `bigint`, the framework's plain `send` otherwise.
+ * The terminal write for one status's body.
  *
- * A status declaring several mimes can mix the two — a bigint model as `application/json` beside a
- * `text/csv` string — and the service picks one per call, so that case branches on
- * `result.contentType` rather than stringifying a body that was never meant to be JSON.
+ * Two things decide how a body is written, and both depend on the mime:
+ * - A JSON body passes through its response serializer (see
+ *   {@link OpCodegenOptions.modelsWithSerializer}) when it holds a `date` or `time`. Any other mime
+ *   goes out as the service built it.
+ * - A JSON body whose type can carry a `bigint` is written with
+ *   {@link ServerFramework.response.sendBigIntJson}, the framework's plain `send` otherwise.
+ *
+ * A status declaring several mimes can mix these (a bigint model as `application/json` beside a
+ * `text/csv` string, or a different body type per mime), and the service picks one per call. So the
+ * mimes are grouped by the write they need, and more than one group branches on `result.contentType`,
+ * which also narrows `result.body` to the type each serializer takes. The bigint groups are tested
+ * first and the last group is the `else`.
+ *
+ * @param value The body expression, possibly `await parseAndValidate(...)`.
+ * @param wrapperName What a wrapper for a body with no `serializeX` of its own is called.
  */
-function sendBody(bodies: readonly OpResponseBodyNode[], bodyExpr: string, options: ResolvedOpCodegenOptions): string[] {
+function sendBody(bodies: readonly OpResponseBodyNode[], value: string, wrapperName: string, options: ResolvedOpCodegenOptions): string[] {
     const { response } = options.framework;
-    const bigIntMimes = [
-        ...new Set(
-            bodies
-                .filter(b => classifyContentType(b.contentType) === 'json' && typeReachesBigInt(b.bodyType, options.modelsWithBigInt))
-                .map(b => b.contentType),
-        ),
-    ];
-    if (bigIntMimes.length === 0) return response.send(bodyExpr);
-    if (bodies.every(b => bigIntMimes.includes(b.contentType))) return response.sendBigIntJson(bodyExpr);
-    const test = bigIntMimes.map(mime => `result.contentType === '${mime}'`).join(' || ');
-    return [`if (${test}) {`, ...indent(response.sendBigIntJson(bodyExpr), '    '), '} else {', ...indent(response.send(bodyExpr), '    '), '}'];
+    const uniform = bodies.every(b => bodyTypesStructurallyEqual(b.bodyType, bodies[0]!.bodyType));
+    const serializeOpts: SerializeCodegenOptions | undefined = options.modelsWithSerializer && {
+        modelsWithSerializer: options.modelsWithSerializer,
+        modelMap: options.models ?? new Map(),
+        direction: 'response',
+    };
+
+    const groups = new Map<string, { mimes: string[]; bigint: boolean; expr: string }>();
+    bodies.forEach((b, i) => {
+        const json = classifyContentType(b.contentType) === 'json';
+        const bigint = json && typeReachesBigInt(b.bodyType, options.modelsWithBigInt);
+        // Bodies of one type share a wrapper; one per mime otherwise, so no two can collide.
+        const name = uniform ? wrapperName : `${wrapperName}_${i}`;
+        const expr = json && serializeOpts ? responseWireExpr(b.bodyType, value, name, serializeOpts, options.responseSerializers) : value;
+        const key = `${bigint}\u0000${expr}`;
+        const group = groups.get(key) ?? { mimes: [], bigint, expr };
+        if (!group.mimes.includes(b.contentType)) group.mimes.push(b.contentType);
+        groups.set(key, group);
+    });
+
+    const write = (g: { bigint: boolean; expr: string }) => (g.bigint ? response.sendBigIntJson(g.expr) : response.send(g.expr));
+    const ordered = [...groups.values()].sort((a, b) => Number(b.bigint) - Number(a.bigint));
+    if (ordered.length === 1) return write(ordered[0]!);
+
+    const test = (mimes: string[]) => mimes.map(mime => `result.contentType === '${mime}'`).join(' || ');
+    const out: string[] = [];
+    ordered.forEach((g, i) => {
+        const open = i === 0 ? `if (${test(g.mimes)}) {` : i === ordered.length - 1 ? '} else {' : `} else if (${test(g.mimes)}) {`;
+        out.push(open, ...indent(write(g), '    '));
+    });
+    out.push('}');
+    return out;
+}
+
+/** `name` with its first character upper-cased. */
+function upperFirst(name: string): string {
+    return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/**
+ * The text a response header's value is written as. A `date` or `time` is written in its contract
+ * format, the one every SDK reads it back with, where `String()` would give luxon's full timestamp.
+ */
+function headerValueExpr(type: ContractTypeNode, accessor: string): string {
+    const fmt = type.kind === 'scalar' ? temporalWireFormat(type) : undefined;
+    return fmt !== undefined ? `${accessor}.toFormat('${escapeSingleQuoted(fmt)}')` : `String(${accessor})`;
 }
 
 /** Response-header writes for a status's declared headers, guarding the optional ones. */
 function headerSetLines(headers: OpResponseHeaderNode[], pad: string, framework: ServerFramework): string[] {
     return headers.map(h => {
         const accessor = `result.headers[${JSON.stringify(headerNameToProperty(h.name))}]`;
-        const write = framework.response.header(h.name, `String(${accessor})`);
+        const write = framework.response.header(h.name, headerValueExpr(h.type, accessor));
         return h.optional ? `${pad}if (${accessor} !== undefined) ${write}` : `${pad}${write}`;
     });
 }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
 import { computeModelsWithInput, computeModelsWithOutput, decomposeCk, DiagnosticCollector, parseCk } from '@contractkit/core';
 import type { ContractRootNode, OpRootNode } from '@contractkit/core';
-import { computeModelsWithSerializer } from '../src/codegen-serialize.js';
+import { computeModelsWithSerializer, renderSerializeFunction, wireDeclsFor } from '../src/codegen-serialize.js';
 import { computeModelsWithWireInput } from '../src/codegen-wire-input.js';
 import { generateContract } from '../src/codegen-contract.js';
 import { generatePlainTypes } from '../src/codegen-plain-types.js';
@@ -286,6 +286,102 @@ contract Booking: {
         const parsed = formats(generateContract(parse(source).contract), /DateTime\.fromFormat\(val, '([^']+)'\)/g);
         expect(parsed).toEqual(['HH:mm:ss', 'MM/dd/yyyy', 'yyyy-MM-dd']);
         expect(formats(serializerDecl(sdkTypes(source), 'Booking'), /__wireDt\([^,]+, '([^']+)'\)/g)).toEqual(parsed);
+    });
+});
+
+describe('serializeX: response direction', () => {
+    /** Every response-direction serializer for `source`'s models, as rendered text. */
+    function responseSerializerText(source: string): string {
+        const models = parse(source).contract.models;
+        const modelMap = new Map(models.map(m => [m.name, m]));
+        const opts = { modelsWithSerializer: computeModelsWithSerializer(models, modelMap, 'response'), modelMap, direction: 'response' as const };
+        const body = models.flatMap(m => renderSerializeFunction(m, 'unknown', opts));
+        return [...wireDeclsFor(body), ...body].join('\n');
+    }
+
+    /** The response serializers for `source`, evaluated. */
+    function responseSerializers(source: string): Record<string, (value: unknown) => unknown> {
+        const js = ts.transpileModule(responseSerializerText(source), {
+            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+        }).outputText;
+        const exports: Record<string, (value: unknown) => unknown> = {};
+        new Function('exports', js)(exports);
+        return exports;
+    }
+
+    const responseSet = (source: string) => {
+        const models = parse(source).contract.models;
+        return [...computeModelsWithSerializer(models, new Map(models.map(m => [m.name, m])), 'response')].sort();
+    };
+
+    it('takes a model with a date or time a response carries, and every model that reaches one', () => {
+        const source = `
+contract Day: { on: date }
+contract Clock: { at: time }
+contract Money: { amount: decimal }
+contract HoldsDay: { day: Day }
+contract ExtendsClock: Clock & { label: string }
+contract Plain: { name: string }
+`;
+        expect(responseSet(source)).toEqual(['Clock', 'Day', 'ExtendsClock', 'HoldsDay']);
+    });
+
+    it('keeps a readonly date, which a response carries, and drops a writeonly one, which it does not', () => {
+        expect(responseSet('contract Audit: { createdOn: readonly date }')).toEqual(['Audit']);
+        expect(responseSet('contract Secret: { resetOn: writeonly date, note: string }')).toEqual([]);
+        // The request direction is the other way round.
+        expect(serializerSet('contract Audit: { createdOn: readonly date }')).toEqual([]);
+    });
+
+    it('writes a date and a time in their contract formats and leaves a decimal to its own toJSON', () => {
+        const { serializeSlot } = responseSerializers(`
+contract Slot: {
+    day: readonly date
+    closes: time("HH:mm")
+    fee: decimal
+    stamp: datetime
+}
+`);
+        const fee = decimal('0.00000001', '1e-8');
+        const stamp = dateTime('2026-09-11T10:00');
+        const out = serializeSlot!({ day: dateTime('2026-09-11'), closes: dateTime('17:00'), fee, stamp });
+        expect(out).toEqual({ day: '2026-09-11@yyyy-MM-dd', closes: '17:00@HH:mm', fee, stamp });
+    });
+
+    it('reads the keys format(output=) renames on the model, and the declared names on an inline object below it', () => {
+        const { serializeReport } = responseSerializers(`
+contract format(output=snake) Report: {
+    runOn: date
+    window: { startsOn: date }
+}
+`);
+        expect(serializeReport!({ run_on: dateTime('2026-09-11'), window: { startsOn: dateTime('2026-09-01') } })).toEqual({
+            run_on: '2026-09-11@yyyy-MM-dd',
+            window: { startsOn: '2026-09-01@yyyy-MM-dd' },
+        });
+    });
+
+    it('ignores format(input=), which only renames what a request sends', () => {
+        const { serializeFilter } = responseSerializers('contract format(input=snake) Filter: { fromDate: date }');
+        expect(serializeFilter!({ fromDate: dateTime('2026-09-11') })).toEqual({ fromDate: '2026-09-11@yyyy-MM-dd' });
+    });
+
+    it("writes an inherited date and calls a referenced model's serializer", () => {
+        const text = responseSerializerText(`
+contract Base: { on: date }
+contract Child: Base & { label: string }
+contract Holder: { child: Child }
+`);
+        expect(text).toContain('__o0["child"] = serializeChild(__o0["child"] as never);');
+        const { serializeChild } = responseSerializers(`
+contract Base: { on: date }
+contract Child: Base & { label: string }
+`);
+        expect(serializeChild!({ on: dateTime('2026-09-11'), label: 'x' })).toEqual({ on: '2026-09-11@yyyy-MM-dd', label: 'x' });
+    });
+
+    it('describes itself as a response body in its doc comment', () => {
+        expect(responseSerializerText('contract Day: { on: date }')).toContain('/** Day as a response body writes it,');
     });
 });
 

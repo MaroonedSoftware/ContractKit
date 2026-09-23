@@ -52,7 +52,7 @@ import {
 import { generatePlainTypes } from './codegen-plain-types.js';
 import { computeModelsWithWireInput, flattenFormatChain } from './codegen-wire-input.js';
 import { DEFAULT_REVIVABLE_SCALARS } from './codegen-revive.js';
-import { computeModelsWithSerializer, renderSerializeFunction, requestTypeName } from './codegen-serialize.js';
+import { computeModelsWithSerializer, renderSerializeFunction, requestTypeName, responseTypeName, serializeFnName } from './codegen-serialize.js';
 import { resolveServerFramework, SERVER_FRAMEWORK_NAMES, type ServerFrameworkName } from './server-framework.js';
 export {
     SERVER_FRAMEWORK_NAMES,
@@ -217,7 +217,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '12';
+export const TYPESCRIPT_CODEGEN_VERSION = '13';
 
 // The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
 // temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
@@ -510,6 +510,18 @@ function collectServerOutput(
     // SDK's copy of this set: the bigint may sit in a model another .ck file declares.
     const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
     const modelMap = buildModelMap(inputs.contractRoots);
+    // Which models get a response-direction `serializeX` in their types file, for the router to write
+    // a `date` or `time` in its contract format rather than as `DateTime.toJSON()`'s timestamp.
+    // Cross-file, since the date may sit in a base or a referenced model another .ck file declares.
+    const modelsWithSerializer = computeModelsWithSerializer(
+        inputs.contractRoots.flatMap(r => r.models),
+        modelMap,
+        'response',
+    );
+    const serializeOpts = { modelsWithSerializer, modelMap, direction: 'response' as const };
+    // A router calls a model's serializer only from a types file this run generates; a hand-written
+    // one declares none. It can still wrap an inline body itself, which the empty set leaves it to do.
+    const routerSerializers = config.output?.types ? modelsWithSerializer : new Set<string>();
     const allFiles = [...inputs.contractRoots.map(r => r.file), ...inputs.opRoots.map(r => r.file)];
     const commonRoot = commonDir(allFiles, rootDir);
     const subConfigKey = stableSubConfig(config);
@@ -527,6 +539,8 @@ function collectServerOutput(
                 serverModelOutPaths.set(model.name, typeOutPath);
                 if (modelsWithInput.has(model.name)) serverModelOutPaths.set(`${model.name}Input`, typeOutPath);
                 if (modelsWithOutput.has(model.name)) serverModelOutPaths.set(`${model.name}Output`, typeOutPath);
+                // So a router imports it through the same lookup as the model's own type.
+                if (modelsWithSerializer.has(model.name)) serverModelOutPaths.set(serializeFnName(model.name), typeOutPath);
             }
         }
     }
@@ -547,6 +561,9 @@ function collectServerOutput(
             // Not covered by `root`: an intersection with a model from another .ck file is built from
             // that model's object and keys once it compiles to a `format()` pipe.
             pipeModels: pipeModelKeys(refs, modelMap, modelsWithInput),
+            // Not covered by `root`: a serializer walks the fields a base in another .ck file
+            // contributes, so the rendered serializers themselves are the key.
+            serializers: ast.models.flatMap(m => renderSerializeFunction(m, responseTypeName(m.name, modelsWithOutput), serializeOpts)),
             sub: subConfigKey,
         });
         units.push({
@@ -561,6 +578,8 @@ function collectServerOutput(
                     modelMap,
                     // These types are consumed by server handlers, so `binary` is a Buffer, not a Blob.
                     target: 'server' as const,
+                    modelsWithSerializer,
+                    serializeDirection: 'response' as const,
                 };
                 const content = config.zod ? generateContract(ast, renderCtx) : generatePlainTypes(ast, renderCtx);
                 return [{ relativePath: typeOutPath, content }];
@@ -588,6 +607,8 @@ function collectServerOutput(
             modelsWithTransform: sliceModelSet(refs, new Set(), modelsWithTransform),
             // Same: a bigint added to a model in another .ck file changes how this router writes it.
             modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
+            // Same: a date added to a model in another .ck file makes this router call its serializer.
+            modelsWithSerializer: sliceModelSet(refs, new Set(), routerSerializers),
             // Same: an array field added to a query model re-wraps it in this router, and a header
             // model's camelCase field is read from its lowercase key.
             paramModelFields: paramModelFields(ast, modelMap),
@@ -614,6 +635,7 @@ function collectServerOutput(
                         modelsWithOutput,
                         modelsWithTransform,
                         modelsWithBigInt,
+                        modelsWithSerializer: routerSerializers,
                         includeInternal: config.includeInternal,
                         validateResponses: config.validateResponses,
                         framework,
@@ -1280,6 +1302,20 @@ function collectMcpOutput(
     const modelOutPaths = resolveMcpModelOutPaths(fullConfig, rootDir, inputs.contractRoots, commonRoot, modelsWithInput, modelsWithOutput);
     // Which tool results go out through `bigIntReplacer`; cross-file, like the router's copy.
     const modelsWithBigInt = computeModelsWithScalar(inputs.contractRoots.flatMap(r => r.models), BIGINT_SCALARS);
+    // Which tool results a model's response serializer writes. Only the server types file declares
+    // one, so a tools file reading its schemas from anywhere else wraps inline bodies only.
+    const schemasFromServerTypes = !fullConfig.mcp?.output?.types && !!fullConfig.server?.zod && !!fullConfig.server.output?.types;
+    const modelsWithSerializer = schemasFromServerTypes
+        ? computeModelsWithSerializer(
+              inputs.contractRoots.flatMap(r => r.models),
+              modelMap,
+              'response',
+          )
+        : new Set<string>();
+    for (const name of modelsWithSerializer) {
+        const path = modelOutPaths.get(name);
+        if (path) modelOutPaths.set(serializeFnName(name), path);
+    }
 
     // ── Per-op-root tool-handler units (only files with MCP-exposed ops) ──
     const entries: { outPath: string; registerFn: string }[] = [];
@@ -1296,6 +1332,8 @@ function collectMcpOutput(
             modelsWithInput: sliceModelSet(refs, new Set(), modelsWithInput),
             modelsWithOutput: sliceModelSet(refs, new Set(), modelsWithOutput),
             modelsWithBigInt: sliceModelSet(refs, new Set(), modelsWithBigInt),
+            // Same: a date added to a model in another .ck file makes a tool call its serializer.
+            modelsWithSerializer: sliceModelSet(refs, new Set(), modelsWithSerializer),
             // Not covered by `root`: a tool's args build an intersection with a `format()` model from
             // another .ck file out of that model's object, and rename its keys one by one.
             pipeModels: pipeModelKeys(refs, modelMap, modelsWithInput),
@@ -1317,6 +1355,7 @@ function collectMcpOutput(
                         servicePathTemplate: config.servicePathTemplate,
                         includeInternal,
                         modelsWithBigInt,
+                        modelsWithSerializer,
                         models: modelMap,
                     }),
                 },

@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { DateTime } from 'luxon';
 
+/** A luxon DateTime in `fmt`, as the reader's `DateTime.fromFormat` parses it. Anything else is returned as it is. */
+const __wireDt = (v: unknown, fmt: string): unknown =>
+    (v as { isLuxonDateTime?: unknown } | null | undefined)?.isLuxonDateTime === true ? (v as { toFormat(fmt: string): string }).toFormat(fmt) : v;
+
 /**
  * A seat, whose field names are all reserved somewhere
  * generated from [Seat](../../contracts/reserved.ck#L18)
@@ -19,6 +23,19 @@ export const Seat = z.strictObject({
     default: z.string().optional(),
 });
 export type Seat = z.infer<typeof Seat>;
+
+/** Seat as a response body writes it, with every `date` and `time` in the text the SDK parses. Returns a copy; `value` is not modified. */
+export function serializeSeat(value: Seat): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    if (__o0["from"] != null) {
+        __o0["from"] = __wireDt(__o0["from"], 'yyyy-MM-dd');
+    }
+    __o0["date"] = __wireDt(__o0["date"], 'yyyy-MM-dd');
+    if (__o0["time"] != null) {
+        __o0["time"] = __wireDt(__o0["time"], 'HH:mm:ss');
+    }
+    return __o0;
+}
 
 /**
  * Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`

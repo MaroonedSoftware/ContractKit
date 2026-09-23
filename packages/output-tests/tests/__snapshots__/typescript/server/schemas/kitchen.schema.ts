@@ -9,6 +9,10 @@ const _ZodDecimal = z.preprocess((val) => { if (typeof val !== 'string') return 
 type _JsonValue = string | number | boolean | null | _JsonValue[] | { [key: string]: _JsonValue };
 const _ZodJson: z.ZodType<_JsonValue> = z.lazy(() => z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(_ZodJson), z.record(z.string(), _ZodJson)]));
 
+/** A luxon DateTime in `fmt`, as the reader's `DateTime.fromFormat` parses it. Anything else is returned as it is. */
+const __wireDt = (v: unknown, fmt: string): unknown =>
+    (v as { isLuxonDateTime?: unknown } | null | undefined)?.isLuxonDateTime === true ? (v as { toFormat(fmt: string): string }).toFormat(fmt) : v;
+
 /**
  * A named enum, so a field default has to resolve to a member rather than its wire spelling
  * generated from [Rating](../../contracts/kitchen.ck#L17)
@@ -24,6 +28,15 @@ export const Doc = z.strictObject({
     get folder() { return Folder.optional(); },
 });
 export type Doc = z.infer<typeof Doc>;
+
+/** Doc as a response body writes it, with every `date` and `time` in the text the SDK parses. Returns a copy; `value` is not modified. */
+export function serializeDoc(value: Doc): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    if (__o0["folder"] != null) {
+        __o0["folder"] = serializeFolder(__o0["folder"] as never);
+    }
+    return __o0;
+}
 
 /**
  * generated from [Card](../../contracts/kitchen.ck#L55)
@@ -162,6 +175,40 @@ export const Folder = z.strictObject({
     raw: _ZodJson.optional(),
 });
 export type Folder = z.infer<typeof Folder>;
+
+/** Folder as a response body writes it, with every `date` and `time` in the text the SDK parses. Returns a copy; `value` is not modified. */
+export function serializeFolder(value: Folder): unknown {
+    const __o0 = { ...value } as Record<string, unknown>;
+    if (__o0["parent"] != null) {
+        __o0["parent"] = serializeFolder(__o0["parent"] as never);
+    }
+    if (__o0["readme"] != null) {
+        __o0["readme"] = serializeDoc(__o0["readme"] as never);
+    }
+    {
+        const __a1 = [...(__o0["children"] as unknown[])];
+        for (let __i2 = 0; __i2 < __a1.length; __i2++) {
+            __a1[__i2] = serializeFolder(__a1[__i2] as never);
+        }
+        __o0["children"] = __a1;
+    }
+    if (__o0["byName"] != null) {
+        {
+            const __r3 = { ...(__o0["byName"] as Record<string, unknown>) };
+            for (const __k4 of Object.keys(__r3)) {
+                __r3[__k4] = serializeFolder(__r3[__k4] as never);
+            }
+            __o0["byName"] = __r3;
+        }
+    }
+    if (__o0["day"] != null) {
+        __o0["day"] = __wireDt(__o0["day"], 'yyyy-MM-dd');
+    }
+    if (__o0["at"] != null) {
+        __o0["at"] = __wireDt(__o0["at"], 'HH:mm:ss');
+    }
+    return __o0;
+}
 
 /**
  * generated from [Instrument](../../contracts/kitchen.ck#L65)

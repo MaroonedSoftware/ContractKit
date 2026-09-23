@@ -9,7 +9,7 @@ import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
 import { PaymentService } from '#src/services/payment.service.js';
-import { Payment, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, SnakeFilter, SnakeHeaders } from './schemas/billing.schema.js';
+import { Payment, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, SnakeFilter, SnakeHeaders, serializeSavedSearch, serializeSnakeFilter } from './schemas/billing.schema.js';
 
 const GetRefundArgs = z.object({ params: PaymentRef });
 const SearchPaymentsByDateArgs = z.object({ query: SnakeFilter.optional(), headers: SnakeHeaders.optional() });
@@ -28,6 +28,13 @@ const SaveScopedSearchArgs = z.object({ body: PaymentScope.extend(SnakeFilter.in
     ...rest,
     ...SnakeFilter.out.parse({ from_date: _0, tag_ids: _1 }),
 })), query: ScopedFilter.optional() });
+
+/** One response body as it is written, with every `date` and `time` in the text the SDK parses. Returns a copy. */
+function __serializeSearchPaymentsScopedMcpToolResult(value: unknown): unknown {
+    let __v: unknown = value;
+    __v = serializeSnakeFilter(__v as never);
+    return __v;
+}
 
 /**
  * from [billing.ck](../contracts/billing.ck#L186)
@@ -90,7 +97,8 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
         await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
         const { query, headers } = await parseAndValidate(args, SearchPaymentsScopedArgs);
         const result = await this.service.searchScoped(query, headers);
-        return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+        const resultJson = JSON.stringify(__serializeSearchPaymentsScopedMcpToolResult(result));
+        return { content: [{ type: 'text', text: resultJson }] };
     }
 }
 
@@ -112,7 +120,8 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
         await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
         const { body, query } = await parseAndValidate(args, SaveScopedSearchArgs);
         const result = await this.service.saveScopedSearch(body, query);
-        return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
+        const resultJson = JSON.stringify(serializeSavedSearch(result));
+        return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
     }
 }
 
