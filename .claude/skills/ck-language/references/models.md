@@ -129,6 +129,13 @@ least two members are required. Failures emit **warnings, not errors**.
 ## Scalar types worth knowing
 
 - `datetime` → Luxon `DateTime`
+- `date` / `time` → Luxon `DateTime` too, but on the wire they are text in the field's `format`
+  (`yyyy-MM-dd` and `HH:mm:ss` by default), read with `DateTime.fromFormat`, not `toJSON()`'s
+  full timestamp. Nothing reaches `JSON.stringify` as a `DateTime` in either direction: the SDK
+  sends a request body through a request-direction `serializeX` (`codegen-serialize.ts`), and the
+  router writes a response body through a response-direction one that the server types file
+  declares, or through a wrapper in the router file for an inline body. A `date`/`time` header is
+  written with `toFormat()` too. A new place that writes one of these values must do the same.
 - `interval` → Luxon `Interval`; `_ZodInterval` parses an ISO 8601 interval string and
   `.transform()`s back to ISO on output
 - `bigint` → `z.coerce.bigint()`; the SDK generates bigint-aware JSON helpers in
