@@ -112,4 +112,8 @@ describe('generated TypeScript', () => {
         // binds `reply` and never writes through it, and `strict` catches a send that cannot type.
         expect(check('typescript-fastify', 'server/', true)).toEqual([]);
     });
+
+    it('compiles the server with the MCP options the default tree leaves off', () => {
+        expect(check('typescript-mcp-options', 'server/', true)).toEqual([]);
+    });
 });

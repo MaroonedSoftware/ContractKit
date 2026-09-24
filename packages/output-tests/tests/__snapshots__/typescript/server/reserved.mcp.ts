@@ -1,6 +1,6 @@
 // Auto-generated MCP tools
 // generated from [reserved.ck](../contracts/reserved.ck)
-import { Injectable, type Container } from 'injectkit';
+import { Injectable, type Container, type Registry } from 'injectkit';
 import { z } from 'zod';
 import { DateTime } from 'luxon';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -24,6 +24,8 @@ export class GetSeatMcpTool implements McpToolHandler {
         description: 'fetch one seat',
         inputSchema: z.toJSONSchema(GetSeatArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Seat, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     constructor(private readonly service: SeatService, private readonly policies: PolicyService) {}
@@ -47,6 +49,8 @@ export class PutNoteMcpTool implements McpToolHandler {
         description: 'replace a note',
         inputSchema: z.toJSONSchema(PutNoteArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Note, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     constructor(private readonly service: SeatService, private readonly policies: PolicyService) {}
@@ -59,8 +63,14 @@ export class PutNoteMcpTool implements McpToolHandler {
     }
 }
 
-/** Add this file's tools to the shared catalog. */
+/** Add this file's tools to the tool map. */
 export function registerReservedMcpTools(map: McpToolHandlerMap, container: Container): void {
     map.set('get_seat', container.get(GetSeatMcpTool));
     map.set('put_note', container.get(PutNoteMcpTool));
+}
+
+/** Register this file's tool classes on the registry, so the tool maps can resolve them. */
+export function registerReservedMcpToolClasses(registry: Registry): void {
+    registry.register(GetSeatMcpTool).useClass(GetSeatMcpTool).asSingleton();
+    registry.register(PutNoteMcpTool).useClass(PutNoteMcpTool).asSingleton();
 }

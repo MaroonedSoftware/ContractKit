@@ -3,15 +3,23 @@ import type {
     OpRouteNode,
     OpOperationNode,
     McpConfigNode,
+    HttpMethod,
     ParamSource,
     ContractTypeNode,
     SecurityNode,
     ModelNode,
-    ModelRefTypeNode,
-    InlineObjectTypeNode,
 } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses } from '@contractkit/core';
-import { renderType, renderInputType, pascalToDotCase, compilesToPipe } from './codegen-contract.js';
+import {
+    resolveModifiers,
+    resolveSecurity,
+    SECURITY_NONE,
+    MCP_EXCLUDE,
+    emittedResponses,
+    isMcpTool,
+    isJsonMime,
+    classifyContentType,
+} from '@contractkit/core';
+import { renderType, renderInputType, pascalToDotCase, compilesToPipe, isExtendChain } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName, bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
@@ -63,7 +71,23 @@ export interface McpCodegenOptions {
      * plain object, which fails `tsc` for a `format()` one.
      */
     models?: Map<string, ModelNode>;
+    /**
+     * When a tool resolves its service and `PolicyService`. `'boot'` (default) constructor-injects
+     * them once, from the container the tool map is built from. `'perCall'` resolves them in `handle()`
+     * from the request's scoped container on the MCP context, as the HTTP router does from
+     * `ctx.container`, so a request-scoped service sees the caller's actor.
+     */
+    resolve?: McpResolveMode;
+    /**
+     * Also generate a handler for every operation a tool can serve, flagged or not, and a
+     * `register<File>McpCatalog` adding them to a catalog map apart from the listed tools. See
+     * {@link isCatalogOperation} for what a tool cannot serve.
+     */
+    catalog?: boolean;
 }
+
+/** When a generated tool resolves its service and policies: once at boot, or per call. */
+export type McpResolveMode = 'boot' | 'perCall';
 
 // ─── MCP flag helpers ─────────────────────────────────────────────────────
 
@@ -76,15 +100,24 @@ function mcpConfig(op: OpOperationNode): McpConfigNode | undefined {
  * True if the root has at least one MCP-exposed operation. With `includeInternal: false`
  * (default) `internal` operations don't count. Mirrors `hasPublicOperations`.
  */
-export function hasMcpOperations(root: OpRootNode, includeInternal = false): boolean {
-    for (const route of root.routes) {
-        for (const op of route.operations) {
-            if (!op.mcp) continue;
-            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
-            return true;
-        }
-    }
-    return false;
+export function hasMcpOperations(root: OpRootNode, includeInternal = false, catalog = false, models?: Map<string, ModelNode>): boolean {
+    return planTools(root, includeInternal, catalog, models).length > 0;
+}
+
+/**
+ * Whether an operation belongs in the catalog of every operation: not `mcp: exclude`, and one a
+ * tool can serve. A tool takes JSON arguments and returns JSON, so an operation with a multipart
+ * request, a response that is not JSON (audio, an HLS playlist), or a `format()` result, whose
+ * schema is a pipe JSON Schema cannot describe, is left out.
+ */
+export function isCatalogOperation(op: OpOperationNode, models?: Map<string, ModelNode>): boolean {
+    if (op.mcp === MCP_EXCLUDE) return false;
+    if ((op.request?.bodies ?? []).some(b => classifyContentType(b.contentType) === 'multipart')) return false;
+    const emitted = emittedResponses(op);
+    if (emitted.some(resp => resp.bodies.some(b => !isJsonMime(b.contentType)))) return false;
+    const body = primaryResponseBody(op);
+    if (body && models && pipeRefs(body).some(name => compilesToPipe(name, models))) return false;
+    return true;
 }
 
 // ─── Name derivation ────────────────────────────────────────────────────────
@@ -150,7 +183,19 @@ interface ArgsProp {
 const MCP_ARG_KEYS = ['body', 'multipartBody', 'query', 'headers'] as const;
 
 /** Identifiers `handle` binds or reads besides the args it destructures. */
-const MCP_HANDLER_LOCALS = ['args', '_args', 'context', '_context', 'result', 'resultJson', 'parseAndValidate', 'bigIntReplacer', 'JSON'] as const;
+const MCP_HANDLER_LOCALS = [
+    'args',
+    '_args',
+    'context',
+    '_context',
+    'container',
+    'result',
+    'resultJson',
+    'parseAndValidate',
+    'bigIntReplacer',
+    'requireMcpContainer',
+    'JSON',
+] as const;
 
 /**
  * The args key and the local binding for each inline path param, both keyed by its declared name.
@@ -286,39 +331,115 @@ function resultReachesBigInt(op: OpOperationNode, modelsWithBigInt: Set<string> 
 }
 
 /**
- * The body a tool publishes an output schema for, if any. MCP requires that schema to be an object, so
- * only a model ref or an inline object qualifies.
+ * How a tool presents its result as `structuredContent`, which MCP requires to be an object, with an
+ * `outputSchema` of `type: 'object'` to match.
+ *
+ * - `object`: the body already is one (a model with fields, an inline object, a record, or an
+ *   intersection `.extend()` builds) and is reported as it is.
+ * - `items`: a list, reported as `{ items }`.
+ * - `value`: anything else (a scalar, an enum, a union that may be `null`), reported as `{ value }`.
+ */
+type ResultShape = { kind: 'object'; body: ContractTypeNode } | { kind: 'items' | 'value'; body: ContractTypeNode; key: 'items' | 'value' };
+
+/**
+ * The shape of the body a tool reports, if it reports one as structured content at all.
  *
  * Not a model whose schema is a `format()` pipe ({@link compilesToPipe}): its output side is the
  * transform that renames its keys, which JSON Schema renders as `{}`, with no `type: 'object'`. A
  * client parsing `tools/list` rejects the whole list over one such schema, so the tool publishes none
  * and returns its result as text only.
+ *
+ * A body the service hands back in an envelope (`{ status, body }` for several statuses, `{ body,
+ * headers }` for response headers or several mimes) is reported as an object only, as before: which
+ * value a wrapper would hold is known only per status.
  */
-function outputSchemaBody(op: OpOperationNode, models?: Map<string, ModelNode>): ModelRefTypeNode | InlineObjectTypeNode | undefined {
+function resultShape(op: OpOperationNode, models?: Map<string, ModelNode>): ResultShape | undefined {
     const body = primaryResponseBody(op);
-    if (body?.kind === 'inlineObject') return body;
-    if (body?.kind === 'ref' && !(models && compilesToPipe(body.name, models))) return body;
-    return undefined;
+    if (!body) return undefined;
+    if (models && pipeRefs(body).some(name => compilesToPipe(name, models))) return undefined;
+    const resolved = resolveAlias(body, models);
+    if (isObjectSchema(resolved)) return { kind: 'object', body };
+    const emitted = emittedResponses(op);
+    const resp = emitted[0];
+    if (emitted.length !== 1 || !resp || (resp.headers ?? []).length > 0 || resp.bodies.length > 1) return undefined;
+    const kind = resolved.kind === 'array' || resolved.kind === 'tuple' ? 'items' : 'value';
+    return { kind, key: kind, body };
+}
+
+/** The refs whose `format()` would make a body's schema a pipe: the body itself, or an `.extend()` chain's members. */
+function pipeRefs(body: ContractTypeNode): string[] {
+    if (body.kind === 'ref') return [body.name];
+    if (body.kind === 'intersection' && isExtendChain(body)) return body.members.flatMap(m => (m.kind === 'ref' ? [m.name] : []));
+    return [];
+}
+
+/** A ref to an alias model (`Payments: array(Payment)`) followed to the type it names. */
+function resolveAlias(type: ContractTypeNode, models: Map<string, ModelNode> | undefined): ContractTypeNode {
+    const seen = new Set<string>();
+    while (type.kind === 'ref' && !seen.has(type.name)) {
+        seen.add(type.name);
+        const alias = models?.get(type.name)?.type;
+        if (!alias) break;
+        type = alias;
+    }
+    return type;
+}
+
+/** Whether a type's schema is a JSON Schema object: a ref here is to a model with fields, or one not known. */
+function isObjectSchema(type: ContractTypeNode): boolean {
+    return type.kind === 'ref' || type.kind === 'inlineObject' || type.kind === 'record' || (type.kind === 'intersection' && isExtendChain(type));
 }
 
 function outputSchemaExpr(op: OpOperationNode, models?: Map<string, ModelNode>): string | undefined {
-    const body = outputSchemaBody(op, models);
-    if (!body) return undefined;
-    return body.kind === 'ref' ? body.name : renderType(body, undefined, undefined, models);
+    const shape = resultShape(op, models);
+    if (!shape) return undefined;
+    const schema = shape.body.kind === 'ref' ? shape.body.name : renderType(shape.body, undefined, undefined, models);
+    return shape.kind === 'object' ? schema : `z.object({ ${shape.key}: ${schema} })`;
 }
 
 // ─── Annotations ────────────────────────────────────────────────────────────
 
 const HINT_KEYS = ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint'] as const;
+type HintKey = (typeof HINT_KEYS)[number];
 
-function annotationsExpr(cfg: McpConfigNode | undefined): string | undefined {
-    if (!cfg) return undefined;
-    const parts: string[] = [];
-    for (const key of HINT_KEYS) {
-        const val = cfg[key];
-        if (val !== undefined) parts.push(`${key}: ${val}`);
-    }
-    return parts.length > 0 ? `{ ${parts.join(', ')} }` : undefined;
+/**
+ * The hints an operation's method implies, for each one its `mcp` block leaves unset: a `GET` reads
+ * and can be repeated, a `PUT` can be repeated, a `DELETE` destroys. A tool calls the app's own
+ * service in-process, so none reaches an open world of external entities.
+ */
+const METHOD_HINTS: Record<HttpMethod, Record<HintKey, boolean>> = {
+    get: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    put: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    delete: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    post: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    patch: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+};
+
+/**
+ * All four annotations, each the contract's `hint:` where it sets one and the method's otherwise.
+ * Emitted in full so a client never falls back to MCP's own defaults, two of which are `true`: an
+ * unannotated tool reads as destructive and open-world.
+ */
+function annotationsExpr(cfg: McpConfigNode | undefined, method: HttpMethod): string {
+    const defaults = METHOD_HINTS[method];
+    return `{ ${HINT_KEYS.map(key => `${key}: ${cfg?.[key] ?? defaults[key]}`).join(', ')} }`;
+}
+
+/** The `_meta` key a tool definition reports its operation's effective security under. */
+export const MCP_SECURITY_META_KEY = 'contractkit/security';
+
+/**
+ * The operation's effective security as a tool's `_meta` reports it, in the vocabulary a `.ck` file
+ * uses: `'none'`, or `{ policy }` with the policy the tool asserts (`false` for a bare session
+ * check). It mirrors {@link toolPolicyCheck}, so a meta tool searching the catalog can filter on
+ * the same gate a call would meet, without a second source.
+ */
+function securityMetaExpr(security: SecurityNode | undefined): string {
+    if (security === SECURITY_NONE) return `'none'`;
+    const policy = security?.policy;
+    if (policy === undefined) return '{ policy: MFA_SATISFIED_POLICY }';
+    if (policy === false) return '{ policy: false }';
+    return `{ policy: '${escapeSingleQuoted(policy)}' }`;
 }
 
 // ─── Schema-import collection ───────────────────────────────────────────────
@@ -372,8 +493,8 @@ function collectSchemaIds(ops: { route: OpRouteNode; op: OpOperationNode }[], op
         walkSourceRefs(op.query, ids, modelsWithInput);
         walkSourceRefs(op.headers, ids, modelsWithInput);
 
-        const body = outputSchemaBody(op, models);
-        if (body) walkTypeRefs(body, ids, 'read');
+        const shape = resultShape(op, models);
+        if (shape) walkTypeRefs(shape.body, ids, 'read');
     }
     return ids;
 }
@@ -447,13 +568,23 @@ interface ToolPlan {
     argsConstName: string;
     /** Effective security for the operation, cascaded operation → route → file. */
     security: SecurityNode | undefined;
+    /** Flagged `mcp:`, so listed in `tools/list` through `register<File>McpTools`. */
+    listed: boolean;
+    /** In the catalog of every operation, through `register<File>McpCatalog`. */
+    inCatalog: boolean;
 }
 
-export function planTools(root: OpRootNode, includeInternal: boolean): ToolPlan[] {
+/**
+ * Every operation a file generates a handler for: each one flagged `mcp:`, and with `catalog` on,
+ * each one {@link isCatalogOperation} admits too. `internal` operations only with `includeInternal`.
+ */
+export function planTools(root: OpRootNode, includeInternal: boolean, catalog = false, models?: Map<string, ModelNode>): ToolPlan[] {
     const plans: ToolPlan[] = [];
     for (const route of root.routes) {
         for (const op of route.operations) {
-            if (!op.mcp) continue;
+            const listed = isMcpTool(op);
+            const inCatalog = catalog && isCatalogOperation(op, models);
+            if (!listed && !inCatalog) continue;
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             const toolName = deriveToolName(op, route);
             const className = deriveToolClassName(toolName);
@@ -464,6 +595,8 @@ export function planTools(root: OpRootNode, includeInternal: boolean): ToolPlan[
                 className,
                 argsConstName: `${toPascal(toolName)}Args`,
                 security: resolveSecurity(route, op, root),
+                listed,
+                inCatalog,
             });
         }
     }
@@ -484,16 +617,31 @@ export function planTools(root: OpRootNode, includeInternal: boolean): ToolPlan[
  * MFA gate, and the fix for that is an app-level policy override recognising `claims.mcp`, not a
  * generated floor lower than the contract's.
  */
-function toolPolicyCheck(security: SecurityNode | undefined): string | undefined {
+function toolPolicyCheck(security: SecurityNode | undefined, policies: string): string | undefined {
     if (security === SECURITY_NONE) return undefined;
 
     const policy = security?.policy;
-    if (policy === undefined) return `await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });`;
+    if (policy === undefined) return `await requireMcpPolicy(context, ${policies}, { policy: MFA_SATISFIED_POLICY });`;
     // `false` is a declaration: validate the session, apply no policy.
-    if (policy === false) return `await requireMcpPolicy(context, this.policies);`;
+    if (policy === false) return `await requireMcpPolicy(context, ${policies});`;
 
-    return `await requireMcpPolicy(context, this.policies, { policy: '${escapeSingleQuoted(policy)}' });`;
+    return `await requireMcpPolicy(context, ${policies}, { policy: '${escapeSingleQuoted(policy)}' });`;
 }
+
+/**
+ * The guard a per-call tool file declares: the request's scoped container off the MCP context, or a
+ * clear error naming the fix when the route did not pass one. Declared in the file rather than
+ * imported, since `@maroonedsoftware/mcp` carries the container but no guard for it.
+ */
+const REQUIRE_MCP_CONTAINER_LINES = [
+    `/** The request's scoped container, which a tool resolving per call reads its service and policies from. */`,
+    `function requireMcpContainer(context: McpToolContext): Container {`,
+    `    if (!context.container) {`,
+    `        throw new Error(\`MCP tool '\${context.toolName}' needs the request container: pass \\\`container: ctx.container\\\` to createMcpRequestContext.\`);`,
+    `    }`,
+    `    return context.container;`,
+    `}`,
+];
 
 /**
  * @param inline The tools file's wrappers for results with no `serializeX` of their own, which a tool
@@ -526,46 +674,63 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     lines.push(`        inputSchema: z.toJSONSchema(${argsConstName}, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],`);
     const outExpr = outputSchemaExpr(op, options.models);
     if (outExpr) lines.push(`        outputSchema: z.toJSONSchema(${outExpr}, { unrepresentable: 'any' }) as Tool['outputSchema'],`);
-    const annotations = annotationsExpr(cfg);
-    if (annotations) lines.push(`        annotations: ${annotations},`);
+    lines.push(`        annotations: ${annotationsExpr(cfg, op.method)},`);
+    lines.push(`        _meta: { '${MCP_SECURITY_META_KEY}': ${securityMetaExpr(plan.security)} },`);
     lines.push('    };');
     lines.push('');
 
-    // constructor injects the operation's service, plus the PolicyService when the tool has a
-    // security check to run — a tool declared `security: none` needs neither.
+    // At boot, the constructor injects the operation's service, plus the PolicyService when the tool
+    // has a security check to run — a tool declared `security: none` needs neither. Per call, the tool
+    // takes nothing and resolves both from the request's container in `handle()`.
+    const perCall = options.resolve === 'perCall';
     const service = inferService(op, route, file);
-    const policyCheck = toolPolicyCheck(plan.security);
-    const ctorParams = [`private readonly service: ${service.className}`];
-    if (policyCheck) ctorParams.push('private readonly policies: PolicyService');
-    lines.push(`    constructor(${ctorParams.join(', ')}) {}`);
-    lines.push('');
+    const policyCheck = toolPolicyCheck(plan.security, perCall ? 'container.get(PolicyService)' : 'this.policies');
+    const serviceExpr = perCall ? `container.get(${service.className})` : 'this.service';
+    if (!perCall) {
+        const ctorParams = [`private readonly service: ${service.className}`];
+        if (policyCheck) ctorParams.push('private readonly policies: PolicyService');
+        lines.push(`    constructor(${ctorParams.join(', ')}) {}`);
+        lines.push('');
+    }
 
     // handle
     const props = buildArgsProps(route, op, options);
     const destructure = props.map(p => (p.local === p.key ? p.key : `${p.key}: ${p.local}`));
     const callArgs = buildArgs(route, op, bindMcpPathParams(route).locals);
     const isVoid = !primaryResponseBody(op);
+    const shape = resultShape(op, options.models);
     const structured = !!outExpr;
 
     // No args to destructure means the parameter goes unread, which trips no-unused-vars in
     // consumers that lint generated output; the leading underscore opts it out.
     const argsParam = destructure.length > 0 ? 'args' : '_args';
-    // Same reasoning for the context parameter: only a tool that runs a security check reads it.
-    const contextParam = policyCheck ? 'context' : '_context';
+    // Same reasoning for the context parameter: only a tool that runs a security check, or resolves
+    // per call, reads it.
+    const contextParam = policyCheck || perCall ? 'context' : '_context';
     lines.push(`    async handle(${argsParam}: Record<string, unknown>, ${contextParam}: McpToolContext): Promise<CallToolResult> {`);
+    if (perCall) lines.push('        const container = requireMcpContainer(context);');
     // Before the arguments are even parsed: an unauthorized caller learns nothing about the schema.
     if (policyCheck) lines.push(`        ${policyCheck}`);
     if (destructure.length > 0) {
         lines.push(`        const { ${destructure.join(', ')} } = await parseAndValidate(args, ${argsConstName});`);
     }
     if (isVoid) {
-        lines.push(`        await this.service.${service.methodName}(${callArgs});`);
+        lines.push(`        await ${serviceExpr}.${service.methodName}(${callArgs});`);
         lines.push(`        return { content: [{ type: 'text', text: 'OK' }] };`);
     } else {
-        lines.push(`        const result = await this.service.${service.methodName}(${callArgs});`);
+        lines.push(`        const result = await ${serviceExpr}.${service.methodName}(${callArgs});`);
         const wire = resultWireExpr(op, `__serialize${className}Result`, options, inline);
         const bigint = resultReachesBigInt(op, options.modelsWithBigInt);
-        if (wire) {
+        if (shape && shape.kind !== 'object') {
+            // A list or a scalar is not an object, which is all `structuredContent` may be, so it is
+            // reported under one key. The text carries the same JSON: the spec asks a tool returning
+            // structured content to serialize it into a text block too. A service answering
+            // `undefined` for a nullable body is reported as `null`: `JSON.stringify` would drop the
+            // key, leaving `{}` where the output schema requires `value`.
+            const value = shape.key === 'value' ? `${wire ?? 'result'} ?? null` : (wire ?? 'result');
+            lines.push(`        const resultJson = JSON.stringify({ ${shape.key}: ${value} }${bigint ? ', bigIntReplacer' : ''});`);
+            lines.push(`        return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };`);
+        } else if (wire) {
             // The text and the structured content report the same serialized result. The structured
             // content is the parsed-back JSON, as in the bigint case below: the serialized value is
             // typed `unknown`, and the dispatcher serializes it again.
@@ -604,10 +769,20 @@ export function deriveMcpRegisterFnName(file: string): string {
     return `register${deriveBaseName(file)}McpTools`;
 }
 
+/** The exported catalog fn for an op-root file, e.g. `payments.op` → `registerPaymentsMcpCatalog`. */
+export function deriveMcpRegisterCatalogFnName(file: string): string {
+    return `register${deriveBaseName(file)}McpCatalog`;
+}
+
+/** The exported fn registering a file's tool classes, e.g. `payments.op` → `registerPaymentsMcpToolClasses`. */
+export function deriveMcpRegisterClassesFnName(file: string): string {
+    return `register${deriveBaseName(file)}McpToolClasses`;
+}
+
 /** Generate one `<filename>.mcp.ts` for an op-root: tool handler classes + a per-file register fn. */
 export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {}): string {
     const includeInternal = options.includeInternal ?? false;
-    const plans = planTools(root, includeInternal);
+    const plans = planTools(root, includeInternal, options.catalog, options.models);
 
     // Args schema consts (also drive the JSON-Schema definitions).
     const argsConsts = plans.map(p => `const ${p.argsConstName} = ${argsSchemaExpr(buildArgsProps(p.route, p.op, options))};`);
@@ -616,11 +791,30 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     const inlineSerializers = new Map<string, string[]>();
     const classes = plans.map(p => renderToolClass(p, root.file, options, inlineSerializers).join('\n'));
 
-    // Per-file register fn.
+    // Per-file register fns: one for the listed tools and one for the catalog, each emitted only when
+    // it has something to add, so neither takes parameters it never reads.
     const registerFn: string[] = [];
-    registerFn.push(`/** Add this file's tools to the shared catalog. */`);
-    registerFn.push(`export function ${deriveMcpRegisterFnName(root.file)}(map: McpToolHandlerMap, container: Container): void {`);
-    for (const p of plans) registerFn.push(`    map.set('${escapeSingleQuoted(p.toolName)}', container.get(${p.className}));`);
+    const addTo = (doc: string, fnName: string, members: ToolPlan[]) => {
+        if (members.length === 0) return;
+        registerFn.push(`/** ${doc} */`);
+        registerFn.push(`export function ${fnName}(map: McpToolHandlerMap, container: Container): void {`);
+        for (const p of members) registerFn.push(`    map.set('${escapeSingleQuoted(p.toolName)}', container.get(${p.className}));`);
+        registerFn.push('}');
+        registerFn.push('');
+    };
+    addTo(
+        "Add this file's tools to the tool map.",
+        deriveMcpRegisterFnName(root.file),
+        plans.filter(p => p.listed),
+    );
+    addTo(
+        "Add a handler for each of this file's operations to the catalog, unlisted in `tools/list`.",
+        deriveMcpRegisterCatalogFnName(root.file),
+        plans.filter(p => p.inCatalog),
+    );
+    registerFn.push(`/** Register this file's tool classes on the registry, so the tool maps can resolve them. */`);
+    registerFn.push(`export function ${deriveMcpRegisterClassesFnName(root.file)}(registry: Registry): void {`);
+    for (const p of plans) registerFn.push(`    registry.register(${p.className}).useClass(${p.className}).asSingleton();`);
     registerFn.push('}');
 
     const serializerDecls = [...inlineSerializers.values()].map(decl => decl.join('\n'));
@@ -628,12 +822,13 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
 
     // Zod scalar helper consts (must precede the args consts that reference them).
     const helperConsts = [...scalarHelperLines(bodyCore), ...wireDeclsFor([bodyCore])];
+    if (/\brequireMcpContainer\b/.test(bodyCore)) helperConsts.push(...REQUIRE_MCP_CONTAINER_LINES);
     const bodyWithHelpers = [helperConsts.join('\n'), bodyCore].filter(Boolean).join('\n\n');
 
     // ── Imports ──
     const needsParseAndValidate = plans.some(p => buildArgsProps(p.route, p.op, options).length > 0);
     const imports: string[] = [];
-    imports.push(`import { Injectable, type Container } from 'injectkit';`);
+    imports.push(`import { Injectable, type Container, type Registry } from 'injectkit';`);
     imports.push(`import { z } from 'zod';`);
 
     const luxon: string[] = [];
@@ -684,22 +879,38 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
 
 /** One entry per emitted `<filename>.mcp.ts` for the aggregator to import. */
 export interface McpAggregatorEntry {
-    /** The file's exported register fn name, e.g. `registerPaymentsMcpTools`. */
-    registerFn: string;
+    /** The file's register fn for its listed tools, e.g. `registerPaymentsMcpTools`. Absent when it has none. */
+    registerFn?: string;
+    /** The file's register fn for its catalog handlers, e.g. `registerPaymentsMcpCatalog`. Absent when it has none. */
+    registerCatalogFn?: string;
+    /** The file's exported fn registering its tool classes, e.g. `registerPaymentsMcpToolClasses`. */
+    registerClassesFn: string;
     /** Module specifier for the file, relative to the aggregator and `.js`-suffixed. */
     importPath: string;
 }
 
-/** Generate the aggregator `mcp.tools.ts` that assembles the single McpToolHandlerMap. */
-export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
-    const sorted = [...entries].sort((a, b) => a.registerFn.localeCompare(b.registerFn));
+/**
+ * Generate the aggregator `mcp.tools.ts` that assembles the single McpToolHandlerMap, and with
+ * `catalog` on, the `McpToolCatalog` of every operation beside it.
+ */
+export function generateMcpAggregator(entries: McpAggregatorEntry[], options: { catalog?: boolean } = {}): string {
+    const sorted = [...entries].sort((a, b) => a.registerClassesFn.localeCompare(b.registerClassesFn));
+    const listed = sorted.flatMap(e => (e.registerFn ? [e.registerFn] : []));
+    const catalog = sorted.flatMap(e => (e.registerCatalogFn ? [e.registerCatalogFn] : []));
     const lines: string[] = [];
-    lines.push(`import { type Container } from 'injectkit';`);
+    lines.push(
+        options.catalog
+            ? `import { Injectable, type Container, type Registry } from 'injectkit';`
+            : `import { type Container, type Registry } from 'injectkit';`,
+    );
     lines.push(`import { McpToolHandlerMap } from '@maroonedsoftware/mcp';`);
-    for (const e of sorted) lines.push(`import { ${e.registerFn} } from '${e.importPath}';`);
+    for (const e of sorted) {
+        const names = [e.registerFn, options.catalog ? e.registerCatalogFn : undefined, e.registerClassesFn].filter(Boolean);
+        lines.push(`import { ${names.join(', ')} } from '${e.importPath}';`);
+    }
     lines.push('');
     lines.push('/**');
-    lines.push(' * Build the MCP tool catalog.');
+    lines.push(' * Build the MCP tool map: the tools `tools/list` reports.');
     lines.push(' *');
     lines.push(' * Bind it to the `McpToolHandlerMap` token from a factory, which is what supplies the');
     lines.push(' * `Container` needed to resolve each handler:');
@@ -708,10 +919,45 @@ export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
     lines.push(' * registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();');
     lines.push(' * ```');
     lines.push(' */');
-    lines.push('export function registerMcpTools(container: Container): McpToolHandlerMap {');
+    // With the catalog on, a project may flag no operation at all, and the container goes unread.
+    lines.push(`export function registerMcpTools(${listed.length > 0 ? 'container' : '_container'}: Container): McpToolHandlerMap {`);
     lines.push('    const map = new McpToolHandlerMap();');
-    for (const e of sorted) lines.push(`    ${e.registerFn}(map, container);`);
+    for (const fn of listed) lines.push(`    ${fn}(map, container);`);
     lines.push('    return map;');
+    lines.push('}');
+    if (options.catalog) {
+        lines.push('');
+        lines.push('/**');
+        lines.push(' * A handler for every operation a tool can serve, flagged `mcp:` or not, kept apart from the');
+        lines.push(' * listed tools. Its own token, since `McpToolHandlerMap` is bound to `registerMcpTools`.');
+        lines.push(' */');
+        lines.push('@Injectable()');
+        lines.push('export class McpToolCatalog extends McpToolHandlerMap {}');
+        lines.push('');
+        lines.push('/**');
+        lines.push(' * Build the catalog. Nothing lists it: a meta tool (one that searches the API, say) looks a');
+        lines.push(' * handler up by name and calls it. Bind it from a factory, as `registerMcpTools` is bound:');
+        lines.push(' *');
+        lines.push(' * ```ts');
+        lines.push(' * registry.register(McpToolCatalog).useFactory(registerMcpCatalog).asSingleton();');
+        lines.push(' * ```');
+        lines.push(' */');
+        lines.push(`export function registerMcpCatalog(${catalog.length > 0 ? 'container' : '_container'}: Container): McpToolCatalog {`);
+        lines.push('    const map = new McpToolCatalog();');
+        for (const fn of catalog) lines.push(`    ${fn}(map, container);`);
+        lines.push('    return map;');
+        lines.push('}');
+    }
+    lines.push('');
+    lines.push('/**');
+    lines.push(' * Register every generated tool class on the registry, so the tool maps can resolve them:');
+    lines.push(' *');
+    lines.push(' * ```ts');
+    lines.push(' * registerMcpToolClasses(registry);');
+    lines.push(' * ```');
+    lines.push(' */');
+    lines.push('export function registerMcpToolClasses(registry: Registry): void {');
+    for (const e of sorted) lines.push(`    ${e.registerClassesFn}(registry);`);
     lines.push('}');
     return lines.join('\n') + '\n';
 }
@@ -722,7 +968,9 @@ export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
  * The whole file is framework-specific boilerplate rather than a per-operation render, so the
  * adapter owns the template. Defaults to Koa, matching the router generator.
  */
-export function generateMcpRouter(options: { path?: string; framework?: ServerFramework; security?: SecurityNode } = {}): string {
+export function generateMcpRouter(
+    options: { path?: string; framework?: ServerFramework; security?: SecurityNode; resolve?: McpResolveMode } = {},
+): string {
     const framework = options.framework ?? KOA_SERVER_FRAMEWORK;
     const guards: RouteMiddleware = { bodyContentTypes: ['application/json'] };
 
@@ -731,7 +979,8 @@ export function generateMcpRouter(options: { path?: string; framework?: ServerFr
     const policy = policyGuard(framework, options.security ?? { policy: false, loc: SYNTHETIC_LOC });
     if (policy) guards.policy = policy;
 
-    return framework.mcpRouter({ path: options.path ?? '/mcp', guards });
+    // A per-call tool reads its container off the MCP context, so the mount has to put it there.
+    return framework.mcpRouter({ path: options.path ?? '/mcp', guards, passContainer: options.resolve === 'perCall' });
 }
 
 /**
@@ -746,7 +995,7 @@ export function generateMcpRouter(options: { path?: string; framework?: ServerFr
 export function defaultMcpMountSecurity(roots: readonly OpRootNode[], includeInternal: boolean): SecurityNode {
     for (const root of roots) {
         for (const plan of planTools(root, includeInternal)) {
-            if (plan.security === SECURITY_NONE) return SECURITY_NONE;
+            if (plan.listed && plan.security === SECURITY_NONE) return SECURITY_NONE;
         }
     }
     return { policy: false, loc: SYNTHETIC_LOC };

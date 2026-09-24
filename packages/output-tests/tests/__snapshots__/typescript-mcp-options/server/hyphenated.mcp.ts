@@ -10,6 +10,14 @@ import { parseAndValidate } from '@maroonedsoftware/zod';
 import { InvoiceService } from '#src/services/invoice.service.js';
 import { Invoice } from './schemas/hyphenated.schema.js';
 
+/** The request's scoped container, which a tool resolving per call reads its service and policies from. */
+function requireMcpContainer(context: McpToolContext): Container {
+    if (!context.container) {
+        throw new Error(`MCP tool '${context.toolName}' needs the request container: pass \`container: ctx.container\` to createMcpRequestContext.`);
+    }
+    return context.container;
+}
+
 const GetInvoiceArgs = z.object({ invoiceId: z.uuid() });
 
 /**
@@ -26,18 +34,22 @@ export class GetInvoiceMcpTool implements McpToolHandler {
         _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
-    constructor(private readonly service: InvoiceService, private readonly policies: PolicyService) {}
-
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
-        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
         const { invoiceId } = await parseAndValidate(args, GetInvoiceArgs);
-        const result = await this.service.getById(invoiceId);
+        const result = await container.get(InvoiceService).getById(invoiceId);
         return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
     }
 }
 
 /** Add this file's tools to the tool map. */
 export function registerHyphenatedMcpTools(map: McpToolHandlerMap, container: Container): void {
+    map.set('get_invoice', container.get(GetInvoiceMcpTool));
+}
+
+/** Add a handler for each of this file's operations to the catalog, unlisted in `tools/list`. */
+export function registerHyphenatedMcpCatalog(map: McpToolHandlerMap, container: Container): void {
     map.set('get_invoice', container.get(GetInvoiceMcpTool));
 }
 

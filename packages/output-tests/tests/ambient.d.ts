@@ -44,9 +44,14 @@ declare module 'decimal.js' {
 
 declare module 'injectkit' {
     export function Injectable(): ClassDecorator;
+    /** A class token infers what `get` returns, as injectkit's own `Identifier<T>` does. */
+    export type Identifier<T> = (abstract new (...args: any[]) => T) | string | symbol;
     export class Container {
-        get<T>(token: any): T;
+        get<T>(token: Identifier<T>): T;
         register(token: any, provider: any): void;
+    }
+    export interface Registry {
+        register<T>(id: new (...args: any[]) => T): { useClass(constructor: new (...args: any[]) => T): { asSingleton(): void } };
     }
 }
 
@@ -132,6 +137,9 @@ declare module '@maroonedsoftware/multipart' {
 
 declare module '@maroonedsoftware/mcp' {
     export interface McpToolContext {
+        toolName: string;
+        /** The request's scoped container, when the route passed one (@maroonedsoftware/mcp with MaroonedSoftware/ServerKit#186). */
+        container?: import('injectkit').Container;
         [key: string]: any;
     }
     export interface McpToolHandler {
@@ -165,8 +173,11 @@ declare module '@modelcontextprotocol/sdk/types.js' {
     export interface Tool {
         name: string;
         description?: string;
+        title?: string;
         inputSchema: any;
         outputSchema?: any;
+        annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean };
+        _meta?: { [key: string]: unknown };
     }
     export interface CallToolResult {
         content: any[];

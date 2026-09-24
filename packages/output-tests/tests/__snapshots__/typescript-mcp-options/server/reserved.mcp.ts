@@ -9,9 +9,18 @@ import { PolicyService } from '@maroonedsoftware/policies';
 import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { SeatService } from '#src/services/seat.service.js';
-import { Note, Seat, serializeSeat } from './schemas/reserved.schema.js';
+import { Note, Seat, SeatRef, serializeSeat } from './schemas/reserved.schema.js';
+
+/** The request's scoped container, which a tool resolving per call reads its service and policies from. */
+function requireMcpContainer(context: McpToolContext): Container {
+    if (!context.container) {
+        throw new Error(`MCP tool '${context.toolName}' needs the request container: pass \`container: ctx.container\` to createMcpRequestContext.`);
+    }
+    return context.container;
+}
 
 const GetSeatArgs = z.object({ class: z.string(), query: z.object({ from: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })), in: z.string(), pageSize: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()) }).optional(), headers: z.object({ from: z.string() }).optional() });
+const GetRowArgs = z.object({ params: SeatRef });
 const PutNoteArgs = z.object({ body_: z.string(), body: Note });
 
 /**
@@ -28,13 +37,36 @@ export class GetSeatMcpTool implements McpToolHandler {
         _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
-    constructor(private readonly service: SeatService, private readonly policies: PolicyService) {}
+    async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
+        const { class: class_, query, headers } = await parseAndValidate(args, GetSeatArgs);
+        const result = await container.get(SeatService).getSeat(class_, query, headers);
+        const resultJson = JSON.stringify({ ...result, body: serializeSeat(result.body) });
+        return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
+    }
+}
+
+/**
+ * from [reserved.ck](../contracts/reserved.ck#L74)
+ */
+@Injectable()
+export class GetRowMcpTool implements McpToolHandler {
+    readonly definition: Tool = {
+        name: 'get_row',
+        description: 'fetch a row by its seat class',
+        inputSchema: z.toJSONSchema(GetRowArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        outputSchema: z.toJSONSchema(Seat, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+    };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
-        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
-        const { class: class_, query, headers } = await parseAndValidate(args, GetSeatArgs);
-        const result = await this.service.getSeat(class_, query, headers);
-        const resultJson = JSON.stringify({ ...result, body: serializeSeat(result.body) });
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
+        const { params } = await parseAndValidate(args, GetRowArgs);
+        const result = await container.get(SeatService).getRow(params);
+        const resultJson = JSON.stringify(serializeSeat(result));
         return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
     }
 }
@@ -53,12 +85,11 @@ export class PutNoteMcpTool implements McpToolHandler {
         _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
-    constructor(private readonly service: SeatService, private readonly policies: PolicyService) {}
-
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
-        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
         const { body_, body } = await parseAndValidate(args, PutNoteArgs);
-        const result = await this.service.putNote(body_, body);
+        const result = await container.get(SeatService).putNote(body_, body);
         return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
     }
 }
@@ -69,8 +100,16 @@ export function registerReservedMcpTools(map: McpToolHandlerMap, container: Cont
     map.set('put_note', container.get(PutNoteMcpTool));
 }
 
+/** Add a handler for each of this file's operations to the catalog, unlisted in `tools/list`. */
+export function registerReservedMcpCatalog(map: McpToolHandlerMap, container: Container): void {
+    map.set('get_seat', container.get(GetSeatMcpTool));
+    map.set('get_row', container.get(GetRowMcpTool));
+    map.set('put_note', container.get(PutNoteMcpTool));
+}
+
 /** Register this file's tool classes on the registry, so the tool maps can resolve them. */
 export function registerReservedMcpToolClasses(registry: Registry): void {
     registry.register(GetSeatMcpTool).useClass(GetSeatMcpTool).asSingleton();
+    registry.register(GetRowMcpTool).useClass(GetRowMcpTool).asSingleton();
     registry.register(PutNoteMcpTool).useClass(PutNoteMcpTool).asSingleton();
 }

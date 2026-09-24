@@ -1,6 +1,6 @@
 // Auto-generated MCP tools
 // generated from [billing.ck](../contracts/billing.ck)
-import { Injectable, type Container } from 'injectkit';
+import { Injectable, type Container, type Registry } from 'injectkit';
 import { z } from 'zod';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
 import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';
@@ -9,8 +9,9 @@ import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
 import { PaymentService } from '#src/services/payment.service.js';
-import { Payment, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, SnakeFilter, SnakeHeaders, serializeSavedSearch, serializeSnakeFilter } from './schemas/billing.schema.js';
+import { Payment, PaymentFilter, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, SnakeFilter, SnakeHeaders, TenantHeaders, serializeSavedSearch, serializeSnakeFilter } from './schemas/billing.schema.js';
 
+const SearchPaymentsArgs = z.object({ query: PaymentFilter.optional(), headers: TenantHeaders.optional() });
 const GetRefundArgs = z.object({ params: PaymentRef });
 const SearchPaymentsByDateArgs = z.object({ query: SnakeFilter.optional(), headers: SnakeHeaders.optional() });
 const SearchPaymentsScopedArgs = z.object({ query: SnakeFilter.in.extend({
@@ -37,7 +38,32 @@ function __serializeSearchPaymentsScopedMcpToolResult(value: unknown): unknown {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L186)
+ * from [billing.ck](../contracts/billing.ck#L108)
+ */
+@Injectable()
+export class SearchPaymentsMcpTool implements McpToolHandler {
+    readonly definition: Tool = {
+        name: 'search_payments',
+        description: 'search payments with a filter model',
+        inputSchema: z.toJSONSchema(SearchPaymentsArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+    };
+
+    constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
+
+    async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
+        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const { query, headers } = await parseAndValidate(args, SearchPaymentsArgs);
+        const result = await this.service.search(query, headers);
+        const resultJson = JSON.stringify({ items: result }, bigIntReplacer);
+        return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
+    }
+}
+
+/**
+ * from [billing.ck](../contracts/billing.ck#L187)
  */
 @Injectable()
 export class GetRefundMcpTool implements McpToolHandler {
@@ -46,6 +72,8 @@ export class GetRefundMcpTool implements McpToolHandler {
         description: 'look up a refund by its originating payment',
         inputSchema: z.toJSONSchema(GetRefundArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Payment, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
@@ -60,7 +88,7 @@ export class GetRefundMcpTool implements McpToolHandler {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L240)
+ * from [billing.ck](../contracts/billing.ck#L241)
  */
 @Injectable()
 export class SearchPaymentsByDateMcpTool implements McpToolHandler {
@@ -68,6 +96,8 @@ export class SearchPaymentsByDateMcpTool implements McpToolHandler {
         name: 'search_payments_by_date',
         description: 'search payments with snake_case filter and header models',
         inputSchema: z.toJSONSchema(SearchPaymentsByDateArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
@@ -81,7 +111,7 @@ export class SearchPaymentsByDateMcpTool implements McpToolHandler {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L271)
+ * from [billing.ck](../contracts/billing.ck#L272)
  */
 @Injectable()
 export class SearchPaymentsScopedMcpTool implements McpToolHandler {
@@ -89,6 +119,8 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
         name: 'search_payments_scoped',
         description: 'search payments with a snake_case filter extended inline',
         inputSchema: z.toJSONSchema(SearchPaymentsScopedArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
@@ -103,7 +135,7 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L281)
+ * from [billing.ck](../contracts/billing.ck#L282)
  */
 @Injectable()
 export class SaveScopedSearchMcpTool implements McpToolHandler {
@@ -112,6 +144,8 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
         description: 'save a scoped search',
         inputSchema: z.toJSONSchema(SaveScopedSearchArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(SavedSearch, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
@@ -125,10 +159,20 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
     }
 }
 
-/** Add this file's tools to the shared catalog. */
+/** Add this file's tools to the tool map. */
 export function registerBillingMcpTools(map: McpToolHandlerMap, container: Container): void {
+    map.set('search_payments', container.get(SearchPaymentsMcpTool));
     map.set('get_refund', container.get(GetRefundMcpTool));
     map.set('search_payments_by_date', container.get(SearchPaymentsByDateMcpTool));
     map.set('search_payments_scoped', container.get(SearchPaymentsScopedMcpTool));
     map.set('save_scoped_search', container.get(SaveScopedSearchMcpTool));
+}
+
+/** Register this file's tool classes on the registry, so the tool maps can resolve them. */
+export function registerBillingMcpToolClasses(registry: Registry): void {
+    registry.register(SearchPaymentsMcpTool).useClass(SearchPaymentsMcpTool).asSingleton();
+    registry.register(GetRefundMcpTool).useClass(GetRefundMcpTool).asSingleton();
+    registry.register(SearchPaymentsByDateMcpTool).useClass(SearchPaymentsByDateMcpTool).asSingleton();
+    registry.register(SearchPaymentsScopedMcpTool).useClass(SearchPaymentsScopedMcpTool).asSingleton();
+    registry.register(SaveScopedSearchMcpTool).useClass(SaveScopedSearchMcpTool).asSingleton();
 }

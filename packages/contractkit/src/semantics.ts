@@ -30,7 +30,7 @@ import type {
     McpConfigNode,
     OpBodyKey,
 } from './ast.js';
-import { SECURITY_NONE } from './ast.js';
+import { MCP_EXCLUDE, SECURITY_NONE } from './ast.js';
 import {
     buildCompoundType,
     coerceDefault,
@@ -1189,7 +1189,7 @@ export function createSemantics(grammar: Grammar) {
                 name?: string;
                 service?: string;
                 sdk?: string;
-                mcp?: boolean | McpConfigNode;
+                mcp?: boolean | typeof MCP_EXCLUDE | McpConfigNode;
                 signature?: string;
                 signatureDescription?: string;
                 signaturePolicy?: string;
@@ -1245,7 +1245,7 @@ export function createSemantics(grammar: Grammar) {
             let name: string | undefined;
             let service: string | undefined;
             let sdk: string | undefined;
-            let mcp: boolean | McpConfigNode | undefined;
+            let mcp: boolean | typeof MCP_EXCLUDE | McpConfigNode | undefined;
             let signature: string | undefined;
             let signatureDescription: string | undefined;
             let signaturePolicy: string | undefined;
@@ -1363,6 +1363,10 @@ export function createSemantics(grammar: Grammar) {
 
         McpDecl_bool(_mcpKw, _colon, boolNode) {
             return { _type: 'mcp', value: boolNode.toAst(this.args.file, this.args.diag) as boolean };
+        },
+
+        McpDecl_exclude(_mcpKw, _colon, _excludeKw) {
+            return { _type: 'mcp', value: MCP_EXCLUDE };
         },
 
         McpDecl_block(mcpKwNode, _colon, _lb, items, _rb) {

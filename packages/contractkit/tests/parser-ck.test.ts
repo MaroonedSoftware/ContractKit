@@ -1402,6 +1402,12 @@ operation /users: {
             expect(root.routes[0]!.operations[0]!.mcp).toBe(false);
         });
 
+        it('parses mcp: exclude', () => {
+            const { root, diag } = parse('operation /users: { get: { mcp: exclude } }');
+            expect(diag.hasErrors()).toBe(false);
+            expect(root.routes[0]!.operations[0]!.mcp).toBe('exclude');
+        });
+
         it('leaves mcp undefined when not declared', () => {
             expect(parse('operation /users: { get: {} }').root.routes[0]!.operations[0]!.mcp).toBeUndefined();
         });

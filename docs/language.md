@@ -1035,6 +1035,11 @@ get: {
 }
 ```
 
+`mcp: exclude` is `false` and more: the operation is no tool, and it is also kept out of an MCP
+catalog of every operation (the TypeScript plugin's `mcp.catalog`, see
+[config.md](./config.md#the-catalog)). Use it for an operation an agent must never reach, even
+through a meta tool that searches the API.
+
 For explicit MCP tool metadata, use the settings block:
 
 ```
@@ -1071,6 +1076,17 @@ Settings:
 
 Unknown keys, unknown or conflicting hint tokens (e.g. both `readOnly` and `nonReadOnly`), and duplicates are compile-time errors.
 
+A generated tool always publishes all four annotations, so a client never falls back to MCP's own defaults (under which an unannotated tool is destructive and open-world). Each hint `hint:` leaves unset comes from the HTTP method:
+
+| Method | Hints |
+| --- | --- |
+| `GET` | `readOnly`, `idempotent` |
+| `PUT` | `idempotent` |
+| `DELETE` | `destructive` |
+| `POST`, `PATCH` | none: not read-only, not destructive |
+
+Every other hint is `false`, `openWorldHint` included: a tool calls the app's own service in-process.
+
 ### Generating an MCP server (TypeScript plugin)
 
 The `@contractkit/plugin-typescript` plugin turns `mcp`-flagged operations into a
@@ -1097,7 +1113,10 @@ exporting `registerMcpTools(container)` (which assembles the DI `McpToolHandlerM
 - advertises `inputSchema`/`outputSchema` (JSON Schema) generated from the operation's Zod schemas via
   `z.toJSONSchema()`, and validates incoming args against the same schema;
 - constructor-injects the operation's `service` and calls it in-process, returning the result as MCP
-  tool content.
+  tool content. MCP requires `structuredContent` to be an object, so a list result is reported as
+  `{ items }` and a scalar or `null` as `{ value }`, with `outputSchema` wrapped to match. A
+  `format()` result and one the service hands back in an envelope (several statuses, response
+  headers) are reported as text only.
 
 `registerMcpTools` **builds and returns** the map; it registers nothing. Registration belongs to
 InjectKit's `Registry` (composition phase), not to a `Container` (resolution phase), so bind the
@@ -1107,8 +1126,13 @@ aggregator from a factory, which is what supplies the `Container` it needs:
 registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();
 ```
 
-The tool classes are not registered for you either; register each on the same `Registry` so the
-aggregator can resolve it.
+`registerMcpToolClasses(registry)`, also in `mcp.tools.ts`, registers every tool class on the same
+`Registry` so the aggregator can resolve them.
+
+By default a tool constructor-injects its service and `PolicyService` once, when the map is built.
+Set `mcp.resolve: "perCall"` to resolve both in `handle()` from the request's scoped container
+instead, the way the HTTP router resolves a service from `ctx.container`, so a request-scoped
+service sees the caller's actor. See [config.md](./config.md#mcp).
 
 Each tool handler also enforces its operation's `security`, cascaded operation → route → file, before
 it parses any arguments: a tool is another way to invoke the operation, not a way around its gate. An

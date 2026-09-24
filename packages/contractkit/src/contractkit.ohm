@@ -228,12 +228,14 @@ Contract {
   SdkDecl = sdkKw ":" identifier
 
   // ─── MCP ────────────────────────────────────────────────────────
-  // `mcp: true|false` or a settings block. Text fields are quoted strings;
+  // `mcp: true|false`, `mcp: exclude`, or a settings block. `exclude` keeps the
+  // operation out of the MCP catalog as well as the tool list. Text fields are quoted strings;
   // `hint` is a bracket-less comma-separated token list (enum-style). The two
   // McpFieldValue forms are unambiguous: a string starts with a quote, a hint
   // list starts with an identifier. The comma-terminated list stops at the line
   // boundary because the next field has no leading comma.
   McpDecl = mcpKw ":" booleanLit                     -- bool
+          | mcpKw ":" excludeKw                      -- exclude
           | mcpKw ":" "{" (comment | McpField)* "}"  -- block
 
   McpField = identifier ":" McpFieldValue comment?
@@ -341,6 +343,7 @@ Contract {
   nameKw = "name" ~identPart
   sdkKw = "sdk" ~identPart
   mcpKw = "mcp" ~identPart
+  excludeKw = "exclude" ~identPart
   signatureKw = "signature" ~identPart
   queryKw = "query" ~identPart
   headersKw = "headers" ~identPart

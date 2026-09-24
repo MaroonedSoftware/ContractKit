@@ -738,3 +738,21 @@ describe('round-trip — idempotence', () => {
         });
     }
 });
+
+describe('round-trip — mcp exposure', () => {
+    it('keeps each form of mcp: as written', () => {
+        const source = `operation /a: {
+    get: {
+        mcp: true
+    }
+    post: {
+        mcp: false
+    }
+    delete: {
+        mcp: exclude
+    }
+}
+`;
+        expect(format(source)).toBe(source);
+    });
+});

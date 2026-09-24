@@ -178,6 +178,35 @@ Turns `mcp`-flagged operations into a [`@maroonedsoftware/mcp`](https://github.c
 | `servicePathTemplate` | `string`  | Import path template for service implementations                                                                     |
 | `includeInternal`     | `boolean` | Expose operations marked `internal` as tools. Default: `false`                                                       |
 | `security`            | `object`  | Guard on the emitted route. See below. Default: derived from the exposed tools                                       |
+| `resolve`             | `string`  | When a tool resolves its service and `PolicyService`: `boot` or `perCall`. See below. Default: `boot`                |
+| `catalog`             | `boolean` | Also generate an unlisted handler for every operation a tool can serve. See below. Default: `false`                  |
+
+##### Resolving per call
+
+A tool resolves its operation's service and `PolicyService` in one of two ways:
+
+- `"boot"` (default): constructor injection, once, from the container the tool map is built from. Tools are singletons, so a request-scoped service resolved this way belongs to no request.
+- `"perCall"`: the tool takes no constructor dependencies. `handle()` resolves both from the request's scoped container on the MCP context, the way the HTTP router resolves a service from `ctx.container`, so two concurrent calls each see their own actor.
+
+```json
+"mcp": { "resolve": "perCall" }
+```
+
+In per-call mode the emitted `mcp.router.ts` passes `container: ctx.container` (Koa) or `container: request.container` (Fastify) to `createMcpRequestContext`. A hand-written route must do the same, or the tool throws an error naming the fix. This needs a `@maroonedsoftware/mcp` whose `McpToolContext` carries `container`.
+
+##### The catalog
+
+With `"catalog": true`, every operation a tool can serve gets a handler, flagged `mcp:` or not, and `mcp.tools.ts` gains `registerMcpCatalog(container)` beside `registerMcpTools`. The catalog is an `McpToolCatalog`, a `McpToolHandlerMap` under its own token, since `McpToolHandlerMap` is already bound to the listed tools:
+
+```typescript
+registerMcpToolClasses(registry);
+registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();
+registry.register(McpToolCatalog).useFactory(registerMcpCatalog).asSingleton();
+```
+
+Nothing lists the catalog in `tools/list`. It is for a meta tool you write, one that searches the API, say, which looks a handler up by name, reads its `definition`, and calls `handle()` the same way the dispatcher would. `registerMcpTools` still holds the flagged operations only.
+
+An operation stays out of the catalog when it declares `mcp: exclude`, or when a tool cannot serve it: a multipart request, a response that is not JSON (audio, an HLS playlist), or a `format()` result. `internal` operations stay out unless `includeInternal` is set. Every handler is named the way a tool is (`mcp.name`, `sdk`, `name`, then method and path), and two operations deriving the same name are a generation error.
 
 ##### Security
 
@@ -190,7 +219,9 @@ An MCP tool is another way to invoke an operation, so it enforces the same `secu
 | `{ policy: false }`              | `requireMcpPolicy(context, this.policies)` — a valid session, no policy      |
 | `{ policy: name }`               | `requireMcpPolicy(context, this.policies, { policy: 'name' })`               |
 
-The security cascades operation → route → file, the same way it does for a router. A tool that runs no check injects no `PolicyService` and reads no context.
+The security cascades operation → route → file, the same way it does for a router. A tool that runs no check injects no `PolicyService`. In per-call mode, `this.policies` is `container.get(PolicyService)`.
+
+Each tool's definition also reports that security in `_meta`, under `contractkit/security`, in the same vocabulary: `'none'`, or `{ policy }` with the policy the tool asserts (`false` for a bare session check, the `MFA_SATISFIED_POLICY` value for an operation that declares nothing). A meta tool that searches the tools can filter by it without a second source.
 
 The guard on the route itself closes the **mount**, not the tools: one `tools/call` reaches every registered tool. So the mount defaults to a bare session check, `requirePolicy({ policy: false })`, and drops to no guard at all when any exposed tool declares `security: none` — a single route cannot be stricter than the most permissive tool behind it without locking that tool out. Set `mcp.security` to override it, using the same vocabulary an operation does:
 
@@ -206,7 +237,7 @@ The generated code reads the session the authentication stack resolved, so the M
 
 - **A `bearer` scheme handler that authenticates the MCP caller.** `authenticationMiddleware` / `authenticationPlugin` resolve the `Authorization` header and then delete it, so nothing downstream can re-read the credential. ServerKit's `McpAuthenticationHandler` turns its shared MCP token into a session; chain it with your JWT handler via `ChainedAuthenticationHandler`, since a scheme holds one handler.
 - **A policy override, if static-token callers must reach undeclared tools.** The session `McpAuthenticationHandler` mints carries no factors, so the default `MFA_SATISFIED_POLICY` gate rejects it. Re-register that policy to accept a session whose `claims.mcp` is true.
-- **The tool classes and the aggregator on your `Registry`.** See "Wiring the MCP tools" in the plugin README.
+- **The tool classes and the aggregator on your `Registry`.** `registerMcpToolClasses(registry)` registers the classes; bind `registerMcpTools` to `McpToolHandlerMap` from a factory. See "Wiring the MCP tools" in the plugin README.
 
 An error thrown inside a tool handler — `requireMcpPolicy`'s 401 or 403 — comes back as a JSON-RPC error in a 200 response, not as an HTTP status. The `WWW-Authenticate` header does not reach the client.
 

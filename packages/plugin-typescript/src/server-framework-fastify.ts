@@ -131,7 +131,7 @@ export const FASTIFY_SERVER_FRAMEWORK: ServerFramework = {
         },
     },
 
-    mcpRouter({ path, guards }) {
+    mcpRouter({ path, guards, passContainer }) {
         // The route line goes through `routeOpen`, the same renderer every operation route uses, so
         // the mount cannot spell a guard differently from the routes beside it.
         const body = `/** First value of a possibly-repeated header, or undefined when absent. */
@@ -146,7 +146,7 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
 export const mountMcp: FastifyPluginAsync = async app => {
     ${FASTIFY_SERVER_FRAMEWORK.routeOpen('', 'post', path, guards)}
         const dispatcher = request.container.get(McpDispatcher);
-        const context = createMcpRequestContext({ requestId: request.requestId, logger: request.logger, authenticationSession: request.authenticationSession });
+        const context = createMcpRequestContext({ requestId: request.requestId, logger: request.logger, authenticationSession: request.authenticationSession${passContainer ? ', container: request.container' : ''} });
         if (dispatcher.sessionMode === 'stateful') {
             // Fastify's equivalent of Koa's \`ctx.respond = false\`: the dispatcher writes the raw
             // response itself, and the request scope is disposed on the raw socket close instead.
