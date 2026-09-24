@@ -1075,6 +1075,17 @@ Settings:
 
 Unknown keys, unknown or conflicting hint tokens (e.g. both `readOnly` and `nonReadOnly`), and duplicates are compile-time errors.
 
+A generated tool always publishes all four annotations, so a client never falls back to MCP's own defaults (under which an unannotated tool is destructive and open-world). Each hint `hint:` leaves unset comes from the HTTP method:
+
+| Method | Hints |
+| --- | --- |
+| `GET` | `readOnly`, `idempotent` |
+| `PUT` | `idempotent` |
+| `DELETE` | `destructive` |
+| `POST`, `PATCH` | none: not read-only, not destructive |
+
+Every other hint is `false`, `openWorldHint` included: a tool calls the app's own service in-process.
+
 ### Generating an MCP server (TypeScript plugin)
 
 The `@contractkit/plugin-typescript` plugin turns `mcp`-flagged operations into a

@@ -206,6 +206,8 @@ An MCP tool is another way to invoke an operation, so it enforces the same `secu
 
 The security cascades operation → route → file, the same way it does for a router. A tool that runs no check injects no `PolicyService`. In per-call mode, `this.policies` is `container.get(PolicyService)`.
 
+Each tool's definition also reports that security in `_meta`, under `contractkit/security`, in the same vocabulary: `'none'`, or `{ policy }` with the policy the tool asserts (`false` for a bare session check, the `MFA_SATISFIED_POLICY` value for an operation that declares nothing). A meta tool that searches the tools can filter by it without a second source.
+
 The guard on the route itself closes the **mount**, not the tools: one `tools/call` reaches every registered tool. So the mount defaults to a bare session check, `requirePolicy({ policy: false })`, and drops to no guard at all when any exposed tool declares `security: none` — a single route cannot be stricter than the most permissive tool behind it without locking that tool out. Set `mcp.security` to override it, using the same vocabulary an operation does:
 
 ```json

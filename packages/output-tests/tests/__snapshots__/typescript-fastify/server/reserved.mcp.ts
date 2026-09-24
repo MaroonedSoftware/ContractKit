@@ -24,6 +24,8 @@ export class GetSeatMcpTool implements McpToolHandler {
         description: 'fetch one seat',
         inputSchema: z.toJSONSchema(GetSeatArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Seat, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     constructor(private readonly service: SeatService, private readonly policies: PolicyService) {}
@@ -47,6 +49,8 @@ export class PutNoteMcpTool implements McpToolHandler {
         description: 'replace a note',
         inputSchema: z.toJSONSchema(PutNoteArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Note, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     constructor(private readonly service: SeatService, private readonly policies: PolicyService) {}

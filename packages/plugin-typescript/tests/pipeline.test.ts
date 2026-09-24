@@ -184,7 +184,7 @@ operation /payments/{id}: {
         expect(diag.hasErrors()).toBe(false);
         expect(output).toContain('export class GetPaymentsByIdMcpTool implements McpToolHandler');
         expect(output).toContain("title: 'Get Payment'");
-        expect(output).toContain('annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }');
+        expect(output).toContain('annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }');
         expect(output).toContain('const GetPaymentsByIdArgs = z.object({ id: z.uuid() });');
         expect(output).toContain('constructor(private readonly service: PaymentsService, private readonly policies: PolicyService) {}');
         expect(output).toContain('await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });');
@@ -207,7 +207,7 @@ operation /payments: {
         expect(diag.hasErrors()).toBe(false);
         expect(output).toContain("name: 'post_payments'");
         expect(output).toContain('const PostPaymentsArgs = z.object({ body: PaymentInput });');
-        expect(output).not.toContain('annotations:');
+        expect(output).toContain('annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }');
     });
 
     it('emits nothing tool-like for a file with no flagged ops', () => {

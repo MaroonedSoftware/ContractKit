@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ContractTypeNode, McpConfigNode, ModelNode } from '@contractkit/core';
+import type { ContractTypeNode, McpConfigNode, ModelNode, SecurityNode } from '@contractkit/core';
 import { SECURITY_NONE } from '@contractkit/core';
 import {
     generateMcpFile,
@@ -124,7 +124,7 @@ describe('generateMcpFile', () => {
     });
 
     describe('definition metadata', () => {
-        it('emits title, description, and only the defined annotations', () => {
+        it('emits title, description, and every annotation', () => {
             const root = opRoot([
                 opRoute('/payments/{id}', [
                     opOperation('get', {
@@ -136,13 +136,61 @@ describe('generateMcpFile', () => {
             const out = generateMcpFile(root);
             expect(out).toContain("title: 'Get Payment'");
             expect(out).toContain("description: 'Fetch a payment by id.'");
-            expect(out).toContain('annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }');
-            expect(out).not.toContain('openWorldHint');
+            expect(out).toContain('annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }');
         });
 
-        it('omits annotations when no hints set', () => {
-            const root = opRoot([opRoute('/users', [opOperation('get', { mcp: true, responses: [opResponse(200, 'User', 'application/json')] })])]);
-            expect(generateMcpFile(root)).not.toContain('annotations:');
+        describe('annotations the contract leaves unset', () => {
+            const annotationsFor = (method: 'get' | 'post' | 'put' | 'patch' | 'delete', mcp: McpConfigNode | true = true) =>
+                generateMcpFile(opRoot([opRoute('/users', [opOperation(method, { mcp, responses: [opResponse(200, 'User', 'application/json')] })])]));
+
+            it('reads a GET as read-only and idempotent', () => {
+                expect(annotationsFor('get')).toContain('annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }');
+            });
+
+            it('reads a PUT as idempotent', () => {
+                expect(annotationsFor('put')).toContain('annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }');
+            });
+
+            it('reads a DELETE as destructive', () => {
+                expect(annotationsFor('delete')).toContain('annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }');
+            });
+
+            it('reads a POST or PATCH as neither read-only nor destructive', () => {
+                for (const method of ['post', 'patch'] as const) {
+                    expect(annotationsFor(method)).toContain('annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }');
+                }
+            });
+
+            it("fills only the hints a partial hint: list leaves unset", () => {
+                expect(annotationsFor('delete', mcpBlock({ destructiveHint: false, openWorldHint: true }))).toContain(
+                    'annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }',
+                );
+            });
+        });
+
+        describe("the operation's security in _meta", () => {
+            const metaFor = (security?: SecurityNode) =>
+                generateMcpFile(opRoot([opRoute('/users', [opOperation('get', { mcp: true, security, responses: [opResponse(200, 'User', 'application/json')] })])]));
+
+            it('reports the MFA default for an operation that declares nothing', () => {
+                const out = metaFor();
+                expect(out).toContain("_meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },");
+                expect(out).toContain("import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';");
+            });
+
+            it('reports a named policy', () => {
+                expect(metaFor({ policy: 'users.read', loc: loc() })).toContain("_meta: { 'contractkit/security': { policy: 'users.read' } },");
+            });
+
+            it('reports a bare session check', () => {
+                expect(metaFor({ policy: false, loc: loc() })).toContain("_meta: { 'contractkit/security': { policy: false } },");
+            });
+
+            it('reports security: none, and imports no policy for it', () => {
+                const out = metaFor(SECURITY_NONE);
+                expect(out).toContain("_meta: { 'contractkit/security': 'none' },");
+                expect(out).not.toContain('MFA_SATISFIED_POLICY');
+            });
         });
 
         it('falls back to op description', () => {

@@ -55,6 +55,8 @@ export class SearchPaymentsMcpTool implements McpToolHandler {
         description: 'search payments with a filter model',
         inputSchema: z.toJSONSchema(SearchPaymentsArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -77,6 +79,8 @@ export class GetRefundMcpTool implements McpToolHandler {
         description: 'look up a refund by its originating payment',
         inputSchema: z.toJSONSchema(GetRefundArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Payment, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -98,6 +102,8 @@ export class SearchPaymentsByDateMcpTool implements McpToolHandler {
         name: 'search_payments_by_date',
         description: 'search payments with snake_case filter and header models',
         inputSchema: z.toJSONSchema(SearchPaymentsByDateArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -118,6 +124,8 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
         name: 'search_payments_scoped',
         description: 'search payments with a snake_case filter extended inline',
         inputSchema: z.toJSONSchema(SearchPaymentsScopedArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -140,6 +148,8 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
         description: 'save a scoped search',
         inputSchema: z.toJSONSchema(SaveScopedSearchArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(SavedSearch, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {

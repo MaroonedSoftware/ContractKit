@@ -173,8 +173,11 @@ declare module '@modelcontextprotocol/sdk/types.js' {
     export interface Tool {
         name: string;
         description?: string;
+        title?: string;
         inputSchema: any;
         outputSchema?: any;
+        annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean };
+        _meta?: { [key: string]: unknown };
     }
     export interface CallToolResult {
         content: any[];

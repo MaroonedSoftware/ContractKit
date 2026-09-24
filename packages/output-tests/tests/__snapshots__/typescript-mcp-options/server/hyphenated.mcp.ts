@@ -30,6 +30,8 @@ export class GetInvoiceMcpTool implements McpToolHandler {
         description: 'fetch an invoice',
         inputSchema: z.toJSONSchema(GetInvoiceArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Invoice, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {

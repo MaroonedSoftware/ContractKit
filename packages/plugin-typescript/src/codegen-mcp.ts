@@ -3,6 +3,7 @@ import type {
     OpRouteNode,
     OpOperationNode,
     McpConfigNode,
+    HttpMethod,
     ParamSource,
     ContractTypeNode,
     SecurityNode,
@@ -375,15 +376,46 @@ function outputSchemaExpr(op: OpOperationNode, models?: Map<string, ModelNode>):
 // ─── Annotations ────────────────────────────────────────────────────────────
 
 const HINT_KEYS = ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint'] as const;
+type HintKey = (typeof HINT_KEYS)[number];
 
-function annotationsExpr(cfg: McpConfigNode | undefined): string | undefined {
-    if (!cfg) return undefined;
-    const parts: string[] = [];
-    for (const key of HINT_KEYS) {
-        const val = cfg[key];
-        if (val !== undefined) parts.push(`${key}: ${val}`);
-    }
-    return parts.length > 0 ? `{ ${parts.join(', ')} }` : undefined;
+/**
+ * The hints an operation's method implies, for each one its `mcp` block leaves unset: a `GET` reads
+ * and can be repeated, a `PUT` can be repeated, a `DELETE` destroys. A tool calls the app's own
+ * service in-process, so none reaches an open world of external entities.
+ */
+const METHOD_HINTS: Record<HttpMethod, Record<HintKey, boolean>> = {
+    get: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    put: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    delete: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    post: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    patch: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+};
+
+/**
+ * All four annotations, each the contract's `hint:` where it sets one and the method's otherwise.
+ * Emitted in full so a client never falls back to MCP's own defaults, two of which are `true`: an
+ * unannotated tool reads as destructive and open-world.
+ */
+function annotationsExpr(cfg: McpConfigNode | undefined, method: HttpMethod): string {
+    const defaults = METHOD_HINTS[method];
+    return `{ ${HINT_KEYS.map(key => `${key}: ${cfg?.[key] ?? defaults[key]}`).join(', ')} }`;
+}
+
+/** The `_meta` key a tool definition reports its operation's effective security under. */
+export const MCP_SECURITY_META_KEY = 'contractkit/security';
+
+/**
+ * The operation's effective security as a tool's `_meta` reports it, in the vocabulary a `.ck` file
+ * uses: `'none'`, or `{ policy }` with the policy the tool asserts (`false` for a bare session
+ * check). It mirrors {@link toolPolicyCheck}, so a meta tool searching the catalog can filter on
+ * the same gate a call would meet, without a second source.
+ */
+function securityMetaExpr(security: SecurityNode | undefined): string {
+    if (security === SECURITY_NONE) return `'none'`;
+    const policy = security?.policy;
+    if (policy === undefined) return '{ policy: MFA_SATISFIED_POLICY }';
+    if (policy === false) return '{ policy: false }';
+    return `{ policy: '${escapeSingleQuoted(policy)}' }`;
 }
 
 // ─── Schema-import collection ───────────────────────────────────────────────
@@ -606,8 +638,8 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     lines.push(`        inputSchema: z.toJSONSchema(${argsConstName}, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],`);
     const outExpr = outputSchemaExpr(op, options.models);
     if (outExpr) lines.push(`        outputSchema: z.toJSONSchema(${outExpr}, { unrepresentable: 'any' }) as Tool['outputSchema'],`);
-    const annotations = annotationsExpr(cfg);
-    if (annotations) lines.push(`        annotations: ${annotations},`);
+    lines.push(`        annotations: ${annotationsExpr(cfg, op.method)},`);
+    lines.push(`        _meta: { '${MCP_SECURITY_META_KEY}': ${securityMetaExpr(plan.security)} },`);
     lines.push('    };');
     lines.push('');
 
