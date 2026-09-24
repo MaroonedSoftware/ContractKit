@@ -1460,7 +1460,7 @@ operation /releases: {
 
     it('wraps an inline result in a function the tools file declares, with the helper it calls', async () => {
         const { tools } = await buildReports(tool('200: { application/json: array({ on: date }) }'));
-        expect(tools).toContain('const resultJson = JSON.stringify(__serializeGetReleasesMcpToolResult(result));');
+        expect(tools).toContain('const resultJson = JSON.stringify({ items: __serializeGetReleasesMcpToolResult(result) });');
         expect(tools).toContain('function __serializeGetReleasesMcpToolResult(value: unknown): unknown {');
         expect(tools).toContain('const __wireDt = ');
     });

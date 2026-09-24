@@ -96,7 +96,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * create several payments at once
-     * from [billing.ck](../../contracts/billing.ck#L120)
+     * from [billing.ck](../../contracts/billing.ck#L121)
     */
     app.post('/payments/batch', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, z.array(PaymentInput));
@@ -111,7 +111,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * fetch one payment
-     * from [billing.ck](../../contracts/billing.ck#L137)
+     * from [billing.ck](../../contracts/billing.ck#L138)
     */
     app.get('/payments/:paymentId', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { paymentId } = await parseAndValidate(
@@ -131,7 +131,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * update a payment with form data
-     * from [billing.ck](../../contracts/billing.ck#L146)
+     * from [billing.ck](../../contracts/billing.ck#L147)
     */
     app.post('/payments/:paymentId', { config: { body: ['application/x-www-form-urlencoded'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const { paymentId } = await parseAndValidate(
@@ -152,7 +152,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * delete a payment — declares only a documented error status
-     * from [billing.ck](../../contracts/billing.ck#L157)
+     * from [billing.ck](../../contracts/billing.ck#L158)
     */
     app.delete('/payments/:paymentId', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { paymentId } = await parseAndValidate(
@@ -171,7 +171,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * upload a receipt image
-     * from [billing.ck](../../contracts/billing.ck#L171)
+     * from [billing.ck](../../contracts/billing.ck#L172)
     */
     app.post('/payments/:paymentId/receipt', { config: { body: ['multipart/form-data'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const { paymentId } = await parseAndValidate(
@@ -193,7 +193,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * look up a refund by its originating payment
-     * from [billing.ck](../../contracts/billing.ck#L186)
+     * from [billing.ck](../../contracts/billing.ck#L187)
      * @deprecated
     */
     app.get('/refunds/:paymentId', { preHandler: [requirePolicy()] }, async (request, reply) => {
@@ -209,7 +209,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * store a credential
-     * from [billing.ck](../../contracts/billing.ck#L200)
+     * from [billing.ck](../../contracts/billing.ck#L201)
     */
     app.post('/credentials', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, AdminCredentialInput);
@@ -224,7 +224,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * open a session
-     * from [billing.ck](../../contracts/billing.ck#L213)
+     * from [billing.ck](../../contracts/billing.ck#L214)
     */
     app.post('/sessions', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, SessionInput);
@@ -239,7 +239,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * search payments with snake_case filter and header models
-     * from [billing.ck](../../contracts/billing.ck#L240)
+     * from [billing.ck](../../contracts/billing.ck#L241)
     */
     app.get('/payments/by-date', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const query = await parseAndValidate(
@@ -260,7 +260,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * search payments with a snake_case filter extended inline
-     * from [billing.ck](../../contracts/billing.ck#L271)
+     * from [billing.ck](../../contracts/billing.ck#L272)
     */
     app.get('/payments/by-date/scoped', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const query = await parseAndValidate(
@@ -301,7 +301,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * save a scoped search
-     * from [billing.ck](../../contracts/billing.ck#L281)
+     * from [billing.ck](../../contracts/billing.ck#L282)
     */
     app.post('/payments/by-date/scoped', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const query = await parseAndValidate(

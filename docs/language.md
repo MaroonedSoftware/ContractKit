@@ -1097,7 +1097,10 @@ exporting `registerMcpTools(container)` (which assembles the DI `McpToolHandlerM
 - advertises `inputSchema`/`outputSchema` (JSON Schema) generated from the operation's Zod schemas via
   `z.toJSONSchema()`, and validates incoming args against the same schema;
 - constructor-injects the operation's `service` and calls it in-process, returning the result as MCP
-  tool content.
+  tool content. MCP requires `structuredContent` to be an object, so a list result is reported as
+  `{ items }` and a scalar or `null` as `{ value }`, with `outputSchema` wrapped to match. A
+  `format()` result and one the service hands back in an envelope (several statuses, response
+  headers) are reported as text only.
 
 `registerMcpTools` **builds and returns** the map; it registers nothing. Registration belongs to
 InjectKit's `Registry` (composition phase), not to a `Container` (resolution phase), so bind the

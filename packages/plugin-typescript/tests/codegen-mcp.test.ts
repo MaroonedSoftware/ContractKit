@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { McpConfigNode, ModelNode } from '@contractkit/core';
+import type { ContractTypeNode, McpConfigNode, ModelNode } from '@contractkit/core';
 import { SECURITY_NONE } from '@contractkit/core';
 import {
     generateMcpFile,
@@ -27,6 +27,8 @@ import {
     inlineObjectType,
     intersectionType,
     paramType,
+    unionType,
+    recordType,
 } from './helpers.js';
 
 function mcpBlock(over: Partial<McpConfigNode>): McpConfigNode {
@@ -246,9 +248,9 @@ describe('generateMcpFile', () => {
                 expect(out).toContain(REPLACER_IMPORT);
             });
 
-            it('uses the replacer for the text alone when the result has no object output schema', () => {
+            it('uses the replacer for a wrapped list too', () => {
                 const out = toolFor(opOperation('get', { mcp: true, responses: [opResponse(200, arrayType(scalarType('bigint')), 'application/json')] }));
-                expect(out).toContain("return { content: [{ type: 'text', text: JSON.stringify(result, bigIntReplacer) }] };");
+                expect(out).toContain('const resultJson = JSON.stringify({ items: result }, bigIntReplacer);');
             });
 
             it('counts a bigint response header, since the whole result is stringified', () => {
@@ -288,6 +290,71 @@ describe('generateMcpFile', () => {
                 opRoute('/payments/{id}', [opOperation('get', { mcp: true, service: 'PaymentsService.getById', responses: [opResponse(200, 'Payment', 'application/json')] })], [opParam('id', scalarType('uuid'))]),
             ]);
             expect(generateMcpFile(root)).toContain("outputSchema: z.toJSONSchema(Payment, { unrepresentable: 'any' }) as Tool['outputSchema']");
+        });
+    });
+
+    describe('a result that is not an object', () => {
+        const STRUCTURED = "return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };";
+        const toolFor = (body: string | ContractTypeNode, models?: Map<string, ModelNode>) =>
+            generateMcpFile(opRoot([opRoute('/things', [opOperation('get', { mcp: true, responses: [opResponse(200, body, 'application/json')] })])]), { models });
+
+        it('reports a list as { items }', () => {
+            const out = toolFor(arrayType(refType('Payment')));
+            expect(out).toContain("outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema']");
+            expect(out).toContain('const resultJson = JSON.stringify({ items: result });');
+            expect(out).toContain(STRUCTURED);
+            expect(out).toContain("import { Payment } from './payment.js';");
+        });
+
+        it('reports a ref to an alias of a list as { items }', () => {
+            const models = new Map([['Payments', model('Payments', [], { type: arrayType(refType('Payment')) })]]);
+            const out = toolFor('Payments', models);
+            expect(out).toContain('z.toJSONSchema(z.object({ items: Payments })');
+            expect(out).toContain('JSON.stringify({ items: result })');
+        });
+
+        it('reports a scalar as { value }', () => {
+            const out = toolFor(scalarType('string'));
+            expect(out).toContain('z.toJSONSchema(z.object({ value: z.string() })');
+            expect(out).toContain('const resultJson = JSON.stringify({ value: result ?? null });');
+            expect(out).toContain(STRUCTURED);
+        });
+
+        it('reports a nullable union as { value }, holding null for a missing result', () => {
+            const out = toolFor(unionType(refType('Payment'), scalarType('null')));
+            expect(out).toContain('z.toJSONSchema(z.object({ value: ');
+            expect(out).toContain('JSON.stringify({ value: result ?? null })');
+        });
+
+        it('reports a record as the object it is', () => {
+            const out = toolFor(recordType(scalarType('string'), scalarType('number')));
+            expect(out).not.toContain('{ value:');
+            expect(out).toContain('structuredContent: result');
+        });
+
+        it('leaves a format() result as text only', () => {
+            const models = new Map([['Snake', model('Snake', [field('fromDate', scalarType('string'))], { outputCase: 'snake' })]]);
+            const out = toolFor('Snake', models);
+            expect(out).not.toContain('outputSchema');
+            expect(out).not.toContain('structuredContent');
+        });
+
+        it('leaves a list in a { body, headers } envelope as text only', () => {
+            const root = opRoot([
+                opRoute('/things', [
+                    opOperation('get', {
+                        mcp: true,
+                        responses: [
+                            opResponseMulti(200, [{ contentType: 'application/json', bodyType: arrayType(refType('User')) }], {
+                                headers: [{ name: 'x-total', optional: false, type: scalarType('int') }],
+                            }),
+                        ],
+                    }),
+                ]),
+            ]);
+            const out = generateMcpFile(root);
+            expect(out).not.toContain('outputSchema');
+            expect(out).not.toContain('structuredContent');
         });
     });
 

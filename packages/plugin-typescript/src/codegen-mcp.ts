@@ -7,11 +7,9 @@ import type {
     ContractTypeNode,
     SecurityNode,
     ModelNode,
-    ModelRefTypeNode,
-    InlineObjectTypeNode,
 } from '@contractkit/core';
 import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses } from '@contractkit/core';
-import { renderType, renderInputType, pascalToDotCase, compilesToPipe } from './codegen-contract.js';
+import { renderType, renderInputType, pascalToDotCase, compilesToPipe, isExtendChain } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName, bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
@@ -286,25 +284,70 @@ function resultReachesBigInt(op: OpOperationNode, modelsWithBigInt: Set<string> 
 }
 
 /**
- * The body a tool publishes an output schema for, if any. MCP requires that schema to be an object, so
- * only a model ref or an inline object qualifies.
+ * How a tool presents its result as `structuredContent`, which MCP requires to be an object, with an
+ * `outputSchema` of `type: 'object'` to match.
+ *
+ * - `object`: the body already is one (a model with fields, an inline object, a record, or an
+ *   intersection `.extend()` builds) and is reported as it is.
+ * - `items`: a list, reported as `{ items }`.
+ * - `value`: anything else (a scalar, an enum, a union that may be `null`), reported as `{ value }`.
+ */
+type ResultShape = { kind: 'object'; body: ContractTypeNode } | { kind: 'items' | 'value'; body: ContractTypeNode; key: 'items' | 'value' };
+
+/**
+ * The shape of the body a tool reports, if it reports one as structured content at all.
  *
  * Not a model whose schema is a `format()` pipe ({@link compilesToPipe}): its output side is the
  * transform that renames its keys, which JSON Schema renders as `{}`, with no `type: 'object'`. A
  * client parsing `tools/list` rejects the whole list over one such schema, so the tool publishes none
  * and returns its result as text only.
+ *
+ * A body the service hands back in an envelope (`{ status, body }` for several statuses, `{ body,
+ * headers }` for response headers or several mimes) is reported as an object only, as before: which
+ * value a wrapper would hold is known only per status.
  */
-function outputSchemaBody(op: OpOperationNode, models?: Map<string, ModelNode>): ModelRefTypeNode | InlineObjectTypeNode | undefined {
+function resultShape(op: OpOperationNode, models?: Map<string, ModelNode>): ResultShape | undefined {
     const body = primaryResponseBody(op);
-    if (body?.kind === 'inlineObject') return body;
-    if (body?.kind === 'ref' && !(models && compilesToPipe(body.name, models))) return body;
-    return undefined;
+    if (!body) return undefined;
+    if (models && pipeRefs(body).some(name => compilesToPipe(name, models))) return undefined;
+    const resolved = resolveAlias(body, models);
+    if (isObjectSchema(resolved)) return { kind: 'object', body };
+    const emitted = emittedResponses(op);
+    const resp = emitted[0];
+    if (emitted.length !== 1 || !resp || (resp.headers ?? []).length > 0 || resp.bodies.length > 1) return undefined;
+    const kind = resolved.kind === 'array' || resolved.kind === 'tuple' ? 'items' : 'value';
+    return { kind, key: kind, body };
+}
+
+/** The refs whose `format()` would make a body's schema a pipe: the body itself, or an `.extend()` chain's members. */
+function pipeRefs(body: ContractTypeNode): string[] {
+    if (body.kind === 'ref') return [body.name];
+    if (body.kind === 'intersection' && isExtendChain(body)) return body.members.flatMap(m => (m.kind === 'ref' ? [m.name] : []));
+    return [];
+}
+
+/** A ref to an alias model (`Payments: array(Payment)`) followed to the type it names. */
+function resolveAlias(type: ContractTypeNode, models: Map<string, ModelNode> | undefined): ContractTypeNode {
+    const seen = new Set<string>();
+    while (type.kind === 'ref' && !seen.has(type.name)) {
+        seen.add(type.name);
+        const alias = models?.get(type.name)?.type;
+        if (!alias) break;
+        type = alias;
+    }
+    return type;
+}
+
+/** Whether a type's schema is a JSON Schema object: a ref here is to a model with fields, or one not known. */
+function isObjectSchema(type: ContractTypeNode): boolean {
+    return type.kind === 'ref' || type.kind === 'inlineObject' || type.kind === 'record' || (type.kind === 'intersection' && isExtendChain(type));
 }
 
 function outputSchemaExpr(op: OpOperationNode, models?: Map<string, ModelNode>): string | undefined {
-    const body = outputSchemaBody(op, models);
-    if (!body) return undefined;
-    return body.kind === 'ref' ? body.name : renderType(body, undefined, undefined, models);
+    const shape = resultShape(op, models);
+    if (!shape) return undefined;
+    const schema = shape.body.kind === 'ref' ? shape.body.name : renderType(shape.body, undefined, undefined, models);
+    return shape.kind === 'object' ? schema : `z.object({ ${shape.key}: ${schema} })`;
 }
 
 // ─── Annotations ────────────────────────────────────────────────────────────
@@ -372,8 +415,8 @@ function collectSchemaIds(ops: { route: OpRouteNode; op: OpOperationNode }[], op
         walkSourceRefs(op.query, ids, modelsWithInput);
         walkSourceRefs(op.headers, ids, modelsWithInput);
 
-        const body = outputSchemaBody(op, models);
-        if (body) walkTypeRefs(body, ids, 'read');
+        const shape = resultShape(op, models);
+        if (shape) walkTypeRefs(shape.body, ids, 'read');
     }
     return ids;
 }
@@ -545,6 +588,7 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     const destructure = props.map(p => (p.local === p.key ? p.key : `${p.key}: ${p.local}`));
     const callArgs = buildArgs(route, op, bindMcpPathParams(route).locals);
     const isVoid = !primaryResponseBody(op);
+    const shape = resultShape(op, options.models);
     const structured = !!outExpr;
 
     // No args to destructure means the parameter goes unread, which trips no-unused-vars in
@@ -565,7 +609,16 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
         lines.push(`        const result = await this.service.${service.methodName}(${callArgs});`);
         const wire = resultWireExpr(op, `__serialize${className}Result`, options, inline);
         const bigint = resultReachesBigInt(op, options.modelsWithBigInt);
-        if (wire) {
+        if (shape && shape.kind !== 'object') {
+            // A list or a scalar is not an object, which is all `structuredContent` may be, so it is
+            // reported under one key. The text carries the same JSON: the spec asks a tool returning
+            // structured content to serialize it into a text block too. A service answering
+            // `undefined` for a nullable body is reported as `null`: `JSON.stringify` would drop the
+            // key, leaving `{}` where the output schema requires `value`.
+            const value = shape.key === 'value' ? `${wire ?? 'result'} ?? null` : (wire ?? 'result');
+            lines.push(`        const resultJson = JSON.stringify({ ${shape.key}: ${value} }${bigint ? ', bigIntReplacer' : ''});`);
+            lines.push(`        return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };`);
+        } else if (wire) {
             // The text and the structured content report the same serialized result. The structured
             // content is the parsed-back JSON, as in the bigint case below: the serialized value is
             // typed `unknown`, and the dispatcher serializes it again.

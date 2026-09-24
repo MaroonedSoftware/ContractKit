@@ -9,8 +9,9 @@ import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
 import { PaymentService } from '#src/services/payment.service.js';
-import { Payment, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, SnakeFilter, SnakeHeaders, serializeSavedSearch, serializeSnakeFilter } from './schemas/billing.schema.js';
+import { Payment, PaymentFilter, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, SnakeFilter, SnakeHeaders, TenantHeaders, serializeSavedSearch, serializeSnakeFilter } from './schemas/billing.schema.js';
 
+const SearchPaymentsArgs = z.object({ query: PaymentFilter.optional(), headers: TenantHeaders.optional() });
 const GetRefundArgs = z.object({ params: PaymentRef });
 const SearchPaymentsByDateArgs = z.object({ query: SnakeFilter.optional(), headers: SnakeHeaders.optional() });
 const SearchPaymentsScopedArgs = z.object({ query: SnakeFilter.in.extend({
@@ -37,7 +38,30 @@ function __serializeSearchPaymentsScopedMcpToolResult(value: unknown): unknown {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L186)
+ * from [billing.ck](../contracts/billing.ck#L108)
+ */
+@Injectable()
+export class SearchPaymentsMcpTool implements McpToolHandler {
+    readonly definition: Tool = {
+        name: 'search_payments',
+        description: 'search payments with a filter model',
+        inputSchema: z.toJSONSchema(SearchPaymentsArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
+    };
+
+    constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
+
+    async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
+        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const { query, headers } = await parseAndValidate(args, SearchPaymentsArgs);
+        const result = await this.service.search(query, headers);
+        const resultJson = JSON.stringify({ items: result }, bigIntReplacer);
+        return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
+    }
+}
+
+/**
+ * from [billing.ck](../contracts/billing.ck#L187)
  */
 @Injectable()
 export class GetRefundMcpTool implements McpToolHandler {
@@ -60,7 +84,7 @@ export class GetRefundMcpTool implements McpToolHandler {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L240)
+ * from [billing.ck](../contracts/billing.ck#L241)
  */
 @Injectable()
 export class SearchPaymentsByDateMcpTool implements McpToolHandler {
@@ -81,7 +105,7 @@ export class SearchPaymentsByDateMcpTool implements McpToolHandler {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L271)
+ * from [billing.ck](../contracts/billing.ck#L272)
  */
 @Injectable()
 export class SearchPaymentsScopedMcpTool implements McpToolHandler {
@@ -103,7 +127,7 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L281)
+ * from [billing.ck](../contracts/billing.ck#L282)
  */
 @Injectable()
 export class SaveScopedSearchMcpTool implements McpToolHandler {
@@ -127,6 +151,7 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
 
 /** Add this file's tools to the shared catalog. */
 export function registerBillingMcpTools(map: McpToolHandlerMap, container: Container): void {
+    map.set('search_payments', container.get(SearchPaymentsMcpTool));
     map.set('get_refund', container.get(GetRefundMcpTool));
     map.set('search_payments_by_date', container.get(SearchPaymentsByDateMcpTool));
     map.set('search_payments_scoped', container.get(SearchPaymentsScopedMcpTool));
