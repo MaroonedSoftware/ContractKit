@@ -12,6 +12,7 @@ const { files, diagnostics } = await buildOnce();
 const PLUGINS: PluginName[] = [
     'typescript',
     'typescript-fastify',
+    'typescript-mcp-options',
     'python',
     'kotlin',
     'swift',
@@ -31,7 +32,9 @@ describe('generated output', () => {
     for (const plugin of PLUGINS) {
         describe(plugin, () => {
             const emitted = files[plugin];
-            const paths = [...emitted.keys()].sort();
+            // The MCP-options tree is the `typescript` one with different MCP settings, so only the
+            // files those settings shape are recorded.
+            const paths = [...emitted.keys()].filter(p => plugin !== 'typescript-mcp-options' || /(^|\/)[^/]*mcp\.[^/]*$/.test(p)).sort();
 
             it('emits the expected set of files', async () => {
                 await expect(paths.join('\n') + '\n').toMatchFileSnapshot(`./__snapshots__/${plugin}/_files.txt`);

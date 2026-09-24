@@ -52,6 +52,7 @@ export interface BuildResult {
 export type PluginName =
     | 'typescript'
     | 'typescript-fastify'
+    | 'typescript-mcp-options'
     | 'python'
     | 'kotlin'
     | 'swift'
@@ -155,6 +156,23 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
                         output: { routes: 'routes/{filename}.router.ts', types: 'schemas/{filename}.schema.ts' },
                     },
                     mcp: { baseDir: 'server' },
+                },
+                ROOT_DIR,
+            ),
+        },
+        {
+            // The MCP settings the default tree leaves off, on the Koa server. Only its MCP files are
+            // snapshotted: the routers and schemas are the `typescript` tree's own. The whole server
+            // is still compiled, since the tools import the schemas.
+            name: 'typescript-mcp-options',
+            plugin: createTypescriptPlugin(
+                {
+                    server: {
+                        baseDir: 'server',
+                        zod: true,
+                        output: { routes: 'routes/{filename}.router.ts', types: 'schemas/{filename}.schema.ts' },
+                    },
+                    mcp: { baseDir: 'server', resolve: 'perCall' },
                 },
                 ROOT_DIR,
             ),

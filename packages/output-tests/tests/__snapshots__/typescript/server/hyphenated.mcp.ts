@@ -1,6 +1,6 @@
 // Auto-generated MCP tools
 // generated from [hyphenated.ck](../contracts/hyphenated.ck)
-import { Injectable, type Container } from 'injectkit';
+import { Injectable, type Container, type Registry } from 'injectkit';
 import { z } from 'zod';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
 import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';
@@ -37,4 +37,9 @@ export class GetInvoiceMcpTool implements McpToolHandler {
 /** Add this file's tools to the shared catalog. */
 export function registerHyphenatedMcpTools(map: McpToolHandlerMap, container: Container): void {
     map.set('get_invoice', container.get(GetInvoiceMcpTool));
+}
+
+/** Register this file's tool classes on the registry, so the catalog can resolve them. */
+export function registerHyphenatedMcpToolClasses(registry: Registry): void {
+    registry.register(GetInvoiceMcpTool).useClass(GetInvoiceMcpTool).asSingleton();
 }

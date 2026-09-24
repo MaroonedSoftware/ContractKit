@@ -178,6 +178,20 @@ Turns `mcp`-flagged operations into a [`@maroonedsoftware/mcp`](https://github.c
 | `servicePathTemplate` | `string`  | Import path template for service implementations                                                                     |
 | `includeInternal`     | `boolean` | Expose operations marked `internal` as tools. Default: `false`                                                       |
 | `security`            | `object`  | Guard on the emitted route. See below. Default: derived from the exposed tools                                       |
+| `resolve`             | `string`  | When a tool resolves its service and `PolicyService`: `boot` or `perCall`. See below. Default: `boot`                |
+
+##### Resolving per call
+
+A tool resolves its operation's service and `PolicyService` in one of two ways:
+
+- `"boot"` (default): constructor injection, once, from the container the tool map is built from. Tools are singletons, so a request-scoped service resolved this way belongs to no request.
+- `"perCall"`: the tool takes no constructor dependencies. `handle()` resolves both from the request's scoped container on the MCP context, the way the HTTP router resolves a service from `ctx.container`, so two concurrent calls each see their own actor.
+
+```json
+"mcp": { "resolve": "perCall" }
+```
+
+In per-call mode the emitted `mcp.router.ts` passes `container: ctx.container` (Koa) or `container: request.container` (Fastify) to `createMcpRequestContext`. A hand-written route must do the same, or the tool throws an error naming the fix. This needs a `@maroonedsoftware/mcp` whose `McpToolContext` carries `container`.
 
 ##### Security
 
@@ -190,7 +204,7 @@ An MCP tool is another way to invoke an operation, so it enforces the same `secu
 | `{ policy: false }`              | `requireMcpPolicy(context, this.policies)` — a valid session, no policy      |
 | `{ policy: name }`               | `requireMcpPolicy(context, this.policies, { policy: 'name' })`               |
 
-The security cascades operation → route → file, the same way it does for a router. A tool that runs no check injects no `PolicyService` and reads no context.
+The security cascades operation → route → file, the same way it does for a router. A tool that runs no check injects no `PolicyService`. In per-call mode, `this.policies` is `container.get(PolicyService)`.
 
 The guard on the route itself closes the **mount**, not the tools: one `tools/call` reaches every registered tool. So the mount defaults to a bare session check, `requirePolicy({ policy: false })`, and drops to no guard at all when any exposed tool declares `security: none` — a single route cannot be stricter than the most permissive tool behind it without locking that tool out. Set `mcp.security` to override it, using the same vocabulary an operation does:
 
@@ -206,7 +220,7 @@ The generated code reads the session the authentication stack resolved, so the M
 
 - **A `bearer` scheme handler that authenticates the MCP caller.** `authenticationMiddleware` / `authenticationPlugin` resolve the `Authorization` header and then delete it, so nothing downstream can re-read the credential. ServerKit's `McpAuthenticationHandler` turns its shared MCP token into a session; chain it with your JWT handler via `ChainedAuthenticationHandler`, since a scheme holds one handler.
 - **A policy override, if static-token callers must reach undeclared tools.** The session `McpAuthenticationHandler` mints carries no factors, so the default `MFA_SATISFIED_POLICY` gate rejects it. Re-register that policy to accept a session whose `claims.mcp` is true.
-- **The tool classes and the aggregator on your `Registry`.** See "Wiring the MCP tools" in the plugin README.
+- **The tool classes and the aggregator on your `Registry`.** `registerMcpToolClasses(registry)` registers the classes; bind `registerMcpTools` to `McpToolHandlerMap` from a factory. See "Wiring the MCP tools" in the plugin README.
 
 An error thrown inside a tool handler — `requireMcpPolicy`'s 401 or 403 — comes back as a JSON-RPC error in a 200 response, not as an HTTP status. The `WWW-Authenticate` header does not reach the client.
 

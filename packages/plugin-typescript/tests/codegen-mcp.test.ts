@@ -10,6 +10,7 @@ import {
     deriveMcpRegisterFnName,
 } from '../src/codegen-mcp.js';
 import type { RouteMiddleware } from '../src/server-framework.js';
+import { FASTIFY_SERVER_FRAMEWORK } from '../src/server-framework-fastify.js';
 import {
     opRoot,
     opRoute,
@@ -365,13 +366,15 @@ describe('generateMcpFile', () => {
                 'payments.op',
             );
             const out = generateMcpFile(root);
-            expect(out).toContain("import { Injectable, type Container } from 'injectkit';");
+            expect(out).toContain("import { Injectable, type Container, type Registry } from 'injectkit';");
             expect(out).toContain(
                 "import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';",
             );
             expect(out).toContain("import { parseAndValidate } from '@maroonedsoftware/zod';");
             expect(out).toContain('export function registerPaymentsMcpTools(map: McpToolHandlerMap, container: Container): void {');
             expect(out).toContain("map.set('get_payments_by_id', container.get(GetPaymentsByIdMcpTool));");
+            expect(out).toContain('export function registerPaymentsMcpToolClasses(registry: Registry): void {');
+            expect(out).toContain('registry.register(GetPaymentsByIdMcpTool).useClass(GetPaymentsByIdMcpTool).asSingleton();');
         });
 
         it('resolves service + schema imports via modelOutPaths', () => {
@@ -508,14 +511,67 @@ describe('generateMcpFile', () => {
     });
 });
 
+describe('resolve: perCall', () => {
+    const toolFor = (op: ReturnType<typeof opOperation>, resolve?: 'boot' | 'perCall') =>
+        generateMcpFile(opRoot([opRoute('/payments/{id}', [op], [opParam('id', scalarType('uuid'))])], 'payments.op'), { resolve });
+    const getById = (over: Partial<Parameters<typeof opOperation>[1]> = {}) =>
+        opOperation('get', { mcp: true, service: 'PaymentsService.getById', responses: [opResponse(200, 'Payment', 'application/json')], ...over });
+
+    it('takes no constructor dependencies', () => {
+        expect(toolFor(getById(), 'perCall')).not.toContain('constructor(');
+    });
+
+    it("resolves the policies and the service from the request's container, the policy first", () => {
+        const out = toolFor(getById(), 'perCall');
+        const guard = out.indexOf('const container = requireMcpContainer(context);');
+        const policy = out.indexOf('await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });');
+        const parse = out.indexOf('await parseAndValidate(args, GetPaymentsByIdArgs)');
+        const call = out.indexOf('const result = await container.get(PaymentsService).getById(id);');
+        expect(guard).toBeGreaterThan(-1);
+        expect(policy).toBeGreaterThan(guard);
+        expect(parse).toBeGreaterThan(policy);
+        expect(call).toBeGreaterThan(parse);
+        expect(out).toContain("import { PolicyService } from '@maroonedsoftware/policies';");
+    });
+
+    it('declares the container guard once in the file', () => {
+        const out = toolFor(getById(), 'perCall');
+        expect(out.match(/function requireMcpContainer\(context: McpToolContext\): Container \{/g)).toHaveLength(1);
+        expect(out).toContain('needs the request container');
+    });
+
+    it('still reads the context for a security: none tool', () => {
+        const out = toolFor(getById({ security: SECURITY_NONE }), 'perCall');
+        expect(out).toContain('async handle(args: Record<string, unknown>, context: McpToolContext)');
+        expect(out).not.toContain('requireMcpPolicy');
+        expect(out).not.toContain('PolicyService');
+    });
+
+    it('aliases a path param named container', () => {
+        const root = opRoot([opRoute('/boxes/{container}', [getById()], [opParam('container', scalarType('string'))])], 'boxes.op');
+        const out = generateMcpFile(root, { resolve: 'perCall' });
+        expect(out).toContain('const { container: container_ } = await parseAndValidate(args, GetBoxesByContainerArgs);');
+        expect(out).toContain('container.get(PaymentsService).getById(container_)');
+    });
+
+    it('leaves boot mode on constructor injection', () => {
+        const out = toolFor(getById(), 'boot');
+        expect(out).toContain('constructor(private readonly service: PaymentsService, private readonly policies: PolicyService) {}');
+        expect(out).not.toContain('requireMcpContainer');
+        expect(out).toBe(toolFor(getById()));
+    });
+});
+
 describe('generateMcpAggregator', () => {
     it('imports each register fn and assembles one map', () => {
         const out = generateMcpAggregator([
-            { registerFn: 'registerPaymentsMcpTools', importPath: './payments.mcp.js' },
-            { registerFn: 'registerUsersMcpTools', importPath: './users.mcp.js' },
+            { registerFn: 'registerPaymentsMcpTools', registerClassesFn: 'registerPaymentsMcpToolClasses', importPath: './payments.mcp.js' },
+            { registerFn: 'registerUsersMcpTools', registerClassesFn: 'registerUsersMcpToolClasses', importPath: './users.mcp.js' },
         ]);
         expect(out).toContain("import { McpToolHandlerMap } from '@maroonedsoftware/mcp';");
-        expect(out).toContain("import { registerPaymentsMcpTools } from './payments.mcp.js';");
+        expect(out).toContain("import { registerPaymentsMcpTools, registerPaymentsMcpToolClasses } from './payments.mcp.js';");
+        expect(out).toContain('export function registerMcpToolClasses(registry: Registry): void {');
+        expect(out).toContain('registerUsersMcpToolClasses(registry);');
         expect(out).toContain('export function registerMcpTools(container: Container): McpToolHandlerMap {');
         expect(out).toContain('const map = new McpToolHandlerMap();');
         expect(out).toContain('registerPaymentsMcpTools(map, container);');
@@ -524,7 +580,7 @@ describe('generateMcpAggregator', () => {
     });
 
     it('only builds the map — Container has no register, that belongs to Registry', () => {
-        const out = generateMcpAggregator([{ registerFn: 'registerPaymentsMcpTools', importPath: './payments.mcp.js' }]);
+        const out = generateMcpAggregator([{ registerFn: 'registerPaymentsMcpTools', registerClassesFn: 'registerPaymentsMcpToolClasses', importPath: './payments.mcp.js' }]);
         expect(out).not.toContain('container.register');
         expect(out).toContain('registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();');
     });
@@ -619,6 +675,15 @@ describe('generateMcpRouter', () => {
         expect(out).toContain("router.post('/mcp'");
         expect(out).toContain('ctx.container.get(McpDispatcher)');
         expect(out).toContain("dispatcher.sessionMode === 'stateful'");
+    });
+
+    it("hands the request's container to the MCP context for per-call tools, and only then", () => {
+        expect(generateMcpRouter({ resolve: 'perCall' })).toContain(
+            'createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger, authenticationSession: ctx.authenticationSession, container: ctx.container });',
+        );
+        expect(generateMcpRouter({ resolve: 'perCall', framework: FASTIFY_SERVER_FRAMEWORK })).toContain('container: request.container });');
+        expect(generateMcpRouter()).not.toContain('container: ctx.container');
+        expect(generateMcpRouter({ framework: FASTIFY_SERVER_FRAMEWORK })).not.toContain('container: request.container');
     });
 
     it('never emits the deprecated header-reading bearer guard', () => {

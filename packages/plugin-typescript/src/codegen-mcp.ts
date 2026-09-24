@@ -61,7 +61,17 @@ export interface McpCodegenOptions {
      * plain object, which fails `tsc` for a `format()` one.
      */
     models?: Map<string, ModelNode>;
+    /**
+     * When a tool resolves its service and `PolicyService`. `'boot'` (default) constructor-injects
+     * them once, from the container the tool map is built from. `'perCall'` resolves them in `handle()`
+     * from the request's scoped container on the MCP context, as the HTTP router does from
+     * `ctx.container`, so a request-scoped service sees the caller's actor.
+     */
+    resolve?: McpResolveMode;
 }
+
+/** When a generated tool resolves its service and policies: once at boot, or per call. */
+export type McpResolveMode = 'boot' | 'perCall';
 
 // ─── MCP flag helpers ─────────────────────────────────────────────────────
 
@@ -148,7 +158,19 @@ interface ArgsProp {
 const MCP_ARG_KEYS = ['body', 'multipartBody', 'query', 'headers'] as const;
 
 /** Identifiers `handle` binds or reads besides the args it destructures. */
-const MCP_HANDLER_LOCALS = ['args', '_args', 'context', '_context', 'result', 'resultJson', 'parseAndValidate', 'bigIntReplacer', 'JSON'] as const;
+const MCP_HANDLER_LOCALS = [
+    'args',
+    '_args',
+    'context',
+    '_context',
+    'container',
+    'result',
+    'resultJson',
+    'parseAndValidate',
+    'bigIntReplacer',
+    'requireMcpContainer',
+    'JSON',
+] as const;
 
 /**
  * The args key and the local binding for each inline path param, both keyed by its declared name.
@@ -527,16 +549,31 @@ export function planTools(root: OpRootNode, includeInternal: boolean): ToolPlan[
  * MFA gate, and the fix for that is an app-level policy override recognising `claims.mcp`, not a
  * generated floor lower than the contract's.
  */
-function toolPolicyCheck(security: SecurityNode | undefined): string | undefined {
+function toolPolicyCheck(security: SecurityNode | undefined, policies: string): string | undefined {
     if (security === SECURITY_NONE) return undefined;
 
     const policy = security?.policy;
-    if (policy === undefined) return `await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });`;
+    if (policy === undefined) return `await requireMcpPolicy(context, ${policies}, { policy: MFA_SATISFIED_POLICY });`;
     // `false` is a declaration: validate the session, apply no policy.
-    if (policy === false) return `await requireMcpPolicy(context, this.policies);`;
+    if (policy === false) return `await requireMcpPolicy(context, ${policies});`;
 
-    return `await requireMcpPolicy(context, this.policies, { policy: '${escapeSingleQuoted(policy)}' });`;
+    return `await requireMcpPolicy(context, ${policies}, { policy: '${escapeSingleQuoted(policy)}' });`;
 }
+
+/**
+ * The guard a per-call tool file declares: the request's scoped container off the MCP context, or a
+ * clear error naming the fix when the route did not pass one. Declared in the file rather than
+ * imported, since `@maroonedsoftware/mcp` carries the container but no guard for it.
+ */
+const REQUIRE_MCP_CONTAINER_LINES = [
+    `/** The request's scoped container, which a tool resolving per call reads its service and policies from. */`,
+    `function requireMcpContainer(context: McpToolContext): Container {`,
+    `    if (!context.container) {`,
+    `        throw new Error(\`MCP tool '\${context.toolName}' needs the request container: pass \\\`container: ctx.container\\\` to createMcpRequestContext.\`);`,
+    `    }`,
+    `    return context.container;`,
+    `}`,
+];
 
 /**
  * @param inline The tools file's wrappers for results with no `serializeX` of their own, which a tool
@@ -574,14 +611,19 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     lines.push('    };');
     lines.push('');
 
-    // constructor injects the operation's service, plus the PolicyService when the tool has a
-    // security check to run — a tool declared `security: none` needs neither.
+    // At boot, the constructor injects the operation's service, plus the PolicyService when the tool
+    // has a security check to run — a tool declared `security: none` needs neither. Per call, the tool
+    // takes nothing and resolves both from the request's container in `handle()`.
+    const perCall = options.resolve === 'perCall';
     const service = inferService(op, route, file);
-    const policyCheck = toolPolicyCheck(plan.security);
-    const ctorParams = [`private readonly service: ${service.className}`];
-    if (policyCheck) ctorParams.push('private readonly policies: PolicyService');
-    lines.push(`    constructor(${ctorParams.join(', ')}) {}`);
-    lines.push('');
+    const policyCheck = toolPolicyCheck(plan.security, perCall ? 'container.get(PolicyService)' : 'this.policies');
+    const serviceExpr = perCall ? `container.get(${service.className})` : 'this.service';
+    if (!perCall) {
+        const ctorParams = [`private readonly service: ${service.className}`];
+        if (policyCheck) ctorParams.push('private readonly policies: PolicyService');
+        lines.push(`    constructor(${ctorParams.join(', ')}) {}`);
+        lines.push('');
+    }
 
     // handle
     const props = buildArgsProps(route, op, options);
@@ -594,19 +636,21 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     // No args to destructure means the parameter goes unread, which trips no-unused-vars in
     // consumers that lint generated output; the leading underscore opts it out.
     const argsParam = destructure.length > 0 ? 'args' : '_args';
-    // Same reasoning for the context parameter: only a tool that runs a security check reads it.
-    const contextParam = policyCheck ? 'context' : '_context';
+    // Same reasoning for the context parameter: only a tool that runs a security check, or resolves
+    // per call, reads it.
+    const contextParam = policyCheck || perCall ? 'context' : '_context';
     lines.push(`    async handle(${argsParam}: Record<string, unknown>, ${contextParam}: McpToolContext): Promise<CallToolResult> {`);
+    if (perCall) lines.push('        const container = requireMcpContainer(context);');
     // Before the arguments are even parsed: an unauthorized caller learns nothing about the schema.
     if (policyCheck) lines.push(`        ${policyCheck}`);
     if (destructure.length > 0) {
         lines.push(`        const { ${destructure.join(', ')} } = await parseAndValidate(args, ${argsConstName});`);
     }
     if (isVoid) {
-        lines.push(`        await this.service.${service.methodName}(${callArgs});`);
+        lines.push(`        await ${serviceExpr}.${service.methodName}(${callArgs});`);
         lines.push(`        return { content: [{ type: 'text', text: 'OK' }] };`);
     } else {
-        lines.push(`        const result = await this.service.${service.methodName}(${callArgs});`);
+        lines.push(`        const result = await ${serviceExpr}.${service.methodName}(${callArgs});`);
         const wire = resultWireExpr(op, `__serialize${className}Result`, options, inline);
         const bigint = resultReachesBigInt(op, options.modelsWithBigInt);
         if (shape && shape.kind !== 'object') {
@@ -657,6 +701,11 @@ export function deriveMcpRegisterFnName(file: string): string {
     return `register${deriveBaseName(file)}McpTools`;
 }
 
+/** The exported fn registering a file's tool classes, e.g. `payments.op` → `registerPaymentsMcpToolClasses`. */
+export function deriveMcpRegisterClassesFnName(file: string): string {
+    return `register${deriveBaseName(file)}McpToolClasses`;
+}
+
 /** Generate one `<filename>.mcp.ts` for an op-root: tool handler classes + a per-file register fn. */
 export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {}): string {
     const includeInternal = options.includeInternal ?? false;
@@ -675,18 +724,24 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     registerFn.push(`export function ${deriveMcpRegisterFnName(root.file)}(map: McpToolHandlerMap, container: Container): void {`);
     for (const p of plans) registerFn.push(`    map.set('${escapeSingleQuoted(p.toolName)}', container.get(${p.className}));`);
     registerFn.push('}');
+    registerFn.push('');
+    registerFn.push(`/** Register this file's tool classes on the registry, so the catalog can resolve them. */`);
+    registerFn.push(`export function ${deriveMcpRegisterClassesFnName(root.file)}(registry: Registry): void {`);
+    for (const p of plans) registerFn.push(`    registry.register(${p.className}).useClass(${p.className}).asSingleton();`);
+    registerFn.push('}');
 
     const serializerDecls = [...inlineSerializers.values()].map(decl => decl.join('\n'));
     const bodyCore = [argsConsts.join('\n'), ...serializerDecls, classes.join('\n\n'), registerFn.join('\n')].filter(Boolean).join('\n\n');
 
     // Zod scalar helper consts (must precede the args consts that reference them).
     const helperConsts = [...scalarHelperLines(bodyCore), ...wireDeclsFor([bodyCore])];
+    if (/\brequireMcpContainer\b/.test(bodyCore)) helperConsts.push(...REQUIRE_MCP_CONTAINER_LINES);
     const bodyWithHelpers = [helperConsts.join('\n'), bodyCore].filter(Boolean).join('\n\n');
 
     // ── Imports ──
     const needsParseAndValidate = plans.some(p => buildArgsProps(p.route, p.op, options).length > 0);
     const imports: string[] = [];
-    imports.push(`import { Injectable, type Container } from 'injectkit';`);
+    imports.push(`import { Injectable, type Container, type Registry } from 'injectkit';`);
     imports.push(`import { z } from 'zod';`);
 
     const luxon: string[] = [];
@@ -739,6 +794,8 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
 export interface McpAggregatorEntry {
     /** The file's exported register fn name, e.g. `registerPaymentsMcpTools`. */
     registerFn: string;
+    /** The file's exported fn registering its tool classes, e.g. `registerPaymentsMcpToolClasses`. */
+    registerClassesFn: string;
     /** Module specifier for the file, relative to the aggregator and `.js`-suffixed. */
     importPath: string;
 }
@@ -747,9 +804,9 @@ export interface McpAggregatorEntry {
 export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
     const sorted = [...entries].sort((a, b) => a.registerFn.localeCompare(b.registerFn));
     const lines: string[] = [];
-    lines.push(`import { type Container } from 'injectkit';`);
+    lines.push(`import { type Container, type Registry } from 'injectkit';`);
     lines.push(`import { McpToolHandlerMap } from '@maroonedsoftware/mcp';`);
-    for (const e of sorted) lines.push(`import { ${e.registerFn} } from '${e.importPath}';`);
+    for (const e of sorted) lines.push(`import { ${e.registerFn}, ${e.registerClassesFn} } from '${e.importPath}';`);
     lines.push('');
     lines.push('/**');
     lines.push(' * Build the MCP tool catalog.');
@@ -766,6 +823,17 @@ export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
     for (const e of sorted) lines.push(`    ${e.registerFn}(map, container);`);
     lines.push('    return map;');
     lines.push('}');
+    lines.push('');
+    lines.push('/**');
+    lines.push(' * Register every generated tool class on the registry, so `registerMcpTools` can resolve it:');
+    lines.push(' *');
+    lines.push(' * ```ts');
+    lines.push(' * registerMcpToolClasses(registry);');
+    lines.push(' * ```');
+    lines.push(' */');
+    lines.push('export function registerMcpToolClasses(registry: Registry): void {');
+    for (const e of sorted) lines.push(`    ${e.registerClassesFn}(registry);`);
+    lines.push('}');
     return lines.join('\n') + '\n';
 }
 
@@ -775,7 +843,9 @@ export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
  * The whole file is framework-specific boilerplate rather than a per-operation render, so the
  * adapter owns the template. Defaults to Koa, matching the router generator.
  */
-export function generateMcpRouter(options: { path?: string; framework?: ServerFramework; security?: SecurityNode } = {}): string {
+export function generateMcpRouter(
+    options: { path?: string; framework?: ServerFramework; security?: SecurityNode; resolve?: McpResolveMode } = {},
+): string {
     const framework = options.framework ?? KOA_SERVER_FRAMEWORK;
     const guards: RouteMiddleware = { bodyContentTypes: ['application/json'] };
 
@@ -784,7 +854,8 @@ export function generateMcpRouter(options: { path?: string; framework?: ServerFr
     const policy = policyGuard(framework, options.security ?? { policy: false, loc: SYNTHETIC_LOC });
     if (policy) guards.policy = policy;
 
-    return framework.mcpRouter({ path: options.path ?? '/mcp', guards });
+    // A per-call tool reads its container off the MCP context, so the mount has to put it there.
+    return framework.mcpRouter({ path: options.path ?? '/mcp', guards, passContainer: options.resolve === 'perCall' });
 }
 
 /**

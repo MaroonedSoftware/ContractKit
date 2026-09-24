@@ -11,6 +11,14 @@ import { bigIntReplacer } from '@maroonedsoftware/utilities';
 import { PaymentService } from '#src/services/payment.service.js';
 import { Payment, PaymentFilter, PaymentRef, PaymentScope, SavedSearch, ScopedFilter, SnakeFilter, SnakeHeaders, TenantHeaders, serializeSavedSearch, serializeSnakeFilter } from './schemas/billing.schema.js';
 
+/** The request's scoped container, which a tool resolving per call reads its service and policies from. */
+function requireMcpContainer(context: McpToolContext): Container {
+    if (!context.container) {
+        throw new Error(`MCP tool '${context.toolName}' needs the request container: pass \`container: ctx.container\` to createMcpRequestContext.`);
+    }
+    return context.container;
+}
+
 const SearchPaymentsArgs = z.object({ query: PaymentFilter.optional(), headers: TenantHeaders.optional() });
 const GetRefundArgs = z.object({ params: PaymentRef });
 const SearchPaymentsByDateArgs = z.object({ query: SnakeFilter.optional(), headers: SnakeHeaders.optional() });
@@ -49,12 +57,11 @@ export class SearchPaymentsMcpTool implements McpToolHandler {
         outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
     };
 
-    constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
-
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
-        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
         const { query, headers } = await parseAndValidate(args, SearchPaymentsArgs);
-        const result = await this.service.search(query, headers);
+        const result = await container.get(PaymentService).search(query, headers);
         const resultJson = JSON.stringify({ items: result }, bigIntReplacer);
         return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
     }
@@ -72,12 +79,11 @@ export class GetRefundMcpTool implements McpToolHandler {
         outputSchema: z.toJSONSchema(Payment, { unrepresentable: 'any' }) as Tool['outputSchema'],
     };
 
-    constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
-
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
-        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
         const { params } = await parseAndValidate(args, GetRefundArgs);
-        const result = await this.service.getRefund(params);
+        const result = await container.get(PaymentService).getRefund(params);
         const resultJson = JSON.stringify(result, bigIntReplacer);
         return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
     }
@@ -94,12 +100,11 @@ export class SearchPaymentsByDateMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(SearchPaymentsByDateArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
     };
 
-    constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
-
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
-        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
         const { query, headers } = await parseAndValidate(args, SearchPaymentsByDateArgs);
-        await this.service.searchByDate(query, headers);
+        await container.get(PaymentService).searchByDate(query, headers);
         return { content: [{ type: 'text', text: 'OK' }] };
     }
 }
@@ -115,12 +120,11 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(SearchPaymentsScopedArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
     };
 
-    constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
-
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
-        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
         const { query, headers } = await parseAndValidate(args, SearchPaymentsScopedArgs);
-        const result = await this.service.searchScoped(query, headers);
+        const result = await container.get(PaymentService).searchScoped(query, headers);
         const resultJson = JSON.stringify(__serializeSearchPaymentsScopedMcpToolResult(result));
         return { content: [{ type: 'text', text: resultJson }] };
     }
@@ -138,12 +142,11 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
         outputSchema: z.toJSONSchema(SavedSearch, { unrepresentable: 'any' }) as Tool['outputSchema'],
     };
 
-    constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
-
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
-        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
         const { body, query } = await parseAndValidate(args, SaveScopedSearchArgs);
-        const result = await this.service.saveScopedSearch(body, query);
+        const result = await container.get(PaymentService).saveScopedSearch(body, query);
         const resultJson = JSON.stringify(serializeSavedSearch(result));
         return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
     }

@@ -180,3 +180,40 @@ describe('a generated MCP tool whose result is not an object', () => {
         expect(result.content[0]!.text).toBe('{"value":"widget"}');
     });
 });
+
+describe("a generated MCP tool resolving per call from the request's container", () => {
+    /** A request scope: its container hands out a service bound to this request's actor. */
+    const requestFor = (actor: string, delayMs: number) => {
+        const service = {
+            label: async () => {
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+                return actor;
+            },
+        };
+        const policies = { assert: async () => {} };
+        const container = {
+            get: (id: { name?: string }) => {
+                if (id.name === 'ThingService') return service;
+                if (id.name === 'PolicyService') return policies;
+                throw new Error(`nothing registered for ${id.name}`);
+            },
+        };
+        return { authenticationSession: { subject: actor }, toolName: 'thing_label', container };
+    };
+
+    it('lets two concurrent calls each see their own actor', async () => {
+        const Tool = (await tools({ resolve: 'perCall' })).ThingLabelMcpTool as ToolClass;
+        // One instance for both calls, as the tool map holds it.
+        const tool = new Tool();
+        const [alice, bob] = await Promise.all([tool.handle({}, requestFor('alice', 20)), tool.handle({}, requestFor('bob', 1))]);
+        expect(alice.structuredContent).toEqual({ value: 'alice' });
+        expect(bob.structuredContent).toEqual({ value: 'bob' });
+    });
+
+    it('fails with the fix spelled out when the route passed no container', async () => {
+        const Tool = (await tools({ resolve: 'perCall' })).ThingLabelMcpTool as ToolClass;
+        await expect(new Tool().handle({}, { ...session, toolName: 'thing_label' })).rejects.toThrow(
+            "MCP tool 'thing_label' needs the request container: pass `container: ctx.container` to createMcpRequestContext.",
+        );
+    });
+});

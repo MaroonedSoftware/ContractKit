@@ -1,6 +1,6 @@
 // Auto-generated MCP tools
 // generated from [billing.ck](../contracts/billing.ck)
-import { Injectable, type Container } from 'injectkit';
+import { Injectable, type Container, type Registry } from 'injectkit';
 import { z } from 'zod';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
 import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';
@@ -156,4 +156,13 @@ export function registerBillingMcpTools(map: McpToolHandlerMap, container: Conta
     map.set('search_payments_by_date', container.get(SearchPaymentsByDateMcpTool));
     map.set('search_payments_scoped', container.get(SearchPaymentsScopedMcpTool));
     map.set('save_scoped_search', container.get(SaveScopedSearchMcpTool));
+}
+
+/** Register this file's tool classes on the registry, so the catalog can resolve them. */
+export function registerBillingMcpToolClasses(registry: Registry): void {
+    registry.register(SearchPaymentsMcpTool).useClass(SearchPaymentsMcpTool).asSingleton();
+    registry.register(GetRefundMcpTool).useClass(GetRefundMcpTool).asSingleton();
+    registry.register(SearchPaymentsByDateMcpTool).useClass(SearchPaymentsByDateMcpTool).asSingleton();
+    registry.register(SearchPaymentsScopedMcpTool).useClass(SearchPaymentsScopedMcpTool).asSingleton();
+    registry.register(SaveScopedSearchMcpTool).useClass(SaveScopedSearchMcpTool).asSingleton();
 }

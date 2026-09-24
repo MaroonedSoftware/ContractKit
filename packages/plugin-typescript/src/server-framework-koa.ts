@@ -133,14 +133,14 @@ export const KOA_SERVER_FRAMEWORK: ServerFramework = {
         },
     },
 
-    mcpRouter({ path, guards }) {
+    mcpRouter({ path, guards, passContainer }) {
         // The route line goes through `routeOpen`, the same renderer every operation route uses, so
         // the mount cannot spell a guard differently from the routes beside it.
         const body = `/** Mount the MCP endpoint onto a ServerKit router. Bind \`registerMcpTools\` to the \`McpToolHandlerMap\` token. */
 export function mountMcp(router: ReturnType<typeof ServerKitRouter>): void {
     ${KOA_SERVER_FRAMEWORK.routeOpen('router', 'post', path, guards)}
         const dispatcher = ctx.container.get(McpDispatcher);
-        const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger, authenticationSession: ctx.authenticationSession });
+        const context = createMcpRequestContext({ requestId: ctx.requestId, logger: ctx.logger, authenticationSession: ctx.authenticationSession${passContainer ? ', container: ctx.container' : ''} });
         if (dispatcher.sessionMode === 'stateful') {
             ctx.respond = false;
             await dispatcher.dispatchStateful(

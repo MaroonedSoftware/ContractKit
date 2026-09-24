@@ -11,6 +11,14 @@ import { parseAndValidate } from '@maroonedsoftware/zod';
 import { SeatService } from '#src/services/seat.service.js';
 import { Note, Seat, serializeSeat } from './schemas/reserved.schema.js';
 
+/** The request's scoped container, which a tool resolving per call reads its service and policies from. */
+function requireMcpContainer(context: McpToolContext): Container {
+    if (!context.container) {
+        throw new Error(`MCP tool '${context.toolName}' needs the request container: pass \`container: ctx.container\` to createMcpRequestContext.`);
+    }
+    return context.container;
+}
+
 const GetSeatArgs = z.object({ class: z.string(), query: z.object({ from: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })), in: z.string(), pageSize: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()) }).optional(), headers: z.object({ from: z.string() }).optional() });
 const PutNoteArgs = z.object({ body_: z.string(), body: Note });
 
@@ -26,12 +34,11 @@ export class GetSeatMcpTool implements McpToolHandler {
         outputSchema: z.toJSONSchema(Seat, { unrepresentable: 'any' }) as Tool['outputSchema'],
     };
 
-    constructor(private readonly service: SeatService, private readonly policies: PolicyService) {}
-
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
-        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
         const { class: class_, query, headers } = await parseAndValidate(args, GetSeatArgs);
-        const result = await this.service.getSeat(class_, query, headers);
+        const result = await container.get(SeatService).getSeat(class_, query, headers);
         const resultJson = JSON.stringify({ ...result, body: serializeSeat(result.body) });
         return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
     }
@@ -49,12 +56,11 @@ export class PutNoteMcpTool implements McpToolHandler {
         outputSchema: z.toJSONSchema(Note, { unrepresentable: 'any' }) as Tool['outputSchema'],
     };
 
-    constructor(private readonly service: SeatService, private readonly policies: PolicyService) {}
-
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
-        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
         const { body_, body } = await parseAndValidate(args, PutNoteArgs);
-        const result = await this.service.putNote(body_, body);
+        const result = await container.get(SeatService).putNote(body_, body);
         return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
     }
 }

@@ -160,7 +160,15 @@ export interface ServerFramework {
      * mount cannot spell a guard differently from the routes beside it. The adapter still owns the
      * file, including deriving its import lines from the body it produced.
      */
-    mcpRouter(options: { path: string; guards: RouteMiddleware }): string;
+    mcpRouter(options: {
+        path: string;
+        guards: RouteMiddleware;
+        /**
+         * Hand the request's scoped container to the MCP context, for tools that resolve their service
+         * per call (`mcp.resolve: 'perCall'`). Needs a `@maroonedsoftware/mcp` whose context carries one.
+         */
+        passContainer?: boolean;
+    }): string;
 }
 
 /**

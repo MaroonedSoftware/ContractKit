@@ -73,7 +73,9 @@ import {
     generateMcpRouter,
     hasMcpOperations,
     deriveMcpRegisterFnName,
+    deriveMcpRegisterClassesFnName,
     defaultMcpMountSecurity,
+    type McpResolveMode,
 } from './codegen-mcp.js';
 import {
     TEMPLATE_VAR_RE,
@@ -203,6 +205,15 @@ export interface McpConfig {
      * weaken a tool below what its contract declares.
      */
     security?: SecurityNode;
+    /**
+     * When a tool resolves its operation's service and `PolicyService`:
+     *
+     * - `'boot'` (default): constructor-injected once, from the container the tool map is built from.
+     * - `'perCall'`: resolved in `handle()` from the request's scoped container on the MCP context,
+     *   the way the HTTP router resolves a service from `ctx.container`. The emitted `mcp.router.ts`
+     *   passes that container. Needs a `@maroonedsoftware/mcp` whose context carries one.
+     */
+    resolve?: McpResolveMode;
 }
 
 /** Top-level plugin config. Each sub-config that is present enables its sub-generator. */
@@ -268,6 +279,10 @@ function assertValidConfig(config: TypescriptPluginConfig): void {
                 `plugin-typescript: mcp.security must be 'none', or an object whose 'policy' is a policy name or false — got ${JSON.stringify(mcpSecurity)}.`,
             );
         }
+    }
+    const resolve = config.mcp?.resolve;
+    if (resolve !== undefined && resolve !== 'boot' && resolve !== 'perCall') {
+        throw new Error(`plugin-typescript: mcp.resolve must be 'boot' or 'perCall' — got ${JSON.stringify(resolve)}.`);
     }
     if (config.server?.validateResponses && !config.server.zod) {
         throw new Error(
@@ -1318,7 +1333,7 @@ function collectMcpOutput(
     }
 
     // ── Per-op-root tool-handler units (only files with MCP-exposed ops) ──
-    const entries: { outPath: string; registerFn: string }[] = [];
+    const entries: { outPath: string; registerFn: string; registerClassesFn: string }[] = [];
     for (const ast of inputs.opRoots) {
         if (!hasMcpOperations(ast, includeInternal)) continue;
         const outPath = computeOpOutPath(ast.file, mcpBase, config.output?.tools, '.mcp.ts', commonRoot, ast.meta);
@@ -1357,11 +1372,12 @@ function collectMcpOutput(
                         modelsWithBigInt,
                         modelsWithSerializer,
                         models: modelMap,
+                        resolve: config.resolve,
                     }),
                 },
             ],
         });
-        entries.push({ outPath, registerFn: deriveMcpRegisterFnName(ast.file) });
+        entries.push({ outPath, registerFn: deriveMcpRegisterFnName(ast.file), registerClassesFn: deriveMcpRegisterClassesFnName(ast.file) });
     }
 
     if (entries.length === 0) return;
@@ -1372,7 +1388,7 @@ function collectMcpOutput(
         .map(e => {
             let rel = relative(dirname(indexPath), e.outPath).replace(/\.ts$/, '.js');
             if (!rel.startsWith('.')) rel = './' + rel;
-            return { registerFn: e.registerFn, importPath: rel };
+            return { registerFn: e.registerFn, registerClassesFn: e.registerClassesFn, importPath: rel };
         })
         .sort((a, b) => a.registerFn.localeCompare(b.registerFn));
     globalFiles.push({ relativePath: indexPath, content: generateMcpAggregator(aggregatorEntries) });
@@ -1385,7 +1401,7 @@ function collectMcpOutput(
         const framework = resolveServerFramework(fullConfig.server?.framework);
         // A config that names no security takes the guard the exposed tools imply.
         const security = config.security ?? defaultMcpMountSecurity(inputs.opRoots, includeInternal);
-        globalFiles.push({ relativePath: routerPath, content: generateMcpRouter({ path: config.path, framework, security }) });
+        globalFiles.push({ relativePath: routerPath, content: generateMcpRouter({ path: config.path, framework, security, resolve: config.resolve }) });
     }
 }
 

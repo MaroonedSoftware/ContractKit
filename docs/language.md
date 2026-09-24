@@ -1110,8 +1110,13 @@ aggregator from a factory, which is what supplies the `Container` it needs:
 registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();
 ```
 
-The tool classes are not registered for you either; register each on the same `Registry` so the
-aggregator can resolve it.
+`registerMcpToolClasses(registry)`, also in `mcp.tools.ts`, registers every tool class on the same
+`Registry` so the aggregator can resolve them.
+
+By default a tool constructor-injects its service and `PolicyService` once, when the map is built.
+Set `mcp.resolve: "perCall"` to resolve both in `handle()` from the request's scoped container
+instead, the way the HTTP router resolves a service from `ctx.container`, so a request-scoped
+service sees the caller's actor. See [config.md](./config.md#mcp).
 
 Each tool handler also enforces its operation's `security`, cascaded operation → route → file, before
 it parses any arguments: a tool is another way to invoke the operation, not a way around its gate. An

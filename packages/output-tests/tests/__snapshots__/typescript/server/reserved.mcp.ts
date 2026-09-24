@@ -1,6 +1,6 @@
 // Auto-generated MCP tools
 // generated from [reserved.ck](../contracts/reserved.ck)
-import { Injectable, type Container } from 'injectkit';
+import { Injectable, type Container, type Registry } from 'injectkit';
 import { z } from 'zod';
 import { DateTime } from 'luxon';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -63,4 +63,10 @@ export class PutNoteMcpTool implements McpToolHandler {
 export function registerReservedMcpTools(map: McpToolHandlerMap, container: Container): void {
     map.set('get_seat', container.get(GetSeatMcpTool));
     map.set('put_note', container.get(PutNoteMcpTool));
+}
+
+/** Register this file's tool classes on the registry, so the catalog can resolve them. */
+export function registerReservedMcpToolClasses(registry: Registry): void {
+    registry.register(GetSeatMcpTool).useClass(GetSeatMcpTool).asSingleton();
+    registry.register(PutNoteMcpTool).useClass(PutNoteMcpTool).asSingleton();
 }

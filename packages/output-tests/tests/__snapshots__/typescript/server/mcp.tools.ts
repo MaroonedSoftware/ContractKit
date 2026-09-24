@@ -1,8 +1,8 @@
-import { type Container } from 'injectkit';
+import { type Container, type Registry } from 'injectkit';
 import { McpToolHandlerMap } from '@maroonedsoftware/mcp';
-import { registerBillingMcpTools } from './billing.mcp.js';
-import { registerHyphenatedMcpTools } from './hyphenated.mcp.js';
-import { registerReservedMcpTools } from './reserved.mcp.js';
+import { registerBillingMcpTools, registerBillingMcpToolClasses } from './billing.mcp.js';
+import { registerHyphenatedMcpTools, registerHyphenatedMcpToolClasses } from './hyphenated.mcp.js';
+import { registerReservedMcpTools, registerReservedMcpToolClasses } from './reserved.mcp.js';
 
 /**
  * Build the MCP tool catalog.
@@ -20,4 +20,17 @@ export function registerMcpTools(container: Container): McpToolHandlerMap {
     registerHyphenatedMcpTools(map, container);
     registerReservedMcpTools(map, container);
     return map;
+}
+
+/**
+ * Register every generated tool class on the registry, so `registerMcpTools` can resolve it:
+ *
+ * ```ts
+ * registerMcpToolClasses(registry);
+ * ```
+ */
+export function registerMcpToolClasses(registry: Registry): void {
+    registerBillingMcpToolClasses(registry);
+    registerHyphenatedMcpToolClasses(registry);
+    registerReservedMcpToolClasses(registry);
 }

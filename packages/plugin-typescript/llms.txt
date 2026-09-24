@@ -99,8 +99,20 @@ a factory, which is also what supplies the `Container` it needs:
 registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();
 ```
 
-The emitted tool classes are not registered for you either, so register each one on the same
-`Registry` before the aggregator resolves it.
+It also exports `registerMcpToolClasses(registry)`, which registers every emitted tool class on the
+same `Registry`, so the aggregator can resolve them:
+
+```typescript
+registerMcpToolClasses(registry);
+```
+
+With `mcp.resolve: 'perCall'`, a tool takes no constructor dependencies: `handle()` resolves the
+operation's service and `PolicyService` from the request's scoped container on the MCP context,
+the way the HTTP router resolves a service from `ctx.container`, so a request-scoped service sees
+the caller's actor. The emitted `mcp.router.ts` passes that container. A hand-written route must
+pass `container: ctx.container` (Koa) or `container: request.container` (Fastify) to
+`createMcpRequestContext`, or the tool fails with an error saying so. This needs a
+`@maroonedsoftware/mcp` whose context carries the container.
 
 ## Programmatic use
 
