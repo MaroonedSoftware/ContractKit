@@ -76,6 +76,12 @@ describe('generateMcpFile', () => {
             expect(out).not.toContain('implements McpToolHandler');
         });
 
+        it('skips mcp: exclude, which is no tool', () => {
+            const root = opRoot([opRoute('/users', [opOperation('get', { sdk: 'listUsers', mcp: 'exclude', responses: [opResponse(200, 'User', 'application/json')] })])]);
+            expect(hasMcpOperations(root)).toBe(false);
+            expect(generateMcpFile(root)).not.toContain('implements McpToolHandler');
+        });
+
         it('skips internal ops unless includeInternal', () => {
             const root = opRoot([
                 opRoute('/users', [opOperation('get', { sdk: 'listUsers', mcp: true, responses: [opResponse(200, 'User', 'application/json')] })], undefined, [

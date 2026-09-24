@@ -11,7 +11,7 @@ import type {
     McpConfigNode,
     OpBodyKey,
 } from '../ast.js';
-import { SECURITY_NONE } from '../ast.js';
+import { MCP_EXCLUDE, SECURITY_NONE } from '../ast.js';
 import { printType, formatDefault, inlineComment } from './print-type.js';
 import { INDENT } from './indent.js';
 
@@ -141,6 +141,7 @@ function printOperationKey(op: OpOperationNode, key: OpBodyKey): string[] {
         case 'mcp':
             if (op.mcp === true) return [`${I2}mcp: true`];
             if (op.mcp === false) return [`${I2}mcp: false`];
+            if (op.mcp === MCP_EXCLUDE) return [`${I2}mcp: exclude`];
             return op.mcp ? printMcpBlock(op.mcp) : [];
         case 'signature': {
             if (!op.signature) return [];

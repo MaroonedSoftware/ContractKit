@@ -543,7 +543,7 @@
             }
         },
         "mcp-decl": {
-            "match": "\\b(mcp)\\s*(:)\\s*(true|false)\\b",
+            "match": "\\b(mcp)\\s*(:)\\s*(?:(true|false)|(exclude))\\b",
             "captures": {
                 "1": {
                     "name": "keyword.control.mcp.ck"
@@ -553,6 +553,9 @@
                 },
                 "3": {
                     "name": "constant.language.boolean.ck"
+                },
+                "4": {
+                    "name": "constant.language.mcp-exclude.ck"
                 }
             }
         },

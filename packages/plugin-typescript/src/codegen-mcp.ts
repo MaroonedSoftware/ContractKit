@@ -8,7 +8,7 @@ import type {
     SecurityNode,
     ModelNode,
 } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses } from '@contractkit/core';
+import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses, isMcpTool } from '@contractkit/core';
 import { renderType, renderInputType, pascalToDotCase, compilesToPipe, isExtendChain } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName, bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
@@ -87,7 +87,7 @@ function mcpConfig(op: OpOperationNode): McpConfigNode | undefined {
 export function hasMcpOperations(root: OpRootNode, includeInternal = false): boolean {
     for (const route of root.routes) {
         for (const op of route.operations) {
-            if (!op.mcp) continue;
+            if (!isMcpTool(op)) continue;
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             return true;
         }
@@ -518,7 +518,7 @@ export function planTools(root: OpRootNode, includeInternal: boolean): ToolPlan[
     const plans: ToolPlan[] = [];
     for (const route of root.routes) {
         for (const op of route.operations) {
-            if (!op.mcp) continue;
+            if (!isMcpTool(op)) continue;
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             const toolName = deriveToolName(op, route);
             const className = deriveToolClassName(toolName);

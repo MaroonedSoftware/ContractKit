@@ -574,6 +574,11 @@ describe('printCk — mcp field', () => {
         expect(printCk(ast)).toContain('        mcp: false');
     });
 
+    it('prints mcp: exclude', () => {
+        const ast = makeRoot([makeRoute('/users', [makeOp('get', { mcp: 'exclude' })])]);
+        expect(printCk(ast)).toContain('        mcp: exclude');
+    });
+
     it('omits mcp when undefined', () => {
         const ast = makeRoot([makeRoute('/users', [makeOp('get')])]);
         expect(printCk(ast)).not.toContain('mcp:');
@@ -606,6 +611,7 @@ describe('printCk — mcp field', () => {
     it('round-trips mcp: true / false through parse', () => {
         expect(roundTrip('operation /a: {\n    get: {\n        mcp: true\n    }\n}\n')).toContain('        mcp: true');
         expect(roundTrip('operation /b: {\n    get: {\n        mcp: false\n    }\n}\n')).toContain('        mcp: false');
+        expect(roundTrip('operation /c: {\n    get: {\n        mcp: exclude\n    }\n}\n')).toContain('        mcp: exclude');
     });
 
     it('round-trips an mcp settings block through parse', () => {

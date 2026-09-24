@@ -220,6 +220,9 @@ export interface SecurityFields {
 
 /** Sentinel value for explicitly public endpoints (`security: none`). */
 export const SECURITY_NONE = 'none' as const;
+
+/** `mcp: exclude`: the operation is no MCP tool, and is kept out of a catalog of every operation too. */
+export const MCP_EXCLUDE = 'exclude' as const;
 export type SecurityNone = typeof SECURITY_NONE;
 
 /** Security declaration: explicit public (`none`), or constrained auth fields. */
@@ -354,12 +357,14 @@ export interface McpConfigNode {
 export interface OpOperationNode {
     method: HttpMethod;
     /**
-     * MCP exposure for this verb. `undefined`/`false` = not exposed (the default); `true` =
+     * MCP exposure for this verb. `undefined`/`false` = not exposed as a tool (the default); `true` =
      * exposed with all metadata derived from the operation; an `McpConfigNode` = exposed with
-     * explicit settings. Test enablement with `Boolean(op.mcp)`. Kept as a union so the prettier
-     * plugin round-trips the exact authored form (`mcp: true` / `mcp: false` / `mcp: { ... }`).
+     * explicit settings; `'exclude'` = not a tool, and kept out of an MCP catalog of every
+     * operation too. Test tool exposure with {@link isMcpTool}: `'exclude'` is truthy. Kept as a
+     * union so the prettier plugin round-trips the exact authored form (`mcp: true` / `mcp: false`
+     * / `mcp: exclude` / `mcp: { ... }`).
      */
-    mcp?: boolean | McpConfigNode;
+    mcp?: boolean | typeof MCP_EXCLUDE | McpConfigNode;
     name?: string; // e.g. "Create an Offer" — human-readable name for docs/collections
     service?: string; // e.g. "LedgerService.updateCategoryNesting"
     sdk?: string; // e.g. "getUser" — explicit SDK method name
@@ -448,6 +453,11 @@ export interface OpRouteNode {
  * `public` on an operation acts as an explicit override that clears inherited modifiers;
  * it is stripped from the returned array (it is not a codegen modifier itself).
  */
+/** Whether an operation is exposed as an MCP tool: `mcp: true` or a settings block. */
+export function isMcpTool(op: OpOperationNode): boolean {
+    return op.mcp === true || typeof op.mcp === 'object';
+}
+
 export function resolveModifiers(route: OpRouteNode, op: OpOperationNode): RouteModifier[] {
     const raw = op.modifiers ?? route.modifiers ?? [];
     return raw.filter(m => m !== 'public');
