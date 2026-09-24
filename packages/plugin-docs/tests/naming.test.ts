@@ -53,6 +53,10 @@ describe('humanize', () => {
     it('leaves a single lowercase word alone but capitalized', () => {
         expect(humanize('billpay')).toBe('Billpay');
     });
+
+    it('keeps an acronym inside a camelCase area', () => {
+        expect(humanize('openAIKeys')).toBe('Open AI Keys');
+    });
 });
 
 describe('deriveTitle', () => {
@@ -60,6 +64,21 @@ describe('deriveTitle', () => {
 
     it('prefers the name field', () => {
         expect(deriveTitle(opOperation('get', { name: 'listActiveUsers' }), route)).toBe('List active users');
+    });
+
+    it('keeps a prose name as written, acronyms included', () => {
+        expect(deriveTitle(opOperation('post', { name: 'OpenAI speech' }), route)).toBe('OpenAI speech');
+        expect(deriveTitle(opOperation('get', { name: 'OpenAPI document' }), route)).toBe('OpenAPI document');
+        expect(deriveTitle(opOperation('get', { name: 'OpenAI' }), route)).toBe('OpenAI');
+    });
+
+    it('raises only the first letter of a lowercase prose name', () => {
+        expect(deriveTitle(opOperation('get', { name: 'list users by team' }), route)).toBe('List users by team');
+    });
+
+    it('keeps an acronym inside a camelCase identifier as one word', () => {
+        expect(deriveTitle(opOperation('get', { name: 'getOpenAIKey' }), route)).toBe('Get open AI key');
+        expect(deriveTitle(opOperation('get', { service: 'keys.getOpenAIKey' }), route)).toBe('Get open AI key');
     });
 
     it('falls back to the description, which titles better than a bare method name', () => {
@@ -153,6 +172,19 @@ describe('groupEndpoints', () => {
         expect(groupEndpoints([root])).toHaveLength(0);
     });
 
+    it('titles an area group from areaLabels, falling back to humanize for the rest', () => {
+        const roots = [
+            opRoot([opRoute('/speech', [opOperation('post', {})])], 'a.op', { area: 'openai' }),
+            opRoot([opRoute('/voices', [opOperation('get', {})])], 'b.op', { area: 'elevenLabs' }),
+        ];
+        expect(groupEndpoints(roots, false, { openai: 'OpenAI' }).map(g => g.title)).toEqual(['OpenAI', 'Eleven Labs']);
+    });
+
+    it('keeps the area slug when the group is relabelled', () => {
+        const root = opRoot([opRoute('/speech', [opOperation('post', {})])], 'a.op', { area: 'openai' });
+        expect(groupEndpoints([root], false, { openai: 'OpenAI' })[0]!.slug).toBe('openai');
+    });
+
     it('includes internal operations when asked', () => {
         const root = opRoot([opRoute('/secret', [opOperation('get', { modifiers: ['internal'] })])]);
         expect(groupEndpoints([root], true)[0]!.endpoints).toHaveLength(1);
@@ -233,6 +265,11 @@ describe('groupModels', () => {
     it('orders areas by first appearance', () => {
         const areaed = [contractRoot([model('A', [])], 'z.ck', { area: 'zeta' }), contractRoot([model('B', [])], 'a.ck', { area: 'alpha' })];
         expect(groupModels(areaed, new Set(['A', 'B'])).map(g => g.area)).toEqual(['zeta', 'alpha']);
+    });
+
+    it('titles a model area group from areaLabels', () => {
+        const areaed = [contractRoot([model('Voice', [])], 'a.ck', { area: 'openai' }), contractRoot([model('Clip', [])], 'b.ck', { area: 'audio' })];
+        expect(groupModels(areaed, new Set(['Voice', 'Clip']), { openai: 'OpenAI' }).map(g => g.title)).toEqual(['OpenAI', 'Audio']);
     });
 
     it('merges two files that share an area', () => {

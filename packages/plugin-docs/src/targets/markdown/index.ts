@@ -29,6 +29,7 @@ const target: DocsTarget<MarkdownConfig> = {
             contractRoots: inputs.contractRoots,
             opRoots: inputs.opRoots,
             includeInternal: config.includeInternal,
+            areaLabels: config.areaLabels,
         });
         ctx.emitFile(resolveLayout(config, rootDir).outPath, content);
     },

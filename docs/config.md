@@ -224,6 +224,11 @@ plugin-typescript turns on `server` / `sdk` / `mcp`. Include only the ones you n
 }
 ```
 
+`areaLabels`, at the plugin level or on the `markdown`, `mintlify` or `docusaurus` target, names the
+group an `area` becomes: `{ "openai": "OpenAI" }`. An area with no entry is humanized, which turns
+`bankConnections` into "Bank Connections" but cannot know that `openai` should read "OpenAI". A
+target's own map is merged over the plugin-level one.
+
 #### `openapi`
 
 One OpenAPI 3.1 YAML document. This is the interchange artifact gateways, contract tests and client

@@ -4,9 +4,10 @@ import markdown from './targets/markdown/index.js';
 import openapi, { buildSpec as buildOpenApiSpec, resolveLayout as resolveOpenApiLayout } from './targets/openapi/index.js';
 import docusaurus from './targets/docusaurus/index.js';
 import type { ContractKitPlugin, PluginContext } from '@contractkit/core';
-import type { DocsPluginConfig, GenerateInputs } from './target.js';
+import type { AreaGroupingConfig, DocsPluginConfig, GenerateInputs } from './target.js';
 
 export type {
+    AreaGroupingConfig,
     DocsPluginConfig,
     DocsTarget,
     DocsTargetName,
@@ -21,7 +22,7 @@ export type { MarkdownCodegenContext, MarkdownDialect, Admonition, EndpointBodyO
 export { generateDocusaurus } from './targets/docusaurus/index.js';
 export type { OpenApiConfig, OpenApiServerEntry, OpenApiSecurityScheme, OpenApiCodegenContext } from './targets/openapi/codegen.js';
 export { slugify, titleCase, humanize, deriveTitle, derivePageSlug, groupEndpoints, groupModels, computePubliclyReachableModels } from './naming.js';
-export type { EndpointEntry, EndpointGroup, ModelEntry, ModelGroup } from './naming.js';
+export type { AreaLabels, EndpointEntry, EndpointGroup, ModelEntry, ModelGroup } from './naming.js';
 
 /** Config keys that name a target, for the "nothing configured" error message. */
 const TARGET_NAMES = ['mintlify', 'markdown', 'openapi', 'docusaurus'] as const;
@@ -42,23 +43,29 @@ async function run(inputs: GenerateInputs, ctx: PluginContext, config: DocsPlugi
     }
 
     if (config.mintlify) {
-        await generateMintlify(inputs, ctx, config.mintlify, rootDir, resolveSharedSpec(inputs, config, rootDir));
+        await generateMintlify(inputs, ctx, withAreaLabels(config, config.mintlify), rootDir, resolveSharedSpec(inputs, config, rootDir));
         ran = true;
     }
 
     if (config.markdown) {
-        await markdown.generate(inputs, ctx, config.markdown, rootDir);
+        await markdown.generate(inputs, ctx, withAreaLabels(config, config.markdown), rootDir);
         ran = true;
     }
 
     if (config.docusaurus) {
-        await docusaurus.generate(inputs, ctx, config.docusaurus, rootDir);
+        await docusaurus.generate(inputs, ctx, withAreaLabels(config, config.docusaurus), rootDir);
         ran = true;
     }
 
     if (!ran) {
         throw new Error(`@contractkit/plugin-docs: no target configured. Add at least one of: ${TARGET_NAMES.join(', ')}.`);
     }
+}
+
+/** A target's config with the plugin-level `areaLabels` merged under its own. */
+function withAreaLabels<T extends AreaGroupingConfig>(config: DocsPluginConfig, target: T): T {
+    if (!config.areaLabels) return target;
+    return { ...target, areaLabels: { ...config.areaLabels, ...target.areaLabels } };
 }
 
 /**

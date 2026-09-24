@@ -57,9 +57,11 @@ export async function generateDocusaurus(inputs: GenerateInputs, ctx: PluginCont
     const label = config.label ?? 'API Reference';
     const emit = (relPath: string, content: string, opts?: { ifAbsent: true }): void => ctx.emitFile(resolve(layout.baseDir, relPath), content, opts);
 
-    const endpointGroups = groupEndpoints(inputs.opRoots, config.includeInternal);
+    const endpointGroups = groupEndpoints(inputs.opRoots, config.includeInternal, config.areaLabels);
     const modelGroups =
-        config.modelPages === false ? [] : groupModels(inputs.contractRoots, computePubliclyReachableModels(inputs.opRoots, inputs.contractRoots));
+        config.modelPages === false
+            ? []
+            : groupModels(inputs.contractRoots, computePubliclyReachableModels(inputs.opRoots, inputs.contractRoots), config.areaLabels);
 
     const modelPages = mapModelPages(modelGroups, layout.modelsDir);
     const modelIndex = buildModelIndex(inputs.contractRoots);

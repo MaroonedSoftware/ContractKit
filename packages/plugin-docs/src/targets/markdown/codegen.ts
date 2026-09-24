@@ -14,7 +14,8 @@ import {
     SECURITY_NONE,
     typeHasScalar,
 } from '@contractkit/core';
-import { computePubliclyReachableModels, groupEndpoints, groupModels, humanize } from '../../naming.js';
+import { computePubliclyReachableModels, groupEndpoints, groupModels } from '../../naming.js';
+import type { AreaLabels } from '../../naming.js';
 
 // ─── Local TypeScript type rendering ─────────────────────────────────────
 
@@ -201,6 +202,8 @@ export interface MarkdownCodegenContext {
      * are omitted from the rendered reference. Set to `true` for an internal-use doc.
      */
     includeInternal?: boolean;
+    /** Display names for area groups, keyed by the `area` meta value. */
+    areaLabels?: AreaLabels;
 }
 
 /**
@@ -219,9 +222,9 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
     lines.push('');
 
     // ── Collect grouped data ─────────────────────────────────────
-    const endpointGroups = groupEndpoints(opRoots, includeInternal);
+    const endpointGroups = groupEndpoints(opRoots, includeInternal, ctx.areaLabels);
     const publicModels = computePubliclyReachableModels(opRoots, contractRoots);
-    const modelGroups = groupModels(contractRoots, publicModels);
+    const modelGroups = groupModels(contractRoots, publicModels, ctx.areaLabels);
 
     // ── Table of Contents ────────────────────────────────────────
     const hasEndpoints = endpointGroups.length > 0;
@@ -237,7 +240,7 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
             for (const group of endpointGroups) {
                 if (group.area) {
                     lines.push('<details>');
-                    lines.push(`<summary><strong>${humanize(group.area)}</strong> (${group.endpoints.length})</summary>`);
+                    lines.push(`<summary><strong>${group.title}</strong> (${group.endpoints.length})</summary>`);
                     lines.push('');
                 }
                 for (const ep of group.endpoints) {
@@ -258,7 +261,7 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
             for (const group of modelGroups) {
                 if (group.area) {
                     lines.push('<details>');
-                    lines.push(`<summary><strong>${humanize(group.area)}</strong> (${group.models.length})</summary>`);
+                    lines.push(`<summary><strong>${group.title}</strong> (${group.models.length})</summary>`);
                     lines.push('');
                 }
                 for (const { model } of group.models) {
@@ -283,7 +286,7 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
 
         for (const group of endpointGroups) {
             if (group.area) {
-                lines.push(`### ${humanize(group.area)}`);
+                lines.push(`### ${group.title}`);
                 lines.push('');
             }
 
@@ -317,7 +320,7 @@ export function generateMarkdown(ctx: MarkdownCodegenContext): string {
 
         for (const group of modelGroups) {
             if (group.area) {
-                lines.push(`### ${humanize(group.area)}`);
+                lines.push(`### ${group.title}`);
                 lines.push('');
             }
 

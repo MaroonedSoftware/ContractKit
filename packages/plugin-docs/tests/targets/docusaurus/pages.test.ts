@@ -65,6 +65,12 @@ describe('renderEndpointPage', () => {
         expect(out).toContain('sidebar_position: 1');
     });
 
+    it('keeps an acronym in the name as written', () => {
+        const out = endpointPage(opRoute('/speech', [opOperation('post', { name: 'OpenAI speech' })]));
+        expect(out).toContain('title: "OpenAI speech"');
+        expect(out).toContain('sidebar_label: "OpenAI speech"');
+    });
+
     it('has no heading of its own — Docusaurus renders the title frontmatter as the H1', () => {
         const out = endpointPage(opRoute('/users', [opOperation('get', { name: 'listUsers' })]));
         expect(out).not.toContain('# List users');

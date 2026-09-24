@@ -49,6 +49,17 @@ export interface ModelGroup {
 }
 
 /**
+ * Display names for area groups, keyed by the `area` meta value. An area with no entry falls back
+ * to {@link humanize}, which cannot know that `openai` should read "OpenAI".
+ */
+export type AreaLabels = Readonly<Record<string, string>>;
+
+/** The display name for an area group: the configured label, else the humanized area. */
+function areaTitle(area: string, areaLabels: AreaLabels | undefined): string {
+    return areaLabels?.[area] ?? humanize(area);
+}
+
+/**
  * Verb used when an operation has no name to derive a title from. Shared by every target, so the
  * same endpoint is titled the same way whichever output it appears in.
  */
@@ -104,9 +115,25 @@ function startCase(value: string): string {
     return value.replace(/\b[a-z]/g, c => c.toUpperCase());
 }
 
-/** `listActiveUsers` → `list active users`. */
+/**
+ * `listActiveUsers` → `list active users`, `getOpenAIKey` → `get open AI key`.
+ *
+ * An all-caps run is kept as one word and keeps its case, so an acronym inside an identifier
+ * still reads as one.
+ */
 function splitCamel(value: string): string {
-    return value.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+    return value
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+        .replace(/\b[A-Z][a-z0-9]*\b/g, word => word.toLowerCase());
+}
+
+/**
+ * A lowerCamel identifier such as `listActiveUsers`, as opposed to prose such as `OpenAI speech`.
+ * Only the former is split into words; prose is already written the way it should read.
+ */
+function isCamelIdentifier(value: string): boolean {
+    return /^[a-z][a-zA-Z0-9]*$/.test(value) && /[A-Z]/.test(value);
 }
 
 /**
@@ -133,9 +160,16 @@ function normalizeVerbTitle(title: string): string {
  * The description ranks above the service method because a method name alone is usually too
  * thin to title a page — `PaymentService.create` gives "Create", where the description gives
  * "Create a payment".
+ *
+ * A `name:` is human text and is kept as written apart from its first letter, so an acronym in it
+ * survives: `OpenAI speech` stays "OpenAI speech". Only a bare lowerCamel name (`listActiveUsers`)
+ * is split into words, the same way a service method is.
  */
 export function deriveTitle(op: OpOperationNode, route: OpRouteNode): string {
-    if (op.name) return titleCase(splitCamel(op.name.trim()));
+    if (op.name) {
+        const name = op.name.trim();
+        return titleCase(isCamelIdentifier(name) ? splitCamel(name) : name);
+    }
 
     if (op.description) return normalizeVerbTitle(titleCase(op.description.trim()));
 
@@ -184,8 +218,9 @@ function uniqueSlug(base: string, taken: Set<string>): string {
  *
  * Files with no `area` come first as a single group, then each area in first-seen order, so the
  * targets stay comparable. Operations marked `internal` are dropped unless `includeInternal` is set.
+ * A group is titled from `areaLabels` when its area has an entry there.
  */
-export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): EndpointGroup[] {
+export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false, areaLabels?: AreaLabels): EndpointGroup[] {
     const grouped = new Map<string, EndpointEntry[]>();
     const ungrouped: EndpointEntry[] = [];
     const slugsByGroup = new Map<string, Set<string>>();
@@ -227,7 +262,7 @@ export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): 
         result.push({ area: undefined, title: 'Endpoints', slug: 'endpoints', endpoints: ungrouped });
     }
     for (const [area, endpoints] of grouped) {
-        result.push({ area, title: humanize(area), slug: slugify(area), endpoints });
+        result.push({ area, title: areaTitle(area, areaLabels), slug: slugify(area), endpoints });
     }
     return result;
 }
@@ -248,8 +283,10 @@ export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): 
  * `schemaNames` is the set of models to document. Passing `null` documents every model, which is
  * what a project with no operation files needs: there are no public operations to reach anything
  * from, but the contracts are still worth rendering.
+ *
+ * A group is titled from `areaLabels` when its area has an entry there.
  */
-export function groupModels(contractRoots: ContractRootNode[], schemaNames: ReadonlySet<string> | null): ModelGroup[] {
+export function groupModels(contractRoots: ContractRootNode[], schemaNames: ReadonlySet<string> | null, areaLabels?: AreaLabels): ModelGroup[] {
     const grouped = new Map<string, ModelEntry[]>();
     const ungrouped: ModelEntry[] = [];
     const slugsByGroup = new Map<string, Set<string>>();
@@ -279,7 +316,7 @@ export function groupModels(contractRoots: ContractRootNode[], schemaNames: Read
         result.push({ area: undefined, title: 'Models', slug: '', models: ungrouped });
     }
     for (const [area, models] of grouped) {
-        result.push({ area, title: humanize(area), slug: slugify(area), models });
+        result.push({ area, title: areaTitle(area, areaLabels), slug: slugify(area), models });
     }
     return result;
 }

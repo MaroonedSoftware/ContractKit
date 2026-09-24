@@ -95,7 +95,7 @@ export async function generateMintlify(
             ctx.emitFile(resolve(layout.baseDir, layout.specFile), toYaml(spec));
         }
 
-        const groups = groupEndpoints(inputs.opRoots, config.includeInternal);
+        const groups = groupEndpoints(inputs.opRoots, config.includeInternal, config.areaLabels);
         for (const group of groups) {
             for (const entry of group.endpoints) {
                 const path = resolve(layout.baseDir, layout.apiDir, group.slug, `${entry.slug}.mdx`);
@@ -105,7 +105,7 @@ export async function generateMintlify(
 
         // Model pages live under their area directory, mirroring the endpoint layout, so a
         // schema name is only required to be unique within its own area.
-        const models = config.modelPages === false ? [] : groupModels(inputs.contractRoots, schemaNames(spec));
+        const models = config.modelPages === false ? [] : groupModels(inputs.contractRoots, schemaNames(spec), config.areaLabels);
         for (const group of models) {
             for (const entry of group.models) {
                 const path = resolve(layout.baseDir, layout.modelsDir, group.slug, `${entry.slug}.mdx`);
