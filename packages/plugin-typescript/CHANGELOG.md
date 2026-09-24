@@ -1,5 +1,48 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.39.0
+
+### Minor Changes
+
+- 2c19b8e: Every generated MCP tool definition now carries all four annotations and its operation's security.
+
+    A tool published only the hints its `mcp { hint: ... }` block set, and a tool declaring none published no `annotations` at all. MCP's defaults for a missing hint are `destructiveHint: true` and `openWorldHint: true`, so every `GET` read as destructive and open-world. Each hint the contract leaves unset now comes from the HTTP method: a `GET` is read-only and idempotent, a `PUT` idempotent, a `DELETE` destructive, and a `POST` or `PATCH` none of these. `openWorldHint` defaults to `false`, since a tool calls the app's own service in-process.
+
+    The definition's `_meta` also reports the operation's effective security under `contractkit/security`: `'none'`, or `{ policy }` with the policy the tool asserts (`false` for a bare session check, `MFA_SATISFIED_POLICY` for an operation that declares nothing). A meta tool searching the tools can filter by it.
+
+    `TYPESCRIPT_CODEGEN_VERSION` is bumped to `15`, so an existing incremental cache regenerates its tools files, including the `register<File>McpToolClasses` functions the aggregator now imports.
+
+- 0eee5b6: `mcp.catalog: true` generates an unlisted MCP handler for every operation.
+
+    Only `mcp`-flagged operations got a tool handler, so a meta tool that searches the whole API (and calls what it finds) had nothing to call for the rest. With `catalog` on, every operation a tool can serve gets a handler, and `mcp.tools.ts` gains `registerMcpCatalog(container)`, which builds an `McpToolCatalog`: a `McpToolHandlerMap` under its own token, kept apart from the flagged tools that `registerMcpTools` still returns. Nothing lists the catalog in `tools/list`.
+
+    An operation declaring `mcp: exclude` stays out, and so does one a tool cannot serve: a multipart request, a response that is not JSON, or a `format()` result. Two operations deriving the same tool name are a generation error, since one would replace the other in the map.
+
+    Each tools file now exports `register<File>McpTools` only when it has flagged operations, and `register<File>McpCatalog` only when it has catalog ones.
+
+- 706e871: A generated MCP tool can resolve its service and policies from the request's container, per call.
+
+    A tool constructor-injected its operation's service and `PolicyService` once, when the tool map was built. Tools are singletons, so a request-scoped service (one that reads the caller's actor, say) was resolved outside any request. The new `mcp.resolve: "perCall"` setting emits tools that take no constructor dependencies: `handle()` resolves both from the request's scoped container on the MCP context, as the generated HTTP router does from `ctx.container`. A call made without a container fails with an error naming the fix. The emitted `mcp.router.ts` passes `container: ctx.container` (Koa) or `container: request.container` (Fastify) to `createMcpRequestContext` in this mode. It needs a `@maroonedsoftware/mcp` whose `McpToolContext` carries `container`. The default, `"boot"`, generates tools as before.
+
+    `mcp.tools.ts` also exports `registerMcpToolClasses(registry)`, and each tools file exports its own `register<File>McpToolClasses(registry)`, so the tool classes no longer have to be registered by hand.
+
+### Patch Changes
+
+- 8b299f6: `mcp: exclude` keeps an operation out of an MCP catalog.
+
+    An operation can now declare `mcp: exclude`. Like `mcp: false` it is no MCP tool, and it also marks the operation as one a catalog of every operation leaves out. The AST carries it as `op.mcp === MCP_EXCLUDE` (`'exclude'`), and the printer and the VS Code grammar round-trip it. Since the value is truthy, test tool exposure with the new `isMcpTool(op)` rather than `Boolean(op.mcp)`.
+
+- 2a38896: A generated MCP tool whose result is a list, a scalar or `null` now returns valid structured content.
+
+    MCP requires `structuredContent` to be an object. A tool returning a list published no `outputSchema` and text only, and a ref to an alias of a list (`Payments: array(Payment)`) published an array `outputSchema`, which a client parsing `tools/list` rejects. A list is now reported as `{ items }` and anything else that isn't an object (a scalar, an enum, a union that may be `null`) as `{ value }`, with `outputSchema` wrapped to match. The text content carries the same JSON. A record and an intersection built by `.extend()` are now reported as the objects they are.
+
+    A `format()` result, and a result the service hands back in an envelope (several statuses, response headers), are still reported as text only.
+
+    `TYPESCRIPT_CODEGEN_VERSION` is bumped to `14`, so an existing incremental cache regenerates its tools files.
+
+- Updated dependencies [8b299f6]
+    - @contractkit/core@0.32.0
+
 ## 0.38.15
 
 ### Patch Changes
