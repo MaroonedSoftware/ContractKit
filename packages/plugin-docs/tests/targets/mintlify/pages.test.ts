@@ -59,6 +59,13 @@ describe('renderEndpointPage', () => {
         expect(renderEndpointPage(entryFor(route), '/openapi.yaml')).toContain('title: "Users: list"');
     });
 
+    it('keeps an acronym in the name as written', () => {
+        const route = opRoute('/openapi', [opOperation('get', { name: 'OpenAPI document' })]);
+        const out = renderEndpointPage(entryFor(route), '/openapi.yaml');
+        expect(out).toContain('title: "OpenAPI document"');
+        expect(out).toContain('sidebarTitle: "OpenAPI document"');
+    });
+
     it('escapes a quote inside a title', () => {
         const route = opRoute('/users', [opOperation('get', { name: 'the "good" users' })]);
         expect(renderEndpointPage(entryFor(route), '/openapi.yaml')).toContain('title: "The \\"good\\" users"');

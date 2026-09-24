@@ -170,7 +170,9 @@ These apply to both multi-page targets.
   so a project with no areas keeps a flat list.
 - **Page titles** follow `name:`, then the description, then the service method, then the HTTP verb
   and path. A description beats a method name because `PaymentService.create` alone gives "Create",
-  where the description gives "Create a payment".
+  where the description gives "Create a payment". A `name:` is used as written apart from its first
+  letter, so `name: OpenAI speech` titles the page "OpenAI speech"; only a bare camelCase name such
+  as `listActiveUsers` is split into words ("List active users").
 - **Page slugs** follow `sdk:`, then `name:`, then the service method, then the HTTP method and
   path. Collisions within a group get a numeric suffix.
 

@@ -104,9 +104,25 @@ function startCase(value: string): string {
     return value.replace(/\b[a-z]/g, c => c.toUpperCase());
 }
 
-/** `listActiveUsers` → `list active users`. */
+/**
+ * `listActiveUsers` → `list active users`, `getOpenAIKey` → `get open AI key`.
+ *
+ * An all-caps run is kept as one word and keeps its case, so an acronym inside an identifier
+ * still reads as one.
+ */
 function splitCamel(value: string): string {
-    return value.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+    return value
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+        .replace(/\b[A-Z][a-z0-9]*\b/g, word => word.toLowerCase());
+}
+
+/**
+ * A lowerCamel identifier such as `listActiveUsers`, as opposed to prose such as `OpenAI speech`.
+ * Only the former is split into words; prose is already written the way it should read.
+ */
+function isCamelIdentifier(value: string): boolean {
+    return /^[a-z][a-zA-Z0-9]*$/.test(value) && /[A-Z]/.test(value);
 }
 
 /**
@@ -133,9 +149,16 @@ function normalizeVerbTitle(title: string): string {
  * The description ranks above the service method because a method name alone is usually too
  * thin to title a page — `PaymentService.create` gives "Create", where the description gives
  * "Create a payment".
+ *
+ * A `name:` is human text and is kept as written apart from its first letter, so an acronym in it
+ * survives: `OpenAI speech` stays "OpenAI speech". Only a bare lowerCamel name (`listActiveUsers`)
+ * is split into words, the same way a service method is.
  */
 export function deriveTitle(op: OpOperationNode, route: OpRouteNode): string {
-    if (op.name) return titleCase(splitCamel(op.name.trim()));
+    if (op.name) {
+        const name = op.name.trim();
+        return titleCase(isCamelIdentifier(name) ? splitCamel(name) : name);
+    }
 
     if (op.description) return normalizeVerbTitle(titleCase(op.description.trim()));
 

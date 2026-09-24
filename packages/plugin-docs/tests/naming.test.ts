@@ -53,6 +53,10 @@ describe('humanize', () => {
     it('leaves a single lowercase word alone but capitalized', () => {
         expect(humanize('billpay')).toBe('Billpay');
     });
+
+    it('keeps an acronym inside a camelCase area', () => {
+        expect(humanize('openAIKeys')).toBe('Open AI Keys');
+    });
 });
 
 describe('deriveTitle', () => {
@@ -60,6 +64,21 @@ describe('deriveTitle', () => {
 
     it('prefers the name field', () => {
         expect(deriveTitle(opOperation('get', { name: 'listActiveUsers' }), route)).toBe('List active users');
+    });
+
+    it('keeps a prose name as written, acronyms included', () => {
+        expect(deriveTitle(opOperation('post', { name: 'OpenAI speech' }), route)).toBe('OpenAI speech');
+        expect(deriveTitle(opOperation('get', { name: 'OpenAPI document' }), route)).toBe('OpenAPI document');
+        expect(deriveTitle(opOperation('get', { name: 'OpenAI' }), route)).toBe('OpenAI');
+    });
+
+    it('raises only the first letter of a lowercase prose name', () => {
+        expect(deriveTitle(opOperation('get', { name: 'list users by team' }), route)).toBe('List users by team');
+    });
+
+    it('keeps an acronym inside a camelCase identifier as one word', () => {
+        expect(deriveTitle(opOperation('get', { name: 'getOpenAIKey' }), route)).toBe('Get open AI key');
+        expect(deriveTitle(opOperation('get', { service: 'keys.getOpenAIKey' }), route)).toBe('Get open AI key');
     });
 
     it('falls back to the description, which titles better than a bare method name', () => {
