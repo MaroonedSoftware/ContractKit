@@ -240,6 +240,96 @@ describe("a generated MCP tool resolving per call from the request's container",
     });
 });
 
+describe('a generated MCP tool whose operation takes a query', () => {
+    const QUERIES = `
+contract Thing: {
+    name: string
+}
+
+contract PageQuery: {
+    limit?: int = 20
+    search?: string
+}
+
+contract FindQuery: {
+    q: string
+}
+
+operation /things/page: {
+    get: {
+        sdk: pageThings
+        mcp: true
+        service: ThingService.page
+        query: PageQuery
+        response: {
+            200: { application/json: array(Thing) }
+        }
+    }
+}
+
+operation /things/find: {
+    get: {
+        sdk: findThings
+        mcp: true
+        service: ThingService.find
+        query: FindQuery
+        response: {
+            200: { application/json: array(Thing) }
+        }
+    }
+}
+
+operation /things/recent: {
+    get: {
+        sdk: recentThings
+        mcp: true
+        service: ThingService.recent
+        query: {
+            limit?: int = 20
+            search?: string
+        }
+        response: {
+            200: { application/json: array(Thing) }
+        }
+    }
+}
+`;
+    const tool = async (className: string, service: object) => {
+        const files = await emit({}, QUERIES);
+        const path = [...files.keys()].find(p => p.endsWith('things.mcp.ts'))!;
+        const Tool = loader(files)(path)[className] as ToolClass;
+        return new Tool(service, {});
+    };
+
+    it('hands the service the query parsed from nothing when the caller sends none, defaults applied', async () => {
+        // The router validates `ctx.query`, which is never absent, so the service has only ever been
+        // given an object. An omitted query must not reach it as `undefined`.
+        const received: unknown[] = [];
+        const paging = await tool('PageThingsMcpTool', { page: async (query: unknown) => (received.push(query), []) });
+
+        await paging.handle({}, session);
+        await paging.handle({ query: { search: 'a' } }, session);
+
+        expect(received).toEqual([{ limit: 20 }, { limit: 20, search: 'a' }]);
+    });
+
+    it('refuses an omitted query whose fields are required, as the router would', async () => {
+        const finding = await tool('FindThingsMcpTool', { find: async () => [] });
+
+        await expect(finding.handle({}, session)).rejects.toThrow(/q/);
+    });
+
+    it('keeps an inline query param optional, with its default, as the router does', async () => {
+        const received: unknown[] = [];
+        const recent = await tool('RecentThingsMcpTool', { recent: async (query: unknown) => (received.push(query), []) });
+
+        await recent.handle({}, session);
+        await recent.handle({ query: { search: 'a' } }, session);
+
+        expect(received).toEqual([{ limit: 20 }, { limit: 20, search: 'a' }]);
+    });
+});
+
 describe('the MCP catalog', () => {
     const container = { get: (Tool: ToolClass) => new Tool({}, {}) };
     const aggregator = async () => {

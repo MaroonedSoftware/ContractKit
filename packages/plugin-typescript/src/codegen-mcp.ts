@@ -19,7 +19,7 @@ import {
     isJsonMime,
     classifyContentType,
 } from '@contractkit/core';
-import { renderType, renderInputType, pascalToDotCase, compilesToPipe, isExtendChain } from './codegen-contract.js';
+import { renderType, renderInputType, pascalToDotCase, compilesToPipe, isExtendChain, applyFieldModifiers } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName, bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
 import { DECIMAL_IMPORT, DECIMAL_PRELUDE_LINES } from './decimal-runtime.js';
@@ -268,7 +268,9 @@ function refSchema(name: string, modelsWithInput?: Set<string>): string {
 function paramSourceSchema(src: ParamSource, inputSchema: InputSchema, modelsWithInput?: Set<string>): string {
     if (src.kind === 'ref') return refSchema(src.name, modelsWithInput);
     if (src.kind === 'type') return inputSchema(src.node);
-    const fields = src.nodes.map(n => `${quoteKey(n.name)}: ${inputSchema(n.type)}`).join(', ');
+    // Each param's own optional, nullable and default, as the router's inline block applies them, so a
+    // tool's query means what the route's does: `limit?: int = 20` is optional and defaults to 20.
+    const fields = src.nodes.map(n => `${quoteKey(n.name)}: ${applyFieldModifiers(inputSchema(n.type), n)}`).join(', ');
     return `z.object({ ${fields} })`;
 }
 
@@ -695,7 +697,15 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
 
     // handle
     const props = buildArgsProps(route, op, options);
-    const destructure = props.map(p => (p.local === p.key ? p.key : `${p.key}: ${p.local}`));
+    // The query and headers are optional in the tool's schema, since a caller with nothing to filter
+    // should not have to send an empty object. The service still takes the parsed object, as it does
+    // from the router, which validates `ctx.query` (never absent) against the same schema. So an
+    // omitted one is parsed from `{}`: its defaults apply, and a required field missing is the same
+    // validation error the router gives, rather than `undefined` reaching the service.
+    const destructure = props.map(p => {
+        const binding = p.local === p.key ? p.key : `${p.key}: ${p.local}`;
+        return p.optional ? `${binding} = await parseAndValidate({}, ${argsConstName}.shape.${p.key}.unwrap())` : binding;
+    });
     const callArgs = buildArgs(route, op, bindMcpPathParams(route).locals);
     const isVoid = !primaryResponseBody(op);
     const shape = resultShape(op, options.models);

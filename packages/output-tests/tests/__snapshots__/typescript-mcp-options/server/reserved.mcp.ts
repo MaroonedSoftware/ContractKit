@@ -19,7 +19,7 @@ function requireMcpContainer(context: McpToolContext): Container {
     return context.container;
 }
 
-const GetSeatArgs = z.object({ class: z.string(), query: z.object({ from: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })), in: z.string(), pageSize: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()) }).optional(), headers: z.object({ from: z.string() }).optional() });
+const GetSeatArgs = z.object({ class: z.string(), query: z.object({ from: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })).optional(), in: z.string().optional(), pageSize: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()).optional() }).optional(), headers: z.object({ from: z.string().optional() }).optional() });
 const GetRowArgs = z.object({ params: SeatRef });
 const PutNoteArgs = z.object({ body_: z.string(), body: Note });
 
@@ -40,7 +40,7 @@ export class GetSeatMcpTool implements McpToolHandler {
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         const container = requireMcpContainer(context);
         await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
-        const { class: class_, query, headers } = await parseAndValidate(args, GetSeatArgs);
+        const { class: class_, query = await parseAndValidate({}, GetSeatArgs.shape.query.unwrap()), headers = await parseAndValidate({}, GetSeatArgs.shape.headers.unwrap()) } = await parseAndValidate(args, GetSeatArgs);
         const result = await container.get(SeatService).getSeat(class_, query, headers);
         const resultJson = JSON.stringify({ ...result, body: serializeSeat(result.body) });
         return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
