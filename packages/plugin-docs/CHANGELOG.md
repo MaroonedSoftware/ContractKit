@@ -1,5 +1,15 @@
 # @contractkit/plugin-docs
 
+## 0.5.0
+
+### Minor Changes
+
+- 0555b11: Add an `areaLabels` option that names area groups: `"areaLabels": { "openai": "OpenAI" }`. It applies to the Docusaurus category labels, the Mintlify `docs.json` groups and the Markdown reference's area headings, which otherwise humanize the area (`openai` became "Openai"). Set it at the plugin level for every target, or on `markdown`, `mintlify` or `docusaurus`, whose map is merged over the plugin-level one.
+
+### Patch Changes
+
+- 2e6a9ce: Keep an operation's `name:` as written in its page title. The name was lowercased word by word, so `name: OpenAI speech` became "Open ai speech"; it now stays "OpenAI speech", with only its first letter raised. A bare camelCase name such as `listActiveUsers` is still split into "List active users", and an acronym inside one (`getOpenAIKey`, or a camelCase area) now stays one word: "Get open AI key".
+
 ## 0.4.2
 
 ### Patch Changes
