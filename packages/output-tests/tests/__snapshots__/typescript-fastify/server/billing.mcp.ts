@@ -55,7 +55,7 @@ export class SearchPaymentsMcpTool implements McpToolHandler {
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
-        const { query, headers } = await parseAndValidate(args, SearchPaymentsArgs);
+        const { query = await parseAndValidate({}, SearchPaymentsArgs.shape.query.unwrap()), headers = await parseAndValidate({}, SearchPaymentsArgs.shape.headers.unwrap()) } = await parseAndValidate(args, SearchPaymentsArgs);
         const result = await this.service.search(query, headers);
         const resultJson = JSON.stringify({ items: result }, bigIntReplacer);
         return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
@@ -104,7 +104,7 @@ export class SearchPaymentsByDateMcpTool implements McpToolHandler {
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
-        const { query, headers } = await parseAndValidate(args, SearchPaymentsByDateArgs);
+        const { query = await parseAndValidate({}, SearchPaymentsByDateArgs.shape.query.unwrap()), headers = await parseAndValidate({}, SearchPaymentsByDateArgs.shape.headers.unwrap()) } = await parseAndValidate(args, SearchPaymentsByDateArgs);
         await this.service.searchByDate(query, headers);
         return { content: [{ type: 'text', text: 'OK' }] };
     }
@@ -127,7 +127,7 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
-        const { query, headers } = await parseAndValidate(args, SearchPaymentsScopedArgs);
+        const { query = await parseAndValidate({}, SearchPaymentsScopedArgs.shape.query.unwrap()), headers = await parseAndValidate({}, SearchPaymentsScopedArgs.shape.headers.unwrap()) } = await parseAndValidate(args, SearchPaymentsScopedArgs);
         const result = await this.service.searchScoped(query, headers);
         const resultJson = JSON.stringify(__serializeSearchPaymentsScopedMcpToolResult(result));
         return { content: [{ type: 'text', text: resultJson }] };
@@ -152,7 +152,7 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
-        const { body, query } = await parseAndValidate(args, SaveScopedSearchArgs);
+        const { body, query = await parseAndValidate({}, SaveScopedSearchArgs.shape.query.unwrap()) } = await parseAndValidate(args, SaveScopedSearchArgs);
         const result = await this.service.saveScopedSearch(body, query);
         const resultJson = JSON.stringify(serializeSavedSearch(result));
         return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };

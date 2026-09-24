@@ -20,7 +20,7 @@ function requireMcpContainer(context: McpToolContext): Container {
 }
 
 const CreatePaymentArgs = z.object({ body: PaymentInput });
-const ListPaymentsArgs = z.object({ query: z.object({ limit: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()), cursor: z.string(), status: z.enum(["pending", "completed", "failed"]) }).optional(), headers: z.object({ 'api-key': z.string(), 'x-tenant': z.string() }).optional() });
+const ListPaymentsArgs = z.object({ query: z.object({ limit: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()).default(20), cursor: z.string(), status: z.enum(["pending", "completed", "failed"]).optional() }).optional(), headers: z.object({ 'api-key': z.string().optional(), 'x-tenant': z.string() }).optional() });
 const SearchPaymentsArgs = z.object({ query: PaymentFilter.optional(), headers: TenantHeaders.optional() });
 const CreatePaymentsArgs = z.object({ body: z.array(PaymentInput) });
 const GetPaymentArgs = z.object({ paymentId: z.uuid() });
@@ -94,7 +94,7 @@ export class ListPaymentsMcpTool implements McpToolHandler {
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         const container = requireMcpContainer(context);
         await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
-        const { query, headers } = await parseAndValidate(args, ListPaymentsArgs);
+        const { query = await parseAndValidate({}, ListPaymentsArgs.shape.query.unwrap()), headers = await parseAndValidate({}, ListPaymentsArgs.shape.headers.unwrap()) } = await parseAndValidate(args, ListPaymentsArgs);
         const result = await container.get(PaymentService).list(query, headers);
         const resultJson = JSON.stringify({ items: result }, bigIntReplacer);
         return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
@@ -118,7 +118,7 @@ export class SearchPaymentsMcpTool implements McpToolHandler {
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         const container = requireMcpContainer(context);
         await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
-        const { query, headers } = await parseAndValidate(args, SearchPaymentsArgs);
+        const { query = await parseAndValidate({}, SearchPaymentsArgs.shape.query.unwrap()), headers = await parseAndValidate({}, SearchPaymentsArgs.shape.headers.unwrap()) } = await parseAndValidate(args, SearchPaymentsArgs);
         const result = await container.get(PaymentService).search(query, headers);
         const resultJson = JSON.stringify({ items: result }, bigIntReplacer);
         return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
@@ -303,7 +303,7 @@ export class SearchPaymentsByDateMcpTool implements McpToolHandler {
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         const container = requireMcpContainer(context);
         await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
-        const { query, headers } = await parseAndValidate(args, SearchPaymentsByDateArgs);
+        const { query = await parseAndValidate({}, SearchPaymentsByDateArgs.shape.query.unwrap()), headers = await parseAndValidate({}, SearchPaymentsByDateArgs.shape.headers.unwrap()) } = await parseAndValidate(args, SearchPaymentsByDateArgs);
         await container.get(PaymentService).searchByDate(query, headers);
         return { content: [{ type: 'text', text: 'OK' }] };
     }
@@ -325,7 +325,7 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         const container = requireMcpContainer(context);
         await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
-        const { query, headers } = await parseAndValidate(args, SearchPaymentsScopedArgs);
+        const { query = await parseAndValidate({}, SearchPaymentsScopedArgs.shape.query.unwrap()), headers = await parseAndValidate({}, SearchPaymentsScopedArgs.shape.headers.unwrap()) } = await parseAndValidate(args, SearchPaymentsScopedArgs);
         const result = await container.get(PaymentService).searchScoped(query, headers);
         const resultJson = JSON.stringify(__serializeSearchPaymentsScopedMcpToolResult(result));
         return { content: [{ type: 'text', text: resultJson }] };
@@ -349,7 +349,7 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         const container = requireMcpContainer(context);
         await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
-        const { body, query } = await parseAndValidate(args, SaveScopedSearchArgs);
+        const { body, query = await parseAndValidate({}, SaveScopedSearchArgs.shape.query.unwrap()) } = await parseAndValidate(args, SaveScopedSearchArgs);
         const result = await container.get(PaymentService).saveScopedSearch(body, query);
         const resultJson = JSON.stringify(serializeSavedSearch(result));
         return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
