@@ -1,5 +1,12 @@
 # @contractkit/plugin-swift
 
+## 0.1.8
+
+### Patch Changes
+
+- Updated dependencies [8b299f6]
+    - @contractkit/core@0.32.0
+
 ## 0.1.7
 
 ### Patch Changes

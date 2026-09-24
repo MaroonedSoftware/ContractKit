@@ -1,5 +1,12 @@
 # @contractkit/contractkit-plugin-python
 
+## 0.15.5
+
+### Patch Changes
+
+- Updated dependencies [8b299f6]
+    - @contractkit/core@0.32.0
+
 ## 0.15.4
 
 ### Patch Changes
