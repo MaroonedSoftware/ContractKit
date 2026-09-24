@@ -1,14 +1,13 @@
 // Auto-generated MCP tools
-// generated from [hyphenated.ck](../contracts/hyphenated.ck)
+// generated from [simple.ck](../contracts/simple.ck)
 import { Injectable, type Container, type Registry } from 'injectkit';
 import { z } from 'zod';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
 import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';
 import { PolicyService } from '@maroonedsoftware/policies';
 import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';
-import { parseAndValidate } from '@maroonedsoftware/zod';
-import { InvoiceService } from '#src/services/invoice.service.js';
-import { Invoice } from './schemas/hyphenated.schema.js';
+import { StatusService } from '#src/services/status.service.js';
+import { Heartbeat } from './schemas/simple.schema.js';
 
 /** The request's scoped container, which a tool resolving per call reads its service and policies from. */
 function requireMcpContainer(context: McpToolContext): Container {
@@ -18,42 +17,36 @@ function requireMcpContainer(context: McpToolContext): Container {
     return context.container;
 }
 
-const GetInvoiceArgs = z.object({ invoiceId: z.uuid() });
+const GetStatusArgs = z.object({});
 
 /**
- * from [hyphenated.ck](../contracts/hyphenated.ck#L22)
+ * from [simple.ck](../contracts/simple.ck#L14)
  */
 @Injectable()
-export class GetInvoiceMcpTool implements McpToolHandler {
+export class GetStatusMcpTool implements McpToolHandler {
     readonly definition: Tool = {
-        name: 'get_invoice',
-        description: 'fetch an invoice',
-        inputSchema: z.toJSONSchema(GetInvoiceArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
-        outputSchema: z.toJSONSchema(Invoice, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        name: 'get_status',
+        description: 'current service status',
+        inputSchema: z.toJSONSchema(GetStatusArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        outputSchema: z.toJSONSchema(Heartbeat, { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
     };
 
-    async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
+    async handle(_args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         const container = requireMcpContainer(context);
         await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
-        const { invoiceId } = await parseAndValidate(args, GetInvoiceArgs);
-        const result = await container.get(InvoiceService).getById(invoiceId);
+        const result = await container.get(StatusService).get();
         return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
     }
 }
 
-/** Add this file's tools to the tool map. */
-export function registerHyphenatedMcpTools(map: McpToolHandlerMap, container: Container): void {
-    map.set('get_invoice', container.get(GetInvoiceMcpTool));
-}
-
 /** Add a handler for each of this file's operations to the catalog, unlisted in `tools/list`. */
-export function registerHyphenatedMcpCatalog(map: McpToolHandlerMap, container: Container): void {
-    map.set('get_invoice', container.get(GetInvoiceMcpTool));
+export function registerSimpleMcpCatalog(map: McpToolHandlerMap, container: Container): void {
+    map.set('get_status', container.get(GetStatusMcpTool));
 }
 
 /** Register this file's tool classes on the registry, so the tool maps can resolve them. */
-export function registerHyphenatedMcpToolClasses(registry: Registry): void {
-    registry.register(GetInvoiceMcpTool).useClass(GetInvoiceMcpTool).asSingleton();
+export function registerSimpleMcpToolClasses(registry: Registry): void {
+    registry.register(GetStatusMcpTool).useClass(GetStatusMcpTool).asSingleton();
 }

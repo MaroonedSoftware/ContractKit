@@ -159,7 +159,7 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
     }
 }
 
-/** Add this file's tools to the shared catalog. */
+/** Add this file's tools to the tool map. */
 export function registerBillingMcpTools(map: McpToolHandlerMap, container: Container): void {
     map.set('search_payments', container.get(SearchPaymentsMcpTool));
     map.set('get_refund', container.get(GetRefundMcpTool));
@@ -168,7 +168,7 @@ export function registerBillingMcpTools(map: McpToolHandlerMap, container: Conta
     map.set('save_scoped_search', container.get(SaveScopedSearchMcpTool));
 }
 
-/** Register this file's tool classes on the registry, so the catalog can resolve them. */
+/** Register this file's tool classes on the registry, so the tool maps can resolve them. */
 export function registerBillingMcpToolClasses(registry: Registry): void {
     registry.register(SearchPaymentsMcpTool).useClass(SearchPaymentsMcpTool).asSingleton();
     registry.register(GetRefundMcpTool).useClass(GetRefundMcpTool).asSingleton();

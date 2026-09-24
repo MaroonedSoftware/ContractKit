@@ -1036,8 +1036,9 @@ get: {
 ```
 
 `mcp: exclude` is `false` and more: the operation is no tool, and it is also kept out of an MCP
-catalog of every operation (the TypeScript plugin's `mcp.catalog`). Use it for an operation an
-agent must never reach, even through a meta tool that searches the API.
+catalog of every operation (the TypeScript plugin's `mcp.catalog`, see
+[config.md](./config.md#the-catalog)). Use it for an operation an agent must never reach, even
+through a meta tool that searches the API.
 
 For explicit MCP tool metadata, use the settings block:
 

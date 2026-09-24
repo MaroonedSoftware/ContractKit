@@ -71,10 +71,11 @@ import {
     generateMcpFile,
     generateMcpAggregator,
     generateMcpRouter,
-    hasMcpOperations,
     deriveMcpRegisterFnName,
     deriveMcpRegisterClassesFnName,
+    deriveMcpRegisterCatalogFnName,
     defaultMcpMountSecurity,
+    planTools,
     type McpResolveMode,
 } from './codegen-mcp.js';
 import {
@@ -214,6 +215,13 @@ export interface McpConfig {
      *   passes that container. Needs a `@maroonedsoftware/mcp` whose context carries one.
      */
     resolve?: McpResolveMode;
+    /**
+     * Also generate a handler for every operation a tool can serve, not only the `mcp`-flagged ones,
+     * gathered into an `McpToolCatalog` by `registerMcpCatalog(container)`. Nothing lists the catalog:
+     * a meta tool looks a handler up by name. `mcp: exclude` keeps an operation out, and so do a
+     * multipart request, a response that is not JSON, and a `format()` result. Default false.
+     */
+    catalog?: boolean;
 }
 
 /** Top-level plugin config. Each sub-config that is present enables its sub-generator. */
@@ -279,6 +287,10 @@ function assertValidConfig(config: TypescriptPluginConfig): void {
                 `plugin-typescript: mcp.security must be 'none', or an object whose 'policy' is a policy name or false — got ${JSON.stringify(mcpSecurity)}.`,
             );
         }
+    }
+    const catalog = config.mcp?.catalog;
+    if (catalog !== undefined && typeof catalog !== 'boolean') {
+        throw new Error(`plugin-typescript: mcp.catalog must be true or false — got ${JSON.stringify(catalog)}.`);
     }
     const resolve = config.mcp?.resolve;
     if (resolve !== undefined && resolve !== 'boot' && resolve !== 'perCall') {
@@ -1297,6 +1309,27 @@ function resolveMcpModelOutPaths(
     return map;
 }
 
+/**
+ * Throw when two generated handlers share a tool name. The catalog gives every operation one, named
+ * from its `sdk` or its method and path, so two files can derive the same name, and one would
+ * silently replace the other in the map.
+ */
+function assertUniqueToolNames(roots: readonly OpRootNode[], includeInternal: boolean, models: Map<string, ModelNode>): void {
+    const seen = new Map<string, string>();
+    for (const root of roots) {
+        for (const plan of planTools(root, includeInternal, true, models)) {
+            const where = `${plan.op.method.toUpperCase()} ${plan.route.path} (${root.file}:${plan.op.loc.line})`;
+            const first = seen.get(plan.toolName);
+            if (first) {
+                throw new Error(
+                    `plugin-typescript: MCP tool name '${plan.toolName}' is derived for both ${first} and ${where}. Give one an \`sdk:\` name or an \`mcp: { name: "..." }\`.`,
+                );
+            }
+            seen.set(plan.toolName, where);
+        }
+    }
+}
+
 function collectMcpOutput(
     config: McpConfig,
     fullConfig: TypescriptPluginConfig,
@@ -1333,9 +1366,12 @@ function collectMcpOutput(
     }
 
     // ── Per-op-root tool-handler units (only files with MCP-exposed ops) ──
-    const entries: { outPath: string; registerFn: string; registerClassesFn: string }[] = [];
+    const catalog = config.catalog ?? false;
+    if (catalog) assertUniqueToolNames(inputs.opRoots, includeInternal, modelMap);
+    const entries: { outPath: string; registerFn?: string; registerCatalogFn?: string; registerClassesFn: string }[] = [];
     for (const ast of inputs.opRoots) {
-        if (!hasMcpOperations(ast, includeInternal)) continue;
+        const plans = planTools(ast, includeInternal, catalog, modelMap);
+        if (plans.length === 0) continue;
         const outPath = computeOpOutPath(ast.file, mcpBase, config.output?.tools, '.mcp.ts', commonRoot, ast.meta);
         const refs = collectOpRootRefs(ast, modelMap);
         const fingerprint = hashFingerprint({
@@ -1373,11 +1409,17 @@ function collectMcpOutput(
                         modelsWithSerializer,
                         models: modelMap,
                         resolve: config.resolve,
+                        catalog,
                     }),
                 },
             ],
         });
-        entries.push({ outPath, registerFn: deriveMcpRegisterFnName(ast.file), registerClassesFn: deriveMcpRegisterClassesFnName(ast.file) });
+        entries.push({
+            outPath,
+            registerFn: plans.some(p => p.listed) ? deriveMcpRegisterFnName(ast.file) : undefined,
+            registerCatalogFn: plans.some(p => p.inCatalog) ? deriveMcpRegisterCatalogFnName(ast.file) : undefined,
+            registerClassesFn: deriveMcpRegisterClassesFnName(ast.file),
+        });
     }
 
     if (entries.length === 0) return;
@@ -1388,10 +1430,10 @@ function collectMcpOutput(
         .map(e => {
             let rel = relative(dirname(indexPath), e.outPath).replace(/\.ts$/, '.js');
             if (!rel.startsWith('.')) rel = './' + rel;
-            return { registerFn: e.registerFn, registerClassesFn: e.registerClassesFn, importPath: rel };
+            return { registerFn: e.registerFn, registerCatalogFn: e.registerCatalogFn, registerClassesFn: e.registerClassesFn, importPath: rel };
         })
-        .sort((a, b) => a.registerFn.localeCompare(b.registerFn));
-    globalFiles.push({ relativePath: indexPath, content: generateMcpAggregator(aggregatorEntries) });
+        .sort((a, b) => a.registerClassesFn.localeCompare(b.registerClassesFn));
+    globalFiles.push({ relativePath: indexPath, content: generateMcpAggregator(aggregatorEntries, { catalog }) });
 
     // ── Router (global, optional) ──
     if (config.emitRouter !== false) {
@@ -1401,7 +1443,10 @@ function collectMcpOutput(
         const framework = resolveServerFramework(fullConfig.server?.framework);
         // A config that names no security takes the guard the exposed tools imply.
         const security = config.security ?? defaultMcpMountSecurity(inputs.opRoots, includeInternal);
-        globalFiles.push({ relativePath: routerPath, content: generateMcpRouter({ path: config.path, framework, security, resolve: config.resolve }) });
+        globalFiles.push({
+            relativePath: routerPath,
+            content: generateMcpRouter({ path: config.path, framework, security, resolve: config.resolve }),
+        });
     }
 }
 

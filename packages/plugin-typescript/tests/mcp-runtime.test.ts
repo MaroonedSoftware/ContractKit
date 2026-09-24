@@ -41,6 +41,27 @@ operation /things/maybe: {
     }
 }
 
+operation /things/{id}: {
+    delete: {
+        sdk: removeThing
+        service: ThingService.remove
+        response: {
+            204:
+        }
+    }
+}
+
+operation /things/purge: {
+    post: {
+        sdk: purgeThings
+        mcp: exclude
+        service: ThingService.purge
+        response: {
+            204:
+        }
+    }
+}
+
 operation /things/label: {
     get: {
         sdk: thingLabel
@@ -66,9 +87,9 @@ interface Tool {
 type ToolClass = new (...deps: unknown[]) => Tool;
 
 /** Everything the plugin emits for {@link SOURCE}, keyed by absolute path. */
-async function emit(mcp: McpConfig = {}): Promise<Map<string, string>> {
+async function emit(mcp: McpConfig = {}, source = SOURCE): Promise<Map<string, string>> {
     const diag = new DiagnosticCollector();
-    const { contract, op } = decomposeCk(parseCk(SOURCE, '/project/contracts/things.ck', diag));
+    const { contract, op } = decomposeCk(parseCk(source, '/project/contracts/things.ck', diag));
     expect(diag.getAll().filter(d => d.severity === 'error')).toEqual([]);
     const plugin = createTypescriptPlugin(
         {
@@ -104,6 +125,7 @@ function loader(files: Map<string, string>) {
         zod: { z },
         injectkit: { Injectable: () => (target: unknown) => target },
         '@maroonedsoftware/mcp': {
+            McpToolHandlerMap: class extends Map {},
             requireMcpPolicy: async (context: { authenticationSession?: unknown }) => {
                 if (!context.authenticationSession) throw new Error('401');
                 return context.authenticationSession;
@@ -215,5 +237,61 @@ describe("a generated MCP tool resolving per call from the request's container",
         await expect(new Tool().handle({}, { ...session, toolName: 'thing_label' })).rejects.toThrow(
             "MCP tool 'thing_label' needs the request container: pass `container: ctx.container` to createMcpRequestContext.",
         );
+    });
+});
+
+describe('the MCP catalog', () => {
+    const container = { get: (Tool: ToolClass) => new Tool({}, {}) };
+    const aggregator = async () => {
+        const files = await emit({ catalog: true });
+        return loader(files)('/project/server/mcp.tools.ts');
+    };
+
+    it('holds a handler for every operation a tool can serve, and lists only the flagged ones', async () => {
+        const { registerMcpTools, registerMcpCatalog, McpToolCatalog } = (await aggregator()) as {
+            registerMcpTools: (c: typeof container) => Map<string, Tool>;
+            registerMcpCatalog: (c: typeof container) => Map<string, Tool>;
+            McpToolCatalog: new () => Map<string, Tool>;
+        };
+        expect([...registerMcpTools(container).keys()].sort()).toEqual(['list_things', 'maybe_thing', 'thing_label']);
+        const catalog = registerMcpCatalog(container);
+        expect(catalog).toBeInstanceOf(McpToolCatalog);
+        expect([...catalog.keys()].sort()).toEqual(['list_things', 'maybe_thing', 'remove_thing', 'thing_label']);
+    });
+
+    it('describes each handler with its annotations and security', async () => {
+        const catalog = (
+            (await aggregator()).registerMcpCatalog as (
+                c: typeof container,
+            ) => Map<string, Tool & { definition: { annotations?: object; _meta?: object } }>
+        )(container);
+        expect(catalog.get('remove_thing')!.definition.annotations).toEqual({
+            readOnlyHint: false,
+            destructiveHint: true,
+            idempotentHint: false,
+            openWorldHint: false,
+        });
+        expect(catalog.get('remove_thing')!.definition._meta).toEqual({ 'contractkit/security': { policy: 'mfa.satisfied' } });
+    });
+
+    it('refuses two operations that derive the same tool name', async () => {
+        const source = `
+operation /a: {
+    get: {
+        sdk: listThings
+        service: ThingService.a
+        response: { 204: }
+    }
+}
+
+operation /b: {
+    get: {
+        sdk: listThings
+        service: ThingService.b
+        response: { 204: }
+    }
+}
+`;
+        await expect(emit({ catalog: true }, source)).rejects.toThrow("MCP tool name 'list_things' is derived for both GET /a");
     });
 });

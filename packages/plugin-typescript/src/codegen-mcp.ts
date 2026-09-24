@@ -9,7 +9,16 @@ import type {
     SecurityNode,
     ModelNode,
 } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE, emittedResponses, isMcpTool } from '@contractkit/core';
+import {
+    resolveModifiers,
+    resolveSecurity,
+    SECURITY_NONE,
+    MCP_EXCLUDE,
+    emittedResponses,
+    isMcpTool,
+    isJsonMime,
+    classifyContentType,
+} from '@contractkit/core';
 import { renderType, renderInputType, pascalToDotCase, compilesToPipe, isExtendChain } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName, bodyTypesStructurallyEqual } from './codegen-operation.js';
 import { quoteKey, escapeSingleQuoted, sourceLink } from './ts-render.js';
@@ -69,6 +78,12 @@ export interface McpCodegenOptions {
      * `ctx.container`, so a request-scoped service sees the caller's actor.
      */
     resolve?: McpResolveMode;
+    /**
+     * Also generate a handler for every operation a tool can serve, flagged or not, and a
+     * `register<File>McpCatalog` adding them to a catalog map apart from the listed tools. See
+     * {@link isCatalogOperation} for what a tool cannot serve.
+     */
+    catalog?: boolean;
 }
 
 /** When a generated tool resolves its service and policies: once at boot, or per call. */
@@ -85,15 +100,24 @@ function mcpConfig(op: OpOperationNode): McpConfigNode | undefined {
  * True if the root has at least one MCP-exposed operation. With `includeInternal: false`
  * (default) `internal` operations don't count. Mirrors `hasPublicOperations`.
  */
-export function hasMcpOperations(root: OpRootNode, includeInternal = false): boolean {
-    for (const route of root.routes) {
-        for (const op of route.operations) {
-            if (!isMcpTool(op)) continue;
-            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
-            return true;
-        }
-    }
-    return false;
+export function hasMcpOperations(root: OpRootNode, includeInternal = false, catalog = false, models?: Map<string, ModelNode>): boolean {
+    return planTools(root, includeInternal, catalog, models).length > 0;
+}
+
+/**
+ * Whether an operation belongs in the catalog of every operation: not `mcp: exclude`, and one a
+ * tool can serve. A tool takes JSON arguments and returns JSON, so an operation with a multipart
+ * request, a response that is not JSON (audio, an HLS playlist), or a `format()` result, whose
+ * schema is a pipe JSON Schema cannot describe, is left out.
+ */
+export function isCatalogOperation(op: OpOperationNode, models?: Map<string, ModelNode>): boolean {
+    if (op.mcp === MCP_EXCLUDE) return false;
+    if ((op.request?.bodies ?? []).some(b => classifyContentType(b.contentType) === 'multipart')) return false;
+    const emitted = emittedResponses(op);
+    if (emitted.some(resp => resp.bodies.some(b => !isJsonMime(b.contentType)))) return false;
+    const body = primaryResponseBody(op);
+    if (body && models && pipeRefs(body).some(name => compilesToPipe(name, models))) return false;
+    return true;
 }
 
 // ─── Name derivation ────────────────────────────────────────────────────────
@@ -544,13 +568,23 @@ interface ToolPlan {
     argsConstName: string;
     /** Effective security for the operation, cascaded operation → route → file. */
     security: SecurityNode | undefined;
+    /** Flagged `mcp:`, so listed in `tools/list` through `register<File>McpTools`. */
+    listed: boolean;
+    /** In the catalog of every operation, through `register<File>McpCatalog`. */
+    inCatalog: boolean;
 }
 
-export function planTools(root: OpRootNode, includeInternal: boolean): ToolPlan[] {
+/**
+ * Every operation a file generates a handler for: each one flagged `mcp:`, and with `catalog` on,
+ * each one {@link isCatalogOperation} admits too. `internal` operations only with `includeInternal`.
+ */
+export function planTools(root: OpRootNode, includeInternal: boolean, catalog = false, models?: Map<string, ModelNode>): ToolPlan[] {
     const plans: ToolPlan[] = [];
     for (const route of root.routes) {
         for (const op of route.operations) {
-            if (!isMcpTool(op)) continue;
+            const listed = isMcpTool(op);
+            const inCatalog = catalog && isCatalogOperation(op, models);
+            if (!listed && !inCatalog) continue;
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
             const toolName = deriveToolName(op, route);
             const className = deriveToolClassName(toolName);
@@ -561,6 +595,8 @@ export function planTools(root: OpRootNode, includeInternal: boolean): ToolPlan[
                 className,
                 argsConstName: `${toPascal(toolName)}Args`,
                 security: resolveSecurity(route, op, root),
+                listed,
+                inCatalog,
             });
         }
     }
@@ -733,6 +769,11 @@ export function deriveMcpRegisterFnName(file: string): string {
     return `register${deriveBaseName(file)}McpTools`;
 }
 
+/** The exported catalog fn for an op-root file, e.g. `payments.op` → `registerPaymentsMcpCatalog`. */
+export function deriveMcpRegisterCatalogFnName(file: string): string {
+    return `register${deriveBaseName(file)}McpCatalog`;
+}
+
 /** The exported fn registering a file's tool classes, e.g. `payments.op` → `registerPaymentsMcpToolClasses`. */
 export function deriveMcpRegisterClassesFnName(file: string): string {
     return `register${deriveBaseName(file)}McpToolClasses`;
@@ -741,7 +782,7 @@ export function deriveMcpRegisterClassesFnName(file: string): string {
 /** Generate one `<filename>.mcp.ts` for an op-root: tool handler classes + a per-file register fn. */
 export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {}): string {
     const includeInternal = options.includeInternal ?? false;
-    const plans = planTools(root, includeInternal);
+    const plans = planTools(root, includeInternal, options.catalog, options.models);
 
     // Args schema consts (also drive the JSON-Schema definitions).
     const argsConsts = plans.map(p => `const ${p.argsConstName} = ${argsSchemaExpr(buildArgsProps(p.route, p.op, options))};`);
@@ -750,14 +791,28 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     const inlineSerializers = new Map<string, string[]>();
     const classes = plans.map(p => renderToolClass(p, root.file, options, inlineSerializers).join('\n'));
 
-    // Per-file register fn.
+    // Per-file register fns: one for the listed tools and one for the catalog, each emitted only when
+    // it has something to add, so neither takes parameters it never reads.
     const registerFn: string[] = [];
-    registerFn.push(`/** Add this file's tools to the shared catalog. */`);
-    registerFn.push(`export function ${deriveMcpRegisterFnName(root.file)}(map: McpToolHandlerMap, container: Container): void {`);
-    for (const p of plans) registerFn.push(`    map.set('${escapeSingleQuoted(p.toolName)}', container.get(${p.className}));`);
-    registerFn.push('}');
-    registerFn.push('');
-    registerFn.push(`/** Register this file's tool classes on the registry, so the catalog can resolve them. */`);
+    const addTo = (doc: string, fnName: string, members: ToolPlan[]) => {
+        if (members.length === 0) return;
+        registerFn.push(`/** ${doc} */`);
+        registerFn.push(`export function ${fnName}(map: McpToolHandlerMap, container: Container): void {`);
+        for (const p of members) registerFn.push(`    map.set('${escapeSingleQuoted(p.toolName)}', container.get(${p.className}));`);
+        registerFn.push('}');
+        registerFn.push('');
+    };
+    addTo(
+        "Add this file's tools to the tool map.",
+        deriveMcpRegisterFnName(root.file),
+        plans.filter(p => p.listed),
+    );
+    addTo(
+        "Add a handler for each of this file's operations to the catalog, unlisted in `tools/list`.",
+        deriveMcpRegisterCatalogFnName(root.file),
+        plans.filter(p => p.inCatalog),
+    );
+    registerFn.push(`/** Register this file's tool classes on the registry, so the tool maps can resolve them. */`);
     registerFn.push(`export function ${deriveMcpRegisterClassesFnName(root.file)}(registry: Registry): void {`);
     for (const p of plans) registerFn.push(`    registry.register(${p.className}).useClass(${p.className}).asSingleton();`);
     registerFn.push('}');
@@ -824,24 +879,38 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
 
 /** One entry per emitted `<filename>.mcp.ts` for the aggregator to import. */
 export interface McpAggregatorEntry {
-    /** The file's exported register fn name, e.g. `registerPaymentsMcpTools`. */
-    registerFn: string;
+    /** The file's register fn for its listed tools, e.g. `registerPaymentsMcpTools`. Absent when it has none. */
+    registerFn?: string;
+    /** The file's register fn for its catalog handlers, e.g. `registerPaymentsMcpCatalog`. Absent when it has none. */
+    registerCatalogFn?: string;
     /** The file's exported fn registering its tool classes, e.g. `registerPaymentsMcpToolClasses`. */
     registerClassesFn: string;
     /** Module specifier for the file, relative to the aggregator and `.js`-suffixed. */
     importPath: string;
 }
 
-/** Generate the aggregator `mcp.tools.ts` that assembles the single McpToolHandlerMap. */
-export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
-    const sorted = [...entries].sort((a, b) => a.registerFn.localeCompare(b.registerFn));
+/**
+ * Generate the aggregator `mcp.tools.ts` that assembles the single McpToolHandlerMap, and with
+ * `catalog` on, the `McpToolCatalog` of every operation beside it.
+ */
+export function generateMcpAggregator(entries: McpAggregatorEntry[], options: { catalog?: boolean } = {}): string {
+    const sorted = [...entries].sort((a, b) => a.registerClassesFn.localeCompare(b.registerClassesFn));
+    const listed = sorted.flatMap(e => (e.registerFn ? [e.registerFn] : []));
+    const catalog = sorted.flatMap(e => (e.registerCatalogFn ? [e.registerCatalogFn] : []));
     const lines: string[] = [];
-    lines.push(`import { type Container, type Registry } from 'injectkit';`);
+    lines.push(
+        options.catalog
+            ? `import { Injectable, type Container, type Registry } from 'injectkit';`
+            : `import { type Container, type Registry } from 'injectkit';`,
+    );
     lines.push(`import { McpToolHandlerMap } from '@maroonedsoftware/mcp';`);
-    for (const e of sorted) lines.push(`import { ${e.registerFn}, ${e.registerClassesFn} } from '${e.importPath}';`);
+    for (const e of sorted) {
+        const names = [e.registerFn, options.catalog ? e.registerCatalogFn : undefined, e.registerClassesFn].filter(Boolean);
+        lines.push(`import { ${names.join(', ')} } from '${e.importPath}';`);
+    }
     lines.push('');
     lines.push('/**');
-    lines.push(' * Build the MCP tool catalog.');
+    lines.push(' * Build the MCP tool map: the tools `tools/list` reports.');
     lines.push(' *');
     lines.push(' * Bind it to the `McpToolHandlerMap` token from a factory, which is what supplies the');
     lines.push(' * `Container` needed to resolve each handler:');
@@ -850,14 +919,38 @@ export function generateMcpAggregator(entries: McpAggregatorEntry[]): string {
     lines.push(' * registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();');
     lines.push(' * ```');
     lines.push(' */');
-    lines.push('export function registerMcpTools(container: Container): McpToolHandlerMap {');
+    // With the catalog on, a project may flag no operation at all, and the container goes unread.
+    lines.push(`export function registerMcpTools(${listed.length > 0 ? 'container' : '_container'}: Container): McpToolHandlerMap {`);
     lines.push('    const map = new McpToolHandlerMap();');
-    for (const e of sorted) lines.push(`    ${e.registerFn}(map, container);`);
+    for (const fn of listed) lines.push(`    ${fn}(map, container);`);
     lines.push('    return map;');
     lines.push('}');
+    if (options.catalog) {
+        lines.push('');
+        lines.push('/**');
+        lines.push(' * A handler for every operation a tool can serve, flagged `mcp:` or not, kept apart from the');
+        lines.push(' * listed tools. Its own token, since `McpToolHandlerMap` is bound to `registerMcpTools`.');
+        lines.push(' */');
+        lines.push('@Injectable()');
+        lines.push('export class McpToolCatalog extends McpToolHandlerMap {}');
+        lines.push('');
+        lines.push('/**');
+        lines.push(' * Build the catalog. Nothing lists it: a meta tool (one that searches the API, say) looks a');
+        lines.push(' * handler up by name and calls it. Bind it from a factory, as `registerMcpTools` is bound:');
+        lines.push(' *');
+        lines.push(' * ```ts');
+        lines.push(' * registry.register(McpToolCatalog).useFactory(registerMcpCatalog).asSingleton();');
+        lines.push(' * ```');
+        lines.push(' */');
+        lines.push(`export function registerMcpCatalog(${catalog.length > 0 ? 'container' : '_container'}: Container): McpToolCatalog {`);
+        lines.push('    const map = new McpToolCatalog();');
+        for (const fn of catalog) lines.push(`    ${fn}(map, container);`);
+        lines.push('    return map;');
+        lines.push('}');
+    }
     lines.push('');
     lines.push('/**');
-    lines.push(' * Register every generated tool class on the registry, so `registerMcpTools` can resolve it:');
+    lines.push(' * Register every generated tool class on the registry, so the tool maps can resolve them:');
     lines.push(' *');
     lines.push(' * ```ts');
     lines.push(' * registerMcpToolClasses(registry);');
@@ -902,7 +995,7 @@ export function generateMcpRouter(
 export function defaultMcpMountSecurity(roots: readonly OpRootNode[], includeInternal: boolean): SecurityNode {
     for (const root of roots) {
         for (const plan of planTools(root, includeInternal)) {
-            if (plan.security === SECURITY_NONE) return SECURITY_NONE;
+            if (plan.listed && plan.security === SECURITY_NONE) return SECURITY_NONE;
         }
     }
     return { policy: false, loc: SYNTHETIC_LOC };

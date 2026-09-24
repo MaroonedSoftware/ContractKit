@@ -36,12 +36,12 @@ export class GetInvoiceMcpTool implements McpToolHandler {
     }
 }
 
-/** Add this file's tools to the shared catalog. */
+/** Add this file's tools to the tool map. */
 export function registerHyphenatedMcpTools(map: McpToolHandlerMap, container: Container): void {
     map.set('get_invoice', container.get(GetInvoiceMcpTool));
 }
 
-/** Register this file's tool classes on the registry, so the catalog can resolve them. */
+/** Register this file's tool classes on the registry, so the tool maps can resolve them. */
 export function registerHyphenatedMcpToolClasses(registry: Registry): void {
     registry.register(GetInvoiceMcpTool).useClass(GetInvoiceMcpTool).asSingleton();
 }

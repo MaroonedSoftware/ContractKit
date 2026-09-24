@@ -179,6 +179,7 @@ Turns `mcp`-flagged operations into a [`@maroonedsoftware/mcp`](https://github.c
 | `includeInternal`     | `boolean` | Expose operations marked `internal` as tools. Default: `false`                                                       |
 | `security`            | `object`  | Guard on the emitted route. See below. Default: derived from the exposed tools                                       |
 | `resolve`             | `string`  | When a tool resolves its service and `PolicyService`: `boot` or `perCall`. See below. Default: `boot`                |
+| `catalog`             | `boolean` | Also generate an unlisted handler for every operation a tool can serve. See below. Default: `false`                  |
 
 ##### Resolving per call
 
@@ -192,6 +193,20 @@ A tool resolves its operation's service and `PolicyService` in one of two ways:
 ```
 
 In per-call mode the emitted `mcp.router.ts` passes `container: ctx.container` (Koa) or `container: request.container` (Fastify) to `createMcpRequestContext`. A hand-written route must do the same, or the tool throws an error naming the fix. This needs a `@maroonedsoftware/mcp` whose `McpToolContext` carries `container`.
+
+##### The catalog
+
+With `"catalog": true`, every operation a tool can serve gets a handler, flagged `mcp:` or not, and `mcp.tools.ts` gains `registerMcpCatalog(container)` beside `registerMcpTools`. The catalog is an `McpToolCatalog`, a `McpToolHandlerMap` under its own token, since `McpToolHandlerMap` is already bound to the listed tools:
+
+```typescript
+registerMcpToolClasses(registry);
+registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();
+registry.register(McpToolCatalog).useFactory(registerMcpCatalog).asSingleton();
+```
+
+Nothing lists the catalog in `tools/list`. It is for a meta tool you write, one that searches the API, say, which looks a handler up by name, reads its `definition`, and calls `handle()` the same way the dispatcher would. `registerMcpTools` still holds the flagged operations only.
+
+An operation stays out of the catalog when it declares `mcp: exclude`, or when a tool cannot serve it: a multipart request, a response that is not JSON (audio, an HLS playlist), or a `format()` result. `internal` operations stay out unless `includeInternal` is set. Every handler is named the way a tool is (`mcp.name`, `sdk`, `name`, then method and path), and two operations deriving the same name are a generation error.
 
 ##### Security
 

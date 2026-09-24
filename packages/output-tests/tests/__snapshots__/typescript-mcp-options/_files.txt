@@ -1,5 +1,7 @@
 server/billing.mcp.ts
 server/hyphenated.mcp.ts
+server/kitchen.mcp.ts
 server/mcp.router.ts
 server/mcp.tools.ts
 server/reserved.mcp.ts
+server/simple.mcp.ts

@@ -5,7 +5,7 @@ import { registerHyphenatedMcpTools, registerHyphenatedMcpToolClasses } from './
 import { registerReservedMcpTools, registerReservedMcpToolClasses } from './reserved.mcp.js';
 
 /**
- * Build the MCP tool catalog.
+ * Build the MCP tool map: the tools `tools/list` reports.
  *
  * Bind it to the `McpToolHandlerMap` token from a factory, which is what supplies the
  * `Container` needed to resolve each handler:
@@ -23,7 +23,7 @@ export function registerMcpTools(container: Container): McpToolHandlerMap {
 }
 
 /**
- * Register every generated tool class on the registry, so `registerMcpTools` can resolve it:
+ * Register every generated tool class on the registry, so the tool maps can resolve them:
  *
  * ```ts
  * registerMcpToolClasses(registry);

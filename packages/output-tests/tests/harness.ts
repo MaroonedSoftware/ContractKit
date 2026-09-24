@@ -172,7 +172,7 @@ function makePlugins(): { name: PluginName; plugin: ContractKitPlugin }[] {
                         zod: true,
                         output: { routes: 'routes/{filename}.router.ts', types: 'schemas/{filename}.schema.ts' },
                     },
-                    mcp: { baseDir: 'server', resolve: 'perCall' },
+                    mcp: { baseDir: 'server', resolve: 'perCall', catalog: true },
                 },
                 ROOT_DIR,
             ),

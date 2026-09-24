@@ -30,6 +30,7 @@ import {
     paramType,
     unionType,
     recordType,
+    opMultiRequest,
 } from './helpers.js';
 
 function mcpBlock(over: Partial<McpConfigNode>): McpConfigNode {
@@ -616,7 +617,105 @@ describe('resolve: perCall', () => {
     });
 });
 
+describe('catalog', () => {
+    const user = [opResponse(200, 'User', 'application/json')];
+    const catalogFile = (ops: ReturnType<typeof opOperation>[], extra: { includeInternal?: boolean; models?: Map<string, ModelNode> } = {}) =>
+        generateMcpFile(opRoot([opRoute('/users', ops)], 'users.op'), { catalog: true, ...extra });
+
+    it('gives an unflagged operation a handler in the catalog only', () => {
+        const out = catalogFile([opOperation('get', { sdk: 'listUsers', responses: user })]);
+        expect(out).toContain('export class ListUsersMcpTool implements McpToolHandler');
+        expect(out).toContain('export function registerUsersMcpCatalog(map: McpToolHandlerMap, container: Container): void {');
+        expect(out).toContain("map.set('list_users', container.get(ListUsersMcpTool));");
+        expect(out).not.toContain('registerUsersMcpTools');
+        expect(out).toContain('registry.register(ListUsersMcpTool).useClass(ListUsersMcpTool).asSingleton();');
+    });
+
+    it('lists a flagged operation and puts it in the catalog too', () => {
+        const out = catalogFile([opOperation('get', { sdk: 'listUsers', mcp: true, responses: user })]);
+        expect(out).toContain('export function registerUsersMcpTools(map: McpToolHandlerMap, container: Container): void {');
+        expect(out).toContain('export function registerUsersMcpCatalog(map: McpToolHandlerMap, container: Container): void {');
+    });
+
+    it('leaves out mcp: exclude', () => {
+        expect(catalogFile([opOperation('get', { sdk: 'listUsers', mcp: 'exclude', responses: user })])).not.toContain('ListUsersMcpTool');
+    });
+
+    it('leaves out a multipart request', () => {
+        const op = opOperation('post', { sdk: 'upload', request: opMultiRequest([['multipart/form-data', 'Upload']]), responses: user });
+        expect(catalogFile([op])).not.toContain('UploadMcpTool');
+    });
+
+    it('leaves out a response that is not JSON', () => {
+        const op = opOperation('get', { sdk: 'stream', responses: [opResponse(200, scalarType('binary'), 'audio/mpeg')] });
+        expect(catalogFile([op])).not.toContain('StreamMcpTool');
+    });
+
+    it('leaves out a format() result', () => {
+        const models = new Map([['Snake', model('Snake', [field('fromDate', scalarType('string'))], { outputCase: 'snake' })]]);
+        const op = opOperation('get', { sdk: 'snake', responses: [opResponse(200, 'Snake', 'application/json')] });
+        expect(catalogFile([op], { models })).not.toContain('SnakeMcpTool');
+    });
+
+    it('keeps a void operation', () => {
+        const op = opOperation('delete', { sdk: 'removeUser', responses: [opResponse(204)] });
+        expect(catalogFile([op])).toContain('RemoveUserMcpTool');
+    });
+
+    it('leaves out internal operations unless includeInternal', () => {
+        const root = (includeInternal: boolean) =>
+            generateMcpFile(opRoot([opRoute('/users', [opOperation('get', { sdk: 'listUsers', responses: user })], undefined, ['internal'])]), {
+                catalog: true,
+                includeInternal,
+            });
+        expect(root(false)).not.toContain('ListUsersMcpTool');
+        expect(root(true)).toContain('ListUsersMcpTool');
+    });
+
+    it('is off by default', () => {
+        const root = opRoot([opRoute('/users', [opOperation('get', { sdk: 'listUsers', responses: user })])]);
+        expect(hasMcpOperations(root)).toBe(false);
+        expect(hasMcpOperations(root, false, true)).toBe(true);
+    });
+
+    it('does not let an unlisted security: none operation open the mount', () => {
+        const root = opRoot([opRoute('/users', [opOperation('get', { sdk: 'listUsers', security: SECURITY_NONE, responses: user })])]);
+        expect(defaultMcpMountSecurity([root], false)).toEqual({ policy: false, loc: expect.anything() });
+    });
+});
+
 describe('generateMcpAggregator', () => {
+    it('builds the catalog under its own token when the catalog is on', () => {
+        const out = generateMcpAggregator(
+            [
+                { registerCatalogFn: 'registerPaymentsMcpCatalog', registerClassesFn: 'registerPaymentsMcpToolClasses', importPath: './payments.mcp.js' },
+                {
+                    registerFn: 'registerUsersMcpTools',
+                    registerCatalogFn: 'registerUsersMcpCatalog',
+                    registerClassesFn: 'registerUsersMcpToolClasses',
+                    importPath: './users.mcp.js',
+                },
+            ],
+            { catalog: true },
+        );
+        expect(out).toContain("import { Injectable, type Container, type Registry } from 'injectkit';");
+        expect(out).toContain("import { registerPaymentsMcpCatalog, registerPaymentsMcpToolClasses } from './payments.mcp.js';");
+        expect(out).toContain('@Injectable()\nexport class McpToolCatalog extends McpToolHandlerMap {}');
+        expect(out).toContain('export function registerMcpCatalog(container: Container): McpToolCatalog {');
+        expect(out).toContain('registerPaymentsMcpCatalog(map, container);');
+        expect(out).toContain('registerUsersMcpCatalog(map, container);');
+        expect(out).toContain('export function registerMcpTools(container: Container): McpToolHandlerMap {');
+        expect(out).not.toContain('registerPaymentsMcpTools');
+    });
+
+    it('leaves the container unread when no operation is flagged', () => {
+        const out = generateMcpAggregator(
+            [{ registerCatalogFn: 'registerPaymentsMcpCatalog', registerClassesFn: 'registerPaymentsMcpToolClasses', importPath: './payments.mcp.js' }],
+            { catalog: true },
+        );
+        expect(out).toContain('export function registerMcpTools(_container: Container): McpToolHandlerMap {');
+    });
+
     it('imports each register fn and assembles one map', () => {
         const out = generateMcpAggregator([
             { registerFn: 'registerPaymentsMcpTools', registerClassesFn: 'registerPaymentsMcpToolClasses', importPath: './payments.mcp.js' },

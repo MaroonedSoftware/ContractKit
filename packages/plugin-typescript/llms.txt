@@ -114,6 +114,13 @@ pass `container: ctx.container` (Koa) or `container: request.container` (Fastify
 `createMcpRequestContext`, or the tool fails with an error saying so. This needs a
 `@maroonedsoftware/mcp` whose context carries the container.
 
+With `mcp.catalog: true`, every operation a tool can serve also gets a handler, gathered by
+`registerMcpCatalog(container)` into an `McpToolCatalog` (bind it to that token, not
+`McpToolHandlerMap`). Nothing lists the catalog; a meta tool looks handlers up by name. It leaves
+out `mcp: exclude`, multipart requests, non-JSON responses and `format()` results. Each tool
+definition carries all four annotations (method defaults for any `hint:` leaves unset) and its
+operation's security in `_meta['contractkit/security']`.
+
 ## Programmatic use
 
 ```typescript

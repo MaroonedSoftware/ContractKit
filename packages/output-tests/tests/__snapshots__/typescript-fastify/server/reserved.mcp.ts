@@ -63,13 +63,13 @@ export class PutNoteMcpTool implements McpToolHandler {
     }
 }
 
-/** Add this file's tools to the shared catalog. */
+/** Add this file's tools to the tool map. */
 export function registerReservedMcpTools(map: McpToolHandlerMap, container: Container): void {
     map.set('get_seat', container.get(GetSeatMcpTool));
     map.set('put_note', container.get(PutNoteMcpTool));
 }
 
-/** Register this file's tool classes on the registry, so the catalog can resolve them. */
+/** Register this file's tool classes on the registry, so the tool maps can resolve them. */
 export function registerReservedMcpToolClasses(registry: Registry): void {
     registry.register(GetSeatMcpTool).useClass(GetSeatMcpTool).asSingleton();
     registry.register(PutNoteMcpTool).useClass(PutNoteMcpTool).asSingleton();
