@@ -172,6 +172,19 @@ describe('groupEndpoints', () => {
         expect(groupEndpoints([root])).toHaveLength(0);
     });
 
+    it('titles an area group from areaLabels, falling back to humanize for the rest', () => {
+        const roots = [
+            opRoot([opRoute('/speech', [opOperation('post', {})])], 'a.op', { area: 'openai' }),
+            opRoot([opRoute('/voices', [opOperation('get', {})])], 'b.op', { area: 'elevenLabs' }),
+        ];
+        expect(groupEndpoints(roots, false, { openai: 'OpenAI' }).map(g => g.title)).toEqual(['OpenAI', 'Eleven Labs']);
+    });
+
+    it('keeps the area slug when the group is relabelled', () => {
+        const root = opRoot([opRoute('/speech', [opOperation('post', {})])], 'a.op', { area: 'openai' });
+        expect(groupEndpoints([root], false, { openai: 'OpenAI' })[0]!.slug).toBe('openai');
+    });
+
     it('includes internal operations when asked', () => {
         const root = opRoot([opRoute('/secret', [opOperation('get', { modifiers: ['internal'] })])]);
         expect(groupEndpoints([root], true)[0]!.endpoints).toHaveLength(1);
@@ -252,6 +265,11 @@ describe('groupModels', () => {
     it('orders areas by first appearance', () => {
         const areaed = [contractRoot([model('A', [])], 'z.ck', { area: 'zeta' }), contractRoot([model('B', [])], 'a.ck', { area: 'alpha' })];
         expect(groupModels(areaed, new Set(['A', 'B'])).map(g => g.area)).toEqual(['zeta', 'alpha']);
+    });
+
+    it('titles a model area group from areaLabels', () => {
+        const areaed = [contractRoot([model('Voice', [])], 'a.ck', { area: 'openai' }), contractRoot([model('Clip', [])], 'b.ck', { area: 'audio' })];
+        expect(groupModels(areaed, new Set(['Voice', 'Clip']), { openai: 'OpenAI' }).map(g => g.title)).toEqual(['OpenAI', 'Audio']);
     });
 
     it('merges two files that share an area', () => {

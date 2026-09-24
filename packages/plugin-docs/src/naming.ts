@@ -49,6 +49,17 @@ export interface ModelGroup {
 }
 
 /**
+ * Display names for area groups, keyed by the `area` meta value. An area with no entry falls back
+ * to {@link humanize}, which cannot know that `openai` should read "OpenAI".
+ */
+export type AreaLabels = Readonly<Record<string, string>>;
+
+/** The display name for an area group: the configured label, else the humanized area. */
+function areaTitle(area: string, areaLabels: AreaLabels | undefined): string {
+    return areaLabels?.[area] ?? humanize(area);
+}
+
+/**
  * Verb used when an operation has no name to derive a title from. Shared by every target, so the
  * same endpoint is titled the same way whichever output it appears in.
  */
@@ -207,8 +218,9 @@ function uniqueSlug(base: string, taken: Set<string>): string {
  *
  * Files with no `area` come first as a single group, then each area in first-seen order, so the
  * targets stay comparable. Operations marked `internal` are dropped unless `includeInternal` is set.
+ * A group is titled from `areaLabels` when its area has an entry there.
  */
-export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): EndpointGroup[] {
+export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false, areaLabels?: AreaLabels): EndpointGroup[] {
     const grouped = new Map<string, EndpointEntry[]>();
     const ungrouped: EndpointEntry[] = [];
     const slugsByGroup = new Map<string, Set<string>>();
@@ -250,7 +262,7 @@ export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): 
         result.push({ area: undefined, title: 'Endpoints', slug: 'endpoints', endpoints: ungrouped });
     }
     for (const [area, endpoints] of grouped) {
-        result.push({ area, title: humanize(area), slug: slugify(area), endpoints });
+        result.push({ area, title: areaTitle(area, areaLabels), slug: slugify(area), endpoints });
     }
     return result;
 }
@@ -271,8 +283,10 @@ export function groupEndpoints(opRoots: OpRootNode[], includeInternal = false): 
  * `schemaNames` is the set of models to document. Passing `null` documents every model, which is
  * what a project with no operation files needs: there are no public operations to reach anything
  * from, but the contracts are still worth rendering.
+ *
+ * A group is titled from `areaLabels` when its area has an entry there.
  */
-export function groupModels(contractRoots: ContractRootNode[], schemaNames: ReadonlySet<string> | null): ModelGroup[] {
+export function groupModels(contractRoots: ContractRootNode[], schemaNames: ReadonlySet<string> | null, areaLabels?: AreaLabels): ModelGroup[] {
     const grouped = new Map<string, ModelEntry[]>();
     const ungrouped: ModelEntry[] = [];
     const slugsByGroup = new Map<string, Set<string>>();
@@ -302,7 +316,7 @@ export function groupModels(contractRoots: ContractRootNode[], schemaNames: Read
         result.push({ area: undefined, title: 'Models', slug: '', models: ungrouped });
     }
     for (const [area, models] of grouped) {
-        result.push({ area, title: humanize(area), slug: slugify(area), models });
+        result.push({ area, title: areaTitle(area, areaLabels), slug: slugify(area), models });
     }
     return result;
 }

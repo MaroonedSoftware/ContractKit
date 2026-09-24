@@ -126,6 +126,14 @@ describe('generateMarkdown', () => {
             expect(output).toContain('<summary><strong>Ledger</strong> (1)</summary>');
         });
 
+        it('labels an area group from areaLabels, in the TOC and the section heading', () => {
+            const op = opRoot([opRoute('/speech', [opOperation('post')])], 'openai.op', { area: 'openai' });
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op], areaLabels: { openai: 'OpenAI' } });
+            expect(output).toContain('<summary><strong>OpenAI</strong> (1)</summary>');
+            expect(output).toContain('### OpenAI');
+            expect(output).not.toContain('Openai');
+        });
+
         it('shows endpoint count per area in TOC', () => {
             const op = opRoot([opRoute('/ledger/accounts', [opOperation('get'), opOperation('post')])], 'ledger.op', { area: 'ledger' });
             const output = generateMarkdown({ contractRoots: [], opRoots: [op] });

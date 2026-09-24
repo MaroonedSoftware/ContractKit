@@ -113,6 +113,16 @@ describe('emitted file set', () => {
         expect([...ctx.emitted.keys()]).toContain('docs/api-reference/billing/list-invoices.mdx');
     });
 
+    it('names an area group in docs.json from the plugin-level areaLabels', async () => {
+        const areaRoots = [opRoot([opRoute('/speech', [opOperation('post', { name: 'OpenAI speech' })])], 'openai.op', { area: 'openai' })];
+        const ctx = makeCtx({ areaLabels: { openai: 'OpenAI' }, mintlify: {} });
+        await plugin.generateTargets!({ ...inputs, opRoots: areaRoots }, ctx);
+        const docsJson = ctx.emitted.get('docs/docs.json')!;
+        expect(docsJson).toContain('"group": "OpenAI"');
+        expect(docsJson).not.toContain('Openai');
+        expect(ctx.emitted.get('docs/api-reference/openai/open-ai-speech.mdx')).toContain('title: "OpenAI speech"');
+    });
+
     it('omits internal endpoints', async () => {
         const emitted = await run(plugin);
         expect([...emitted.keys()].some(k => k.includes('stats'))).toBe(false);
@@ -309,6 +319,23 @@ describe('docusaurus target', () => {
         await plugin.generateTargets!({ ...inputs, opRoots: areaRoots }, ctx);
         expect([...ctx.emitted.keys()]).toContain('docs/api-reference/billing/list-invoices.md');
         expect(JSON.parse(ctx.emitted.get('docs/api-reference/billing/_category_.json')!).label).toBe('Billing');
+    });
+
+    it('labels an area category from the plugin-level areaLabels', async () => {
+        const areaRoots = [opRoot([opRoute('/speech', [opOperation('post', { name: 'OpenAI speech' })])], 'openai.op', { area: 'openai' })];
+        const ctx = makeCtx({ areaLabels: { openai: 'OpenAI' }, docusaurus: {} });
+        await plugin.generateTargets!({ ...inputs, opRoots: areaRoots }, ctx);
+        const category = JSON.parse(ctx.emitted.get('docs/api-reference/openai/_category_.json')!);
+        expect(category.label).toBe('OpenAI');
+        expect(category.link.title).toBe('OpenAI');
+        expect(ctx.emitted.get('docs/api-reference/openai/open-ai-speech.md')).toContain('title: "OpenAI speech"');
+    });
+
+    it("lets a target's areaLabels override the plugin-level ones", async () => {
+        const areaRoots = [opRoot([opRoute('/speech', [opOperation('post', {})])], 'openai.op', { area: 'openai' })];
+        const ctx = makeCtx({ areaLabels: { openai: 'OpenAI' }, docusaurus: { areaLabels: { openai: 'OpenAI API' } } });
+        await plugin.generateTargets!({ ...inputs, opRoots: areaRoots }, ctx);
+        expect(JSON.parse(ctx.emitted.get('docs/api-reference/openai/_category_.json')!).label).toBe('OpenAI API');
     });
 
     it('nests model pages by area and links across areas', async () => {

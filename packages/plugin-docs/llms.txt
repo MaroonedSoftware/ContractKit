@@ -81,6 +81,9 @@ A model page uses `openapi-schema: "/openapi.yaml Payment"` instead.
 - **Models are nested by area** inside the `Models` group and written to `<modelsDir>/<area>/`.
   Models from files with no area stay directly in `Models`, so a project without areas keeps the
   flat list. A schema name only has to be unique within its own area.
+- **Group labels** are the humanized area unless `areaLabels` names them:
+  `"areaLabels": { "openai": "OpenAI" }` at the plugin level, or on `markdown` / `mintlify` /
+  `docusaurus` to override it for one target.
 - **Titles**: `name:` → description → service method → HTTP verb plus path. A `name:` is kept as
   written (first letter raised), so acronyms survive; only a bare camelCase name is split into words.
 - **Slugs**: `sdk:` → `name:` → service method → HTTP method plus path. Collisions within a group

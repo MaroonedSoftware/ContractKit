@@ -167,7 +167,9 @@ These apply to both multi-page targets.
 - **Groups** come from the source file's `area`, for models as well as endpoints. Endpoints with
   no area land in a single `Endpoints` group, listed first. Models with an area become a nested
   subgroup inside `Models`, under `<modelsDir>/<area>/`; area-less models sit directly in `Models`,
-  so a project with no areas keeps a flat list.
+  so a project with no areas keeps a flat list. A group's label is the humanized area
+  (`bankConnections` → "Bank Connections"); name it yourself with `areaLabels`, at the plugin level
+  or on one target, when humanizing gets it wrong: `"areaLabels": { "openai": "OpenAI" }`.
 - **Page titles** follow `name:`, then the description, then the service method, then the HTTP verb
   and path. A description beats a method name because `PaymentService.create` alone gives "Create",
   where the description gives "Create a payment". A `name:` is used as written apart from its first
