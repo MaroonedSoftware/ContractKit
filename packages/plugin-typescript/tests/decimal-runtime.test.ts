@@ -11,8 +11,8 @@ import { DEFAULT_REVIVABLE_SCALARS } from '../src/codegen-revive.js';
  * reconfigured the one decimal.js the consumer's own code shares with it, so importing a client
  * changed how every `Decimal` in their app printed.
  *
- * The runtime tests evaluate a generated types file against a stand-in for decimal.js, which this
- * package does not install. The stand-in is faithful in the respects under test: settings live on
+ * The runtime tests evaluate a generated types file against a stand-in for decimal.js rather than
+ * the real package, because each test needs a fresh, unconfigured copy of the module. The stand-in is faithful in the respects under test: settings live on
  * a constructor, `set` changes them in place, `clone` makes a constructor with settings of its own,
  * `isDecimal` reads the `toStringTag`, and an instance prints by its own constructor's
  * `toExpNeg`/`toExpPos`.
@@ -24,6 +24,7 @@ interface DecimalSettings {
 }
 
 interface DecimalInstance {
+    isFinite(): boolean;
     toString(): string;
     toJSON(): string;
 }
@@ -60,6 +61,11 @@ function decimalJs(settings: DecimalSettings = DEFAULTS): DecimalCtor {
 
         constructor(private readonly value: string) {
             if (!/^-?\d+(\.\d+)?$/.test(value)) throw new Error(`[DecimalError] Invalid argument: ${value}`);
+        }
+
+        /** The constructor only admits plain digit strings, so every instance is finite. */
+        isFinite(): boolean {
+            return true;
         }
 
         toString(): string {

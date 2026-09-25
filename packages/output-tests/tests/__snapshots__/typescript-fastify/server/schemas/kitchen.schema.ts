@@ -5,7 +5,7 @@ import { Decimal } from 'decimal.js';
 const _ZodBinary = z.custom<Buffer>((val) => Buffer.isBuffer(val), { error: 'Must be binary data' });
 const _ZodDatetime = z.preprocess((val) => typeof val === 'string' ? DateTime.fromISO(val) : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be in ISO 8601 format' }));
 Decimal.set({ toExpNeg: -9e15, toExpPos: 9e15 });
-const _ZodDecimal = z.preprocess((val) => { if (typeof val !== 'string') return val; try { return new Decimal(val); } catch { return val; } }, z.custom<Decimal>((val) => Decimal.isDecimal(val), { message: 'Must be an exact decimal sent as a quoted string, e.g. "1250.00"' }));
+const _ZodDecimal = z.preprocess((val) => { if (typeof val !== 'string' || !/^-?[0-9]+(\.[0-9]+)?$/.test(val)) return val; try { return new Decimal(val); } catch { return val; } }, z.custom<Decimal>((val) => Decimal.isDecimal(val) && val.isFinite(), { message: 'Must be an exact decimal sent as a quoted string, e.g. "1250.00"' }));
 type _JsonValue = string | number | boolean | null | _JsonValue[] | { [key: string]: _JsonValue };
 const _ZodJson: z.ZodType<_JsonValue> = z.lazy(() => z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(_ZodJson), z.record(z.string(), _ZodJson)]));
 

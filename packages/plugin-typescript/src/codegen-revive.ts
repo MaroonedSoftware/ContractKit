@@ -1,4 +1,4 @@
-import type { ContractTypeNode, FieldNode, ModelNode, ScalarTypeNode } from '@contractkit/core';
+import { DECIMAL_PATTERN, type ContractTypeNode, type FieldNode, type ModelNode, type ScalarTypeNode } from '@contractkit/core';
 import { flattenFormatChain } from './codegen-wire-input.js';
 import { SDK_DECIMAL_NAME } from './decimal-runtime.js';
 
@@ -52,6 +52,10 @@ export interface ReviveCodegenOptions {
  * returning something invalid, because a silently wrong `DateTime` surfaces much further from
  * the cause than a throw at the boundary does.
  *
+ * `__dec` accepts only the published wire form (`DECIMAL_PATTERN` from core, the OpenAPI
+ * `pattern`), which decimal.js always parses, so it never has to catch a `DecimalError`. Left to
+ * itself decimal.js would also read `"1e5"`, `"0x1F"` and `"NaN"`, none of which the spec allows.
+ *
  * `__dec` builds through the SDK's private constructor, which it does not declare: a zod-mode
  * types file declares that constructor for `_ZodDecimal` as well, so each file adds it once, from
  * `sdkDecimalCloneFor` or `SDK_DECIMAL_PRELUDE_LINES`.
@@ -62,11 +66,11 @@ export const COERCE_DECLS: Record<string, string[]> = {
         `    if (typeof v !== 'string') {`,
         `        throw new TypeError(\`ContractKit: expected a decimal string at '\${path}', received \${typeof v} — decimals must be sent as quoted JSON strings.\`);`,
         `    }`,
-        `    try {`,
-        `        return new ${SDK_DECIMAL_NAME}(v);`,
-        `    } catch {`,
+        `    const d = /${DECIMAL_PATTERN}/.test(v) ? new ${SDK_DECIMAL_NAME}(v) : undefined;`,
+        `    if (d === undefined || !d.isFinite()) {`,
         `        throw new TypeError(\`ContractKit: '\${v}' at '\${path}' is not a valid decimal.\`);`,
         `    }`,
+        `    return d;`,
         `};`,
     ],
     '__dt(': [
