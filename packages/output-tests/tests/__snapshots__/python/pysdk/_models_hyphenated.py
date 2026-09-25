@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from uuid import UUID
 from pydantic import BaseModel
-from decimal import Decimal
+from ._scalars import ExactDecimal
 
 class Invoice(BaseModel):
     id: UUID
-    total: Decimal
+    total: ExactDecimal
 
 class InvoiceInput(BaseModel):
-    total: Decimal
+    total: ExactDecimal

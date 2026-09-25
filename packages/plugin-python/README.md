@@ -52,6 +52,8 @@ Each operation file with at least one public operation generates a client class.
 
 A JSON response is validated against its declared type, so a method returns the Python type it is annotated with. A single model goes through `model_validate`. Any other type (a list, record, tuple or union, or one holding a `bigint`, `date` or `Decimal`) goes through a module-level `TypeAdapter` built once at import. A response that does not match raises `pydantic.ValidationError`. Text and binary responses are returned as `str` and `bytes`.
 
+A `decimal` field is typed `ExactDecimal` from `_scalars.py`: a `decimal.Decimal` that reads only plain digits (the OpenAPI `pattern`, so not `"1e5"`, `"NaN"` or a float) and writes them back in plain digits, where `str()` would send `0.00000001` as `"1E-8"`. Building a model with a `Decimal` or an `int` still works.
+
 A method returns its body directly when the operation has one response a caller can receive. When it has several, the return type is a union of per-status `TypedDict`s keyed on a `Literal` status, and when one status declares several content types the result carries the `content_type` that actually came back.
 
 ### Aggregator (`__init__.py`)

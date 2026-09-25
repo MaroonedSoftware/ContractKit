@@ -71,7 +71,7 @@ export interface CSharpSdkPluginConfig {
  * Bumped when the C# codegen output shape changes in a way that should invalidate every per-file
  * fingerprint, so a plugin upgrade forces full regeneration even when no `.ck` file has changed.
  */
-export const CSHARP_CODEGEN_VERSION = '2';
+export const CSHARP_CODEGEN_VERSION = '3';
 
 export type { CSharpTargetFramework } from './scaffold.js';
 export type { CSharpDateTypes } from './codegen-models.js';

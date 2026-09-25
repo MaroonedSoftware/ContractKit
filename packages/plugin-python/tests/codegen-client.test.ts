@@ -127,7 +127,7 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('async def import_(self, from_: str)');
-        expect(output).toContain('f"/imports/{quote(str(from_), safe=\'\')}"');
+        expect(output).toContain('f"/imports/{quote(_path_text(from_), safe=\'\')}"');
         expect(output).not.toContain('def import(');
     });
 
@@ -183,15 +183,14 @@ describe('generatePythonClient', () => {
             );
             expect(output).toContain('_COUNTS_RESPONSE: TypeAdapter[list[BigInt]] = TypeAdapter(list[BigInt])');
             expect(output).toContain('_DAYS_RESPONSE: TypeAdapter[list[date]] = TypeAdapter(list[date])');
-            expect(output).toContain('_PAIR_RESPONSE: TypeAdapter[tuple[date, Decimal]] = TypeAdapter(tuple[date, Decimal])');
+            expect(output).toContain('_PAIR_RESPONSE: TypeAdapter[tuple[date, ExactDecimal]] = TypeAdapter(tuple[date, ExactDecimal])');
             expect(output).toContain('return _BY_ID_RESPONSE.validate_python(result)');
             expect(output).toContain('return _COUNTS_RESPONSE.validate_python(result)');
             expect(output).not.toMatch(/^\s+return result$/m);
             // The adapters are evaluated at import, so everything their types name is imported.
             expect(output).toContain('from pydantic import Field, TypeAdapter');
-            expect(output).toContain('from ._scalars import BigInt');
+            expect(output).toContain('from ._scalars import BigInt, ExactDecimal');
             expect(output).toContain('from datetime import date');
-            expect(output).toContain('from decimal import Decimal');
         });
 
         it('keeps model_validate for a single model and adds no adapter for Any, text or binary', () => {
@@ -593,8 +592,11 @@ describe('generatePythonClient', () => {
             ),
         ]);
         const output = generatePythonClient(root);
-        expect(output).toContain('f"/payments/{quote(str(id), safe=\'\')}"');
+        expect(output).toContain('f"/payments/{quote(_path_text(id), safe=\'\')}"');
         expect(output).toContain('from urllib.parse import quote');
+        // `str()` wrote a Decimal of 0.00000001 as "1E-8", which the server's pattern rejects.
+        expect(output).toContain('from ._base_client import BaseClient, SdkError, _path_text  # noqa: F401');
+        expect(BASE_CLIENT_PY).toContain('def _path_text(value: Any) -> str:');
     });
 
     it('interpolates the snake_cased name the signature actually binds', () => {
@@ -608,7 +610,7 @@ describe('generatePythonClient', () => {
         const output = generatePythonClient(root);
         // The signature snake_cases the name, so interpolating `paymentId` raises NameError.
         expect(output).toContain('async def get_payments_by_payment_id(self, payment_id: UUID)');
-        expect(output).toContain('f"/payments/{quote(str(payment_id), safe=\'\')}"');
+        expect(output).toContain('f"/payments/{quote(_path_text(payment_id), safe=\'\')}"');
         expect(output).not.toContain('{paymentId}');
     });
 
@@ -622,7 +624,7 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root);
         // Previously left untouched, so the literal braces went out on the wire.
-        expect(output).toContain('f"/payments/{quote(str(payment_id), safe=\'\')}"');
+        expect(output).toContain('f"/payments/{quote(_path_text(payment_id), safe=\'\')}"');
         expect(output).not.toContain('{payment-id}');
     });
 
@@ -632,7 +634,7 @@ describe('generatePythonClient', () => {
         ]);
         const output = generatePythonClient(root);
         expect(output).toContain('async def get_payments_by_payment_id(self, params: PaymentRef)');
-        expect(output).toContain("f\"/payments/{quote(str(params.model_dump(by_alias=True)['paymentId']), safe='')}\"");
+        expect(output).toContain("f\"/payments/{quote(_path_text(params.model_dump(by_alias=True)['paymentId']), safe='')}\"");
     });
 
     it('escapes a path param named after a Python keyword, in the signature and the URL', () => {
@@ -646,7 +648,7 @@ describe('generatePythonClient', () => {
         const output = generatePythonClient(root);
         // `def get_seat(self, class: str)` is a SyntaxError for the whole module.
         expect(output).toContain('async def get_seat(self, class_: str)');
-        expect(output).toContain('f"/seats/{quote(str(class_), safe=\'\')}"');
+        expect(output).toContain('f"/seats/{quote(_path_text(class_), safe=\'\')}"');
     });
 
     it('reads a params model by contract name, whatever the model calls the attribute', () => {
@@ -656,7 +658,7 @@ describe('generatePythonClient', () => {
         const output = generatePythonClient(root);
         // The model names the field `class_`, and would name a defaulted `date` field `date_`,
         // decisions that depend on fields this generator never sees.
-        expect(output).toContain("f\"/rows/{quote(str(params.model_dump(by_alias=True)['class']), safe='')}\"");
+        expect(output).toContain("f\"/rows/{quote(_path_text(params.model_dump(by_alias=True)['class']), safe='')}\"");
     });
 
     it('keeps a path param clear of the arguments and functions the method already uses', () => {
@@ -671,7 +673,7 @@ describe('generatePythonClient', () => {
         // A second `body` is a duplicate-argument SyntaxError; a `quote` argument shadows
         // urllib.parse.quote, so the URL expression would call a string.
         expect(output).toContain('async def post_note(self, body_: str, quote_: str, body: Note)');
-        expect(output).toContain("f\"/notes/{quote(str(body_), safe='')}/{quote(str(quote_), safe='')}\"");
+        expect(output).toContain("f\"/notes/{quote(_path_text(body_), safe='')}/{quote(_path_text(quote_), safe='')}\"");
     });
 
     it('leaves a path param named after a soft keyword alone', () => {
@@ -1201,7 +1203,9 @@ describe('BASE_CLIENT_PY', () => {
 
     it('converts inline query and header values to the forms the router parses', () => {
         // httpx str()s a datetime with a space, which Luxon's fromISO rejects.
-        expect(BASE_CLIENT_PY).toContain('data = to_jsonable_python(dict(values))');
+        expect(BASE_CLIENT_PY).toContain('data = to_jsonable_python({key: _plain_decimals(value) for key, value in values.items()})');
+        // str() writes a Decimal as "1E-8" for 0.00000001, which the server's pattern rejects.
+        expect(BASE_CLIENT_PY).toContain('return format(value, "f")');
         // A None became an empty value, which a numeric schema rejects.
         expect(BASE_CLIENT_PY).toContain('if value is not None}');
     });

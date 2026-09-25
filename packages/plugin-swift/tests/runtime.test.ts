@@ -118,6 +118,16 @@ describe('Scalars.swift', () => {
         expect(SCALARS).toContain('rawValue = text.hasSuffix("n") ? String(text.dropLast()) : text');
         expect(SCALARS).toContain('try? container.decode(Int64.self)');
     });
+
+    it('checks a decimal against the OpenAPI pattern, across the whole text, in both directions', () => {
+        // Kept text used to accept anything, "1e5" and "NaN" included. The toolchain probe runs it.
+        expect(SCALARS).toContain('private static let wireForm = #"^-?[0-9]+(\\.[0-9]+)?$"#');
+        expect(SCALARS).toContain('text.range(of: wireForm, options: .regularExpression) == text.startIndex..<text.endIndex');
+        expect(SCALARS).toContain("throw DecodingError.dataCorruptedError(in: container, debugDescription: \"'\\(text)' is not a valid DecimalValue.\")");
+        expect(SCALARS).toContain('guard Self.isWireForm(rawValue) else {');
+        // The other wrappers carry any text, as before.
+        expect(SCALARS.match(/wireForm = /g)).toHaveLength(1);
+    });
 });
 
 describe('JSONValue.swift', () => {

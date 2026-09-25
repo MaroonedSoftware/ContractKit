@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { DECIMAL_PATTERN } from '@contractkit/core';
 import { createCSharpSdkPlugin } from '@contractkit/plugin-csharp';
 import { buildOnce, buildWithPlugin, ROOT_DIR, type EmittedFiles } from './harness.js';
 
@@ -24,6 +25,9 @@ const hasDotnet = dotnet.status === 0;
 
 /** A restore that could not reach a feed. Says nothing about the generated code, so the suite stands down. */
 const OFFLINE = /NU1301|NU1101|NU1900|Unable to load the service index/;
+
+/** Decimal strings the smoke program feeds the SDK's converter, each read iff DECIMAL_PATTERN accepts it. */
+const DECIMAL_CASES = ['1250.50', '1.10', '-5', '0', '1e5', '1E5', '.5', '5.', '+5', 'NaN', ' 5', '5 ', '5\n', '١٢', ''];
 
 const { files } = await buildOnce();
 
@@ -120,6 +124,7 @@ function writeSmokeProject(root: string, sdkProject: string): void {
         join(dir, 'Program.cs'),
         `using System;
 using System.Globalization;
+using System.Linq;
 using System.Numerics;
 using System.Text.Json;
 using Example.Sdk.Models;
@@ -153,6 +158,23 @@ internal static class Program
         Report("duration", JsonSerializer.Serialize(TimeSpan.FromMinutes(90), SdkJson.Options));
         Report("date-as-datetime", back.Date.ToDateTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " " + back.Date.ToDateTime().Kind);
         Report("time-as-timespan", back.Time!.Value.ToTimeSpan().ToString());
+        Report("decimal-reads", string.Join(",", new[] { ${DECIMAL_CASES.map(c => JSON.stringify(c)).join(', ')} }.Select(ReadsDecimal)));
+        Report("decimal-overflow", ReadsDecimal("79228162514264337593543950336"));
+    }
+
+    // "1" when the SDK reads the text as a decimal, "0" when it raises the JsonException a caller
+    // would see. Anything else escaping is a bug the test should surface, so it is not caught.
+    private static string ReadsDecimal(string text)
+    {
+        try
+        {
+            JsonSerializer.Deserialize<decimal>(JsonSerializer.Serialize(text), SdkJson.Options);
+            return "1";
+        }
+        catch (JsonException)
+        {
+            return "0";
+        }
     }
 
     private static void Report(string key, string value) => Console.WriteLine("ck:" + key + "=" + value);
@@ -252,6 +274,12 @@ describe.skipIf(!hasDotnet)('generated C#', () => {
                 duration: '"PT1H30M"',
                 'date-as-datetime': '2026-09-20 00:00 Unspecified',
                 'time-as-timespan': '09:30:00',
+                // Read exactly when the OpenAPI pattern accepts: no exponent, `+`, whitespace or
+                // trailing newline, which `NumberStyles.Float` and .NET's `$` would let through.
+                'decimal-reads': DECIMAL_CASES.map(c => (new RegExp(DECIMAL_PATTERN).test(c) ? '1' : '0')).join(','),
+                // Past System.Decimal's range: a JsonException like any other bad value, not an
+                // OverflowException escaping the deserializer.
+                'decimal-overflow': '0',
             });
         },
         BUILD_TIMEOUT_MS,

@@ -271,17 +271,26 @@ decimal.js `Decimal` — the same class Prisma hands you for a `Decimal` column,
 between the two with no conversion. A raw JSON number is **rejected**, not coerced: by the time one
 arrives it has already been through a double, which is exactly the loss the type prevents.
 
+The string must be **plain digits**: an optional `-`, one or more digits, then optionally a `.`
+and one or more digits. This is the OpenAPI `pattern` the docs plugin publishes,
+`^-?[0-9]+(\.[0-9]+)?$`, and every generated server and SDK enforces the same grammar, so a value a
+spec-validating client accepts is a value the server accepts. Exponents (`"1e5"`), hex or binary
+(`"0x1F"`), a leading `+`, `_` separators, a bare `".5"` or `"5."`, surrounding whitespace, and
+`"NaN"` or `"Infinity"` are all rejected. The server answers them with a 400.
+
 | Argument | Meaning                                                                  |
 | -------- | ------------------------------------------------------------------------ |
 | `min`    | Minimum value, inclusive. Compared as an exact decimal, never as a float. |
 | `max`    | Maximum value, inclusive.                                                |
-| `scale`  | Maximum number of decimal places accepted.                               |
+| `scale`  | Maximum decimal places, counted after trailing zeros are dropped.        |
 
 `scale` is a **validation** constraint — "at most N decimal places" — not a formatting directive.
 The wire value stays decimal.js-normalized, so `"1250.00"` reads back as `"1250"`; the two are the
-same number. Format at the display edge if you need trailing zeros. This is the same meaning
-`scale` carries in OpenAPI `pattern`, pydantic `condecimal(decimal_places=)`, and Prisma
-`@db.Decimal(_, n)`.
+same number. Format at the display edge if you need trailing zeros. Places are counted on that
+normalized value, so trailing zeros are free: `"1.10"` passes `scale=1`, and `"1.01"` does not. The
+published OpenAPI `pattern` counts them the same way (`^-?[0-9]+(\.[0-9]{1,N}0*)?$`), as does
+pydantic `condecimal(decimal_places=)`. `scale=0` allows only a whole number, optionally written with
+an all-zero fraction such as `"5.00"`.
 
 Generated code keeps values out of exponential notation, which would otherwise send `0.00000001`
 as `"1e-8"`. Server code (routers, MCP servers and server types) does it with

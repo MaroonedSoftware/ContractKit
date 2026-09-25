@@ -8,6 +8,8 @@
  * detection strategy, which is the part that legitimately differs between them.
  */
 
+import { DECIMAL_PATTERN } from '@contractkit/core';
+
 /**
  * The decimal.js import — **named, not default**.
  *
@@ -75,15 +77,20 @@ export function sdkDecimalCloneFor(lines: readonly string[]): string[] {
  * preprocess passes an already-`Decimal` value through untouched, so it holds.
  *
  * A raw JSON number fails validation rather than being coerced: by the time one reaches us it has
- * already been through an IEEE-754 double, which is the loss this scalar exists to prevent. Bad
- * strings are returned unchanged from preprocess rather than throwing, so they surface as an
- * ordinary Zod issue instead of a `DecimalError` escaping the parse.
+ * already been through an IEEE-754 double, which is the loss this scalar exists to prevent.
+ *
+ * Only a string in the published wire form ({@link DECIMAL_PATTERN}, the OpenAPI `pattern`) is
+ * converted. decimal.js on its own accepts far more: `"1e5"`, `"0x1F"`, `"+5"`, `".5"`, and
+ * `"NaN"` and `"Infinity"`, which a bare `decimal` then let through, since only the `scale`/`min`/
+ * `max` refine happened to reject them. Anything else is returned unchanged from preprocess, so it
+ * surfaces as an ordinary Zod issue rather than a `DecimalError` escaping the parse. The
+ * `isFinite()` check is defence in depth for a `Decimal` handed in already built.
  *
  * The check stays `Decimal.isDecimal` in both forms, so a value built with the consumer's own
  * `Decimal` passes an SDK schema too.
  */
 function decimalZodSchemaLine(ctor: string): string {
-    return `const _ZodDecimal = z.preprocess((val) => { if (typeof val !== 'string') return val; try { return new ${ctor}(val); } catch { return val; } }, z.custom<Decimal>((val) => Decimal.isDecimal(val), { message: 'Must be an exact decimal sent as a quoted string, e.g. "1250.00"' }));`;
+    return `const _ZodDecimal = z.preprocess((val) => { if (typeof val !== 'string' || !/${DECIMAL_PATTERN}/.test(val)) return val; try { return new ${ctor}(val); } catch { return val; } }, z.custom<Decimal>((val) => Decimal.isDecimal(val) && val.isFinite(), { message: 'Must be an exact decimal sent as a quoted string, e.g. "1250.00"' }));`;
 }
 
 /** The decimal runtime for a server file that also holds Zod schemas, in emission order. */

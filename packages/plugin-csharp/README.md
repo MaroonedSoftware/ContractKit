@@ -109,7 +109,8 @@ wire form is `yyyy-MM-dd` either way. `time` stays `TimeOnly` in both: `duration
 
 `int` is a JavaScript safe integer in the source language, which overflows a 32-bit `int`, so it
 maps to `long`. `decimal` travels as a quoted JSON string and refuses to read an unquoted number,
-matching the server's own schema. `duration` travels as ISO 8601 rather than the framework's
+matching the server's own schema. It reads only plain digits (the OpenAPI `pattern`), so `"1e5"`,
+`"+5"` and `" 5"` fail to read even though `decimal.Parse` would accept them. `duration` travels as ISO 8601 rather than the framework's
 `d.hh:mm:ss` default. Both, and `bigint`, need the converters in `SdkJson.Options`.
 
 ## Optional and nullable

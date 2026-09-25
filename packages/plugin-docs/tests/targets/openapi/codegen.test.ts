@@ -41,15 +41,26 @@ describe('scalarToSchema', () => {
         expect(scalarToSchema({ kind: 'scalar', name: 'decimal' })).toEqual({
             type: 'string',
             format: 'decimal',
-            pattern: '^-?\\d+(\\.\\d+)?$',
+            pattern: '^-?[0-9]+(\\.[0-9]+)?$',
         });
     });
 
-    it('narrows the decimal pattern by scale', () => {
-        expect(scalarToSchema({ kind: 'scalar', name: 'decimal', scale: 2 })).toMatchObject({
-            pattern: '^-?\\d+(\\.\\d{1,2})?$',
-            'x-contractkit-scale': 2,
-        });
+    it('narrows the decimal pattern by scale, allowing trailing zeros past it', () => {
+        // `scale` counts places once trailing zeros are dropped, the same as the server's
+        // `decimalPlaces()` check, so `"1.10"` has to pass `scale=1` here too.
+        const schema = scalarToSchema({ kind: 'scalar', name: 'decimal', scale: 2 });
+        expect(schema).toMatchObject({ pattern: '^-?[0-9]+(\\.[0-9]{1,2}0*)?$', 'x-contractkit-scale': 2 });
+        const re = new RegExp(schema.pattern as string);
+        expect(re.test('1250.50')).toBe(true);
+        expect(re.test('1250.500')).toBe(true);
+        expect(re.test('1250.505')).toBe(false);
+    });
+
+    it('builds a valid decimal pattern for scale=0', () => {
+        // `\\d{1,0}` is not a valid quantifier, which is what scale=0 used to publish.
+        const schema = scalarToSchema({ kind: 'scalar', name: 'decimal', scale: 0 });
+        expect(schema.pattern).toBe('^-?[0-9]+(\\.0+)?$');
+        expect(new RegExp(schema.pattern as string).test('5.00')).toBe(true);
     });
 
     it('carries exact decimal bounds in extensions, not in numeric minimum/maximum', () => {

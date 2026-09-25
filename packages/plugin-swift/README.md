@@ -69,6 +69,9 @@ text is the only way to hand back exactly what the service said. The names avoid
 standard-library ones deliberately: a generated `Decimal` would be ambiguous with
 `Foundation.Decimal` in every file that imports both.
 
+A `DecimalValue` holds plain digits only, the form the OpenAPI `pattern` publishes: decoding
+`"1e5"`, `"+5"` or `"NaN"` throws, and so does encoding a `DecimalValue` built from one.
+
 ## Inheritance
 
 A Swift struct cannot extend another, so a contract's bases are **flattened** into the generated

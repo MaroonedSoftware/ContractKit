@@ -164,6 +164,15 @@ struct Probe {
         checks.expect("inline object: hoisted struct", node.inline?.x == 1.5 && node.inline?.y == 2)
         checks.expect("bigint: text preserved past Int64", node.big.rawValue == "123456789012345678901234567890")
         checks.expect("decimal: text preserved", node.money.rawValue == "12.50")
+        // Only the plain digits the OpenAPI pattern publishes. "5\n" because ICU's `$` also matches
+        // before a final newline, and "١٢" because ICU's `\d` would match Arabic-Indic digits.
+        for text in ["1250.50", "-5", "0", "1.10"] {
+            checks.expect("decimal: reads \(text)", try decoder.decode(DecimalValue.self, from: encoder.encode(text)).rawValue == text)
+        }
+        for text in ["1e5", "0x1F", ".5", "5.", "+5", "1_000", "NaN", "Infinity", " 5", "5\n", "١٢", ""] {
+            checks.expectThrows("decimal: rejects \(text.debugDescription)") { try decoder.decode(DecimalValue.self, from: encoder.encode(text)) }
+        }
+        checks.expectThrows("decimal: refuses to encode 1e5") { try encoder.encode(DecimalValue("1e5")) }
         checks.expect("date, time, duration: text preserved", node.day?.rawValue == "2024-02-29" && node.at?.rawValue == "13:45:00" && node.span?.rawValue == "P1DT2H")
         checks.expect("binary: base64", node.blob == data("hi"))
         checks.expect("unknown/json: JSONValue", node.any != nil && node.js != nil)

@@ -155,10 +155,11 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         if (needsTimedelta) dtParts.push('timedelta');
         lines.push(`from datetime import ${dtParts.join(', ')}`);
     }
-    if (needsDecimal) lines.push('from decimal import Decimal');
     if (needsUUID) lines.push('from uuid import UUID');
-    // Path params are percent-encoded, so `quote` is needed wherever a route interpolates one.
-    if (publicOps.some(({ route }) => /\{[a-zA-Z_$][a-zA-Z0-9_$.-]*\}/.test(route.path))) {
+    // Path params are percent-encoded, so `quote` is needed wherever a route interpolates one, and
+    // `_path_text` to write each value in its wire form first.
+    const hasPathParams = publicOps.some(({ route }) => /\{[a-zA-Z_$][a-zA-Z0-9_$.-]*\}/.test(route.path));
+    if (hasPathParams) {
         lines.push('from urllib.parse import quote');
     }
 
@@ -206,8 +207,9 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     if (needsAnnotated) pydanticImports.push('Field');
     if (adapters.length > 0) pydanticImports.push('TypeAdapter');
     if (pydanticImports.length > 0) lines.push(`from pydantic import ${pydanticImports.join(', ')}`);
-    lines.push('from ._base_client import BaseClient, SdkError  # noqa: F401');
-    if (referencedModels.has('__bigint__')) lines.push(`from ${SCALARS_MODULE} import BigInt`);
+    lines.push(`from ._base_client import BaseClient, SdkError${hasPathParams ? ', _path_text' : ''}  # noqa: F401`);
+    const scalarImports = [...(referencedModels.has('__bigint__') ? ['BigInt'] : []), ...(needsDecimal ? ['ExactDecimal'] : [])];
+    if (scalarImports.length > 0) lines.push(`from ${SCALARS_MODULE} import ${scalarImports.join(', ')}`);
 
     // Model imports grouped by module
     const modelImportsByModule = new Map<string, Set<string>>();
@@ -746,7 +748,9 @@ const PATH_PLACEHOLDER = /\{([a-zA-Z_$][a-zA-Z0-9_$.-]*)\}/g;
  * when the route declares its params as a model.
  *
  * Values are percent-encoded, which the TypeScript SDK has always done via `encodeURIComponent`
- * and Python did not do at all. `safe=''` because a path segment must escape `/` too.
+ * and Python did not do at all. `safe=''` because a path segment must escape `/` too. Each goes
+ * through `_path_text` rather than `str()` first, which would write a `Decimal` of 0.00000001 as
+ * `1E-8`, a segment the server's decimal pattern rejects.
  */
 function buildUrlExpression(path: string, params?: ParamSource): string {
     if (!PATH_PLACEHOLDER.test(path)) return `"${path}"`;
@@ -763,7 +767,7 @@ function buildUrlExpression(path: string, params?: ParamSource): string {
         } else {
             expr = toPathParamName(name);
         }
-        return `{quote(str(${expr}), safe='')}`;
+        return `{quote(_path_text(${expr}), safe='')}`;
     });
     return `f"${interpolated}"`;
 }
@@ -773,7 +777,7 @@ function buildUrlExpression(path: string, params?: ParamSource): string {
  * parameters (a second `body` is a duplicate-argument SyntaxError) and the functions the URL
  * expression calls (a `quote` argument would shadow `urllib.parse.quote` and fail at call time).
  */
-const METHOD_RESERVED_NAMES: ReadonlySet<string> = new Set(['self', 'body', 'query', 'custom_headers', 'quote', 'str']);
+const METHOD_RESERVED_NAMES: ReadonlySet<string> = new Set(['self', 'body', 'query', 'custom_headers', 'quote', 'str', '_path_text']);
 
 /** The method argument a spread path param becomes. Signature and URL both go through here. */
 function toPathParamName(name: string): string {
@@ -1103,6 +1107,7 @@ from __future__ import annotations
 
 import httpx
 from collections.abc import Mapping
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel
@@ -1115,16 +1120,33 @@ def _wire_values(values: Mapping[str, Any] | BaseModel | None) -> dict[str, Any]
     A model (a \`query:\` or \`headers:\` declared as a model ref) is dumped by contract name with the
     flags a request body uses. A mapping (the TypedDict of an inline block) holds Python values,
     which httpx would str(): a datetime into "2026-01-02 03:04:00+00:00", which no ISO 8601 parser
-    accepts, and None into an empty string.
+    accepts, and None into an empty string. A Decimal would become "1E-8" for 0.00000001, which the
+    server's decimal pattern rejects, so it is written in plain digits first.
     """
     if values is None:
         return {}
     if isinstance(values, BaseModel):
         data = values.model_dump(mode="json", by_alias=True, exclude_unset=True)
     else:
-        data = to_jsonable_python(dict(values))
+        data = to_jsonable_python({key: _plain_decimals(value) for key, value in values.items()})
     # Neither a query string nor a header can say null, so a None is sent as nothing at all.
     return {key: value for key, value in data.items() if value is not None}
+
+
+def _plain_decimals(value: Any) -> Any:
+    """A Decimal, or a list of them, in plain digits rather than str()'s exponent form."""
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    if isinstance(value, list):
+        return [_plain_decimals(item) for item in value]
+    return value
+
+
+def _path_text(value: Any) -> str:
+    """A path parameter as text, before percent-encoding: a Decimal in plain digits, not "1E-8"."""
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    return str(value)
 
 
 def _header_text(value: Any) -> str:

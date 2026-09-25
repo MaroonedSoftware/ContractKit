@@ -640,7 +640,7 @@ components:
         unitPrice:
           type: string
           format: decimal
-          pattern: '^-?\d+(\.\d{1,2})?$'
+          pattern: '^-?[0-9]+(\.[0-9]{1,2}0*)?$'
           x-contractkit-scale: 2
         quantity:
           type: string
@@ -790,7 +790,7 @@ components:
         total:
           type: string
           format: decimal
-          pattern: '^-?\d+(\.\d{1,2})?$'
+          pattern: '^-?[0-9]+(\.[0-9]{1,2}0*)?$'
           x-contractkit-scale: 2
       required: [id, total]
     Rating:
@@ -869,7 +869,7 @@ components:
         price:
           type: string
           format: decimal
-          pattern: '^-?\d+(\.\d{1,2})?$'
+          pattern: '^-?[0-9]+(\.[0-9]{1,2}0*)?$'
           x-contractkit-scale: 2
         day:
           type: string

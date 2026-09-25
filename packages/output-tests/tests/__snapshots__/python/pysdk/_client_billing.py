@@ -6,7 +6,7 @@ from uuid import UUID
 from urllib.parse import quote
 from typing import Any, Literal, NotRequired, TypedDict
 from pydantic import TypeAdapter
-from ._base_client import BaseClient, SdkError  # noqa: F401
+from ._base_client import BaseClient, SdkError, _path_text  # noqa: F401
 from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentFilter, PaymentInput, PaymentRef, SavedSearch, ScopedFilter, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm, UploadReceiptForm
 
 
@@ -81,28 +81,28 @@ class BillingClient(BaseClient):
         """
         fetch one payment
         """
-        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="GET")
+        result = await self._fetch(f"/payments/{quote(_path_text(payment_id), safe='')}", method="GET")
         return Payment.model_validate(result)
 
     async def update_payment_with_form(self, payment_id: UUID, body: UpdatePaymentForm) -> None:
         """
         update a payment with form data
         """
-        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True), content_type="application/x-www-form-urlencoded", body_kind="form")
+        result = await self._fetch(f"/payments/{quote(_path_text(payment_id), safe='')}", method="POST", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True), content_type="application/x-www-form-urlencoded", body_kind="form")
         return None
 
     async def delete_payment(self, payment_id: UUID) -> None:
         """
         delete a payment — declares only a documented error status
         """
-        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}", method="DELETE")
+        result = await self._fetch(f"/payments/{quote(_path_text(payment_id), safe='')}", method="DELETE")
         return None
 
     async def upload_receipt(self, payment_id: UUID, body: dict[str, Any]) -> Payment:
         """
         upload a receipt image
         """
-        result = await self._fetch(f"/payments/{quote(str(payment_id), safe='')}/receipt", method="POST", body=body, content_type="multipart/form-data", body_kind="multipart")
+        result = await self._fetch(f"/payments/{quote(_path_text(payment_id), safe='')}/receipt", method="POST", body=body, content_type="multipart/form-data", body_kind="multipart")
         return Payment.model_validate(result)
 
     # @deprecated
@@ -110,7 +110,7 @@ class BillingClient(BaseClient):
         """
         look up a refund by its originating payment
         """
-        result = await self._fetch(f"/refunds/{quote(str(params.model_dump(by_alias=True)['paymentId']), safe='')}", method="GET")
+        result = await self._fetch(f"/refunds/{quote(_path_text(params.model_dump(by_alias=True)['paymentId']), safe='')}", method="GET")
         return Payment.model_validate(result)
 
     async def create_credential(self, body: AdminCredentialInput) -> Credential:

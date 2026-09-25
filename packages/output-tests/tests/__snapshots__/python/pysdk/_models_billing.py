@@ -5,8 +5,7 @@ from datetime import date, datetime, timedelta
 from uuid import UUID
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
-from decimal import Decimal
-from ._scalars import BigInt
+from ._scalars import BigInt, ExactDecimal
 
 # A customer payment
 class Payment(BaseModel):
@@ -14,7 +13,7 @@ class Payment(BaseModel):
 
     id: UUID
     amount: float
-    unit_price: Decimal = Field(alias="unitPrice")
+    unit_price: ExactDecimal = Field(alias="unitPrice")
     quantity: BigInt
     created_at: datetime = Field(alias="createdAt")
     processing_time: timedelta | None = Field(alias="processingTime", default=None)
@@ -24,7 +23,7 @@ class PaymentInput(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     amount: float
-    unit_price: Decimal = Field(alias="unitPrice")
+    unit_price: ExactDecimal = Field(alias="unitPrice")
     quantity: BigInt
     created_at: datetime = Field(alias="createdAt")
     processing_time: timedelta | None = Field(alias="processingTime", default=None)

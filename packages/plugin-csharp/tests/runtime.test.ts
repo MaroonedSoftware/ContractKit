@@ -125,6 +125,14 @@ describe('generateConvertersCs', () => {
         expect(out).toContain('writer.WriteStringValue(value.ToString(CultureInfo.InvariantCulture));');
     });
 
+    it('reads only the plain digits the OpenAPI pattern publishes', () => {
+        // `NumberStyles.Float` read "1e5", "+5" and " 5"; the smoke run in output-tests checks the behaviour.
+        expect(out).toContain('new Regex(@"^-?[0-9]+(\\.[0-9]+)?$", RegexOptions.CultureInvariant)');
+        expect(out).toContain('if (!match.Success || match.Length != text.Length)');
+        expect(out).toContain('decimal.Parse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture)');
+        expect(out).not.toContain('decimal.Parse(text, NumberStyles.Float');
+    });
+
     it('reads the bigint forms every other ContractKit SDK writes', () => {
         expect(out).toContain("BigInteger.Parse(text.TrimEnd('n'), NumberStyles.Integer, CultureInfo.InvariantCulture)");
         // Both branches copy to an array: the span overload of GetString is not on every framework.

@@ -79,7 +79,13 @@ describe('generateTargets', () => {
             'ktsdk/src/commonMain/kotlin/com/acme/sdk/runtime/Serializers.kt',
         ]);
         expect(ctx.emitted.get('ktsdk/src/commonMain/kotlin/com/acme/sdk/models/BillingModels.kt')).toContain('data class Payment(');
-        expect(ctx.emitted.get('ktsdk/src/commonMain/kotlin/com/acme/sdk/runtime/Serializers.kt')).toContain('value class Decimal');
+        const serializers = ctx.emitted.get('ktsdk/src/commonMain/kotlin/com/acme/sdk/runtime/Serializers.kt');
+        expect(serializers).toContain('value class Decimal');
+        // Plain digits only, the OpenAPI pattern: the text used to be kept whatever it was.
+        expect(serializers).toContain('@Serializable(with = DecimalSerializer::class)');
+        expect(serializers).toContain('val WIRE_FORM = Regex("""^-?[0-9]+(\\.[0-9]+)?$""")');
+        expect(serializers).toContain('require(WIRE_FORM.matches(value))');
+        expect(serializers).toContain('throw SerializationException(e.message, e)');
         expect(ctx.emitted.get('ktsdk/src/commonMain/kotlin/com/acme/sdk/AcmeSdk.kt')).toContain('val billing: BillingClient = BillingClient(http)');
     });
 
