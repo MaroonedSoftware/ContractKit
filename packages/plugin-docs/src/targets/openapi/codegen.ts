@@ -8,7 +8,7 @@ import type {
     OpOperationNode,
     ParamSource,
 } from '@contractkit/core';
-import { resolveModifiers, resolveSecurity, SECURITY_NONE } from '@contractkit/core';
+import { decimalPattern, resolveModifiers, resolveSecurity, SECURITY_NONE } from '@contractkit/core';
 
 /** A single entry for the OpenAPI `servers` array. */
 export interface OpenApiServerEntry {
@@ -449,7 +449,10 @@ export function scalarToSchema(type: import('@contractkit/core').ScalarTypeNode)
             // the IEEE-754 double a JSON number becomes in most generators.
             s.type = 'string';
             s.format = 'decimal';
-            s.pattern = type.scale !== undefined ? `^-?\\d+(\\.\\d{1,${type.scale}})?$` : '^-?\\d+(\\.\\d+)?$';
+            // The shared wire grammar every generated runtime enforces, narrowed by `scale`. The
+            // scaled form allows trailing zeros past the scale, because `scale` counts places after
+            // they are dropped: `"1.10"` passes `scale=1`, as the server's validator agrees.
+            s.pattern = decimalPattern(type.scale);
             // `minimum`/`maximum` are numeric in JSON Schema and ignored on a string type, so the
             // exact bounds ride in vendor extensions instead — which also lets the importer recover
             // them verbatim rather than reverse-engineering the pattern.
