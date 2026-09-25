@@ -38,6 +38,13 @@ def _plain_decimals(value: Any) -> Any:
     return value
 
 
+def _path_text(value: Any) -> str:
+    """A path parameter as text, before percent-encoding: a Decimal in plain digits, not "1E-8"."""
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    return str(value)
+
+
 def _header_text(value: Any) -> str:
     """A header value as text, which is all httpx accepts: booleans as the router parses them."""
     if isinstance(value, bool):

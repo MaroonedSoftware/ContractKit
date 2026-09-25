@@ -156,8 +156,10 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
         lines.push(`from datetime import ${dtParts.join(', ')}`);
     }
     if (needsUUID) lines.push('from uuid import UUID');
-    // Path params are percent-encoded, so `quote` is needed wherever a route interpolates one.
-    if (publicOps.some(({ route }) => /\{[a-zA-Z_$][a-zA-Z0-9_$.-]*\}/.test(route.path))) {
+    // Path params are percent-encoded, so `quote` is needed wherever a route interpolates one, and
+    // `_path_text` to write each value in its wire form first.
+    const hasPathParams = publicOps.some(({ route }) => /\{[a-zA-Z_$][a-zA-Z0-9_$.-]*\}/.test(route.path));
+    if (hasPathParams) {
         lines.push('from urllib.parse import quote');
     }
 
@@ -205,7 +207,7 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     if (needsAnnotated) pydanticImports.push('Field');
     if (adapters.length > 0) pydanticImports.push('TypeAdapter');
     if (pydanticImports.length > 0) lines.push(`from pydantic import ${pydanticImports.join(', ')}`);
-    lines.push('from ._base_client import BaseClient, SdkError  # noqa: F401');
+    lines.push(`from ._base_client import BaseClient, SdkError${hasPathParams ? ', _path_text' : ''}  # noqa: F401`);
     const scalarImports = [...(referencedModels.has('__bigint__') ? ['BigInt'] : []), ...(needsDecimal ? ['ExactDecimal'] : [])];
     if (scalarImports.length > 0) lines.push(`from ${SCALARS_MODULE} import ${scalarImports.join(', ')}`);
 
@@ -746,7 +748,9 @@ const PATH_PLACEHOLDER = /\{([a-zA-Z_$][a-zA-Z0-9_$.-]*)\}/g;
  * when the route declares its params as a model.
  *
  * Values are percent-encoded, which the TypeScript SDK has always done via `encodeURIComponent`
- * and Python did not do at all. `safe=''` because a path segment must escape `/` too.
+ * and Python did not do at all. `safe=''` because a path segment must escape `/` too. Each goes
+ * through `_path_text` rather than `str()` first, which would write a `Decimal` of 0.00000001 as
+ * `1E-8`, a segment the server's decimal pattern rejects.
  */
 function buildUrlExpression(path: string, params?: ParamSource): string {
     if (!PATH_PLACEHOLDER.test(path)) return `"${path}"`;
@@ -763,7 +767,7 @@ function buildUrlExpression(path: string, params?: ParamSource): string {
         } else {
             expr = toPathParamName(name);
         }
-        return `{quote(str(${expr}), safe='')}`;
+        return `{quote(_path_text(${expr}), safe='')}`;
     });
     return `f"${interpolated}"`;
 }
@@ -773,7 +777,7 @@ function buildUrlExpression(path: string, params?: ParamSource): string {
  * parameters (a second `body` is a duplicate-argument SyntaxError) and the functions the URL
  * expression calls (a `quote` argument would shadow `urllib.parse.quote` and fail at call time).
  */
-const METHOD_RESERVED_NAMES: ReadonlySet<string> = new Set(['self', 'body', 'query', 'custom_headers', 'quote', 'str']);
+const METHOD_RESERVED_NAMES: ReadonlySet<string> = new Set(['self', 'body', 'query', 'custom_headers', 'quote', 'str', '_path_text']);
 
 /** The method argument a spread path param becomes. Signature and URL both go through here. */
 function toPathParamName(name: string): string {
@@ -1136,6 +1140,13 @@ def _plain_decimals(value: Any) -> Any:
     if isinstance(value, list):
         return [_plain_decimals(item) for item in value]
     return value
+
+
+def _path_text(value: Any) -> str:
+    """A path parameter as text, before percent-encoding: a Decimal in plain digits, not "1E-8"."""
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    return str(value)
 
 
 def _header_text(value: Any) -> str:

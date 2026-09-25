@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 from urllib.parse import quote
 from typing import NotRequired, TypedDict
-from ._base_client import BaseClient, SdkError  # noqa: F401
+from ._base_client import BaseClient, SdkError, _path_text  # noqa: F401
 from ._models_reserved import Note, Seat, SeatRef
 
 
@@ -30,7 +30,7 @@ class ReservedClient(BaseClient):
         """
         fetch one seat
         """
-        result, _response_headers = await self._fetch_with_headers(f"/seats/{quote(str(class_), safe='')}", method="GET", params=query, extra_headers=custom_headers)
+        result, _response_headers = await self._fetch_with_headers(f"/seats/{quote(_path_text(class_), safe='')}", method="GET", params=query, extra_headers=custom_headers)
         headers: GetSeatResponseHeaders = {}
         if "from" in _response_headers:
             headers["from_"] = _response_headers["from"]
@@ -40,12 +40,12 @@ class ReservedClient(BaseClient):
         """
         fetch a row by its seat class
         """
-        result = await self._fetch(f"/rows/{quote(str(params.model_dump(by_alias=True)['class']), safe='')}", method="GET")
+        result = await self._fetch(f"/rows/{quote(_path_text(params.model_dump(by_alias=True)['class']), safe='')}", method="GET")
         return Seat.model_validate(result)
 
     async def put_note(self, body_: str, body: Note) -> Note:
         """
         replace a note
         """
-        result = await self._fetch(f"/notes/{quote(str(body_), safe='')}", method="PUT", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
+        result = await self._fetch(f"/notes/{quote(_path_text(body_), safe='')}", method="PUT", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Note.model_validate(result)

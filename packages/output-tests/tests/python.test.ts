@@ -113,7 +113,7 @@ describe.skipIf(!canRunSdk)('generated Python, with Pydantic installed', () => {
             'from decimal import Decimal',
             'from pydantic import TypeAdapter',
             'from pysdk._scalars import ExactDecimal',
-            'from pysdk._base_client import _wire_values',
+            'from pysdk._base_client import _path_text, _wire_values',
             'adapter = TypeAdapter(ExactDecimal)',
             'def reads(text):',
             '    try:',
@@ -126,15 +126,17 @@ describe.skipIf(!canRunSdk)('generated Python, with Pydantic installed', () => {
             '    "number": reads(5.5),',
             '    "written": adapter.dump_json(Decimal("0.00000001")).decode(),',
             '    "query": _wire_values({"a": Decimal("1E-8"), "b": [Decimal("1E+2")]}),',
+            '    "path": _path_text(Decimal("1E-8")),',
             '}))',
         ].join('\n');
         const result = spawnSync(sdkPython, ['-c', script], { cwd: dir, encoding: 'utf-8', input: JSON.stringify(inputs) });
         expect(result.stderr).toBe('');
-        const report = JSON.parse(result.stdout) as { reads: Record<string, boolean>; number: boolean; written: string; query: unknown };
+        const report = JSON.parse(result.stdout) as { reads: Record<string, boolean>; number: boolean; written: string; query: unknown; path: string };
         const pattern = new RegExp(DECIMAL_PATTERN);
         expect(report.reads).toEqual(Object.fromEntries(inputs.map(text => [text, pattern.test(text)])));
         expect(report.number).toBe(false);
         expect(report.written).toBe('"0.00000001"');
         expect(report.query).toEqual({ a: '0.00000001', b: ['100'] });
+        expect(report.path).toBe('0.00000001');
     });
 });

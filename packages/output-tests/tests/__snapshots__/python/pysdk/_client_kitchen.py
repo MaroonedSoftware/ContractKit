@@ -6,7 +6,7 @@ from uuid import UUID
 from urllib.parse import quote
 from typing import Literal, NotRequired, TypedDict
 from pydantic import TypeAdapter
-from ._base_client import BaseClient, SdkError  # noqa: F401
+from ._base_client import BaseClient, SdkError, _path_text  # noqa: F401
 from ._scalars import BigInt
 from ._models_kitchen import Folder, Instrument, Ledger, LedgerInput, Named, Shared, SharedInput, Stamped, Token
 
@@ -67,7 +67,7 @@ class KitchenClient(BaseClient):
         """
         several statuses, and two content types on one of them
         """
-        _status, _content_type, result, _response_headers = await self._fetch_full(f"/folders/{quote(str(folder_id), safe='')}", method="GET", response_kind="auto", expect_statuses=(404,), params=query, extra_headers=custom_headers)
+        _status, _content_type, result, _response_headers = await self._fetch_full(f"/folders/{quote(_path_text(folder_id), safe='')}", method="GET", response_kind="auto", expect_statuses=(404,), params=query, extra_headers=custom_headers)
         if _status == 204:
             return { "status": 204 }
         if _status == 404:
@@ -87,14 +87,14 @@ class KitchenClient(BaseClient):
         """
         a method name that is a keyword in the target languages
         """
-        result = await self._fetch(f"/folders/{quote(str(folder_id), safe='')}", method="PUT", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
+        result = await self._fetch(f"/folders/{quote(_path_text(folder_id), safe='')}", method="PUT", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return _IMPORT__RESPONSE.validate_python(result)
 
     async def touch_folder(self, folder_id: UUID, body: Named) -> Folder:
         """
         the one verb with no HttpMethod static of its own on every C# target framework
         """
-        result = await self._fetch(f"/folders/{quote(str(folder_id), safe='')}", method="PATCH", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
+        result = await self._fetch(f"/folders/{quote(_path_text(folder_id), safe='')}", method="PATCH", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Folder.model_validate(result)
 
     async def post_ledger(self, body: LedgerInput) -> Ledger:
@@ -117,7 +117,7 @@ class KitchenClient(BaseClient):
         """
         one status with two content types and response headers, so the headers are read before the mime dispatch
         """
-        _status, _content_type, result, _response_headers = await self._fetch_full(f"/folders/{quote(str(folder_id), safe='')}/export", method="GET", response_kind="auto")
+        _status, _content_type, result, _response_headers = await self._fetch_full(f"/folders/{quote(_path_text(folder_id), safe='')}/export", method="GET", response_kind="auto")
         headers: ExportFolderHeaders = {}
         if "x-export-id" in _response_headers:
             headers["x_export_id"] = _response_headers["x-export-id"]
