@@ -183,15 +183,14 @@ describe('generatePythonClient', () => {
             );
             expect(output).toContain('_COUNTS_RESPONSE: TypeAdapter[list[BigInt]] = TypeAdapter(list[BigInt])');
             expect(output).toContain('_DAYS_RESPONSE: TypeAdapter[list[date]] = TypeAdapter(list[date])');
-            expect(output).toContain('_PAIR_RESPONSE: TypeAdapter[tuple[date, Decimal]] = TypeAdapter(tuple[date, Decimal])');
+            expect(output).toContain('_PAIR_RESPONSE: TypeAdapter[tuple[date, ExactDecimal]] = TypeAdapter(tuple[date, ExactDecimal])');
             expect(output).toContain('return _BY_ID_RESPONSE.validate_python(result)');
             expect(output).toContain('return _COUNTS_RESPONSE.validate_python(result)');
             expect(output).not.toMatch(/^\s+return result$/m);
             // The adapters are evaluated at import, so everything their types name is imported.
             expect(output).toContain('from pydantic import Field, TypeAdapter');
-            expect(output).toContain('from ._scalars import BigInt');
+            expect(output).toContain('from ._scalars import BigInt, ExactDecimal');
             expect(output).toContain('from datetime import date');
-            expect(output).toContain('from decimal import Decimal');
         });
 
         it('keeps model_validate for a single model and adds no adapter for Any, text or binary', () => {
@@ -1201,7 +1200,9 @@ describe('BASE_CLIENT_PY', () => {
 
     it('converts inline query and header values to the forms the router parses', () => {
         // httpx str()s a datetime with a space, which Luxon's fromISO rejects.
-        expect(BASE_CLIENT_PY).toContain('data = to_jsonable_python(dict(values))');
+        expect(BASE_CLIENT_PY).toContain('data = to_jsonable_python({key: _plain_decimals(value) for key, value in values.items()})');
+        // str() writes a Decimal as "1E-8" for 0.00000001, which the server's pattern rejects.
+        expect(BASE_CLIENT_PY).toContain('return format(value, "f")');
         // A None became an empty value, which a numeric schema rejects.
         expect(BASE_CLIENT_PY).toContain('if value is not None}');
     });

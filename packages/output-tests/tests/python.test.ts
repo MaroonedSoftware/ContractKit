@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DECIMAL_PATTERN } from '@contractkit/core';
 import { buildOnce } from './harness.js';
 
 /**
@@ -101,5 +102,39 @@ describe.skipIf(!canRunSdk)('generated Python, with Pydantic installed', () => {
         const result = spawnSync(sdkPython, ['-W', 'error', '-c', script], { cwd: dir, encoding: 'utf-8' });
         expect(result.stderr).toBe('');
         expect(result.status).toBe(0);
+    });
+
+    it('reads a decimal exactly when the published OpenAPI pattern accepts it, and writes plain digits', () => {
+        // A bare pydantic `Decimal` read "1e5" and "NaN", and wrote 0.00000001 as "1E-8", which the
+        // server rejects. `"5\n"` is here because Python's `$` also matches before a final newline.
+        const inputs = ['1250.50', '1.10', '-5', '0', '1e5', '0x1F', '.5', '5.', '+5', '1_000', 'NaN', 'Infinity', '-Infinity', ' 5', '5\n', '١٢', ''];
+        const script = [
+            'import json, sys',
+            'from decimal import Decimal',
+            'from pydantic import TypeAdapter',
+            'from pysdk._scalars import ExactDecimal',
+            'from pysdk._base_client import _wire_values',
+            'adapter = TypeAdapter(ExactDecimal)',
+            'def reads(text):',
+            '    try:',
+            '        adapter.validate_json(json.dumps(text))',
+            '        return True',
+            '    except Exception:',
+            '        return False',
+            'print(json.dumps({',
+            '    "reads": {text: reads(text) for text in json.load(sys.stdin)},',
+            '    "number": reads(5.5),',
+            '    "written": adapter.dump_json(Decimal("0.00000001")).decode(),',
+            '    "query": _wire_values({"a": Decimal("1E-8"), "b": [Decimal("1E+2")]}),',
+            '}))',
+        ].join('\n');
+        const result = spawnSync(sdkPython, ['-c', script], { cwd: dir, encoding: 'utf-8', input: JSON.stringify(inputs) });
+        expect(result.stderr).toBe('');
+        const report = JSON.parse(result.stdout) as { reads: Record<string, boolean>; number: boolean; written: string; query: unknown };
+        const pattern = new RegExp(DECIMAL_PATTERN);
+        expect(report.reads).toEqual(Object.fromEntries(inputs.map(text => [text, pattern.test(text)])));
+        expect(report.number).toBe(false);
+        expect(report.written).toBe('"0.00000001"');
+        expect(report.query).toEqual({ a: '0.00000001', b: ['100'] });
     });
 });

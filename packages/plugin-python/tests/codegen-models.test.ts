@@ -45,7 +45,7 @@ describe('renderPyType', () => {
         expect(renderPyType(scalarType('json'))).toBe('Any');
         expect(renderPyType(scalarType('object'))).toBe('Any');
         expect(renderPyType(scalarType('interval'))).toBe('str');
-        expect(renderPyType(scalarType('decimal'))).toBe('Decimal');
+        expect(renderPyType(scalarType('decimal'))).toBe('ExactDecimal');
     });
 
     it('throws on an unmapped scalar name', () => {
@@ -400,14 +400,17 @@ describe('generatePydanticModels', () => {
         const output = generatePydanticModels(root);
         expect(output).toContain('    quantity: BigInt');
         // Relative imports come last, so the order does not depend on which field is scanned first.
-        expect(output).toMatch(/from decimal import Decimal\nfrom \._scalars import BigInt/);
+        expect(output).toMatch(/\nfrom \._scalars import BigInt, ExactDecimal\n/);
+        expect(output.indexOf('from ._scalars')).toBeGreaterThan(output.indexOf('from pydantic'));
     });
 
-    it('generates the Decimal import for decimal fields', () => {
+    it('types a decimal field as the shared ExactDecimal, which reads and writes only plain digits', () => {
+        // A bare `Decimal` read "1e5" and "NaN", and wrote 0.00000001 as "1E-8" for the server to reject.
         const root = contractRoot([model('Payslip', [field('gross', scalarType('decimal'))])]);
         const output = generatePydanticModels(root);
-        expect(output).toContain('from decimal import Decimal');
-        expect(output).toContain('gross: Decimal');
+        expect(output).toContain('from ._scalars import ExactDecimal');
+        expect(output).toContain('gross: ExactDecimal');
+        expect(output).not.toContain('from decimal import Decimal');
     });
 
     it('includes deprecation comment', () => {
