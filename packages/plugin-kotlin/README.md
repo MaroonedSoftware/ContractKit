@@ -46,7 +46,7 @@ pnpm add -D @contractkit/cli @contractkit/plugin-kotlin
 | `number`                             | `Double`                                                                         |
 | `int`                                | `Long` (the source language's `int` is a JS safe integer, which overflows `Int`) |
 | `bigint`                             | `BigInt` (generated value class over `String`)                                   |
-| `decimal`                            | `Decimal` (generated value class over `String`)                                  |
+| `decimal`                            | `Decimal` (generated value class over `String`, plain digits only)               |
 | `boolean`                            | `Boolean`                                                                        |
 | `date`, `time`                       | `kotlinx.datetime.LocalDate` / `LocalTime`                                       |
 | `datetime`                           | `kotlin.time.Instant`                                                            |
