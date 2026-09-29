@@ -10,7 +10,7 @@ export const SimpleRoutes: FastifyPluginAsync = async app => {
 
     /**
      * current service status
-     * from [simple.ck](../../contracts/simple.ck#L14)
+     * from [simple.ck](../../contracts/simple.ck) `GET /status`
     */
     app.get('/status', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const service = request.container.get(StatusService);

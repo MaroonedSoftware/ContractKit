@@ -20,7 +20,7 @@ function requireMcpContainer(context: McpToolContext): Container {
 const GetStatusArgs = z.object({});
 
 /**
- * from [simple.ck](../contracts/simple.ck#L14)
+ * from [simple.ck](../contracts/simple.ck) `GET /status`
  */
 @Injectable()
 export class GetStatusMcpTool implements McpToolHandler {

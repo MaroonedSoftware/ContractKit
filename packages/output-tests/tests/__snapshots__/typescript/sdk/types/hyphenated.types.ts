@@ -19,7 +19,7 @@ const __wireDec = (v: unknown): unknown =>
     (v as { toStringTag?: unknown } | null | undefined)?.toStringTag === '[object Decimal]' ? (v as { toFixed(): string }).toFixed() : v;
 
 /**
- * generated from [Invoice](../../contracts/hyphenated.ck#L12)
+ * generated from [Invoice](../../contracts/hyphenated.ck)
 */
 export const Invoice = z.strictObject({
     id: z.uuid(),

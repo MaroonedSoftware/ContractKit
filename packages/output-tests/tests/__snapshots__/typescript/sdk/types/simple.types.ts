@@ -14,7 +14,7 @@ const __dt = (v: unknown, path: string): DateTime => {
 
 /**
  * A service heartbeat — deliberately no bigint field and no `area` key
- * generated from [Heartbeat](../../contracts/simple.ck#L8)
+ * generated from [Heartbeat](../../contracts/simple.ck)
 */
 export const Heartbeat = z.strictObject({
     status: z.string(),

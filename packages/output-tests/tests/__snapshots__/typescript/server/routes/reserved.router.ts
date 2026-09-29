@@ -12,7 +12,7 @@ export const ReservedRouter = ServerKitRouter();
 
 /**
  * fetch one seat
- * from [reserved.ck](../../contracts/reserved.ck#L48)
+ * from [reserved.ck](../../contracts/reserved.ck) `GET /seats/{class}`
 */
 ReservedRouter.get('/seats/:class', requirePolicy(), async ctx => {
     const { class: class_ } = await parseAndValidate(
@@ -49,7 +49,7 @@ ReservedRouter.get('/seats/:class', requirePolicy(), async ctx => {
 
 /**
  * fetch a row by its seat class
- * from [reserved.ck](../../contracts/reserved.ck#L74)
+ * from [reserved.ck](../../contracts/reserved.ck) `GET /rows/{class}`
 */
 ReservedRouter.get('/rows/:class', requirePolicy(), async ctx => {
     const params = await parseAndValidate(ctx.params, SeatRef.strict());
@@ -64,7 +64,7 @@ ReservedRouter.get('/rows/:class', requirePolicy(), async ctx => {
 
 /**
  * replace a note
- * from [reserved.ck](../../contracts/reserved.ck#L89)
+ * from [reserved.ck](../../contracts/reserved.ck) `PUT /notes/{body}`
 */
 ReservedRouter.put('/notes/:body', requirePolicy(), bodyParserMiddleware(['json']), async ctx => {
     const { body: body_ } = await parseAndValidate(

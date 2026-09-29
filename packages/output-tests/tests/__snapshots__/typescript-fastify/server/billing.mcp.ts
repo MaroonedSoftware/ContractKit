@@ -38,7 +38,7 @@ function __serializeSearchPaymentsScopedMcpToolResult(value: unknown): unknown {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L108)
+ * from [billing.ck](../contracts/billing.ck) `GET /payments/search`
  */
 @Injectable()
 export class SearchPaymentsMcpTool implements McpToolHandler {
@@ -63,7 +63,7 @@ export class SearchPaymentsMcpTool implements McpToolHandler {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L187)
+ * from [billing.ck](../contracts/billing.ck) `GET /refunds/{paymentId}`
  */
 @Injectable()
 export class GetRefundMcpTool implements McpToolHandler {
@@ -88,7 +88,7 @@ export class GetRefundMcpTool implements McpToolHandler {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L241)
+ * from [billing.ck](../contracts/billing.ck) `GET /payments/by-date`
  */
 @Injectable()
 export class SearchPaymentsByDateMcpTool implements McpToolHandler {
@@ -111,7 +111,7 @@ export class SearchPaymentsByDateMcpTool implements McpToolHandler {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L272)
+ * from [billing.ck](../contracts/billing.ck) `GET /payments/by-date/scoped`
  */
 @Injectable()
 export class SearchPaymentsScopedMcpTool implements McpToolHandler {
@@ -135,7 +135,7 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
 }
 
 /**
- * from [billing.ck](../contracts/billing.ck#L282)
+ * from [billing.ck](../contracts/billing.ck) `POST /payments/by-date/scoped`
  */
 @Injectable()
 export class SaveScopedSearchMcpTool implements McpToolHandler {

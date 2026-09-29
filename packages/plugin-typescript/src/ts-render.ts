@@ -34,9 +34,13 @@ export function escapeSingleQuoted(s: string): string {
 }
 
 /**
- * Render the markdown link back to the `.ck` declaration a generated construct came from, as
- * `[label](./path/to/file.ck#L12)`. Returns the link only; callers supply the surrounding prose
+ * Render the markdown link back to the `.ck` file a generated construct came from, as
+ * `[label](./path/to/file.ck)`. Returns the link only; callers supply the surrounding prose
  * and comment prefix, since some sites emit it inside a JSDoc block and others inside a `//` line.
+ *
+ * No `#L12` line anchor: it would make every generated file below an edit churn whenever a line
+ * is added above its declaration. Callers name the declaration instead (a model name, or an
+ * operation's method and path), which is stable and findable in the source.
  *
  * The path is relative to the emitted file's own directory, so it resolves when the reader clicks
  * it from wherever the file was written. `outPath` is optional because codegen can run without a
@@ -46,10 +50,10 @@ export function escapeSingleQuoted(s: string): string {
  * Not `file://./path`: `file://` opens an authority component, so the `.` parses as the host and
  * the link resolves to nothing. A plain relative path is the correct form.
  */
-export function sourceLink(label: string, outPath: string | undefined, sourceFile: string, line?: number): string {
+export function sourceLink(label: string, outPath: string | undefined, sourceFile: string): string {
     const rel = outPath ? relative(dirname(outPath), sourceFile) : sourceFile;
     const href = rel.startsWith('.') ? rel : `./${rel}`;
-    return `[${label}](${href}${line === undefined ? '' : `#L${line}`})`;
+    return `[${label}](${href})`;
 }
 
 /** Convert an HTTP header name (e.g. `preference-applied`, `X-Request-ID`, `ETag`) to camelCase for use as a JS property. */

@@ -15,7 +15,7 @@ const GetSeatArgs = z.object({ class: z.string(), query: z.object({ from: z.prep
 const PutNoteArgs = z.object({ body_: z.string(), body: Note });
 
 /**
- * from [reserved.ck](../contracts/reserved.ck#L48)
+ * from [reserved.ck](../contracts/reserved.ck) `GET /seats/{class}`
  */
 @Injectable()
 export class GetSeatMcpTool implements McpToolHandler {
@@ -40,7 +40,7 @@ export class GetSeatMcpTool implements McpToolHandler {
 }
 
 /**
- * from [reserved.ck](../contracts/reserved.ck#L89)
+ * from [reserved.ck](../contracts/reserved.ck) `PUT /notes/{body}`
  */
 @Injectable()
 export class PutNoteMcpTool implements McpToolHandler {

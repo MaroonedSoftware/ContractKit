@@ -12,7 +12,7 @@ export const HyphenatedRoutes: FastifyPluginAsync = async app => {
 
     /**
      * fetch an invoice
-     * from [hyphenated.ck](../../contracts/hyphenated.ck#L22)
+     * from [hyphenated.ck](../../contracts/hyphenated.ck) `GET /invoices/{invoice-id}`
     */
     app.get('/invoices/:invoiceId', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { invoiceId } = await parseAndValidate(

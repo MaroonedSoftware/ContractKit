@@ -11,7 +11,7 @@ export const HyphenatedRouter = ServerKitRouter();
 
 /**
  * fetch an invoice
- * from [hyphenated.ck](../../contracts/hyphenated.ck#L22)
+ * from [hyphenated.ck](../../contracts/hyphenated.ck) `GET /invoices/{invoice-id}`
 */
 HyphenatedRouter.get('/invoices/:invoiceId', requirePolicy(), async ctx => {
     const { invoiceId } = await parseAndValidate(

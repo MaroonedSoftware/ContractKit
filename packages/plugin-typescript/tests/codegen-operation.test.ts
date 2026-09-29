@@ -1874,7 +1874,8 @@ describe('generateOperation', () => {
         it('includes source location in JSDoc above handler', () => {
             const root = opRoot([opRoute('/users', [opOperation('get', { loc: { file: 'users.op', line: 3 } })])], 'users.op');
             const output = generateOp(root);
-            expect(output).toContain('[users.op](./users.op#L3)');
+            expect(output).toContain('* from [users.op](./users.op) `GET /users`');
+            expect(output).not.toContain('#L3');
         });
     });
 
@@ -1898,7 +1899,7 @@ describe('generateOperation', () => {
             const root = opRoot([opRoute('/users', [opOperation('get')])]);
             const output = generateOp(root);
             expect(output).toContain('/**');
-            expect(output).toMatch(/ \* from \[[^\]]+\]\(\.\/[^)]+#L\d+\)/);
+            expect(output).toMatch(/ \* from \[[^\]]+\]\(\.\/[^)#]+\) `GET \/users`/);
         });
     });
 
@@ -2170,7 +2171,8 @@ describe('generateOperation — path parameter names that are not identifiers', 
         // real request could ever match. The name is internal — Koa matches by position — so
         // renaming it costs nothing on the wire.
         expect(out).toContain("get('/invoices/:invoiceId'");
-        expect(out).not.toContain('{invoice-id}');
+        // The source-link comment names the route in its `.ck` form, so check the route calls only.
+        expect(out).not.toMatch(/\.get\('[^']*\{invoice-id\}/);
     });
 
     it('keys the params schema by the same name, since that is what ctx.params carries', () => {
