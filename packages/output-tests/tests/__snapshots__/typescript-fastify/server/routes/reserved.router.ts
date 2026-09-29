@@ -13,7 +13,7 @@ export const ReservedRoutes: FastifyPluginAsync = async app => {
 
     /**
      * fetch one seat
-     * from [reserved.ck](../../contracts/reserved.ck#L48)
+     * from [reserved.ck](../../contracts/reserved.ck) `GET /seats/{class}`
     */
     app.get('/seats/:class', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { class: class_ } = await parseAndValidate(
@@ -50,7 +50,7 @@ export const ReservedRoutes: FastifyPluginAsync = async app => {
 
     /**
      * fetch a row by its seat class
-     * from [reserved.ck](../../contracts/reserved.ck#L74)
+     * from [reserved.ck](../../contracts/reserved.ck) `GET /rows/{class}`
     */
     app.get('/rows/:class', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const params = await parseAndValidate(request.params, SeatRef.strict());
@@ -65,7 +65,7 @@ export const ReservedRoutes: FastifyPluginAsync = async app => {
 
     /**
      * replace a note
-     * from [reserved.ck](../../contracts/reserved.ck#L89)
+     * from [reserved.ck](../../contracts/reserved.ck) `PUT /notes/{body}`
     */
     app.put('/notes/:body', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const { body: body_ } = await parseAndValidate(

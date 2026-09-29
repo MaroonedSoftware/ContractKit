@@ -14,7 +14,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * several statuses, and two content types on one of them
-     * from [kitchen.ck](../../contracts/kitchen.ck#L111)
+     * from [kitchen.ck](../../contracts/kitchen.ck) `GET /folders/{folder-id}`
     */
     app.get('/folders/:folderId', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(
@@ -70,7 +70,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * a method name that is a keyword in the target languages
-     * from [kitchen.ck](../../contracts/kitchen.ck#L139)
+     * from [kitchen.ck](../../contracts/kitchen.ck) `PUT /folders/{folder-id}`
     */
     app.put('/folders/:folderId', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(
@@ -92,7 +92,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * the one verb with no HttpMethod static of its own on every C# target framework
-     * from [kitchen.ck](../../contracts/kitchen.ck#L152)
+     * from [kitchen.ck](../../contracts/kitchen.ck) `PATCH /folders/{folder-id}`
     */
     app.patch('/folders/:folderId', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(
@@ -113,7 +113,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L167)
+     * from [kitchen.ck](../../contracts/kitchen.ck) `POST /ledgers`
     */
     app.post('/ledgers', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, LedgerInput);
@@ -127,7 +127,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L182)
+     * from [kitchen.ck](../../contracts/kitchen.ck) `POST /stamps`
     */
     app.post('/stamps', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, Stamped);
@@ -141,7 +141,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L197)
+     * from [kitchen.ck](../../contracts/kitchen.ck) `POST /tokens`
     */
     app.post('/tokens', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, Token);
@@ -155,7 +155,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
     });
 
     /**
-     * from [kitchen.ck](../../contracts/kitchen.ck#L211)
+     * from [kitchen.ck](../../contracts/kitchen.ck) `GET /tokens`
     */
     app.get('/tokens', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const service = request.container.get(KitchenService);
@@ -168,7 +168,7 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
 
     /**
      * one status with two content types and response headers, so the headers are read before the mime dispatch
-     * from [kitchen.ck](../../contracts/kitchen.ck#L227)
+     * from [kitchen.ck](../../contracts/kitchen.ck) `GET /folders/{folder-id}/export`
     */
     app.get('/folders/:folderId/export', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { folderId } = await parseAndValidate(

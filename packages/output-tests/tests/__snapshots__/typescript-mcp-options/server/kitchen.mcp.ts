@@ -24,7 +24,7 @@ const TouchFolderArgs = z.object({ folderId: z.uuid(), body: Named });
 const ListTokensArgs = z.object({});
 
 /**
- * from [kitchen.ck](../contracts/kitchen.ck#L139)
+ * from [kitchen.ck](../contracts/kitchen.ck) `PUT /folders/{folder-id}`
  */
 @Injectable()
 export class ImportMcpTool implements McpToolHandler {
@@ -48,7 +48,7 @@ export class ImportMcpTool implements McpToolHandler {
 }
 
 /**
- * from [kitchen.ck](../contracts/kitchen.ck#L152)
+ * from [kitchen.ck](../contracts/kitchen.ck) `PATCH /folders/{folder-id}`
  */
 @Injectable()
 export class TouchFolderMcpTool implements McpToolHandler {
@@ -72,7 +72,7 @@ export class TouchFolderMcpTool implements McpToolHandler {
 }
 
 /**
- * from [kitchen.ck](../contracts/kitchen.ck#L211)
+ * from [kitchen.ck](../contracts/kitchen.ck) `GET /tokens`
  */
 @Injectable()
 export class ListTokensMcpTool implements McpToolHandler {

@@ -315,10 +315,6 @@ describe('options-level header globals parity', () => {
         return { server: generateOp(op), sdk: generateSdk(op), diag };
     }
 
-    // Strip source-line refs (e.g. `widgets.ck#L7`) so we can compare two equivalent
-    // shapes whose operation sits on different lines in the source.
-    const stripLineRefs = (s: string) => s.replace(/widgets\.ck#L\d+/g, 'widgets.ck#L?');
-
     it('options-level request headers produce the same server and SDK output as inlined headers', () => {
         const globalsForm = `
 options { request: { headers: {
@@ -345,8 +341,8 @@ operation /widgets: {
         const b = compileOp(inlinedForm);
         expect(a.diag.hasErrors()).toBe(false);
         expect(b.diag.hasErrors()).toBe(false);
-        expect(stripLineRefs(a.server)).toBe(stripLineRefs(b.server));
-        expect(stripLineRefs(a.sdk)).toBe(stripLineRefs(b.sdk));
+        expect(a.server).toBe(b.server);
+        expect(a.sdk).toBe(b.sdk);
     });
 
     it('options-level response headers on primary status produce the same server and SDK output as inlined headers', () => {
@@ -375,8 +371,8 @@ operation /widgets: {
         const b = compileOp(inlinedForm);
         expect(a.diag.hasErrors()).toBe(false);
         expect(b.diag.hasErrors()).toBe(false);
-        expect(stripLineRefs(a.server)).toBe(stripLineRefs(b.server));
-        expect(stripLineRefs(a.sdk)).toBe(stripLineRefs(b.sdk));
+        expect(a.server).toBe(b.server);
+        expect(a.sdk).toBe(b.sdk);
     });
 
     it('headers: none on an operation suppresses the global request header merge', () => {

@@ -52,13 +52,13 @@ const __wireDec = (v: unknown): unknown =>
 
 /**
  * A named enum, so a field default has to resolve to a member rather than its wire spelling
- * generated from [Rating](../../contracts/kitchen.ck#L17)
+ * generated from [Rating](../../contracts/kitchen.ck)
 */
 export const Rating = z.enum(["good", "neutral", "bad"]);
 export type Rating = z.infer<typeof Rating>;
 
 /**
- * generated from [Doc](../../contracts/kitchen.ck#L50)
+ * generated from [Doc](../../contracts/kitchen.ck)
 */
 export const Doc = z.strictObject({
     id: z.uuid(),
@@ -85,7 +85,7 @@ export function serializeDoc(value: Doc): unknown {
 }
 
 /**
- * generated from [Card](../../contracts/kitchen.ck#L55)
+ * generated from [Card](../../contracts/kitchen.ck)
 */
 export const Card = z.strictObject({
     kind: z.literal("card"),
@@ -94,7 +94,7 @@ export const Card = z.strictObject({
 export type Card = z.infer<typeof Card>;
 
 /**
- * generated from [Bank](../../contracts/kitchen.ck#L60)
+ * generated from [Bank](../../contracts/kitchen.ck)
 */
 export const Bank = z.strictObject({
     kind: z.literal("bank"),
@@ -104,7 +104,7 @@ export type Bank = z.infer<typeof Bank>;
 
 /**
  * Decodes snake_case keys and encodes PascalCase ones
- * generated from [Token](../../contracts/kitchen.ck#L68)
+ * generated from [Token](../../contracts/kitchen.ck)
 */
 export const Token = z.strictObject({
     AccessToken: z.string(),
@@ -126,7 +126,7 @@ export interface TokenWireInput {
 }
 
 /**
- * generated from [Owned](../../contracts/kitchen.ck#L74)
+ * generated from [Owned](../../contracts/kitchen.ck)
 */
 export const Owned = z.strictObject({
     id: z.uuid(),
@@ -139,7 +139,7 @@ export const OwnedInput = z.strictObject({
 export type OwnedInput = z.infer<typeof OwnedInput>;
 
 /**
- * generated from [Named](../../contracts/kitchen.ck#L79)
+ * generated from [Named](../../contracts/kitchen.ck)
 */
 export const Named = z.strictObject({
     name: z.string(),
@@ -147,7 +147,7 @@ export const Named = z.strictObject({
 export type Named = z.infer<typeof Named>;
 
 /**
- * generated from [Stamp](../../contracts/kitchen.ck#L89)
+ * generated from [Stamp](../../contracts/kitchen.ck)
 */
 export const Stamp = z.strictObject({
     stampedBy: z.string(),
@@ -164,7 +164,7 @@ export function reviveStamp(raw: Stamp): Stamp {
 
 /**
  * A plain base under format(), which the schema inlines rather than extends
- * generated from [Stamped](../../contracts/kitchen.ck#L95)
+ * generated from [Stamped](../../contracts/kitchen.ck)
 */
 export const Stamped = z.strictObject({
     stamped_by: z.string(),
@@ -201,7 +201,7 @@ export function reviveStampedOutput(raw: StampedOutput): StampedOutput {
 
 /**
  * format() on a contract split for readonly and writeonly fields, applied to both of its schemas
- * generated from [Ledger](../../contracts/kitchen.ck#L100)
+ * generated from [Ledger](../../contracts/kitchen.ck)
 */
 export const Ledger = z.strictObject({
     id: z.uuid(),
@@ -245,7 +245,7 @@ export function reviveLedgerOutput(raw: LedgerOutput): LedgerOutput {
 /**
  * Self recursion through lazy(), mutual recursion through Doc, every container, both union
  * forms, every scalar, and field names that are keywords in the target languages
- * generated from [Folder](../../contracts/kitchen.ck#L21)
+ * generated from [Folder](../../contracts/kitchen.ck)
 */
 export const Folder = z.strictObject({
     id: z.uuid(),
@@ -355,14 +355,14 @@ export function serializeFolder(value: Folder): unknown {
 }
 
 /**
- * generated from [Instrument](../../contracts/kitchen.ck#L65)
+ * generated from [Instrument](../../contracts/kitchen.ck)
 */
 export const Instrument = z.discriminatedUnion("kind", [Card, Bank]);
 export type Instrument = z.infer<typeof Instrument>;
 
 /**
  * Two flattened bases, split into a read and an input shape
- * generated from [Shared](../../contracts/kitchen.ck#L84)
+ * generated from [Shared](../../contracts/kitchen.ck)
 */
 export const Shared = Owned.extend(Named.shape).extend({
     label: z.string().default("x"),

@@ -22,7 +22,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * create a payment
-     * from [billing.ck](../../contracts/billing.ck#L69)
+     * from [billing.ck](../../contracts/billing.ck) `POST /payments`
     */
     app.post('/payments', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, PaymentInput);
@@ -41,7 +41,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * list payments
-     * from [billing.ck](../../contracts/billing.ck#L89)
+     * from [billing.ck](../../contracts/billing.ck) `GET /payments`
     */
     app.get('/payments', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const query = await parseAndValidate(
@@ -71,7 +71,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * search payments with a filter model
-     * from [billing.ck](../../contracts/billing.ck#L108)
+     * from [billing.ck](../../contracts/billing.ck) `GET /payments/search`
     */
     app.get('/payments/search', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const query = await parseAndValidate(
@@ -96,7 +96,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * create several payments at once
-     * from [billing.ck](../../contracts/billing.ck#L121)
+     * from [billing.ck](../../contracts/billing.ck) `POST /payments/batch`
     */
     app.post('/payments/batch', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, z.array(PaymentInput));
@@ -111,7 +111,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * fetch one payment
-     * from [billing.ck](../../contracts/billing.ck#L138)
+     * from [billing.ck](../../contracts/billing.ck) `GET /payments/{paymentId}`
     */
     app.get('/payments/:paymentId', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { paymentId } = await parseAndValidate(
@@ -131,7 +131,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * update a payment with form data
-     * from [billing.ck](../../contracts/billing.ck#L147)
+     * from [billing.ck](../../contracts/billing.ck) `POST /payments/{paymentId}`
     */
     app.post('/payments/:paymentId', { config: { body: ['application/x-www-form-urlencoded'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const { paymentId } = await parseAndValidate(
@@ -152,7 +152,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * delete a payment — declares only a documented error status
-     * from [billing.ck](../../contracts/billing.ck#L158)
+     * from [billing.ck](../../contracts/billing.ck) `DELETE /payments/{paymentId}`
     */
     app.delete('/payments/:paymentId', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const { paymentId } = await parseAndValidate(
@@ -171,7 +171,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * upload a receipt image
-     * from [billing.ck](../../contracts/billing.ck#L172)
+     * from [billing.ck](../../contracts/billing.ck) `POST /payments/{paymentId}/receipt`
     */
     app.post('/payments/:paymentId/receipt', { config: { body: ['multipart/form-data'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const { paymentId } = await parseAndValidate(
@@ -193,7 +193,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * look up a refund by its originating payment
-     * from [billing.ck](../../contracts/billing.ck#L187)
+     * from [billing.ck](../../contracts/billing.ck) `GET /refunds/{paymentId}`
      * @deprecated
     */
     app.get('/refunds/:paymentId', { preHandler: [requirePolicy()] }, async (request, reply) => {
@@ -209,7 +209,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * store a credential
-     * from [billing.ck](../../contracts/billing.ck#L201)
+     * from [billing.ck](../../contracts/billing.ck) `POST /credentials`
     */
     app.post('/credentials', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, AdminCredentialInput);
@@ -224,7 +224,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * open a session
-     * from [billing.ck](../../contracts/billing.ck#L214)
+     * from [billing.ck](../../contracts/billing.ck) `POST /sessions`
     */
     app.post('/sessions', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const body = await parseAndValidate(request.body, SessionInput);
@@ -239,7 +239,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * search payments with snake_case filter and header models
-     * from [billing.ck](../../contracts/billing.ck#L241)
+     * from [billing.ck](../../contracts/billing.ck) `GET /payments/by-date`
     */
     app.get('/payments/by-date', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const query = await parseAndValidate(
@@ -260,7 +260,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * search payments with a snake_case filter extended inline
-     * from [billing.ck](../../contracts/billing.ck#L272)
+     * from [billing.ck](../../contracts/billing.ck) `GET /payments/by-date/scoped`
     */
     app.get('/payments/by-date/scoped', { preHandler: [requirePolicy()] }, async (request, reply) => {
         const query = await parseAndValidate(
@@ -301,7 +301,7 @@ export const BillingRoutes: FastifyPluginAsync = async app => {
 
     /**
      * save a scoped search
-     * from [billing.ck](../../contracts/billing.ck#L282)
+     * from [billing.ck](../../contracts/billing.ck) `POST /payments/by-date/scoped`
     */
     app.post('/payments/by-date/scoped', { config: { body: ['application/json'] }, preHandler: [requirePolicy()] }, async (request, reply) => {
         const query = await parseAndValidate(

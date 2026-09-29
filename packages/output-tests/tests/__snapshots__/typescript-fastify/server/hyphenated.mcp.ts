@@ -13,7 +13,7 @@ import { Invoice } from './schemas/hyphenated.schema.js';
 const GetInvoiceArgs = z.object({ invoiceId: z.uuid() });
 
 /**
- * from [hyphenated.ck](../contracts/hyphenated.ck#L22)
+ * from [hyphenated.ck](../contracts/hyphenated.ck) `GET /invoices/{invoice-id}`
  */
 @Injectable()
 export class GetInvoiceMcpTool implements McpToolHandler {

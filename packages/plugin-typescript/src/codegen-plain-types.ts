@@ -243,7 +243,7 @@ function generateComments(model: ModelNode, outPath?: string): string[] {
         for (const l of escapeJsDocLines(model.description)) lines.push(` * ${l}`);
     }
 
-    lines.push(` * generated from ${sourceLink(model.name, outPath, model.loc.file, model.loc.line)}`);
+    lines.push(` * generated from ${sourceLink(model.name, outPath, model.loc.file)}`);
     lines.push(' */');
     return lines;
 }

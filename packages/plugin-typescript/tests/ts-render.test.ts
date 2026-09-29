@@ -5,8 +5,8 @@ describe('sourceLink', () => {
     it('emits a plain relative path, not a file:// URL', () => {
         // `file://./x.ck` opens an authority component, so `.` parses as the host and the link
         // resolves to nothing. The whole point of the helper is to not do that.
-        const link = sourceLink('User', '/out/schemas/user.schema.ts', '/out/contracts/user.ck', 5);
-        expect(link).toBe('[User](../contracts/user.ck#L5)');
+        const link = sourceLink('User', '/out/schemas/user.schema.ts', '/out/contracts/user.ck');
+        expect(link).toBe('[User](../contracts/user.ck)');
         expect(link).not.toContain('file://');
     });
 
@@ -15,15 +15,15 @@ describe('sourceLink', () => {
     });
 
     it('prefixes a bare sibling path with ./ so it reads as relative', () => {
-        expect(sourceLink('User', '/out/user.schema.ts', '/out/user.ck', 3)).toBe('[User](./user.ck#L3)');
+        expect(sourceLink('User', '/out/user.schema.ts', '/out/user.ck')).toBe('[User](./user.ck)');
     });
 
-    it('omits the line anchor when no line is given', () => {
-        expect(sourceLink('billing.ck', '/out/sdk.ts', '/out/billing.ck')).toBe('[billing.ck](./billing.ck)');
+    it('never emits a line anchor, so edits above a declaration do not churn generated output', () => {
+        expect(sourceLink('billing.ck', '/out/sdk.ts', '/out/billing.ck')).not.toContain('#L');
     });
 
     it('falls back to the source path when there is no output path', () => {
         // Codegen runs without a destination in the prettier plugin and in several tests.
-        expect(sourceLink('User', undefined, 'contracts/user.ck', 9)).toBe('[User](./contracts/user.ck#L9)');
+        expect(sourceLink('User', undefined, 'contracts/user.ck')).toBe('[User](./contracts/user.ck)');
     });
 });

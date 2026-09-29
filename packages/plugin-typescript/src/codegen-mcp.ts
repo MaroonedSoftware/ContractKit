@@ -656,7 +656,7 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
 
     // JSDoc source link
     lines.push('/**');
-    lines.push(` * from ${sourceLink(basename(file), options.outPath, file, op.loc.line)}`);
+    lines.push(` * from ${sourceLink(basename(file), options.outPath, file)} \`${op.method.toUpperCase()} ${route.path}\``);
     lines.push(' */');
 
     lines.push('@Injectable()');

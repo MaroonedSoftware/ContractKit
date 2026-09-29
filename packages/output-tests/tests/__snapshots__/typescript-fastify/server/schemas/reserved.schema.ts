@@ -7,7 +7,7 @@ const __wireDt = (v: unknown, fmt: string): unknown =>
 
 /**
  * A seat, whose field names are all reserved somewhere
- * generated from [Seat](../../contracts/reserved.ck#L18)
+ * generated from [Seat](../../contracts/reserved.ck)
 */
 export const Seat = z.strictObject({
     class: z.string(),
@@ -39,7 +39,7 @@ export function serializeSeat(value: Seat): unknown {
 
 /**
  * Path params declared as a model whose field is a keyword, referenced via `params: SeatRef`
- * generated from [SeatRef](../../contracts/reserved.ck#L33)
+ * generated from [SeatRef](../../contracts/reserved.ck)
 */
 export const SeatRef = z.strictObject({
     class: z.string(),
@@ -47,7 +47,7 @@ export const SeatRef = z.strictObject({
 export type SeatRef = z.infer<typeof SeatRef>;
 
 /**
- * generated from [Note](../../contracts/reserved.ck#L37)
+ * generated from [Note](../../contracts/reserved.ck)
 */
 export const Note = z.strictObject({
     text: z.string(),

@@ -389,7 +389,7 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
         for (const l of escapeJsDocLines(desc)) lines.push(` * ${l}`);
     }
     // Source location comment
-    lines.push(` * from ${sourceLink(basename(file), outPath, file, op.loc.line)}`);
+    lines.push(` * from ${sourceLink(basename(file), outPath, file)} \`${op.method.toUpperCase()} ${route.path}\``);
 
     // Security annotation (operation-level wins; falls back to route → file level)
     const effectiveSecurity = resolveSecurity(route, op, root);

@@ -9,7 +9,7 @@ export const SimpleRouter = ServerKitRouter();
 
 /**
  * current service status
- * from [simple.ck](../../contracts/simple.ck#L14)
+ * from [simple.ck](../../contracts/simple.ck) `GET /status`
 */
 SimpleRouter.get('/status', requirePolicy(), async ctx => {
     const service = ctx.container.get(StatusService);
