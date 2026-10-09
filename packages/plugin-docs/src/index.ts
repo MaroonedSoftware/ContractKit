@@ -20,7 +20,14 @@ export { generateOpenApi, buildOpenApiDocument, toYaml, scalarToSchema } from '.
 export { generateMarkdown, renderTsScalar, githubDialect, renderEndpointBody, renderModelBody, buildModelIndex } from './targets/markdown/codegen.js';
 export type { MarkdownCodegenContext, MarkdownDialect, Admonition, EndpointBodyOptions } from './targets/markdown/codegen.js';
 export { generateDocusaurus } from './targets/docusaurus/index.js';
-export type { OpenApiConfig, OpenApiServerEntry, OpenApiSecurityScheme, OpenApiCodegenContext } from './targets/openapi/codegen.js';
+export type {
+    OpenApiConfig,
+    OpenApiServerEntry,
+    OpenApiSecurityScheme,
+    OpenApiOAuthFlow,
+    OpenApiSecurityRequirements,
+    OpenApiCodegenContext,
+} from './targets/openapi/codegen.js';
 export { slugify, titleCase, humanize, deriveTitle, derivePageSlug, groupEndpoints, groupModels, computePubliclyReachableModels } from './naming.js';
 export type { AreaLabels, EndpointEntry, EndpointGroup, ModelEntry, ModelGroup } from './naming.js';
 

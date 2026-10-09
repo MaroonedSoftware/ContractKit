@@ -33,8 +33,8 @@ pnpm add -D @contractkit/cli @contractkit/plugin-docs
 }
 ```
 
-Each key under the plugin is one target, enabled by being present: `openapi` (one OpenAPI 3.1 YAML
-document), `markdown` (one self-contained GitHub-flavored reference), `mintlify` (MDX pages plus
+Each key under the plugin is one target, enabled by being present: `openapi` (one OpenAPI 3.1
+document, YAML or JSON), `markdown` (one self-contained GitHub-flavored reference), `mintlify` (MDX pages plus
 `docs.json`), and `docusaurus` (Markdown pages plus `_category_.json` sidebar files). Turn on as
 many as you need. The options below are the contents of the `mintlify` block; every target's table
 is in docs/config.md.

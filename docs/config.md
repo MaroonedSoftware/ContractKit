@@ -262,20 +262,55 @@ target's own map is merged over the plugin-level one.
 
 #### `openapi`
 
-One OpenAPI 3.1 YAML document. This is the interchange artifact gateways, contract tests and client
-generators consume, so it is worth turning on by itself.
+One OpenAPI 3.1 document. This is the interchange artifact gateways, contract tests and client
+generators consume, so it is worth turning on by itself. It is YAML, or JSON when `output` ends in
+`.json`.
 
-| Field             | Type      | Description                                                            |
-| ----------------- | --------- | ---------------------------------------------------------------------- |
-| `baseDir`         | `string`  | Directory for the output file                                          |
-| `output`          | `string`  | Output filename. Default: `openapi.yaml`                               |
-| `info`            | `object`  | OpenAPI `info` block (`title`, `version`, `description`)               |
-| `servers`         | `array`   | List of `{ url, description }` server entries                          |
-| `security`        | `array`   | Global OpenAPI security requirement                                    |
-| `securitySchemes` | `object`  | Map of scheme name → OpenAPI security scheme (e.g. `{ type, scheme }`) |
-| `includeInternal` | `boolean` | Whether to document `internal` operations. Default: `false`.           |
+| Field               | Type      | Description                                                                                                            |
+| ------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `baseDir`           | `string`  | Directory for the output file                                                                                          |
+| `output`            | `string`  | Output filename. Default: `openapi.yaml`. A `.json` name writes JSON                                                   |
+| `info`              | `object`  | OpenAPI `info` block (`title`, `version`, `description`)                                                               |
+| `servers`           | `array`   | List of `{ url, description }` server entries                                                                          |
+| `security`          | `array`   | Global OpenAPI security requirement                                                                                    |
+| `securitySchemes`   | `object`  | Map of scheme name → OpenAPI security scheme (`{ type, scheme }`, or `{ type: 'oauth2', flows }`)                      |
+| `operationSecurity` | `object`  | `{ read, write }` security requirements for every authenticated operation, chosen by its MCP `readOnlyHint`. See below |
+| `tags`              | `boolean` | Tag each operation with its file's `area` and list the areas under `tags`. Default: `false`                            |
+| `omitMcpExcluded`   | `boolean` | Leave out operations marked `mcp: exclude`. Default: `false`                                                           |
+| `mcpAnnotations`    | `boolean` | Add `x-mcp-annotations` (the four MCP tool hints) to every operation. Default: `false`                                 |
+| `includeInternal`   | `boolean` | Whether to document `internal` operations. Default: `false`.                                                           |
 
 Only types referenced by emitted operations are included.
+
+A spec published for AI agents to build connectors from usually wants all four of the newer fields.
+`operationSecurity` names the scopes each call needs: an operation counts as a read when its `mcp`
+block says `hint: readOnly`, or, with no hint, when it is a `GET`, the same rule the MCP tool
+annotations follow. `omitMcpExcluded` keeps out the operations a contract already withholds from
+agents.
+
+```json
+"openapi": {
+    "output": "openapi.json",
+    "tags": true,
+    "omitMcpExcluded": true,
+    "securitySchemes": {
+        "oauth": {
+            "type": "oauth2",
+            "flows": {
+                "authorizationCode": {
+                    "authorizationUrl": "https://app.acme.com/oauth/authorize",
+                    "tokenUrl": "https://api.acme.com/oauth/token",
+                    "scopes": { "acme.read": "Read", "acme.write": "Read and change" }
+                }
+            }
+        }
+    },
+    "operationSecurity": { "read": [{ "oauth": ["acme.read"] }], "write": [{ "oauth": ["acme.write"] }] }
+}
+```
+
+`omitMcpExcluded` applies to the spec only: a Mintlify site configured with it still writes a page
+for each excluded operation, pointing at an entry the spec no longer has, so leave it off there.
 
 #### `markdown`
 
