@@ -1,5 +1,13 @@
 # @contractkit/plugin-kotlin
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [19d2ae1]
+- Updated dependencies [fb11cdd]
+    - @contractkit/core@0.34.0
+
 ## 0.2.0
 
 ### Minor Changes
