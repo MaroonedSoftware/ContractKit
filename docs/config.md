@@ -266,21 +266,27 @@ One OpenAPI 3.1 document. This is the interchange artifact gateways, contract te
 generators consume, so it is worth turning on by itself. It is YAML, or JSON when `output` ends in
 `.json`.
 
-| Field               | Type      | Description                                                                                                            |
-| ------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `baseDir`           | `string`  | Directory for the output file                                                                                          |
-| `output`            | `string`  | Output filename. Default: `openapi.yaml`. A `.json` name writes JSON                                                   |
-| `info`              | `object`  | OpenAPI `info` block (`title`, `version`, `description`)                                                               |
-| `servers`           | `array`   | List of `{ url, description }` server entries                                                                          |
-| `security`          | `array`   | Global OpenAPI security requirement                                                                                    |
-| `securitySchemes`   | `object`  | Map of scheme name → OpenAPI security scheme (`{ type, scheme }`, or `{ type: 'oauth2', flows }`)                      |
-| `operationSecurity` | `object`  | `{ read, write }` security requirements for every authenticated operation, chosen by its MCP `readOnlyHint`. See below |
-| `tags`              | `boolean` | Tag each operation with its file's `area` and list the areas under `tags`. Default: `false`                            |
-| `omitMcpExcluded`   | `boolean` | Leave out operations marked `mcp: exclude`. Default: `false`                                                           |
-| `mcpAnnotations`    | `boolean` | Add `x-mcp-annotations` (the four MCP tool hints) to every operation. Default: `false`                                 |
-| `includeInternal`   | `boolean` | Whether to document `internal` operations. Default: `false`.                                                           |
+| Field               | Type      | Description                                                                                                                    |
+| ------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `baseDir`           | `string`  | Directory for the output file                                                                                                  |
+| `output`            | `string`  | Output filename. Default: `openapi.yaml`. A `.json` name writes JSON                                                           |
+| `info`              | `object`  | OpenAPI `info` block (`title`, `version`, `description`)                                                                       |
+| `servers`           | `array`   | List of `{ url, description }` server entries                                                                                  |
+| `security`          | `array`   | Global OpenAPI security requirement                                                                                            |
+| `securitySchemes`   | `object`  | Map of scheme name → OpenAPI security scheme (`{ type, scheme }`, or `{ type: 'oauth2', flows }`)                              |
+| `operationSecurity` | `object`  | `{ read, write }` security requirements for every authenticated operation, chosen by its MCP `readOnlyHint`. See below         |
+| `tags`              | `boolean` | Tag each operation with its file's `area` and list the areas under `tags`. Default: `false`                                    |
+| `omitMcpExcluded`   | `boolean` | Leave out operations marked `mcp: exclude`. Default: `false`                                                                   |
+| `operationIds`      | `string`  | `service` (default): `sdk:`, else the service method, else the SDK method name. `sdk`: always the TypeScript SDK's method name |
+| `mcpAnnotations`    | `boolean` | Add `x-mcp-annotations` (the four MCP tool hints) to every operation. Default: `false`                                         |
+| `includeInternal`   | `boolean` | Whether to document `internal` operations. Default: `false`.                                                                   |
 
 Only types referenced by emitted operations are included.
+
+Every `operationId` is unique: one that collides with an earlier operation's falls back to the SDK
+method name, then gets a number. A model used as a whole query or header source (`query: PageQuery`)
+becomes one parameter per field, its bases included, named as the router reads it (a `format(input=)`
+renames them), rather than a single object-typed parameter many client generators cannot take.
 
 A spec published for AI agents to build connectors from usually wants all four of the newer fields.
 `operationSecurity` names the scopes each call needs: an operation counts as a read when its `mcp`
