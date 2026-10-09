@@ -8,7 +8,16 @@ import type {
     OpOperationNode,
     ParamSource,
 } from '@contractkit/core';
-import { decimalPattern, MCP_EXCLUDE, resolveMcpHints, resolveModifiers, resolveSecurity, SECURITY_NONE } from '@contractkit/core';
+import {
+    decimalPattern,
+    deriveSdkMethodName,
+    MCP_EXCLUDE,
+    resolveEffectiveFields,
+    resolveMcpHints,
+    resolveModifiers,
+    resolveSecurity,
+    SECURITY_NONE,
+} from '@contractkit/core';
 
 /** A single entry for the OpenAPI `servers` array. */
 export interface OpenApiServerEntry {
@@ -64,6 +73,13 @@ export interface OpenApiConfig {
      * published for agents to build connectors from should leave out the same operations.
      */
     omitMcpExcluded?: boolean;
+    /**
+     * How `operationId`s are named. `'service'` (the default) uses `sdk:`, else the service method,
+     * else the SDK method name. `'sdk'` always uses the TypeScript SDK's method name, so a client
+     * generated from the spec names its calls as the SDK does. Either way the ids are unique: one
+     * that collides with an earlier operation's falls back to the SDK name, then gets a number.
+     */
+    operationIds?: 'service' | 'sdk';
     /** Tag each operation with its file's `area` meta, and list the areas under `tags`. Defaults to `false`. */
     tags?: boolean;
     /**
@@ -243,6 +259,8 @@ export function buildOpenApiDocument(ctx: OpenApiCodegenContext): Record<string,
     const paths: Record<string, Record<string, unknown>> = {};
     // Areas in first-seen order, for the top-level `tags` list.
     const areas: string[] = [];
+    // OpenAPI requires operationIds to be unique across the document.
+    const operationIds = new Set<string>();
 
     for (const opRoot of opRoots) {
         const area = config.tags ? opRoot.meta?.area : undefined;
@@ -254,7 +272,8 @@ export function buildOpenApiDocument(ctx: OpenApiCodegenContext): Record<string,
                 // Lazily initialize the path object so all-omitted routes
                 // leave no empty entry in the output
                 if (!paths[oaPath]) paths[oaPath] = {};
-                const operation = buildOperation(route, op, opRoot, config);
+                const operation = buildOperation(route, op, opRoot, config, modelMap);
+                operation.operationId = uniqueOperationId(route, op, config, operationIds);
                 if (resolveModifiers(route, op).includes('deprecated')) operation.deprecated = true;
                 if (area) {
                     operation.tags = [area];
@@ -603,16 +622,28 @@ function wrapNullable(schema: Record<string, unknown>): Record<string, unknown> 
 
 // ─── Operation building ─────────────────────────────────────────────────
 
-function buildOperation(route: OpRouteNode, op: OpOperationNode, root: OpRootNode, config: OpenApiConfig): Record<string, unknown> {
-    const operation: Record<string, unknown> = {};
+/**
+ * The operation's id, unique in the document: the configured name (see `OpenApiConfig.operationIds`),
+ * else the SDK method name when that one is taken, else the name with a number.
+ */
+function uniqueOperationId(route: OpRouteNode, op: OpOperationNode, config: OpenApiConfig, taken: Set<string>): string {
+    const sdkName = deriveSdkMethodName(op, route);
+    const preferred = config.operationIds === 'sdk' ? sdkName : (op.sdk ?? op.service?.split('.').pop() ?? sdkName);
+    let id = taken.has(preferred) ? sdkName : preferred;
+    for (let n = 2; taken.has(id); n++) id = `${sdkName}${n}`;
+    taken.add(id);
+    return id;
+}
 
-    // operationId from service binding or SDK name
-    if (op.sdk) {
-        operation.operationId = op.sdk;
-    } else if (op.service) {
-        const methodPart = op.service.split('.').pop();
-        if (methodPart) operation.operationId = methodPart;
-    }
+function buildOperation(
+    route: OpRouteNode,
+    op: OpOperationNode,
+    root: OpRootNode,
+    config: OpenApiConfig,
+    modelMap: Map<string, ModelNode>,
+): Record<string, unknown> {
+    // operationId is filled in by the caller, which knows the ids already taken.
+    const operation: Record<string, unknown> = { operationId: undefined };
 
     // `name:` is the operation's human-readable label, which is what `summary` is for. Without
     // it the name is lost on the way out, and lost again on the way back through `openapi-to-ck`.
@@ -628,13 +659,13 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode, root: OpRootNod
     const parameters: Record<string, unknown>[] = [];
 
     if (route.params) {
-        parameters.push(...paramSourceToParams(route.params, 'path'));
+        parameters.push(...paramSourceToParams(route.params, 'path', modelMap));
     }
     if (op.query) {
-        parameters.push(...paramSourceToParams(op.query, 'query'));
+        parameters.push(...paramSourceToParams(op.query, 'query', modelMap));
     }
     if (op.headers) {
-        parameters.push(...paramSourceToParams(op.headers, 'header'));
+        parameters.push(...paramSourceToParams(op.headers, 'header', modelMap));
     }
 
     if (parameters.length > 0) {
@@ -711,9 +742,96 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode, root: OpRootNod
     return operation;
 }
 
-function paramSourceToParams(source: ParamSource, location: 'path' | 'query' | 'header'): Record<string, unknown>[] {
+/**
+ * One parameter per field of a model used as a whole parameter source (`query: PageQuery`), as the
+ * router reads them: one query string key or header each. A single object-typed parameter is legal
+ * OpenAPI (form style, exploded), but many client generators and connector importers cannot take
+ * one. Undefined when the model has no fields to expand (an alias to a scalar, a union).
+ */
+function modelFieldParams(
+    name: string,
+    location: 'path' | 'query' | 'header',
+    modelMap: Map<string, ModelNode>,
+): Record<string, unknown>[] | undefined {
+    const { fields } = resolveEffectiveFields(name, modelMap);
+    if (fields.length === 0) return undefined;
+    const wireNames = inputKeys(name, modelMap, undefined, new Set());
+    return fields.map(f => ({
+        name: wireNames.get(f.name) ?? f.name,
+        in: location,
+        required: location === 'path' || !f.optional,
+        ...(f.description ? { description: f.description } : {}),
+        schema: fieldToSchema(f, modelMap),
+    }));
+}
+
+/** A model's own `format(input=)`, else the first one among its bases. It renames every key the model carries. */
+function modelInputCase(name: string, modelMap: Map<string, ModelNode>, seen: Set<string>): ModelNode['inputCase'] {
+    const model = modelMap.get(name);
+    if (!model || seen.has(name)) return undefined;
+    seen.add(name);
+    if (model.inputCase) return model.inputCase;
+    for (const base of model.bases ?? []) {
+        const inherited = modelInputCase(base, modelMap, seen);
+        if (inherited) return inherited;
+    }
+    return undefined;
+}
+
+/**
+ * Each field's key as the router reads it, by field name. A formatted model renames all of its keys
+ * (bases included) to its input casing, so `fromDate` is read from `from_date`; the members of an
+ * intersection alias each keep their own, as the parsing schema does.
+ */
+function inputKeys(
+    target: string | ContractTypeNode,
+    modelMap: Map<string, ModelNode>,
+    keyCase: ModelNode['inputCase'],
+    seen: Set<string>,
+): Map<string, string> {
+    const keys = new Map<string, string>();
+    const add = (from: Map<string, string>) => from.forEach((wire, field) => keys.set(field, wire));
+    if (typeof target === 'string') {
+        const model = modelMap.get(target);
+        if (!model || seen.has(target)) return keys;
+        seen.add(target);
+        const own = modelInputCase(target, modelMap, new Set()) ?? keyCase;
+        if (model.type) return inputKeys(model.type, modelMap, own, seen);
+        for (const base of model.bases ?? []) add(inputKeys(base, modelMap, own, seen));
+        for (const field of model.fields) keys.set(field.name, applyCase(field.name, own));
+        return keys;
+    }
+    switch (target.kind) {
+        case 'ref':
+            return inputKeys(target.name, modelMap, keyCase, seen);
+        case 'intersection':
+            for (const member of target.members) add(inputKeys(member, modelMap, keyCase, seen));
+            return keys;
+        case 'inlineObject':
+            for (const field of target.fields) keys.set(field.name, applyCase(field.name, keyCase));
+            return keys;
+        case 'lazy':
+            return inputKeys(target.inner, modelMap, keyCase, seen);
+        default:
+            return keys;
+    }
+}
+
+function applyCase(key: string, keyCase: ModelNode['inputCase']): string {
+    if (keyCase === 'snake') return key.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`);
+    if (keyCase === 'pascal') return key.charAt(0).toUpperCase() + key.slice(1);
+    return key;
+}
+
+function paramSourceToParams(
+    source: ParamSource,
+    location: 'path' | 'query' | 'header',
+    modelMap: Map<string, ModelNode>,
+): Record<string, unknown>[] {
     if (source.kind === 'ref') {
-        // Type reference name used as param source — emit a single $ref
+        const expanded = modelFieldParams(source.name, location, modelMap);
+        if (expanded) return expanded;
+        // A model with no fields to expand: emit a single $ref
         return [
             {
                 name: source.name,
@@ -750,6 +868,8 @@ function paramSourceToParams(source: ParamSource, location: 'path' | 'query' | '
 
     // For a ref type used as param source
     if (source.node.kind === 'ref') {
+        const expanded = modelFieldParams(source.node.name, location, modelMap);
+        if (expanded) return expanded;
         return [
             {
                 name: source.node.name,

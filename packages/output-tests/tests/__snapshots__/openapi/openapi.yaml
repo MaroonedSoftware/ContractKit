@@ -82,16 +82,36 @@ paths:
       operationId: searchPayments
       description: 'search payments with a filter model'
       parameters:
-        - name: PaymentFilter
+        - name: status
           in: query
           required: false
           schema:
-            '$ref': '#/components/schemas/PaymentFilter'
-        - name: TenantHeaders
+            type: string
+            enum: [pending, completed, failed]
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: ids
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: x-tenant
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: xCorrelationId
           in: header
           required: false
           schema:
-            '$ref': '#/components/schemas/TenantHeaders'
+            type: string
       responses:
         '200':
           description: 'Successful response'
@@ -203,11 +223,12 @@ paths:
       operationId: getRefund
       description: 'look up a refund by its originating payment'
       parameters:
-        - name: PaymentRef
+        - name: paymentId
           in: path
           required: true
           schema:
-            '$ref': '#/components/schemas/PaymentRef'
+            type: string
+            format: uuid
       responses:
         '200':
           description: 'Successful response'
@@ -257,16 +278,25 @@ paths:
       operationId: searchPaymentsByDate
       description: 'search payments with snake_case filter and header models'
       parameters:
-        - name: SnakeFilter
+        - name: from_date
           in: query
           required: false
           schema:
-            '$ref': '#/components/schemas/SnakeFilter'
-        - name: SnakeHeaders
+            type: string
+            format: date
+        - name: tag_ids
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: tenant_id
           in: header
           required: false
           schema:
-            '$ref': '#/components/schemas/SnakeHeaders'
+            type: string
       responses:
         '204':
           description: 'No content'
@@ -291,11 +321,25 @@ paths:
       operationId: saveScopedSearch
       description: 'save a scoped search'
       parameters:
-        - name: ScopedFilter
+        - name: from_date
           in: query
           required: false
           schema:
-            '$ref': '#/components/schemas/ScopedFilter'
+            type: string
+            format: date
+        - name: tag_ids
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: region
+          in: query
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -579,11 +623,11 @@ paths:
       operationId: getRow
       description: 'fetch a row by its seat class'
       parameters:
-        - name: SeatRef
+        - name: class
           in: path
           required: true
           schema:
-            '$ref': '#/components/schemas/SeatRef'
+            type: string
       responses:
         '200':
           description: 'Successful response'
