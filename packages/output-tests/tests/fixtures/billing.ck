@@ -108,7 +108,9 @@ operation /payments/search: {
     get: { # search payments with a filter model
         sdk: searchPayments
         service: PaymentService.search
-        mcp: true
+        mcp: {
+            ui: "ui://billing/payments"
+        }
         query: PaymentFilter
         headers: TenantHeaders
         response: {

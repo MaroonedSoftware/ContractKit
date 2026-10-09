@@ -8,8 +8,9 @@ round-trip the exact source form. Default is `false`; `undefined`/`false` both m
 exposed", so test enablement with `Boolean(op.mcp)`.
 
 - `mcp: true` / `mcp: false` — boolean form (parsed via `booleanLit`).
-- `mcp: { name, title, description, hint }` — settings block. Text fields are quoted
-  strings; `hint` is a bracket-less comma-separated token list (enum-style).
+- `mcp: { name, title, description, hint, ui }` — settings block. Text fields are quoted
+  strings; `hint` is a bracket-less comma-separated token list (enum-style); `ui` is a quoted
+  `ui://` URI naming the tool's MCP App, which the TypeScript plugin emits through `withMcpUi`.
 
 Hint tokens map to the four MCP annotation booleans on `McpConfigNode`
 (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) via positive/negative

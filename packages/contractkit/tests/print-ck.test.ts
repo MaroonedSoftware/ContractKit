@@ -608,6 +608,20 @@ describe('printCk — mcp field', () => {
         expect(out).toContain('            hint: readOnly, idempotent, nonDestructive');
     });
 
+    it('round-trips an mcp ui resource through parse', () => {
+        const source = `\
+operation /roles/{roleId}/searches/{searchId}: {
+    get: {
+        mcp: {
+            hint: readOnly
+            ui: "ui://ats/search.review"
+        }
+    }
+}
+`;
+        expect(roundTrip(source)).toContain('            ui: "ui://ats/search.review"');
+    });
+
     it('round-trips mcp: true / false through parse', () => {
         expect(roundTrip('operation /a: {\n    get: {\n        mcp: true\n    }\n}\n')).toContain('        mcp: true');
         expect(roundTrip('operation /b: {\n    get: {\n        mcp: false\n    }\n}\n')).toContain('        mcp: false');

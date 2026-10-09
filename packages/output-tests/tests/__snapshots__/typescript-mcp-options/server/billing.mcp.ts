@@ -3,7 +3,7 @@
 import { Injectable, type Container, type Registry } from 'injectkit';
 import { z } from 'zod';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
-import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';
+import { requireMcpPolicy, withMcpUi, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';
 import { PolicyService } from '@maroonedsoftware/policies';
 import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';
 import { parseAndValidate } from '@maroonedsoftware/zod';
@@ -106,14 +106,14 @@ export class ListPaymentsMcpTool implements McpToolHandler {
  */
 @Injectable()
 export class SearchPaymentsMcpTool implements McpToolHandler {
-    readonly definition: Tool = {
+    readonly definition: Tool = withMcpUi({
         name: 'search_payments',
         description: 'search payments with a filter model',
         inputSchema: z.toJSONSchema(SearchPaymentsArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
-    };
+    }, { resourceUri: 'ui://billing/payments' });
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
         const container = requireMcpContainer(context);

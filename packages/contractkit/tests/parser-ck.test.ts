@@ -1468,6 +1468,22 @@ operation /routes: {
             expect(diag.getAll().some(d => d.severity === 'error' && /Conflicting or duplicate mcp hint 'nonReadOnly'/.test(d.message))).toBe(true);
         });
 
+        it('parses a ui:// resource for an MCP App', () => {
+            const { root, diag } = parse('operation /r: { get: { mcp: { ui: "ui://ats/search.review" } } }');
+            expect(diag.hasErrors()).toBe(false);
+            expect(root.routes[0]!.operations[0]!.mcp).toMatchObject({ ui: 'ui://ats/search.review' });
+        });
+
+        it('errors when ui is not a ui:// URI', () => {
+            const { diag } = parse('operation /r: { get: { mcp: { ui: "https://example.com/app" } } }');
+            expect(diag.getAll().some(d => d.severity === 'error' && /'ui' must be a ui:\/\/ URI/.test(d.message))).toBe(true);
+        });
+
+        it('errors when ui is given a token list', () => {
+            const { diag } = parse('operation /r: { get: { mcp: { ui: review } } }');
+            expect(diag.getAll().some(d => d.severity === 'error' && /'ui' expects a quoted ui:\/\/ URI/.test(d.message))).toBe(true);
+        });
+
         it('errors on duplicate setting key', () => {
             const { diag } = parse('operation /r: { get: { mcp: { name: "a"\n  name: "b" } } }');
             expect(diag.getAll().some(d => d.severity === 'error' && /Duplicate mcp setting 'name'/.test(d.message))).toBe(true);

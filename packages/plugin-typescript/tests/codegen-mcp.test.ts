@@ -169,6 +169,29 @@ describe('generateMcpFile', () => {
             });
         });
 
+        describe('an MCP App', () => {
+            const generate = (mcp: McpConfigNode | true) =>
+                generateMcpFile(opRoot([opRoute('/searches', [opOperation('get', { sdk: 'getSearch', mcp, responses: [opResponse(200, 'User', 'application/json')] })])]));
+
+            it('wraps the definition in withMcpUi with the ui:// resource', () => {
+                const out = generate(mcpBlock({ ui: 'ui://ats/search.review' }));
+                expect(out).toContain('readonly definition: Tool = withMcpUi({');
+                expect(out).toContain("}, { resourceUri: 'ui://ats/search.review' });");
+                // The security entry stays in _meta beside the ui entry withMcpUi adds.
+                expect(out).toContain("_meta: { 'contractkit/security':");
+            });
+
+            it('imports withMcpUi as a value', () => {
+                expect(generate(mcpBlock({ ui: 'ui://ats/search.review' }))).toMatch(/import \{ [^}]*\bwithMcpUi\b[^}]*\} from '@maroonedsoftware\/mcp';/);
+            });
+
+            it('leaves a tool without one as a plain definition', () => {
+                const out = generate(true);
+                expect(out).toContain('readonly definition: Tool = {');
+                expect(out).not.toContain('withMcpUi');
+            });
+        });
+
         describe("the operation's security in _meta", () => {
             const metaFor = (security?: SecurityNode) =>
                 generateMcpFile(opRoot([opRoute('/users', [opOperation('get', { mcp: true, security, responses: [opResponse(200, 'User', 'application/json')] })])]));

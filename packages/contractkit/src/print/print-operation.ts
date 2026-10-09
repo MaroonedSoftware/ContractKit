@@ -250,6 +250,7 @@ function printMcpBlock(mcp: McpConfigNode): string[] {
     if (mcp.description !== undefined) lines.push(`${I3}description: "${escapeString(mcp.description)}"`);
     const tokens = mcpHintTokens(mcp);
     if (tokens.length > 0) lines.push(`${I3}hint: ${tokens.join(', ')}`);
+    if (mcp.ui !== undefined) lines.push(`${I3}ui: "${escapeString(mcp.ui)}"`);
     lines.push(`${I2}}`);
     return lines;
 }
