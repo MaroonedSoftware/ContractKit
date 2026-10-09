@@ -1,5 +1,12 @@
 # @contractkit/core
 
+## 0.34.0
+
+### Minor Changes
+
+- 19d2ae1: Move the MCP annotation hints into core as `resolveMcpHints(op)` (with `MCP_HINT_KEYS` and `MCP_METHOD_HINTS`), so every generator that reports whether an operation reads or writes resolves it the same way. The generated MCP tool annotations are unchanged.
+- fb11cdd: Add `ui` to the `mcp` settings block: `mcp: { ui: "ui://app/view" }` links an operation's tool to an MCP App (MCP UI), the `ui://` resource a host renders with its results. Anything but a `ui://` URI is a compile-time error. The TypeScript plugin wraps that tool's definition in `@maroonedsoftware/mcp`'s `withMcpUi` (0.7 or later), which sets `_meta.ui.resourceUri` beside the security entry.
+
 ## 0.33.0
 
 ### Minor Changes

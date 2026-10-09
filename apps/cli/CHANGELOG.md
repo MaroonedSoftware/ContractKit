@@ -1,5 +1,14 @@
 # @contractkit/cli
 
+## 0.11.9
+
+### Patch Changes
+
+- Updated dependencies [19d2ae1]
+- Updated dependencies [fb11cdd]
+    - @contractkit/core@0.34.0
+    - @contractkit/openapi-to-ck@0.12.11
+
 ## 0.11.8
 
 ### Patch Changes
