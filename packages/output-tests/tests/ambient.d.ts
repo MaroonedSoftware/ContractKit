@@ -156,6 +156,8 @@ declare module '@maroonedsoftware/mcp' {
     export const MCP_AUTH_POLICY: string;
     /** The per-tool session-plus-policy guard a generated handler opens with. */
     export function requireMcpPolicy(context: McpToolContext, policies: any, options?: { policy?: string | false }): Promise<any>;
+    /** Links a tool to its MCP App resource (@maroonedsoftware/mcp 0.7). */
+    export function withMcpUi<T>(tool: T, ui: { resourceUri?: string; visibility?: ('model' | 'app')[] }): T;
 }
 
 declare module '@maroonedsoftware/policies' {

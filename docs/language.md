@@ -1073,6 +1073,7 @@ Settings:
 | `title` | quoted string | Human display title |
 | `description` | quoted string | LLM-facing tool description (distinct from the `#` doc comment) |
 | `hint` | comma-separated tokens | MCP tool annotation hints |
+| `ui` | quoted `ui://` URI | The MCP App (MCP UI) a host renders with the tool's results |
 
 `hint` is a bracket-less comma-separated token list (like `enum(...)` args without the parens). Each token sets one MCP annotation; positive/negative pairs let you turn a hint on or off (two of the four default to `true` in MCP):
 
@@ -1095,6 +1096,19 @@ A generated tool always publishes all four annotations, so a client never falls 
 | `POST`, `PATCH` | none: not read-only, not destructive |
 
 Every other hint is `false`, `openWorldHint` included: a tool calls the app's own service in-process.
+
+`ui` links the tool to an [MCP App](https://github.com/modelcontextprotocol/ext-apps): a `ui://` HTML resource the host renders in a sandboxed frame beside the conversation. The TypeScript plugin wraps the tool's definition in `@maroonedsoftware/mcp`'s `withMcpUi`, which sets `_meta.ui.resourceUri`; the server registers the resource itself (an `McpUiResource`). A value that is not a `ui://` URI is a compile-time error.
+
+```ck
+get: {
+    service: SearchesService.get
+    mcp: {
+        hint: readOnly
+        ui: "ui://ats/search.review"
+    }
+    response: { 200: { application/json: CandidateSearch } }
+}
+```
 
 ### Generating an MCP server (TypeScript plugin)
 

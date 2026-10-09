@@ -1394,6 +1394,19 @@ export function createSemantics(grammar: Grammar) {
                         continue;
                     }
                     node[field.key] = field.value as string;
+                } else if (field.key === 'ui') {
+                    if (field.valueKind !== 'string') {
+                        diag?.error(file, field.line, `mcp setting 'ui' expects a quoted ui:// URI, e.g. \`ui: "ui://app/view"\``);
+                        continue;
+                    }
+                    const uri = field.value as string;
+                    // MCP Apps hosts only render `ui://` resources, and ServerKit's `withMcpUi` throws on
+                    // anything else at boot, so refuse it here, where the line number is known.
+                    if (!/^ui:\/\/\S+$/.test(uri)) {
+                        diag?.error(file, field.line, `mcp setting 'ui' must be a ui:// URI, got '${uri}'`);
+                        continue;
+                    }
+                    node.ui = uri;
                 } else if (field.key === 'hint') {
                     if (field.valueKind !== 'hintList') {
                         diag?.error(file, field.line, `mcp 'hint' expects a comma-separated token list, e.g. \`hint: readOnly, nonDestructive\``);

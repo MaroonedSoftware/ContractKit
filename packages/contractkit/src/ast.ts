@@ -351,6 +351,11 @@ export interface McpConfigNode {
     idempotentHint?: boolean;
     /** MCP `openWorldHint`. From `hint: openWorld` / `closedWorld`. */
     openWorldHint?: boolean;
+    /**
+     * The `ui://` resource of the MCP App (MCP UI) a host renders with this tool's results. A tool
+     * naming one is published with `_meta.ui.resourceUri`; the server registers the resource itself.
+     */
+    ui?: string;
     loc: SourceLocation;
 }
 

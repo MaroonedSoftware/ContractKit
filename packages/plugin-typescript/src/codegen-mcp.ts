@@ -663,7 +663,9 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     lines.push(`export class ${className} implements McpToolHandler {`);
 
     // definition
-    lines.push('    readonly definition: Tool = {');
+    // A tool with an MCP App is wrapped in ServerKit's `withMcpUi`, which owns the `_meta.ui` shape
+    // (and keeps the security entry beside it), rather than the codegen spelling it by hand.
+    lines.push(cfg?.ui ? '    readonly definition: Tool = withMcpUi({' : '    readonly definition: Tool = {');
     lines.push(`        name: '${escapeSingleQuoted(toolName)}',`);
     if (cfg?.title) lines.push(`        title: '${escapeSingleQuoted(cfg.title)}',`);
     const desc = cfg?.description ?? op.description ?? route.description;
@@ -678,7 +680,7 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     if (outExpr) lines.push(`        outputSchema: z.toJSONSchema(${outExpr}, { unrepresentable: 'any' }) as Tool['outputSchema'],`);
     lines.push(`        annotations: ${annotationsExpr(cfg, op.method)},`);
     lines.push(`        _meta: { '${MCP_SECURITY_META_KEY}': ${securityMetaExpr(plan.security)} },`);
-    lines.push('    };');
+    lines.push(cfg?.ui ? `    }, { resourceUri: '${escapeSingleQuoted(cfg.ui)}' });` : '    };');
     lines.push('');
 
     // At boot, the constructor injects the operation's service, plus the PolicyService when the tool
@@ -853,10 +855,11 @@ export function generateMcpFile(root: OpRootNode, options: McpCodegenOptions = {
     // The mcp import turns into a mixed value/type one as soon as a tool guards itself, and the
     // policy imports follow the same rule: nothing a file does not reference reaches its imports.
     const guardsItself = /\brequireMcpPolicy\b/.test(bodyWithHelpers);
+    const mcpValues = ['requireMcpPolicy', 'withMcpUi'].filter(name => new RegExp(`\\b${name}\\b`).test(bodyWithHelpers));
     const mcpTypes = `type McpToolHandler, type McpToolHandlerMap, type McpToolContext`;
     imports.push(
-        guardsItself
-            ? `import { requireMcpPolicy, ${mcpTypes} } from '@maroonedsoftware/mcp';`
+        mcpValues.length > 0
+            ? `import { ${mcpValues.join(', ')}, ${mcpTypes} } from '@maroonedsoftware/mcp';`
             : `import type { McpToolHandler, McpToolHandlerMap, McpToolContext } from '@maroonedsoftware/mcp';`,
     );
     if (guardsItself) imports.push(`import { PolicyService } from '@maroonedsoftware/policies';`);
