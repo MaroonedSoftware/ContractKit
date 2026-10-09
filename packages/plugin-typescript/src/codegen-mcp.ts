@@ -3,7 +3,6 @@ import type {
     OpRouteNode,
     OpOperationNode,
     McpConfigNode,
-    HttpMethod,
     ParamSource,
     ContractTypeNode,
     SecurityNode,
@@ -16,6 +15,8 @@ import {
     MCP_EXCLUDE,
     emittedResponses,
     isMcpTool,
+    resolveMcpHints,
+    MCP_HINT_KEYS,
     isJsonMime,
     classifyContentType,
 } from '@contractkit/core';
@@ -401,30 +402,14 @@ function outputSchemaExpr(op: OpOperationNode, models?: Map<string, ModelNode>):
 
 // ─── Annotations ────────────────────────────────────────────────────────────
 
-const HINT_KEYS = ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint'] as const;
-type HintKey = (typeof HINT_KEYS)[number];
-
-/**
- * The hints an operation's method implies, for each one its `mcp` block leaves unset: a `GET` reads
- * and can be repeated, a `PUT` can be repeated, a `DELETE` destroys. A tool calls the app's own
- * service in-process, so none reaches an open world of external entities.
- */
-const METHOD_HINTS: Record<HttpMethod, Record<HintKey, boolean>> = {
-    get: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    put: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    delete: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-    post: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    patch: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-};
-
 /**
  * All four annotations, each the contract's `hint:` where it sets one and the method's otherwise.
  * Emitted in full so a client never falls back to MCP's own defaults, two of which are `true`: an
  * unannotated tool reads as destructive and open-world.
  */
-function annotationsExpr(cfg: McpConfigNode | undefined, method: HttpMethod): string {
-    const defaults = METHOD_HINTS[method];
-    return `{ ${HINT_KEYS.map(key => `${key}: ${cfg?.[key] ?? defaults[key]}`).join(', ')} }`;
+function annotationsExpr(op: OpOperationNode): string {
+    const hints = resolveMcpHints(op);
+    return `{ ${MCP_HINT_KEYS.map(key => `${key}: ${hints[key]}`).join(', ')} }`;
 }
 
 /** The `_meta` key a tool definition reports its operation's effective security under. */
@@ -676,7 +661,7 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     lines.push(`        inputSchema: z.toJSONSchema(${argsConstName}, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],`);
     const outExpr = outputSchemaExpr(op, options.models);
     if (outExpr) lines.push(`        outputSchema: z.toJSONSchema(${outExpr}, { unrepresentable: 'any' }) as Tool['outputSchema'],`);
-    lines.push(`        annotations: ${annotationsExpr(cfg, op.method)},`);
+    lines.push(`        annotations: ${annotationsExpr(op)},`);
     lines.push(`        _meta: { '${MCP_SECURITY_META_KEY}': ${securityMetaExpr(plan.security)} },`);
     lines.push('    };');
     lines.push('');

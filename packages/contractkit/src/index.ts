@@ -16,6 +16,7 @@ export * from './content-type.js';
 export * from './decimal-pattern.js';
 export * from './path-params.js';
 export * from './sdk-method-name.js';
+export * from './mcp-hints.js';
 export * from './response-sets.js';
 export * from './incremental.js';
 export * from './print/index.js';

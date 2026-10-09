@@ -44,7 +44,7 @@ Each key under the plugin is one target, enabled by being present, the same way
 
 | Target       | Output                                                                       |
 | ------------ | ---------------------------------------------------------------------------- |
-| `openapi`    | One OpenAPI 3.1 YAML document                                                |
+| `openapi`    | One OpenAPI 3.1 document (YAML, or JSON for a `.json` output)                |
 | `markdown`   | One self-contained GitHub-flavored Markdown reference                        |
 | `mintlify`   | A Mintlify site: MDX pages, `docs.json`, and the spec they render from       |
 | `docusaurus` | A Docusaurus docs folder: Markdown pages and `_category_.json` sidebar files |

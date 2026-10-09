@@ -8,7 +8,7 @@ import type {
     OpOperationNode,
     ParamSource,
 } from '@contractkit/core';
-import { decimalPattern, resolveModifiers, resolveSecurity, SECURITY_NONE } from '@contractkit/core';
+import { decimalPattern, MCP_EXCLUDE, resolveMcpHints, resolveModifiers, resolveSecurity, SECURITY_NONE } from '@contractkit/core';
 
 /** A single entry for the OpenAPI `servers` array. */
 export interface OpenApiServerEntry {
@@ -16,14 +16,29 @@ export interface OpenApiServerEntry {
     description?: string;
 }
 
-/** A named entry for `components.securitySchemes` (e.g. an HTTP bearer or API-key scheme). */
+/** One OAuth 2.0 flow of an `oauth2` security scheme, keyed by flow name (`authorizationCode`, `clientCredentials`, ...). */
+export interface OpenApiOAuthFlow {
+    authorizationUrl?: string;
+    tokenUrl?: string;
+    refreshUrl?: string;
+    /** Every scope the flow can grant, with a description of each. */
+    scopes: Record<string, string>;
+}
+
+/** A named entry for `components.securitySchemes` (an HTTP bearer, API-key, OAuth 2.0 or OpenID Connect scheme). */
 export interface OpenApiSecurityScheme {
     type: string;
+    description?: string;
     scheme?: string;
     bearerFormat?: string;
     name?: string;
     in?: string;
+    flows?: Record<string, OpenApiOAuthFlow>;
+    openIdConnectUrl?: string;
 }
+
+/** An OpenAPI security requirement list: any one entry satisfies it, each mapping a scheme name to the scopes it needs. */
+export type OpenApiSecurityRequirements = Record<string, string[]>[];
 
 /** Plugin configuration controlling the generated OpenAPI document (info block, servers, security, internal-op visibility). */
 export interface OpenApiConfig {
@@ -43,6 +58,30 @@ export interface OpenApiConfig {
      * internal-use spec.
      */
     includeInternal?: boolean;
+    /**
+     * Whether to leave out operations marked `mcp: exclude`. Defaults to `false`. A contract excludes
+     * an operation from MCP when no agent should call it (sign-in, step-up actions), and a spec
+     * published for agents to build connectors from should leave out the same operations.
+     */
+    omitMcpExcluded?: boolean;
+    /** Tag each operation with its file's `area` meta, and list the areas under `tags`. Defaults to `false`. */
+    tags?: boolean;
+    /**
+     * Security for every operation that is not `security: none`, chosen by whether it only reads:
+     * `read` for an operation whose MCP `readOnlyHint` holds (its `mcp` hint, else its method),
+     * `write` for the rest. Lets a spec name the OAuth scopes a call needs, e.g.
+     * `{ read: [{ oauth: ['api.read'] }], write: [{ oauth: ['api.write'] }] }`. Without it an
+     * authenticated operation relies on the global `security`.
+     */
+    operationSecurity?: { read: OpenApiSecurityRequirements; write: OpenApiSecurityRequirements };
+    /** Add `x-mcp-annotations` (the four MCP tool hints) to every operation. Defaults to `false`. */
+    mcpAnnotations?: boolean;
+}
+
+/** Whether the config leaves an operation out of the spec. */
+function isOmitted(route: OpRouteNode, op: OpOperationNode, config: OpenApiConfig): boolean {
+    if (!(config.includeInternal ?? false) && resolveModifiers(route, op).includes('internal')) return true;
+    return (config.omitMcpExcluded ?? false) && op.mcp === MCP_EXCLUDE;
 }
 
 // ─── Type reachability ────────────────────────────────────────────────────
@@ -88,13 +127,13 @@ function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string
     collectRefsFromType(source.node, out);
 }
 
-/** Collect all type names directly referenced by public operations (seed set). */
-function collectPublicTypeRefs(opRoots: OpRootNode[], includeInternal = false): Set<string> {
+/** Collect all type names directly referenced by the documented operations (seed set). */
+function collectPublicTypeRefs(opRoots: OpRootNode[], config: OpenApiConfig): Set<string> {
     const refs = new Set<string>();
     for (const opRoot of opRoots) {
         for (const route of opRoot.routes) {
             for (const op of route.operations) {
-                if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
+                if (isOmitted(route, op, config)) continue;
                 if (op.request) {
                     for (const body of op.request.bodies) collectRefsFromType(body.bodyType, refs);
                 }
@@ -167,7 +206,6 @@ export function generateOpenApi(ctx: OpenApiCodegenContext): string {
  */
 export function buildOpenApiDocument(ctx: OpenApiCodegenContext): Record<string, unknown> {
     const { contractRoots, opRoots, config, securitySchemes } = ctx;
-    const includeInternal = config.includeInternal ?? false;
 
     const doc: Record<string, unknown> = {
         openapi: '3.1.0',
@@ -203,24 +241,33 @@ export function buildOpenApiDocument(ctx: OpenApiCodegenContext): Record<string,
 
     // Build paths from all operation files
     const paths: Record<string, Record<string, unknown>> = {};
+    // Areas in first-seen order, for the top-level `tags` list.
+    const areas: string[] = [];
 
     for (const opRoot of opRoots) {
+        const area = config.tags ? opRoot.meta?.area : undefined;
         for (const route of opRoot.routes) {
             const oaPath = convertPath(route.path);
 
             for (const op of route.operations) {
-                const mods = resolveModifiers(route, op);
-                if (!includeInternal && mods.includes('internal')) continue;
-                // Lazily initialize the path object so all-internal routes
+                if (isOmitted(route, op, config)) continue;
+                // Lazily initialize the path object so all-omitted routes
                 // leave no empty entry in the output
                 if (!paths[oaPath]) paths[oaPath] = {};
-                const operation = buildOperation(route, op, opRoot);
-                if (mods.includes('deprecated')) (operation as Record<string, unknown>).deprecated = true;
+                const operation = buildOperation(route, op, opRoot, config);
+                if (resolveModifiers(route, op).includes('deprecated')) operation.deprecated = true;
+                if (area) {
+                    operation.tags = [area];
+                    if (!areas.includes(area)) areas.push(area);
+                }
                 paths[oaPath][op.method] = operation;
             }
         }
     }
 
+    if (areas.length > 0) {
+        doc.tags = areas.map(name => ({ name }));
+    }
     doc.paths = paths;
 
     // Filter schemas to only include types reachable from public operations.
@@ -228,7 +275,7 @@ export function buildOpenApiDocument(ctx: OpenApiCodegenContext): Record<string,
     const schemas: Record<string, unknown> =
         opRoots.length > 0
             ? (() => {
-                  const reachable = computeReachableSchemas(collectPublicTypeRefs(opRoots, includeInternal), modelMap);
+                  const reachable = computeReachableSchemas(collectPublicTypeRefs(opRoots, config), modelMap);
                   const filtered: Record<string, unknown> = {};
                   for (const [name, schema] of Object.entries(allSchemas)) {
                       if (reachable.has(name)) filtered[name] = schema;
@@ -556,7 +603,7 @@ function wrapNullable(schema: Record<string, unknown>): Record<string, unknown> 
 
 // ─── Operation building ─────────────────────────────────────────────────
 
-function buildOperation(route: OpRouteNode, op: OpOperationNode, root: OpRootNode): Record<string, unknown> {
+function buildOperation(route: OpRouteNode, op: OpOperationNode, root: OpRootNode, config: OpenApiConfig): Record<string, unknown> {
     const operation: Record<string, unknown> = {};
 
     // operationId from service binding or SDK name
@@ -605,10 +652,17 @@ function buildOperation(route: OpRouteNode, op: OpOperationNode, root: OpRootNod
 
     // Effective security (operation wins, then route, then the file's `options` floor)
     // security: none → empty array (explicit public endpoint, overrides global default)
-    // security: { fields } → omit operation-level entry (rely on global security from config)
+    // security: { fields } → `operationSecurity` by read or write when configured, else omit the
+    // operation-level entry (rely on global security from config)
     const effectiveSecurity = resolveSecurity(route, op, root);
+    const hints = resolveMcpHints(op);
     if (effectiveSecurity === SECURITY_NONE) {
         operation.security = [];
+    } else if (config.operationSecurity) {
+        operation.security = hints.readOnlyHint ? config.operationSecurity.read : config.operationSecurity.write;
+    }
+    if (config.mcpAnnotations) {
+        operation['x-mcp-annotations'] = hints;
     }
 
     // Responses

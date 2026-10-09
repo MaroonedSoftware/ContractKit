@@ -86,6 +86,13 @@ describe('plugin shell', () => {
         expect([...emitted.keys()]).toContain('site/openapi.yaml');
     });
 
+    it('writes the openapi target as JSON when its output ends in .json', async () => {
+        const emitted = await runWith(plugin, { openapi: { output: 'openapi.json' } });
+        const spec = JSON.parse(emitted.get('openapi.json')!) as { openapi: string; paths: Record<string, unknown> };
+        expect(spec.openapi).toBe('3.1.0');
+        expect(Object.keys(spec.paths)).toEqual(['/users']);
+    });
+
     it('reads config from the factory argument, ignoring ctx.options', async () => {
         const ctx = makeCtx({ mintlify: { baseDir: 'ignored' } });
         await createDocsPlugin({ mintlify: { baseDir: 'site' } }, ROOT_DIR).generateTargets!(inputs, ctx);
