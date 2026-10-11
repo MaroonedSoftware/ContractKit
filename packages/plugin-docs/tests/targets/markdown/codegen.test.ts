@@ -417,6 +417,17 @@ describe('generateMarkdown', () => {
             expect(output).toContain('| `limit` | `number` | No | Items per page |');
         });
 
+        it('marks a defaulted query param as not required', () => {
+            const dto = contractRoot([model('Pagination', [field('page', scalarType('int'), { default: 1 })])]);
+            const op = opRoot([
+                opRoute('/users', [opOperation('get', { query: [opParam('limit', scalarType('int'), { default: 20 })] })]),
+                opRoute('/posts', [opOperation('get', { query: 'Pagination' })]),
+            ]);
+            const output = generateMarkdown({ contractRoots: [dto], opRoots: [op] });
+            expect(output).toContain('| `limit` | `number` | No |');
+            expect(output).toContain('| `page` | `number` | No |');
+        });
+
         it('resolves ref query type to model fields', () => {
             const dto = contractRoot([model('Pagination', [field('page', scalarType('int'))])]);
             const op = opRoot([opRoute('/users', [opOperation('get', { query: refType('Pagination') })])]);

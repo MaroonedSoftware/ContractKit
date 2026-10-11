@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { buildOpenApiDocument } from '../../../src/targets/openapi/codegen.js';
 import type { OpenApiConfig } from '../../../src/targets/openapi/codegen.js';
-import { contractRoot, enumType, field, model, opOperation, opResponse, opRoot, opRoute, refType, scalarType } from '../../helpers.js';
+import {
+    contractRoot,
+    enumType,
+    field,
+    inlineObjectType,
+    model,
+    opOperation,
+    opParam,
+    opResponse,
+    opRoot,
+    opRoute,
+    refType,
+    scalarType,
+} from '../../helpers.js';
 
 type Operation = { operationId?: string; parameters?: { name: string; in: string; required: boolean; schema: Record<string, unknown> }[] };
 const operation = (doc: Record<string, unknown>, path: string, method: string): Operation =>
@@ -124,5 +137,41 @@ describe('OpenAPI parameters from a formatted model', () => {
             config: {},
         });
         expect(operation(doc, '/x', 'get').parameters!.map(p => p.name)).toEqual(['from_date', 'regionCode']);
+    });
+});
+
+describe('OpenAPI parameters with a default', () => {
+    // The router fills a defaulted param in, so a caller may leave it out.
+    const contracts = [contractRoot([model('PageQuery', [field('page', scalarType('int'), { default: 1 }), field('q', scalarType('string'))])])];
+    const params = (query: unknown) =>
+        operation(
+            buildOpenApiDocument({
+                contractRoots: contracts,
+                opRoots: [opRoot([opRoute('/x', [opOperation('get', { query, responses: [opResponse(200)] })])])],
+                config: {},
+            }),
+            '/x',
+            'get',
+        ).parameters!.map(p => [p.name, p.required]);
+
+    it('marks a defaulted model field optional', () => {
+        expect(params('PageQuery')).toEqual([
+            ['page', false],
+            ['q', true],
+        ]);
+    });
+
+    it('marks a defaulted inline param optional', () => {
+        expect(params([opParam('page', scalarType('int'), { default: 1 }), opParam('q', scalarType('string'))])).toEqual([
+            ['page', false],
+            ['q', true],
+        ]);
+    });
+
+    it('marks a defaulted inline object field optional', () => {
+        expect(params(inlineObjectType([field('page', scalarType('int'), { default: 1 }), field('q', scalarType('string'))]))).toEqual([
+            ['page', false],
+            ['q', true],
+        ]);
     });
 });

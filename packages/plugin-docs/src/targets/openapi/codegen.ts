@@ -759,7 +759,8 @@ function modelFieldParams(
     return fields.map(f => ({
         name: wireNames.get(f.name) ?? f.name,
         in: location,
-        required: location === 'path' || !f.optional,
+        // A defaulted field may be omitted: the router fills it in, and the SDK takes it as optional.
+        required: location === 'path' || (!f.optional && f.default === undefined),
         ...(f.description ? { description: f.description } : {}),
         schema: fieldToSchema(f, modelMap),
     }));
@@ -850,8 +851,9 @@ function paramSourceToParams(
             // A path param is required by definition; anything else takes the contract at its
             // word, matching the inlineObject branch below. Marking every query and header
             // parameter optional made the published spec disagree with the router, which has
-            // always rejected a request missing one.
-            required: location === 'path' || !p.optional,
+            // always rejected a request missing one. A defaulted param is the exception: the
+            // router fills it in when it is missing.
+            required: location === 'path' || (!p.optional && p.default === undefined),
             schema: typeToSchema(p.type),
         }));
     }
@@ -861,7 +863,7 @@ function paramSourceToParams(
         return source.node.fields.map(f => ({
             name: f.name,
             in: location,
-            required: location === 'path' ? true : !f.optional,
+            required: location === 'path' || (!f.optional && f.default === undefined),
             schema: typeToSchema(f.type),
         }));
     }
