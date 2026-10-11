@@ -1,5 +1,11 @@
 # @contractkit/plugin-docs
 
+## 0.8.1
+
+### Patch Changes
+
+- c302824: Mark a query or header parameter that has a default as optional. The router fills a defaulted parameter in and the TypeScript SDK already takes it as optional, but the OpenAPI document published it as `required: true` and the Markdown, Mintlify and Docusaurus attribute tables listed it as required.
+
 ## 0.8.0
 
 ### Minor Changes
