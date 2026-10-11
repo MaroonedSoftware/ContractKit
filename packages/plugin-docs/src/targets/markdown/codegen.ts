@@ -587,7 +587,7 @@ function collectAttributes(route: OpRouteNode, op: OpOperationNode, modelIndex: 
             attrs.push({
                 name: p.name,
                 type: p.type,
-                required: !p.optional,
+                required: !p.optional && !p.hasDefault,
                 description: p.description ?? '',
                 source: 'query',
             });
@@ -601,7 +601,7 @@ function collectAttributes(route: OpRouteNode, op: OpOperationNode, modelIndex: 
             attrs.push({
                 name: p.name,
                 type: p.type,
-                required: !p.optional,
+                required: !p.optional && !p.hasDefault,
                 description: p.description ?? '',
                 source: 'header',
             });
@@ -765,12 +765,14 @@ interface FlatParam {
     name: string;
     type: ContractTypeNode;
     optional: boolean;
+    /** True when the contract gives the param a default, so a caller may omit it. */
+    hasDefault: boolean;
     description?: string;
 }
 
 function flattenParamSource(source: ParamSource, modelIndex: Map<string, ModelNode>): FlatParam[] {
     if (source.kind === 'params') {
-        return source.nodes.map(p => ({ name: p.name, type: p.type, optional: p.optional }));
+        return source.nodes.map(p => ({ name: p.name, type: p.type, optional: p.optional, hasDefault: p.default !== undefined }));
     }
     if (source.kind === 'ref') {
         // String reference — resolve from model index
@@ -780,6 +782,7 @@ function flattenParamSource(source: ParamSource, modelIndex: Map<string, ModelNo
                 name: f.name,
                 type: f.type,
                 optional: f.optional,
+                hasDefault: f.default !== undefined,
                 description: f.description,
             }));
         }
@@ -792,6 +795,7 @@ function flattenParamSource(source: ParamSource, modelIndex: Map<string, ModelNo
             name: f.name,
             type: f.type,
             optional: f.optional,
+            hasDefault: f.default !== undefined,
             description: f.description,
         }));
     }
@@ -802,6 +806,7 @@ function flattenParamSource(source: ParamSource, modelIndex: Map<string, ModelNo
                 name: f.name,
                 type: f.type,
                 optional: f.optional,
+                hasDefault: f.default !== undefined,
                 description: f.description,
             }));
         }
