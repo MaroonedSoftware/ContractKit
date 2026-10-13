@@ -73,6 +73,30 @@ declare module '@maroonedsoftware/koa' {
     export function bodyParserMiddleware(kinds: string[]): RouteHandler;
     export function requirePolicy(options?: { policy?: string | false }): RouteHandler;
     export function requireSignature(name: string, opts?: any): RouteHandler;
+    /** ServerKit's SSE transport, as servercore declares it and both adapters re-export it. */
+    export interface SseFrame {
+        id?: number | string;
+        event?: string;
+        data?: unknown;
+        retry?: number;
+    }
+    export interface SseStream {
+        write(chunk: string): void;
+        event(frame: SseFrame): void;
+        comment(text: string): void;
+        onClose(listener: () => void): void;
+        close(): void;
+        readonly closed: boolean;
+    }
+    export interface SseStreamOptions {
+        heartbeatMs?: number;
+        maxBufferedBytes?: number;
+        headers?: Record<string, string>;
+        signal?: AbortSignal;
+    }
+    export function resolveLastEventId(header: string, queryLastEventId: unknown): number;
+    export function firstQueryValue(value: unknown): string | undefined;
+    export function openSseStream(ctx: { res: any; status?: number; respond?: boolean }, options?: SseStreamOptions): SseStream;
 }
 
 declare module 'fastify' {
@@ -86,7 +110,7 @@ declare module 'fastify' {
     /** What a route's `preHandler` entries look like — `requirePolicy()` and `requireSignature(...)`. */
     type RouteGuard = (request: any, ...rest: any[]) => any;
     export interface FastifyRouteOptions {
-        config?: { body?: string[] };
+        config?: { body?: string[]; contractkit?: { stream?: boolean } };
         preHandler?: RouteGuard[];
         [key: string]: any;
     }
@@ -105,6 +129,7 @@ declare module 'fastify' {
         patch(path: string, options: FastifyRouteOptions, handler: RouteHandler): this;
         delete(path: string, handler: RouteHandler): this;
         delete(path: string, options: FastifyRouteOptions, handler: RouteHandler): this;
+        addHook(name: 'preClose', hook: () => Promise<void>): this;
     }
     export type FastifyPluginAsync = (app: FastifyInstance) => Promise<void>;
 }
@@ -114,6 +139,30 @@ declare module '@maroonedsoftware/fastify' {
     type RouteGuard = (request: any, ...rest: any[]) => any;
     export function requirePolicy(options?: { policy?: string | false }): RouteGuard;
     export function requireSignature(optionsKey: string, opts?: any): RouteGuard;
+    /** ServerKit's SSE transport, as servercore declares it and both adapters re-export it. */
+    export interface SseFrame {
+        id?: number | string;
+        event?: string;
+        data?: unknown;
+        retry?: number;
+    }
+    export interface SseStream {
+        write(chunk: string): void;
+        event(frame: SseFrame): void;
+        comment(text: string): void;
+        onClose(listener: () => void): void;
+        close(): void;
+        readonly closed: boolean;
+    }
+    export interface SseStreamOptions {
+        heartbeatMs?: number;
+        maxBufferedBytes?: number;
+        headers?: Record<string, string>;
+        signal?: AbortSignal;
+    }
+    export function resolveLastEventId(header: string, queryLastEventId: unknown): number;
+    export function firstQueryValue(value: unknown): string | undefined;
+    export function openSseReply(reply: any, options?: SseStreamOptions): SseStream;
 }
 
 declare module '@maroonedsoftware/zod' {
@@ -216,5 +265,19 @@ declare module '#src/services/seat.service.js' {
 declare module '#src/services/kitchen.service.js' {
     export class KitchenService {
         [key: string]: any;
+    }
+}
+/**
+ * Typed rather than open, so the compile checks what a streaming route hands its service: an event
+ * sink of the contract's event type, and the resume point as a number.
+ */
+declare module '#src/services/chat.service.js' {
+    type ChatStreamEvent = { type: 'delta'; text: string } | { type: 'done'; tokens: bigint };
+    export class ChatService {
+        stream(
+            id: string,
+            events: { send(event: ChatStreamEvent, options?: { id?: string | number; event?: string }): void; readonly signal: AbortSignal },
+            lastEventId: number,
+        ): Promise<void>;
     }
 }

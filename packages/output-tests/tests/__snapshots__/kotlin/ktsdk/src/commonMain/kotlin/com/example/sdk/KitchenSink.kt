@@ -6,6 +6,7 @@ import com.example.sdk.clients.HyphenatedClient
 import com.example.sdk.clients.KitchenClient
 import com.example.sdk.clients.ReservedClient
 import com.example.sdk.clients.SimpleClient
+import com.example.sdk.clients.StreamClient
 import com.example.sdk.runtime.SdkConfig
 import com.example.sdk.runtime.SdkHttp
 
@@ -22,6 +23,7 @@ class KitchenSink(config: SdkConfig) : AutoCloseable {
     val kitchen: KitchenClient = KitchenClient(http)
     val reserved: ReservedClient = ReservedClient(http)
     val simple: SimpleClient = SimpleClient(http)
+    val stream: StreamClient = StreamClient(http)
 
     override fun close() {
         http.close()

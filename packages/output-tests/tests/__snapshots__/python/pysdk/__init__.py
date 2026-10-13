@@ -5,6 +5,7 @@ from ._client_hyphenated import HyphenatedClient
 from ._client_kitchen import KitchenClient
 from ._client_reserved import ReservedClient
 from ._client_simple import SimpleClient
+from ._client_stream import StreamClient
 
 
 class Sdk(BaseClient):
@@ -15,5 +16,6 @@ class Sdk(BaseClient):
         self.kitchen = KitchenClient(base_url, headers)
         self.reserved = ReservedClient(base_url, headers)
         self.simple = SimpleClient(base_url, headers)
+        self.stream = StreamClient(base_url, headers)
 
-__all__ = ["BaseClient", "SdkError", "Sdk", "BillingClient", "HyphenatedClient", "KitchenClient", "ReservedClient", "SimpleClient"]
+__all__ = ["BaseClient", "SdkError", "Sdk", "BillingClient", "HyphenatedClient", "KitchenClient", "ReservedClient", "SimpleClient", "StreamClient"]

@@ -923,6 +923,90 @@ middleware. Those are passed to the shared fetch as `expectStatuses` so they no 
 `SdkError`. What remains — non-emitted 4xx/5xx — is the throw path, typed via a per-operation
 `…ErrorBody` alias referenced from the method's `@throws` tag.
 
+### Server-Sent Events (streaming)
+
+A `text/event-stream` body makes the operation a stream of Server-Sent Events. The declared type is
+the schema of one event's JSON `data`, usually a discriminated union:
+
+```
+contract ChatStreamEvent: discriminated(by=type, ChatDelta | ChatDone)
+
+operation /conversations/{id}/stream: {
+    params: { id: uuid }
+    get: {
+        sdk: streamConversation
+        service: ChatService.stream
+        response: {
+            200: { text/event-stream: ChatStreamEvent }
+            404:
+        }
+    }
+}
+```
+
+A streaming operation has one shape, checked at build time:
+
+- the stream is on a 2xx status, and is that status's only content type;
+- every other status is an error the service throws (a bare `404:`, or a body marked
+  `(documented)`), so the stream is the only outcome the service writes;
+- the event type is JSON, so it cannot be `binary`;
+- a request body cannot be `text/event-stream`.
+
+Generated effects:
+
+- **TypeScript SDK** returns `Promise<SseEventStream<ChatStreamEvent>>`, an async iterable of
+  parsed events, and takes a trailing optional `requestOptions: { signal?, lastEventId? }`. The
+  request goes through the same `SdkFetch` as every other method, so custom fetch, auth headers and
+  a non-2xx `SdkError` behave as before. Each event's `data` is parsed with `JSON.parse` and the
+  same revivers a buffered body gets. Leaving the `for await` loop
+  early, or aborting the signal, closes the connection. To resume after a drop, call again with
+  `lastEventId: stream.lastEventId`, which is sent as `Last-Event-ID`.
+
+  ```typescript
+  const stream = await sdk.chat.streamConversation(id, { signal });
+  for await (const event of stream) {
+      if (event.type === 'delta') render(event.text);
+  }
+  ```
+- **TypeScript router** hands the service an `EventSink<ChatStreamEvent>` and the client's resume
+  point in place of taking a returned body: `stream(id, events, lastEventId)`, after the usual
+  params, body, query and headers arguments. `lastEventId` is ServerKit's `resolveLastEventId` over
+  the `Last-Event-ID` header and a `?lastEventId=` query value, `0` for a fresh client.
+
+  ```typescript
+  import type { EventSink } from '../routes/chat.router.js'; // the router generated for chat.ck
+
+  async stream(id: string, events: EventSink<ChatStreamEvent>, lastEventId: number): Promise<void> {
+      const conversation = await this.load(id); // throwing here still answers 404
+      for await (const token of this.llm.reply(conversation, { signal: events.signal })) {
+          events.send({ type: 'delta', text: token.text }, { id: token.seq });
+      }
+      events.send({ type: 'done', tokens: conversation.tokens });
+  }
+  ```
+
+  The response opens on the service's first use of the sink (`send`, `onClose` or `signal`), so a
+  service can still throw an error status before then. The stream ends when the service method
+  settles; a service that streams until the client leaves awaits `events.signal`. `signal` also
+  aborts when the client disconnects or the server shuts down. Events are serialized like a JSON
+  body (`bigint` and `date`/`time` formatting included), but `validateResponses` does not apply.
+  The router exports `EventSink` for the service to name the type.
+
+  On Fastify the stream is ServerKit's `openSseReply`, and the route carries
+  `config: { contractkit: { stream: true } }` so an application hook can skip work that does not
+  suit a long-lived request, such as a per-request database transaction. The plugin aborts its
+  streams from a `preClose` hook, which ServerKit reaches when its lifecycle signal aborts, so
+  shutdown drains them without passing `builder.lifecycleSignal` in. On Koa the stream is
+  `openSseStream`; a Koa router has no close hook to reach, so its streams end when ServerKit's
+  shutdown grace closes the socket.
+- **MCP** never generates a tool for a streaming operation (a tool returns one result); one marked
+  `mcp` warns.
+- **OpenAPI** emits `content['text/event-stream'].schema` as the event schema, with
+  `x-contractkit-stream: true` on the media type, since OpenAPI 3.1 cannot say the schema is per
+  event. **Markdown, Mintlify and Docusaurus** label the response "a stream of `<Event>` events".
+- **Python, Kotlin, Swift and C# SDKs** do not stream. Each warns at build time and reads the
+  whole response as one string, as they did before `text/event-stream` had a meaning of its own.
+
 ### Typed response headers
 
 Each status code can declare typed response headers alongside the body. Names use the on-the-wire form (hyphens allowed, case-insensitive). The `?` suffix marks a header optional.

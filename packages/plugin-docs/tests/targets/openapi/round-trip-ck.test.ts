@@ -160,3 +160,38 @@ operation /jobs: {
         expect(resp.emit).toBe('documented');
     });
 });
+
+describe('Server-Sent Events', () => {
+    const SOURCE_STREAM = `
+contract ChatEvent: { text: string }
+
+operation /conversations/{id}/stream: {
+    params: { id: uuid }
+    get: {
+        sdk: streamConversation
+        response: {
+            200: { text/event-stream: ChatEvent }
+            404:
+        }
+    }
+}
+`;
+
+    it('describes each event with the schema and marks the media type as a stream', () => {
+        const { contract, op } = decomposeCk(parse(SOURCE_STREAM));
+        const doc = parseYaml(generateOpenApi({ contractRoots: [contract], opRoots: [op], config: {} })) as {
+            paths: Record<string, { get: { responses: Record<string, { content?: Record<string, unknown> }> } }>;
+        };
+        expect(doc.paths['/conversations/{id}/stream']!.get.responses['200']!.content).toEqual({
+            'text/event-stream': { schema: { $ref: '#/components/schemas/ChatEvent' }, 'x-contractkit-stream': true },
+        });
+    });
+
+    it('comes back as the same stream', async () => {
+        const { contract, op } = decomposeCk(parse(SOURCE_STREAM));
+        const yaml = generateOpenApi({ contractRoots: [contract], opRoots: [op], config: {} });
+        const result = await convertOpenApiToCk({ input: parseYaml(yaml) as Record<string, unknown>, split: 'single' });
+        const resp = parse(result.files.get('api.ck')!).routes[0]!.operations[0]!.responses.find(r => r.statusCode === 200)!;
+        expect(resp.bodies).toEqual([{ contentType: 'text/event-stream', bodyType: { kind: 'ref', name: 'ChatEvent' } }]);
+    });
+});

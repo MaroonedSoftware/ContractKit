@@ -669,6 +669,26 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Heartbeat'
+  '/conversations/{id}/stream':
+    get:
+      operationId: streamConversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'text/event-stream':
+              schema:
+                '$ref': '#/components/schemas/ChatStreamEvent'
+              x-contractkit-stream: true
+        '404':
+          description: 'Not found'
 components:
   schemas:
     Payment:
@@ -1094,3 +1114,33 @@ components:
           format: date-time
       required: [status, checkedAt]
       description: 'A service heartbeat — deliberately no bigint field and no `area` key'
+    ChatDelta:
+      type: object
+      properties:
+        type:
+          const: delta
+        text:
+          type: string
+      required: [type, text]
+      description: 'A token of the reply as it is generated'
+    ChatDone:
+      type: object
+      properties:
+        type:
+          const: done
+        tokens:
+          type: string
+          format: bigint
+          pattern: '^-?\d+n?$'
+          description: 'Total tokens, a bigint so each event goes through the reviver'
+      required: [type, tokens]
+      description: 'The reply is complete'
+    ChatStreamEvent:
+      oneOf:
+        - '$ref': '#/components/schemas/ChatDelta'
+        - '$ref': '#/components/schemas/ChatDone'
+      discriminator:
+        propertyName: type
+        mapping:
+          delta: '#/components/schemas/ChatDelta'
+          done: '#/components/schemas/ChatDone'

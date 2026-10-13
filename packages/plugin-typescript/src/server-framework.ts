@@ -31,6 +31,13 @@ export interface RouteMiddleware {
     bodyContentTypes?: readonly string[];
     /** `requireSignature(...)` call expression, or undefined when the operation declares no signature. */
     signature?: string;
+    /**
+     * True for an operation that streams Server-Sent Events. Fastify marks the route with
+     * `config.contractkit.stream`, so an application hook can tell a long-lived streaming request
+     * from an ordinary one (to skip a per-request database transaction, say); Koa has no route
+     * config to put it in.
+     */
+    stream?: boolean;
 }
 
 /**
@@ -121,7 +128,22 @@ export interface ServerFramework {
          * — a `; charset=utf-8` left on the end matches nothing.
          */
         contentType: string;
+        /**
+         * The resume point of a reconnecting Server-Sent Events client: ServerKit's
+         * `resolveLastEventId` over the `Last-Event-ID` header and the `lastEventId` query value.
+         */
+        lastEventId: string;
     };
+
+    /**
+     * Router-level statements a file with a streaming route needs once, ahead of its routes. Fastify
+     * declares the abort controller {@link response.openSse} passes as the stream's shutdown signal
+     * and aborts it from a `preClose` hook: ServerKit closes Fastify when its lifecycle signal
+     * aborts, so this is the same moment, reached without the route needing the builder. Koa has no
+     * close hook a router can reach, so it declares nothing and its streams end on ServerKit's
+     * shutdown grace instead.
+     */
+    streamSetup(): string[];
 
     /** Expression resolving a service class out of the request-scoped DI container. */
     resolveService(className: string): string;
@@ -151,6 +173,12 @@ export interface ServerFramework {
         sendBigIntJson(bodyExpr: string): string[];
         /** What closes one `case` of the multi-status switch, after that status has been written. */
         caseEnd(): string[];
+        /**
+         * Expression that takes the response over as a Server-Sent Events stream and evaluates to
+         * ServerKit's `SseStream`. It writes the headers and owns the socket from then on, so nothing
+         * else may write a status or body afterwards.
+         */
+        openSse(): string;
     };
 
     /**

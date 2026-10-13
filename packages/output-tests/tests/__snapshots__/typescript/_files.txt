@@ -1,4 +1,5 @@
 sdk/clients/billing.client.ts
+sdk/clients/chat.client.ts
 sdk/clients/hyphenated.client.ts
 sdk/clients/kitchen.client.ts
 sdk/clients/reserved.client.ts
@@ -13,6 +14,7 @@ sdk/types/index.ts
 sdk/types/kitchen.types.ts
 sdk/types/reserved.types.ts
 sdk/types/simple.types.ts
+sdk/types/stream.types.ts
 server/billing.mcp.ts
 server/hyphenated.mcp.ts
 server/mcp.router.ts
@@ -23,8 +25,10 @@ server/routes/hyphenated.router.ts
 server/routes/kitchen.router.ts
 server/routes/reserved.router.ts
 server/routes/simple.router.ts
+server/routes/stream.router.ts
 server/schemas/billing.schema.ts
 server/schemas/hyphenated.schema.ts
 server/schemas/kitchen.schema.ts
 server/schemas/reserved.schema.ts
 server/schemas/simple.schema.ts
+server/schemas/stream.schema.ts

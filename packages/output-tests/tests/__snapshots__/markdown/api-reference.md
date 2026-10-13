@@ -44,6 +44,13 @@
 
 </details>
 
+<details>
+<summary><strong>Chat</strong> (1)</summary>
+
+- [Stream](#stream)
+
+</details>
+
 **Models**
 
 - [Invoice](#invoice)
@@ -88,6 +95,15 @@
 - [Stamp](#stamp)
 - [Stamped](#stamped)
 - [Ledger](#ledger)
+
+</details>
+
+<details>
+<summary><strong>Chat</strong> (3)</summary>
+
+- [ChatDelta](#chatdelta)
+- [ChatDone](#chatdone)
+- [ChatStreamEvent](#chatstreamevent)
 
 </details>
 
@@ -783,6 +799,33 @@ Response headers:
 | `x-rows` | `number` |  |
 
 
+### Chat
+
+#### Stream
+
+**`GET`** `/conversations/{id}/stream`
+
+> [!NOTE]
+> SDK method: `streamConversation`
+
+##### Attributes
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Path parameter. |
+
+</details>
+
+##### Response
+
+`200 OK` — Returns a stream of [ChatStreamEvent](#chatstreamevent) events (Server-Sent Events).
+
+`404 Not Found`
+
+
 ## Models
 
 ### Invoice
@@ -1235,3 +1278,39 @@ Extends [`Stamp`](#stamp)
 | `postedAt` | `string` | Yes |  |
 
 </details>
+
+### Chat
+
+#### ChatDelta
+
+> A token of the reply as it is generated
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `'delta'` | Yes |  |
+| `text` | `string` | Yes |  |
+
+</details>
+
+#### ChatDone
+
+> The reply is complete
+
+<details>
+<summary>Attributes (2)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `type` | `'done'` | Yes |  |
+| `tokens` | `bigint` | Yes | Total tokens, a bigint so each event goes through the reviver. *sent as a digit string, "123" or "123n"* |
+
+</details>
+
+#### ChatStreamEvent
+
+```typescript
+type ChatStreamEvent = ChatDelta | ChatDone
+```

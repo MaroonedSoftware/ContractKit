@@ -19,6 +19,7 @@ import {
     MCP_HINT_KEYS,
     isJsonMime,
     classifyContentType,
+    eventStreamResponse,
 } from '@contractkit/core';
 import { renderType, renderInputType, pascalToDotCase, compilesToPipe, isExtendChain, applyFieldModifiers } from './codegen-contract.js';
 import { inferService, deriveModulePath, buildArgs, deriveBaseName, bodyTypesStructurallyEqual } from './codegen-operation.js';
@@ -569,6 +570,9 @@ export function planTools(root: OpRootNode, includeInternal: boolean, catalog = 
     const plans: ToolPlan[] = [];
     for (const route of root.routes) {
         for (const op of route.operations) {
+            // A tool returns one JSON result, and a stream's service writes to an event sink rather
+            // than returning anything, so a streaming operation is never a tool, even when it asks to be.
+            if (eventStreamResponse(op)) continue;
             const listed = isMcpTool(op);
             const inCatalog = catalog && isCatalogOperation(op, models);
             if (!listed && !inCatalog) continue;

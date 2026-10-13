@@ -1,13 +1,15 @@
-import type { ContractTypeNode, FieldNode, OpRootNode } from './ast.js';
+import type { ContractTypeNode, FieldNode, OpOperationNode, OpRootNode } from './ast.js';
 import type { DiagnosticCollector } from './diagnostics.js';
-import { emittedResponses } from './response-sets.js';
+import { emittedResponses, observableResponses } from './response-sets.js';
+import { classifyContentType } from './content-type.js';
 import { extractPathParams } from './path-params.js';
 
 /**
  * Warn when a route path contains `{param}` placeholders that are not explicitly declared in a
  * `params` block; when an operation declares responses but emits none of them; on empty or
  * invalid request body declarations; and on `application/x-www-form-urlencoded` bodies containing
- * nested object/array shapes, which don't round-trip cleanly through form encoding.
+ * nested object/array shapes, which don't round-trip cleanly through form encoding. Errors on a
+ * `text/event-stream` declaration outside the one shape a streaming operation can take.
  */
 export function validateOp(root: OpRootNode, diag: DiagnosticCollector): void {
     for (const route of root.routes) {
@@ -43,6 +45,8 @@ export function validateOp(root: OpRootNode, diag: DiagnosticCollector): void {
                 );
             }
 
+            validateEventStream(op, root, diag);
+
             if (!op.request) continue;
             if (op.request.bodies.length === 0) {
                 diag.warn(root.file, op.loc.line, `Operation has an empty request block — declare at least one content type`);
@@ -59,6 +63,61 @@ export function validateOp(root: OpRootNode, diag: DiagnosticCollector): void {
                 }
             }
         }
+    }
+}
+
+const isEventStream = (contentType: string) => classifyContentType(contentType) === 'event-stream';
+
+/**
+ * Hold a streaming operation to the one shape every generator can render.
+ *
+ * The SDK method returns an async iterable of events in place of a value and the router hands the
+ * service an event sink in place of taking its return, so the stream has to be the operation's
+ * only outcome the service writes (anything else, like a 404, it throws): a second success status, or a second mime beside the stream, would need
+ * a client return type that is sometimes a stream and sometimes not. Each event's `data` is
+ * JSON-encoded, so the body type is the schema of one event and cannot be `binary`. A request body
+ * cannot stream at all.
+ */
+function validateEventStream(op: OpOperationNode, root: OpRootNode, diag: DiagnosticCollector): void {
+    const error = (message: string) => diag.error(root.file, op.loc.line, message, 'event-stream');
+
+    if (op.request?.bodies.some(b => isEventStream(b.contentType))) {
+        error(`text/event-stream is a response type; a request body cannot stream`);
+    }
+
+    const streaming = op.responses.filter(r => r.bodies.some(b => isEventStream(b.contentType)));
+    if (streaming.length === 0) return;
+    if (streaming.length > 1) {
+        error(
+            `text/event-stream is declared on several statuses (${streaming.map(r => r.statusCode).join(', ')}), but a streaming operation has one stream`,
+        );
+        return;
+    }
+
+    const stream = streaming[0]!;
+    if (stream.statusCode < 200 || stream.statusCode >= 300) {
+        error(`text/event-stream on status ${stream.statusCode}: a stream must be a 2xx response`);
+        return;
+    }
+    if (stream.emit === 'documented') {
+        error(`text/event-stream on ${stream.statusCode}(documented): the service produces the stream, so it cannot be documentation only`);
+        return;
+    }
+    if (stream.bodies.length > 1) {
+        error(`status ${stream.statusCode} declares text/event-stream beside other content types, but a stream must be the status's only body`);
+    }
+    const others = observableResponses(op).filter(r => r !== stream);
+    if (others.length > 0) {
+        error(
+            `a streaming operation cannot also return ${others.map(r => r.statusCode).join(', ')}. ` +
+                `The service reports other outcomes by throwing, so declare them as bare error statuses or mark them (documented)`,
+        );
+    }
+    const body = stream.bodies.find(b => isEventStream(b.contentType))!;
+    if (body.bodyType.kind === 'scalar' && body.bodyType.name === 'binary') {
+        error(
+            `text/event-stream body is 'binary', but each event's data is JSON, so declare the event's schema (usually a model or discriminated union)`,
+        );
     }
 }
 

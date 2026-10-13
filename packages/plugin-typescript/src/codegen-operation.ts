@@ -19,6 +19,7 @@ import {
     PATH_PARAM_RE_G,
     toIdentifier,
     classifyContentType,
+    eventStreamResponse,
 } from '@contractkit/core';
 import {
     renderType,
@@ -41,6 +42,70 @@ import { bindIdentifiers } from './reserved-words.js';
 import { namesSerializer, responseWireExpr, serializeFnName, temporalWireFormat, wireDeclsFor } from './codegen-serialize.js';
 import type { SerializeCodegenOptions } from './codegen-serialize.js';
 
+/**
+ * The runtime a router with a streaming route declares at module level: the `EventSink` its
+ * services write events to, and `streamEvents`, which runs the service against one.
+ *
+ * The response opens on the service's first use of the sink rather than before the call. That is
+ * what lets a service still answer with an error status (a 404 for a conversation that does not
+ * exist) by throwing before it streams anything; once the stream has taken the socket over there is
+ * no status left to set. The stream ends when the service method settles, so a service that streams
+ * until the client leaves awaits `events.signal` or an `onClose` of its own.
+ *
+ * Exported so a service can name the parameter's type. Every streaming router declares the same
+ * structural type, so one file's `EventSink` is assignable to another's.
+ */
+const EVENT_SINK_DECL: readonly string[] = String.raw`/**
+ * What a streaming operation's service writes its events to. The response opens the first time the
+ * service uses the sink (send, onClose or signal), so it can still throw an error status before then,
+ * and it ends when the service method settles.
+ */
+export interface EventSink<T> {
+    /** Send one event. A client echoes the last id back as Last-Event-ID when it reconnects. A no-op once closed. */
+    send(event: T, options?: { id?: string | number; event?: string }): void;
+    /** Run cleanup when the stream closes, for any reason. Runs at once if it already has. */
+    onClose(listener: () => void): void;
+    /** True once the stream has closed. */
+    readonly closed: boolean;
+    /** Aborts when the stream closes: the client left, the server is shutting down, or the service settled. */
+    readonly signal: AbortSignal;
+}
+
+/**
+ * Run a streaming service against an EventSink over the stream open() starts, opening it on the
+ * service's first use. A throw before then answers the request like any other error; after it, the
+ * response already belongs to the stream, which is closed before the error propagates to be logged.
+ */
+async function streamEvents<T>(open: () => SseStream, serialize: (event: T) => string, run: (events: EventSink<T>) => Promise<unknown>): Promise<void> {
+    let stream: SseStream | undefined;
+    const closed = new AbortController();
+    const use = (): SseStream => {
+        if (stream === undefined) {
+            stream = open();
+            stream.onClose(() => closed.abort());
+        }
+        return stream;
+    };
+    const events: EventSink<T> = {
+        send: (event, options) => use().event({ ...options, data: serialize(event) }),
+        onClose: listener => use().onClose(listener),
+        get closed() {
+            return stream?.closed ?? false;
+        },
+        get signal() {
+            use();
+            return closed.signal;
+        },
+    };
+    try {
+        await run(events);
+    } catch (error) {
+        stream?.close();
+        throw error;
+    }
+    use().close();
+}`.split('\n');
+
 /** Which request-side object a validation block reads from. Names the variable the block declares. */
 export type ParamKind = 'params' | 'query' | 'headers';
 
@@ -50,7 +115,20 @@ export type ParamKind = 'params' | 'query' | 'headers';
  * these names would redeclare or shadow it, so those bindings are renamed the same way a collision
  * with a handler parameter is.
  */
-const GENERATOR_HANDLER_LOCALS = ['service', 'result', 'body', 'multipartBody', 'params', 'query', 'headers', 'z', 'parseAndValidate'] as const;
+const GENERATOR_HANDLER_LOCALS = [
+    'service',
+    'result',
+    'body',
+    'multipartBody',
+    'params',
+    'query',
+    'headers',
+    'z',
+    'parseAndValidate',
+    'events',
+    'lastEventId',
+    'streamEvents',
+] as const;
 
 /**
  * Local identifier for each inline path parameter, keyed by its declared name.
@@ -256,6 +334,11 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
 
     const includeInternal = options.includeInternal ?? true;
     const routeLines: string[] = [];
+    const streams = root.routes.some(route =>
+        route.operations.some(op => (includeInternal || !resolveModifiers(route, op).includes('internal')) && eventStreamResponse(op)),
+    );
+    const streamSetup = streams ? framework.streamSetup() : [];
+    if (streamSetup.length > 0) routeLines.push(...streamSetup, '');
     for (const route of root.routes) {
         for (const op of route.operations) {
             if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
@@ -315,6 +398,10 @@ export function generateOp(root: OpRootNode, options: OpCodegenOptions = {}): st
     if (responseSerializerDecls.length > 0) {
         if (helpers.length > 0) helpers.push('');
         helpers.push(...wireDeclsFor(responseSerializerDecls), ...responseSerializerDecls);
+    }
+    if (references('streamEvents')) {
+        if (helpers.length > 0) helpers.push('');
+        helpers.push(...EVENT_SINK_DECL);
     }
 
     const generated = [...(helpers.length ? ['', ...helpers] : []), ...lines].join('\n');
@@ -425,6 +512,8 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
     if (op.signature) {
         guards.signature = signatureGuard(framework, op.signature, op.signaturePolicy);
     }
+    const stream = eventStreamResponse(op);
+    if (stream) guards.stream = true;
     lines.push(framework.routeOpen(deriveRouterName(file, framework), method, path, guards));
 
     // Params / query / headers validation (request-side — use Input variants)
@@ -518,7 +607,11 @@ function generateHandler(route: OpRouteNode, op: OpOperationNode, root: OpRootNo
 
     // Names a response wrapper after the service method it serializes the result of.
     const wrapperHint = `__serialize${upperFirst(serviceParts.methodName)}`;
-    if (emitted.length > 1) {
+    if (stream) {
+        const args = buildArgs(route, op, pathBindings);
+        const streamCall = `service.${serviceParts.methodName}(${args ? `${args}, ` : ''}events, lastEventId)`;
+        lines.push(...generateStreamResult(stream.body, serviceParts.className, streamCall, `${wrapperHint}Event`, options));
+    } else if (emitted.length > 1) {
         lines.push(...generateMultiStatusResult(emitted, serviceParts.className, call, wrapperHint, options));
     } else {
         lines.push(...generateSingleStatusResult(emitted[0], op, serviceParts.className, call, wrapperHint, options));
@@ -601,6 +694,46 @@ function generateSingleStatusResult(
         lines.push(...indent(framework.response.send(undefined), '    '));
     }
 
+    return lines;
+}
+
+/**
+ * A streaming operation: the service is handed an `EventSink` in place of returning a body, and
+ * `streamEvents` opens the Server-Sent Events response on its first use. Each event is written the
+ * way a JSON body would be: through its response serializer when it holds a `date` or `time`, and
+ * with `bigIntReplacer` when its type can carry a `bigint`. `validateResponses` does not apply, since
+ * events are written as the service produces them rather than as one returned value.
+ *
+ * The status, content type and any declared response headers are the stream's own to write, so none
+ * of the single-status writes appear here.
+ */
+function generateStreamResult(
+    body: OpResponseBodyNode,
+    className: string,
+    call: string,
+    wrapperName: string,
+    options: ResolvedOpCodegenOptions,
+): string[] {
+    const framework = options.framework;
+    const lines: string[] = [];
+    const { annotation, prelude } = formatTypeAnnotation(body.bodyType, options, 'eventType');
+    if (prelude) lines.push(`    ${prelude}`);
+
+    const serializeOpts: SerializeCodegenOptions | undefined = options.modelsWithSerializer && {
+        modelsWithSerializer: options.modelsWithSerializer,
+        modelMap: options.models ?? new Map(),
+        direction: 'response',
+    };
+    const wire = serializeOpts ? responseWireExpr(body.bodyType, 'event', wrapperName, serializeOpts, options.responseSerializers) : 'event';
+    const bigint = typeReachesBigInt(body.bodyType, options.modelsWithBigInt);
+
+    lines.push(`    const service = ${framework.resolveService(className)};`);
+    lines.push(`    const lastEventId = ${framework.request.lastEventId};`);
+    lines.push(`    await streamEvents<${annotation}>(`);
+    lines.push(`        () => ${framework.response.openSse()},`);
+    lines.push(`        event => JSON.stringify(${wire}${bigint ? ', bigIntReplacer' : ''}),`);
+    lines.push(`        events => ${call},`);
+    lines.push(`    );`);
     return lines;
 }
 

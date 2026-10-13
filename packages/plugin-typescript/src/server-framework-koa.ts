@@ -8,7 +8,18 @@ const KOA_RUNTIME_MODULE = '@maroonedsoftware/koa';
  * Symbols importable from {@link KOA_RUNTIME_MODULE}. Every one is a name the adapter itself emits,
  * so none can collide with a service class or router name derived from a contract.
  */
-const KOA_RUNTIME_SYMBOLS = ['ServerKitRouter', 'bodyParserMiddleware', 'requirePolicy', 'requireSignature'] as const;
+const KOA_RUNTIME_SYMBOLS = [
+    'ServerKitRouter',
+    'bodyParserMiddleware',
+    'requirePolicy',
+    'requireSignature',
+    'openSseStream',
+    'resolveLastEventId',
+    'SseStream',
+] as const;
+
+/** Of {@link KOA_RUNTIME_SYMBOLS}, the ones that are types and are imported as such. */
+const KOA_RUNTIME_TYPES: ReadonlySet<string> = new Set(['SseStream']);
 
 /**
  * Map a request MIME type to the ServerKit body-parser token `bodyParserMiddleware` accepts. The
@@ -47,7 +58,7 @@ export const KOA_SERVER_FRAMEWORK: ServerFramework = {
     name: 'koa',
 
     imports(uses) {
-        const symbols = KOA_RUNTIME_SYMBOLS.filter(uses);
+        const symbols = KOA_RUNTIME_SYMBOLS.filter(uses).map(s => (KOA_RUNTIME_TYPES.has(s) ? `type ${s}` : s));
         return symbols.length > 0 ? [`import { ${symbols.join(', ')} } from '${KOA_RUNTIME_MODULE}';`] : [];
     },
 
@@ -102,6 +113,14 @@ export const KOA_SERVER_FRAMEWORK: ServerFramework = {
         parsedBody: 'ctx.parsedBody',
         // Koa strips the parameters off `Content-Type` for this accessor already.
         contentType: 'ctx.request.type',
+        // `ctx.get` answers '' for an absent header, which `resolveLastEventId` reads as "start fresh".
+        lastEventId: `resolveLastEventId(ctx.get('Last-Event-ID'), ctx.query.lastEventId)`,
+    },
+
+    streamSetup() {
+        // No close hook reaches a Koa router, so a stream passes no shutdown signal and ends when
+        // ServerKit's shutdown grace closes its socket.
+        return [];
     },
 
     resolveService(className) {
@@ -130,6 +149,9 @@ export const KOA_SERVER_FRAMEWORK: ServerFramework = {
         },
         caseEnd() {
             return ['break;'];
+        },
+        openSse() {
+            return 'openSseStream(ctx)';
         },
     },
 

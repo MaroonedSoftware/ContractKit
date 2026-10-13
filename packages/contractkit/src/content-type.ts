@@ -24,16 +24,23 @@ export function isJsonMime(contentType: string): boolean {
  * - `json`     — `application/json` or any `+json` structured suffix; full schema validation,
  *                JSON.stringify on the wire, model types in source.
  * - `urlencoded` / `multipart` — form-style request bodies with dedicated handling.
+ * - `event-stream` — `text/event-stream` (Server-Sent Events); the body type is the schema of each
+ *                event's JSON `data`, and the response is consumed as a stream rather than buffered.
+ *                Checked before the `text/` rule, which would otherwise claim it.
  * - `text`     — `text/*`; body is a raw string with no schema enforcement.
  * - `binary`   — anything else (`application/octet-stream`, `image/*`, etc.); body is opaque
  *                bytes (`Blob` / `bytes`) with no schema enforcement.
  */
-export type ContentTypeCategory = 'json' | 'urlencoded' | 'multipart' | 'text' | 'binary';
+export type ContentTypeCategory = 'json' | 'urlencoded' | 'multipart' | 'event-stream' | 'text' | 'binary';
+
+/** The Server-Sent Events media type. */
+export const EVENT_STREAM_MIME = 'text/event-stream';
 
 export function classifyContentType(contentType: string): ContentTypeCategory {
     if (contentType === 'application/x-www-form-urlencoded') return 'urlencoded';
     if (contentType === 'multipart/form-data') return 'multipart';
     if (isJsonMime(contentType)) return 'json';
+    if (contentType === EVENT_STREAM_MIME) return 'event-stream';
     if (contentType.startsWith('text/')) return 'text';
     return 'binary';
 }

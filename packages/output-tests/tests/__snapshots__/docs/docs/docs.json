@@ -59,6 +59,12 @@
                         ]
                     },
                     {
+                        "group": "Chat",
+                        "pages": [
+                            "api-reference/chat/stream-conversation"
+                        ]
+                    },
+                    {
                         "group": "Models",
                         "pages": [
                             "api-reference/models/invoice",
@@ -101,6 +107,14 @@
                                     "api-reference/models/kitchen/stamp",
                                     "api-reference/models/kitchen/stamped",
                                     "api-reference/models/kitchen/ledger"
+                                ]
+                            },
+                            {
+                                "group": "Chat",
+                                "pages": [
+                                    "api-reference/models/chat/chat-delta",
+                                    "api-reference/models/chat/chat-done",
+                                    "api-reference/models/chat/chat-stream-event"
                                 ]
                             }
                         ]

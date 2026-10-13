@@ -22,6 +22,7 @@ import {
     PATH_PARAM_RE_G,
     toIdentifier,
     deriveSdkMethodName,
+    eventStreamResponse,
 } from '@contractkit/core';
 import {
     renderInputTsType,
@@ -258,8 +259,9 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         rel = rel.replace(/\.ts$/, '.js');
         if (!rel.startsWith('.')) rel = './' + rel;
         const jsonImport = sdkNeedsJson(root, includeInternal) ? ', JsonValue' : '';
-        lines.push(`import type { SdkFetch${jsonImport} } from '${rel}';`);
-        const valueImports: string[] = [];
+        const sse = sseRuntimeImports(classBody);
+        lines.push(`import type { ${['SdkFetch', ...sse.types].join(', ')}${jsonImport} } from '${rel}';`);
+        const valueImports: string[] = [...sse.values];
         if (sdkNeedsBigIntReplacer(root, includeInternal)) valueImports.push('bigIntReplacer');
         // Aliased rather than emitted at each call site: the method bodies are identical either
         // way, and the import line is where the choice is legible.
@@ -349,6 +351,15 @@ export function generateSdk(root: OpRootNode, options: SdkCodegenOptions = {}): 
         lines.push('');
         if (usesParseBigIntHeader(classBody)) {
             lines.push(...PARSE_BIGINT_HEADER_DECL);
+            lines.push('');
+        }
+        const sse = sseRuntimeImports(classBody);
+        if (sse.values.includes('parseSse')) {
+            lines.push(...SSE_RUNTIME_DECL);
+            lines.push('');
+        }
+        if (sse.values.includes('bigIntReviver')) {
+            lines.push(...BIGINT_REVIVER_DECL);
             lines.push('');
         }
         lines.push('export async function parseJson<T>(res: Response): Promise<T> {');
@@ -543,6 +554,11 @@ function generateMethod(
     // Build method parameters (request-side — use Input variants, and WireInput where format(input=) re-keys)
     const pathBindings = bindSdkPathParams(route);
     const params = buildMethodParams(route, op, pathBindings, modelsWithInput, options.modelsWithWireInput);
+    // A streaming operation returns its events as they arrive rather than a buffered body, and takes
+    // one more optional argument: the abort signal and the event id to resume after. `validateOp`
+    // guarantees the stream is the only non-error outcome, so nothing below has a union to build.
+    const stream = eventStreamResponse(op);
+    if (stream) params.push({ name: 'requestOptions', type: 'SseRequestOptions', optional: true });
     const paramStr = params.map(p => `${p.name}${p.optional ? '?' : ''}: ${p.type}`).join(', ');
 
     // Determine return type — response side uses Output variants (post-transform wire shape).
@@ -565,7 +581,9 @@ function generateMethod(
     // several hundred characters on one line otherwise.
     let returnMembers: string[] | undefined;
     let returnType = '';
-    if (isMultiStatus) {
+    if (stream) {
+        returnType = `SseEventStream<${renderOutputTsType(stream.body.bodyType, modelsWithOutput)}>`;
+    } else if (isMultiStatus) {
         returnMembers = observable.flatMap(r => sdkResponseMembers(r, modelsWithOutput, true));
     } else if (primaryBodies.length > 1) {
         returnMembers = sdkResponseMembers(primaryResponse!, modelsWithOutput, false);
@@ -705,7 +723,22 @@ function generateMethod(
         }
     }
 
-    if (expectStatuses.length > 0) fetchArgs.push(`expectStatuses: [${expectStatuses.join(', ')}]`);
+    if (stream) {
+        const sseHeaders = 'sseRequestHeaders(requestOptions)';
+        const headerIdx = fetchArgs.findIndex(a => a.startsWith('headers:'));
+        if (headerIdx !== -1) {
+            // Either an object literal (a Content-Type, maybe with the custom headers spread in) or
+            // a bare `buildHeaders(...)` call, which has to be spread rather than unwrapped.
+            const existing = fetchArgs[headerIdx]!.slice('headers: '.length);
+            const inner = existing.startsWith('{') ? existing.replace(/^\{\s*|\s*\}$/g, '') : `...${existing}`;
+            fetchArgs[headerIdx] = `headers: { ${inner}, ...${sseHeaders} }`;
+        } else {
+            fetchArgs.push(`headers: ${sseHeaders}`);
+        }
+        fetchArgs.push('signal: requestOptions?.signal');
+    } else if (expectStatuses.length > 0) {
+        fetchArgs.push(`expectStatuses: [${expectStatuses.join(', ')}]`);
+    }
 
     const needsResult = isMultiStatus || !isVoid || hasRespHeaders;
     const resultPrefix = needsResult ? 'const result = ' : '';
@@ -720,7 +753,9 @@ function generateMethod(
         lines.push(`        });`);
     }
 
-    if (isMultiStatus) {
+    if (stream) {
+        lines.push(`        return ${sseReadExpr(stream.body, options, hint(mRevive, stream.response.statusCode))};`);
+    } else if (isMultiStatus) {
         // The status is only known at runtime, so the caller gets a union to narrow. The lowest
         // status is the default branch, which keeps the function exhaustively returning.
         const [fallback, ...rest] = observable;
@@ -779,6 +814,22 @@ function sdkReadExpr(body: OpResponseBodyNode, modelsWithOutput?: Set<string>, r
     // `.map` over an array of refs rather than a wrapper function: the reviver returns the same
     // object it mutated, so the mapped array holds the same elements.
     return reviver.kind === 'array' ? `(${read}).map(${reviver.name})` : `${reviver.name}(${read})`;
+}
+
+/**
+ * How a client turns a streaming response into its events: `parseSse` over the body, with each
+ * event's `data` parsed the way {@link sdkReadExpr} parses a buffered JSON body. The `123n` reviver
+ * applies only when the event type can carry a `bigint`, and a decimal-bearing event goes through
+ * its reviver, so the stream yields the same values a single-response method would return.
+ */
+function sseReadExpr(body: OpResponseBodyNode, options: SdkCodegenOptions, revive?: ReviveContext): string {
+    const tsType = renderOutputTsType(body.bodyType, options.modelsWithOutput);
+    const bigint = typeReachesBigInt(body.bodyType, options.modelsWithBigInt);
+    const parsed = `JSON.parse(data${bigint ? ', bigIntReviver' : ''}) as ${tsType}`;
+    const reviver = reviveExprFor(body.bodyType, revive);
+    if (!reviver && !bigint) return `parseSse<${tsType}>(result)`;
+    const event = !reviver ? parsed : reviver.kind === 'array' ? `(${parsed}).map(${reviver.name})` : `${reviver.name}(${parsed})`;
+    return `parseSse<${tsType}>(result, data => ${event})`;
 }
 
 /**
@@ -1207,6 +1258,10 @@ const SDK_METHOD_LOCALS = [
     'buildHeaders',
     'readContentType',
     'parseBigIntHeader',
+    'requestOptions',
+    'parseSse',
+    'sseRequestHeaders',
+    'bigIntReviver',
 ] as const;
 
 /**
@@ -1737,6 +1792,96 @@ function collectParamSourceRefs(source: ParamSource | undefined, out: Set<string
 }
 
 /**
+ * The runtime behind an operation that streams Server-Sent Events: the per-call options, the
+ * iterable the method returns, and `parseSse`, which turns the response body into events.
+ *
+ * The parser follows the WHATWG event-stream format rather than splitting on blank lines, so a
+ * frame split across network chunks, CRLF or bare-CR line endings, a multi-line `data:` field, and
+ * comment lines (the heartbeat ServerKit writes) all parse. Each event's `data` is handed to the
+ * caller's `parse`, which is where the generated method applies `JSON.parse` and any reviver. The
+ * reader is cancelled in a `finally`, so a caller that `break`s out of `for await`, an aborted
+ * signal, or a `parse` that throws all release the connection.
+ *
+ * `String.raw` keeps the regex and escape sequences readable; the block contains no `${`.
+ */
+const SSE_RUNTIME_DECL: readonly string[] = String.raw`/** Per-call options for an operation that streams Server-Sent Events. */
+export interface SseRequestOptions {
+    /** Aborts the request. An iteration in progress rejects with the abort reason. */
+    signal?: AbortSignal;
+    /** Resume after this event id, sent as Last-Event-ID. Usually an earlier stream's lastEventId. */
+    lastEventId?: string;
+}
+
+/**
+ * The events of one Server-Sent Events response, parsed as they arrive. Iterate it once with
+ * for await; leaving the loop early closes the connection.
+ */
+export interface SseEventStream<T> extends AsyncIterable<T> {
+    /** The id of the most recent event that carried one, to resume from with SseRequestOptions.lastEventId. */
+    readonly lastEventId: string | undefined;
+}
+
+/** The request headers a streaming call sends: Accept, plus Last-Event-ID when resuming. */
+export function sseRequestHeaders(options: SseRequestOptions | undefined): Record<string, string> {
+    const headers: Record<string, string> = { Accept: 'text/event-stream' };
+    if (options?.lastEventId !== undefined) headers['Last-Event-ID'] = options.lastEventId;
+    return headers;
+}
+
+/**
+ * Parse a text/event-stream response into its events. Data lines are joined with newlines and
+ * dispatched on a blank line; comments and other fields are skipped; an event cut off by the end
+ * of the stream is dropped. Each event's data goes through parse, JSON.parse by default.
+ */
+export function parseSse<T>(res: Response, parse: (data: string) => T = data => JSON.parse(data) as T): SseEventStream<T> {
+    let lastEventId: string | undefined;
+    let iterated = false;
+    async function* events(): AsyncGenerator<T> {
+        if (!res.body) return;
+        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buffer = '';
+        let data: string[] = [];
+        try {
+            for (;;) {
+                const chunk = await reader.read();
+                if (!chunk.done) buffer += chunk.value;
+                for (;;) {
+                    const end = buffer.search(/\r\n|\r|\n/);
+                    // A trailing CR may be the first half of a CRLF split across two reads, unless
+                    // this was the last read.
+                    if (end === -1 || (!chunk.done && end === buffer.length - 1 && buffer[end] === '\r')) break;
+                    const line = buffer.slice(0, end);
+                    buffer = buffer.slice(buffer.startsWith('\r\n', end) ? end + 2 : end + 1);
+                    if (line === '') {
+                        if (data.length > 0) yield parse(data.join('\n'));
+                        data = [];
+                        continue;
+                    }
+                    const colon = line.indexOf(':');
+                    const field = colon === -1 ? line : line.slice(0, colon);
+                    const value = colon === -1 ? '' : line.slice(line.startsWith(' ', colon + 1) ? colon + 2 : colon + 1);
+                    if (field === 'data') data.push(value);
+                    else if (field === 'id' && !value.includes('\0')) lastEventId = value;
+                }
+                if (chunk.done) return;
+            }
+        } finally {
+            await reader.cancel().catch(() => undefined);
+        }
+    }
+    return {
+        get lastEventId() {
+            return lastEventId;
+        },
+        [Symbol.asyncIterator]() {
+            if (iterated) throw new Error('An SseEventStream can be iterated only once');
+            iterated = true;
+            return events();
+        },
+    };
+}`.split('\n');
+
+/**
  * The runtime helper that turns an operation's `headers:` argument into what `fetch` accepts. A
  * header param can be typed `int`, `boolean`, `datetime` and so on, and `HeadersInit` takes only
  * strings, so passing the argument straight through fails to typecheck. At run time it was worse:
@@ -1791,6 +1936,31 @@ const RANDOM_REQUEST_ID_DECL: readonly string[] = [
     '    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;',
     '}',
 ];
+
+/** The `123n` JSON reviver, the inverse of `bigIntReplacer`. */
+const BIGINT_REVIVER_DECL: readonly string[] = [
+    'export const bigIntReviver = (_: string, value: any): any => {',
+    "    if (typeof value === 'string' && /^-?\\d+n$/.test(value)) {",
+    '        return BigInt(value.slice(0, -1));',
+    '    }',
+    '    return value;',
+    '};',
+];
+
+/**
+ * The streaming runtime a client's emitted lines use, read off the text the way the other helper
+ * imports are: the types for its method signatures, and the functions its method bodies call.
+ * `bigIntReviver` appears in a method body only as the per-event reviver of a stream; a buffered
+ * body reaches it through `parseJsonWithBigInt` instead.
+ */
+function sseRuntimeImports(lines: readonly string[]): { types: string[]; values: string[] } {
+    const code = lines.join('\n');
+    const used = (name: string) => new RegExp(`\\b${name}\\b`).test(code);
+    return {
+        types: ['SseEventStream', 'SseRequestOptions'].filter(used),
+        values: ['parseSse', 'sseRequestHeaders', 'bigIntReviver'].filter(used),
+    };
+}
 
 /** Whether emitted method lines read a `bigint` response header, and so import its helper. */
 function usesParseBigIntHeader(lines: readonly string[]): boolean {
@@ -2069,12 +2239,7 @@ export function generateSdkOptions(): string {
         '    return value;',
         '};',
         '',
-        'export const bigIntReviver = (_: string, value: any): any => {',
-        "    if (typeof value === 'string' && /^-?\\d+n$/.test(value)) {",
-        '        return BigInt(value.slice(0, -1));',
-        '    }',
-        '    return value;',
-        '};',
+        ...BIGINT_REVIVER_DECL,
         '',
         JSON_VALUE_TYPE_DECL,
         '',
@@ -2120,6 +2285,8 @@ export function generateSdkOptions(): string {
         ...BUILD_HEADERS_DECL,
         '',
         ...PARSE_BIGINT_HEADER_DECL,
+        '',
+        ...SSE_RUNTIME_DECL,
         '',
         '/**',
         ' * Read a JSON response body.',
@@ -2406,8 +2573,9 @@ export function generateAreaClient(input: AreaClientInput): string {
 
     const lines: string[] = [];
     const jsonImport = needsJson ? ', JsonValue' : '';
-    lines.push(`import type { SdkFetch${jsonImport} } from '${sdkOptionsRel}';`);
-    const valueImports: string[] = [];
+    const sse = sseRuntimeImports(collectedMethodLines);
+    lines.push(`import type { ${['SdkFetch', ...sse.types].join(', ')}${jsonImport} } from '${sdkOptionsRel}';`);
+    const valueImports: string[] = [...sse.values];
     if (needsBigIntReplacer) valueImports.push('bigIntReplacer');
     if (needsParseJson) valueImports.push(needsBigIntReviver ? 'parseJsonWithBigInt as parseJson' : 'parseJson');
     if (needsQueryString) valueImports.push('buildQueryString');

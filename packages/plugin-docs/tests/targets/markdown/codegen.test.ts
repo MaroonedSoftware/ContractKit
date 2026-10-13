@@ -544,6 +544,19 @@ describe('generateMarkdown', () => {
             expect(output).toContain('`200 OK` — Returns a [User](#user) object.');
         });
 
+        it('labels a text/event-stream body as a stream of its event type', () => {
+            const op = opRoot([opRoute('/feed', [opOperation('get', { responses: [opResponse(200, 'User', 'text/event-stream')] })])]);
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
+            expect(output).toContain('`200 OK` — Returns a stream of [User](#user) events (Server-Sent Events).');
+        });
+
+        it('labels a stream of inline-object events before their attributes', () => {
+            const event = inlineObjectType([field('text', scalarType('string'))]);
+            const op = opRoot([opRoute('/feed', [opOperation('get', { responses: [opResponse(200, event, 'text/event-stream')] })])]);
+            const output = generateMarkdown({ contractRoots: [], opRoots: [op] });
+            expect(output).toContain('`200 OK` — Returns a stream of events, each with these attributes:');
+        });
+
         it('lists every declared mime for a status', () => {
             const op = opRoot([
                 opRoute('/art', [

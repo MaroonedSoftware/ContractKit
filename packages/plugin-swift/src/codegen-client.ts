@@ -229,6 +229,7 @@ function returnTypeFor(shape: ResponseShape, op: OpOperationNode, base: string, 
 /** The Swift type of one response body. A non-JSON mime ignores the schema, as in every SDK. */
 function bodySwiftType(body: OpResponseBodyNode, ctx: RenderContext): string {
     switch (classifyContentType(body.contentType)) {
+        case 'event-stream':
         case 'text':
             return 'String';
         case 'binary':
@@ -241,6 +242,7 @@ function bodySwiftType(body: OpResponseBodyNode, ctx: RenderContext): string {
 /** The expression that reads one body out of the response. */
 function bodyReadExpr(body: OpResponseBodyNode, ctx: RenderContext): string {
     switch (classifyContentType(body.contentType)) {
+        case 'event-stream':
         case 'text':
             return 'response.text';
         case 'binary':
@@ -351,6 +353,7 @@ function bodyCall(op: OpOperationNode): string[] {
             return ['http.setMultipartBody(&request, body)'];
         case 'urlencoded':
             return [`try http.setFormBody(&request, body, contentType: ${mime})`];
+        case 'event-stream':
         case 'text':
             return [`http.setTextBody(&request, body, contentType: ${mime})`];
         case 'binary':
@@ -654,6 +657,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, ctx: RenderC
             case 'binary':
                 params.push({ name: 'body', type: 'Data', optional: false });
                 break;
+            case 'event-stream':
             case 'text':
                 params.push({ name: 'body', type: 'String', optional: false });
                 break;

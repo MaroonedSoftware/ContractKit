@@ -19,7 +19,7 @@ describe('KOA_SERVER_FRAMEWORK', () => {
     describe('imports', () => {
         it('emits one line naming every symbol the body uses', () => {
             expect(koa.imports(() => true)).toEqual([
-                "import { ServerKitRouter, bodyParserMiddleware, requirePolicy, requireSignature } from '@maroonedsoftware/koa';",
+                "import { ServerKitRouter, bodyParserMiddleware, requirePolicy, requireSignature, openSseStream, resolveLastEventId, type SseStream } from '@maroonedsoftware/koa';",
             ]);
         });
 
@@ -100,6 +100,18 @@ describe('KOA_SERVER_FRAMEWORK', () => {
             headers: 'ctx.headers',
             parsedBody: 'ctx.parsedBody',
             contentType: 'ctx.request.type',
+            lastEventId: "resolveLastEventId(ctx.get('Last-Event-ID'), ctx.query.lastEventId)",
+        });
+    });
+
+    describe('Server-Sent Events', () => {
+        it('opens the stream on the context, with no shutdown signal to pass', () => {
+            expect(koa.response.openSse()).toBe('openSseStream(ctx)');
+            expect(koa.streamSetup()).toEqual([]);
+        });
+
+        it('has no route config to mark a streaming route in', () => {
+            expect(koa.routeOpen('ChatRouter', 'get', '/stream', { stream: true })).toBe("ChatRouter.get('/stream', async ctx => {");
         });
     });
 
