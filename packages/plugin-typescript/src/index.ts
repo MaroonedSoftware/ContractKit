@@ -26,6 +26,8 @@ import {
     computeModelsWithScalar,
     resolveEffectiveFields,
     SECURITY_NONE,
+    eventStreamResponse,
+    isMcpTool,
 } from '@contractkit/core';
 import {
     generateSdk,
@@ -236,7 +238,7 @@ export interface TypescriptPluginConfig {
 // ─── Caching constants ─────────────────────────────────────────────────────
 
 /** Bumped when the codegen output shape changes in a way that should bust every per-file fingerprint. */
-export const TYPESCRIPT_CODEGEN_VERSION = '18';
+export const TYPESCRIPT_CODEGEN_VERSION = '19';
 
 // The taint set is `DEFAULT_REVIVABLE_SCALARS` rather than decimal alone, which is what makes a
 // temporal field a real Luxon object in an SDK client rather than a string wearing a `DateTime`
@@ -328,7 +330,22 @@ async function runTypescriptCodegen(
     if (config.sdk) collectSdkOutput(config.sdk, rootDir, inputs, units, globalFiles);
     if (config.zod) collectZodOutput(config.zod, rootDir, inputs, units);
     if (config.types) collectTypesOutput(config.types, rootDir, inputs, units);
-    if (config.mcp) collectMcpOutput(config.mcp, config, rootDir, inputs, units, globalFiles);
+    if (config.mcp) {
+        // `planTools` drops these, so say why rather than leave an operation marked `mcp` with no tool.
+        for (const root of inputs.opRoots) {
+            for (const route of root.routes) {
+                for (const op of route.operations) {
+                    if (!isMcpTool(op) || !eventStreamResponse(op)) continue;
+                    ctx.warn?.(
+                        `${op.method.toUpperCase()} ${route.path} is marked mcp but returns text/event-stream; an MCP tool returns one result, so no tool is generated.`,
+                        root.file,
+                        op.loc.line,
+                    );
+                }
+            }
+        }
+        collectMcpOutput(config.mcp, config, rootDir, inputs, units, globalFiles);
+    }
 
     const result = runIncrementalCodegen({
         codegenVersion: TYPESCRIPT_CODEGEN_VERSION,

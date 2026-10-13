@@ -57,7 +57,9 @@ const STUB: ServerFramework = {
         headers: 'rq.headerBag',
         parsedBody: 'rq.payload',
         contentType: 'rq.mediaType',
+        lastEventId: 'rq.resumeFrom',
     },
+    streamSetup: () => ['const stubShutdown = stubSignal();'],
     resolveService: className => `rq.services.resolve(${className})`,
     response: {
         status: expr => `rs.setStatus(${expr});`,
@@ -66,6 +68,7 @@ const STUB: ServerFramework = {
         send: bodyExpr => (bodyExpr === undefined ? ['return rs.finish();'] : [`return rs.deliver(${bodyExpr});`]),
         sendBigIntJson: bodyExpr => [`return rs.deliverBigIntJson(${bodyExpr});`],
         caseEnd: () => [],
+        openSse: () => 'rs.openEvents()',
     },
     mcpRouter: ({ path }) => `// stub mcp at ${path}\n`,
 };
@@ -108,6 +111,8 @@ function everyBranchRoot() {
             ],
             [opParam('paymentId', scalarType('uuid'))],
         ),
+        // A Server-Sent Events stream — the event sink path.
+        opRoute('/payments/feed', [opOperation('get', { responses: [opResponse(200, 'Payment', 'text/event-stream')] })]),
     ]);
 }
 
@@ -163,6 +168,12 @@ describe('generateOp — framework seam', () => {
         expect(output).toContain('return rs.finish();');
     });
 
+    it('opens an event stream, reads the resume point and sets up shutdown through the adapter', () => {
+        expect(output).toContain('() => rs.openEvents(),');
+        expect(output).toContain('const lastEventId = rq.resumeFrom;');
+        expect(output.match(/const stubShutdown = stubSignal\(\);/g)).toHaveLength(1);
+    });
+
     it('omits the status-case terminator when the adapter has none', () => {
         expect(output).toContain('rs.setStatus(result.status);');
         // Scoped to the status switch: the multi-MIME request dispatch is the generator's own control
@@ -192,7 +203,10 @@ describe('generateOp — Fastify', () => {
 
     it('imports the type unconditionally and the guards only because the body uses them', () => {
         expect(output).toContain("import type { FastifyPluginAsync } from 'fastify';");
-        expect(output).toContain("import { requirePolicy, requireSignature } from '@maroonedsoftware/fastify';");
+        // The SSE runtime comes along because the fixture has a streaming route.
+        expect(output).toContain(
+            "import { requirePolicy, requireSignature, openSseReply, resolveLastEventId, firstQueryValue, type SseStream } from '@maroonedsoftware/fastify';",
+        );
     });
 
     it('strips the content-type header inline rather than calling a runtime helper', () => {

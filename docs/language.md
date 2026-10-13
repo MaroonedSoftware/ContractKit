@@ -968,6 +968,39 @@ Generated effects:
       if (event.type === 'delta') render(event.text);
   }
   ```
+- **TypeScript router** hands the service an `EventSink<ChatStreamEvent>` and the client's resume
+  point in place of taking a returned body: `stream(id, events, lastEventId)`, after the usual
+  params, body, query and headers arguments. `lastEventId` is ServerKit's `resolveLastEventId` over
+  the `Last-Event-ID` header and a `?lastEventId=` query value, `0` for a fresh client.
+
+  ```typescript
+  import type { EventSink } from '../routes/chat.router.js'; // the router generated for chat.ck
+
+  async stream(id: string, events: EventSink<ChatStreamEvent>, lastEventId: number): Promise<void> {
+      const conversation = await this.load(id); // throwing here still answers 404
+      for await (const token of this.llm.reply(conversation, { signal: events.signal })) {
+          events.send({ type: 'delta', text: token.text }, { id: token.seq });
+      }
+      events.send({ type: 'done', tokens: conversation.tokens });
+  }
+  ```
+
+  The response opens on the service's first use of the sink (`send`, `onClose` or `signal`), so a
+  service can still throw an error status before then. The stream ends when the service method
+  settles; a service that streams until the client leaves awaits `events.signal`. `signal` also
+  aborts when the client disconnects or the server shuts down. Events are serialized like a JSON
+  body (`bigint` and `date`/`time` formatting included), but `validateResponses` does not apply.
+  The router exports `EventSink` for the service to name the type.
+
+  On Fastify the stream is ServerKit's `openSseReply`, and the route carries
+  `config: { contractkit: { stream: true } }` so an application hook can skip work that does not
+  suit a long-lived request, such as a per-request database transaction. The plugin aborts its
+  streams from a `preClose` hook, which ServerKit reaches when its lifecycle signal aborts, so
+  shutdown drains them without passing `builder.lifecycleSignal` in. On Koa the stream is
+  `openSseStream`; a Koa router has no close hook to reach, so its streams end when ServerKit's
+  shutdown grace closes the socket.
+- **MCP** never generates a tool for a streaming operation (a tool returns one result); one marked
+  `mcp` warns.
 - **Python, Kotlin, Swift and C# SDKs** do not stream. Each warns at build time and reads the
   whole response as one string, as they did before `text/event-stream` had a meaning of its own.
 

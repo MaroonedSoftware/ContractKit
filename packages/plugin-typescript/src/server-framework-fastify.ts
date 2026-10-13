@@ -13,7 +13,13 @@ const FASTIFY_RUNTIME_MODULE = '@maroonedsoftware/fastify';
  * the package's public surface. Routes are ordinary Fastify plugins, and content-type stripping is
  * inlined in {@link FASTIFY_SERVER_FRAMEWORK.request.contentType} instead.
  */
-const FASTIFY_RUNTIME_SYMBOLS = ['requirePolicy', 'requireSignature'] as const;
+const FASTIFY_RUNTIME_SYMBOLS = ['requirePolicy', 'requireSignature', 'openSseReply', 'resolveLastEventId', 'firstQueryValue', 'SseStream'] as const;
+
+/** Of {@link FASTIFY_RUNTIME_SYMBOLS}, the ones that are types and are imported as such. */
+const FASTIFY_RUNTIME_TYPES: ReadonlySet<string> = new Set(['SseStream']);
+
+/** The abort controller a Fastify router with a streaming route ends its streams through on shutdown. */
+const STREAM_SHUTDOWN = 'streamShutdown';
 
 /**
  * Render a route's second argument — `{ config, preHandler }` — omitting the whole object when
@@ -22,9 +28,12 @@ const FASTIFY_RUNTIME_SYMBOLS = ['requirePolicy', 'requireSignature'] as const;
  */
 function routeOptionsExpr(guards: RouteMiddleware): string {
     const parts: string[] = [];
+    const config: string[] = [];
     if (guards.bodyContentTypes && guards.bodyContentTypes.length > 0) {
-        parts.push(`config: { body: [${guards.bodyContentTypes.map(t => `'${t}'`).join(', ')}] }`);
+        config.push(`body: [${guards.bodyContentTypes.map(t => `'${t}'`).join(', ')}]`);
     }
+    if (guards.stream) config.push('contractkit: { stream: true }');
+    if (config.length > 0) parts.push(`config: { ${config.join(', ')} }`);
     const preHandlers = [guards.policy, guards.signature].filter((g): g is string => g !== undefined);
     if (preHandlers.length > 0) {
         parts.push(`preHandler: [${preHandlers.join(', ')}]`);
@@ -44,7 +53,7 @@ export const FASTIFY_SERVER_FRAMEWORK: ServerFramework = {
 
     imports(uses) {
         const lines = [`import type { FastifyPluginAsync } from 'fastify';`];
-        const symbols = FASTIFY_RUNTIME_SYMBOLS.filter(uses);
+        const symbols = FASTIFY_RUNTIME_SYMBOLS.filter(uses).map(s => (FASTIFY_RUNTIME_TYPES.has(s) ? `type ${s}` : s));
         if (symbols.length > 0) lines.push(`import { ${symbols.join(', ')} } from '${FASTIFY_RUNTIME_MODULE}';`);
         return lines;
     },
@@ -99,6 +108,17 @@ export const FASTIFY_SERVER_FRAMEWORK: ServerFramework = {
         // carries `; charset=…`, which would match none of the declared MIME literals, so this
         // still strips it before the generated `switch` compares against them.
         contentType: `(request.headers['content-type'] ?? '').split(';', 1)[0]!.trim()`,
+        // A repeated header arrives as a list; `firstQueryValue` takes the first value of either shape.
+        lastEventId: `resolveLastEventId(firstQueryValue(request.headers['last-event-id']) ?? '', (request.query as Record<string, unknown>).lastEventId)`,
+    },
+
+    streamSetup() {
+        return [
+            `// Ends this plugin's open event streams as shutdown begins. ServerKit closes Fastify when its`,
+            `// lifecycle signal aborts, and \`preClose\` runs before the server waits on open sockets.`,
+            `const ${STREAM_SHUTDOWN} = new AbortController();`,
+            `app.addHook('preClose', async () => ${STREAM_SHUTDOWN}.abort());`,
+        ];
     },
 
     resolveService(className) {
@@ -128,6 +148,9 @@ export const FASTIFY_SERVER_FRAMEWORK: ServerFramework = {
         caseEnd() {
             // Every status case has already returned, so a `break` here would be unreachable code.
             return [];
+        },
+        openSse() {
+            return `openSseReply(reply, { signal: ${STREAM_SHUTDOWN}.signal })`;
         },
     },
 

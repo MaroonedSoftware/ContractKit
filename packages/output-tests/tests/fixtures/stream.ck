@@ -25,6 +25,8 @@ operation /conversations/{id}/stream: {
     get: {
         sdk: streamConversation
         service: ChatService.stream
+        # A tool returns one result, so this is skipped (with a warning) rather than generated
+        mcp: true
         response: {
             200: { text/event-stream: ChatStreamEvent }
             404:

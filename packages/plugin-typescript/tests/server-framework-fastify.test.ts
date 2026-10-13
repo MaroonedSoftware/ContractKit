@@ -20,7 +20,7 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
         it('always imports the FastifyPluginAsync type, and every guard the body uses', () => {
             expect(fastify.imports(() => true)).toEqual([
                 "import type { FastifyPluginAsync } from 'fastify';",
-                "import { requirePolicy, requireSignature } from '@maroonedsoftware/fastify';",
+                "import { requirePolicy, requireSignature, openSseReply, resolveLastEventId, firstQueryValue, type SseStream } from '@maroonedsoftware/fastify';",
             ]);
         });
 
@@ -118,6 +118,36 @@ describe('FASTIFY_SERVER_FRAMEWORK', () => {
             // Inlined rather than a runtime call: `requestMediaType` is gone from the package's public
             // surface. The raw header carries `; charset=…`, which matches no declared MIME literal.
             contentType: "(request.headers['content-type'] ?? '').split(';', 1)[0]!.trim()",
+            // A repeated Last-Event-ID header arrives as a list, which `firstQueryValue` also reads.
+            lastEventId:
+                "resolveLastEventId(firstQueryValue(request.headers['last-event-id']) ?? '', (request.query as Record<string, unknown>).lastEventId)",
+        });
+    });
+
+    describe('Server-Sent Events', () => {
+        it('marks a streaming route in its config, beside the body allow-list', () => {
+            expect(fastify.routeOpen('ChatRoutes', 'get', '/stream', { stream: true })).toBe(
+                "app.get('/stream', { config: { contractkit: { stream: true } } }, async (request, reply) => {",
+            );
+            expect(
+                fastify.routeOpen('ChatRoutes', 'post', '/stream', {
+                    stream: true,
+                    bodyContentTypes: ['application/json'],
+                    policy: 'requirePolicy()',
+                }),
+            ).toBe(
+                "app.post('/stream', { config: { body: ['application/json'], contractkit: { stream: true } }, preHandler: [requirePolicy()] }, async (request, reply) => {",
+            );
+        });
+
+        it('opens the stream on the reply with the router shutdown signal', () => {
+            expect(fastify.response.openSse()).toBe('openSseReply(reply, { signal: streamShutdown.signal })');
+        });
+
+        it('declares that signal once per router, aborted from preClose', () => {
+            const setup = fastify.streamSetup();
+            expect(setup).toContain('const streamShutdown = new AbortController();');
+            expect(setup).toContain("app.addHook('preClose', async () => streamShutdown.abort());");
         });
     });
 
