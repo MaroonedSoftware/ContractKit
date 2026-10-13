@@ -821,7 +821,7 @@ Response headers:
 
 ##### Response
 
-`200 OK` — Returns a [ChatStreamEvent](#chatstreamevent) object.
+`200 OK` — Returns a stream of [ChatStreamEvent](#chatstreamevent) events (Server-Sent Events).
 
 `404 Not Found`
 

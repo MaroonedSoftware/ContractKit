@@ -686,6 +686,7 @@ paths:
             'text/event-stream':
               schema:
                 '$ref': '#/components/schemas/ChatStreamEvent'
+              x-contractkit-stream: true
         '404':
           description: 'Not found'
 components:

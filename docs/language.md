@@ -1001,6 +1001,9 @@ Generated effects:
   shutdown grace closes the socket.
 - **MCP** never generates a tool for a streaming operation (a tool returns one result); one marked
   `mcp` warns.
+- **OpenAPI** emits `content['text/event-stream'].schema` as the event schema, with
+  `x-contractkit-stream: true` on the media type, since OpenAPI 3.1 cannot say the schema is per
+  event. **Markdown, Mintlify and Docusaurus** label the response "a stream of `<Event>` events".
 - **Python, Kotlin, Swift and C# SDKs** do not stream. Each warns at build time and reads the
   whole response as one string, as they did before `text/event-stream` had a meaning of its own.
 

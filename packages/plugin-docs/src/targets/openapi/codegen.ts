@@ -17,6 +17,7 @@ import {
     resolveModifiers,
     resolveSecurity,
     SECURITY_NONE,
+    classifyContentType,
 } from '@contractkit/core';
 
 /** A single entry for the OpenAPI `servers` array. */
@@ -709,7 +710,12 @@ function buildOperation(
             // formats becomes visible to every consumer of the spec.
             const content: Record<string, unknown> = {};
             for (const body of bodies) {
-                content[body.contentType] = { schema: typeToSchema(body.bodyType) };
+                const media: Record<string, unknown> = { schema: typeToSchema(body.bodyType) };
+                // For `text/event-stream` the schema describes one event's JSON `data`, not the body,
+                // which OpenAPI 3.1 has no way to say. The extension tells a reader (and a generator)
+                // the response is a stream of these.
+                if (classifyContentType(body.contentType) === 'event-stream') media['x-contractkit-stream'] = true;
+                content[body.contentType] = media;
             }
             responseObject.content = content;
         }

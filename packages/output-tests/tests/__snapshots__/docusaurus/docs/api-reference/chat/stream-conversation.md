@@ -25,6 +25,6 @@ SDK method: `streamConversation`
 
 ## Response
 
-`200 OK` — Returns a [ChatStreamEvent](../models/chat/chat-stream-event.md) object.
+`200 OK` — Returns a stream of [ChatStreamEvent](../models/chat/chat-stream-event.md) events (Server-Sent Events).
 
 `404 Not Found`

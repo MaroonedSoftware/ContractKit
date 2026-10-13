@@ -13,6 +13,7 @@ import {
     resolveSecurity,
     SECURITY_NONE,
     typeHasScalar,
+    classifyContentType,
 } from '@contractkit/core';
 import { computePubliclyReachableModels, groupEndpoints, groupModels } from '../../naming.js';
 import type { AreaLabels } from '../../naming.js';
@@ -514,9 +515,11 @@ export function renderEndpointBody(route: OpRouteNode, op: OpOperationNode, opts
                 // Repeat the status on the first line only; the rest read as alternatives to it.
                 const label = i === 0 ? `\`${statusLabel}\`` : `\`${resp.statusCode}\``;
                 const mime = bodies.length > 1 ? ` \`${body.contentType}\`` : '';
+                // A Server-Sent Events body declares the type of each event, not of the response.
+                const stream = classifyContentType(body.contentType) === 'event-stream';
                 if (body.bodyType.kind === 'inlineObject') {
                     // Inline objects — expand into field table
-                    lines.push(`${label}${mime}`);
+                    lines.push(stream ? `${label}${mime} — Returns a stream of events, each with these attributes:` : `${label}${mime}`);
                     lines.push('');
                     if (body.bodyType.fields.length > 0) {
                         lines.push(
@@ -529,7 +532,9 @@ export function renderEndpointBody(route: OpRouteNode, op: OpOperationNode, opts
                     }
                 } else {
                     // Named type — reference it; the model's own page or section has the definition
-                    lines.push(`${label}${mime} — ${typeProseLink(body.bodyType, 'Returns', dialect)}`);
+                    lines.push(
+                        `${label}${mime} — ${stream ? streamProseLink(body.bodyType, dialect) : typeProseLink(body.bodyType, 'Returns', dialect)}`,
+                    );
                     lines.push('');
                 }
             }
@@ -686,6 +691,12 @@ function typeProseLink(type: ContractTypeNode, verb: 'Accepts' | 'Returns', dial
         }
     }
     return `${verb} \`${escapeCell(renderTsType(type))}\`.`;
+}
+
+/** The prose for a `text/event-stream` body, whose declared type is that of each event. */
+function streamProseLink(type: ContractTypeNode, dialect: MarkdownDialect): string {
+    const event = type.kind === 'ref' ? modelRef(type.name, dialect, false) : `\`${escapeCell(renderTsType(type))}\``;
+    return `Returns a stream of ${event} events (Server-Sent Events).`;
 }
 
 // ─── Model rendering ──────────────────────────────────────────────────────
