@@ -1,5 +1,24 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.42.0
+
+### Minor Changes
+
+- 72873b2: Support Server-Sent Events responses. A `text/event-stream` body is now its own `event-stream` content-type category, checked before the `text/` rule, and its declared type is the schema of each event's JSON `data`. `validateOp` errors when a stream is not the only body of a 2xx status, when the operation has another non-error outcome, when the event type is `binary`, or when a request body uses `text/event-stream`. `eventStreamResponse(op)` and `eventStreamOperations(root)` find streaming operations for generators.
+
+    The TypeScript SDK method for a streaming operation returns `Promise<SseEventStream<Event>>`, an async iterable of parsed events with `lastEventId` for resuming, and takes optional `requestOptions: { signal?, lastEventId? }`. It goes through the existing `SdkFetch`, so custom fetch, auth headers and the `SdkError` path are unchanged, and parses frames with the new `parseSse` helper in `sdk-options.ts`, applying the same revivers a buffered body gets.
+
+    The Python, Kotlin, Swift and C# SDKs do not stream: they warn on a streaming operation and keep reading the response as one string.
+
+- 3e5abf7: Generate Server-Sent Events routes. For a `text/event-stream` operation the Koa and Fastify routers hand the service a typed `EventSink<Event>` (`send`, `onClose`, `closed`, `signal`) and the client's resume point from `resolveLastEventId`, instead of writing a returned body. The response opens on the service's first use of the sink, so the service can still throw an error status first, and ends when the service method settles. Each router with a stream exports the `EventSink` type.
+
+    `ServerFramework` gains `response.openSse()`, `request.lastEventId` and `streamSetup()`. On Fastify the stream is ServerKit's `openSseReply`, the route carries `config: { contractkit: { stream: true } }`, and the plugin aborts its streams from a `preClose` hook so shutdown drains them. On Koa it is `openSseStream`. MCP skips streaming operations, and warns when one is marked `mcp`.
+
+### Patch Changes
+
+- Updated dependencies [72873b2]
+    - @contractkit/core@0.35.0
+
 ## 0.41.0
 
 ### Minor Changes
