@@ -24,6 +24,7 @@ public sealed class KitchenSink : IDisposable
         Kitchen = new KitchenClient(Http);
         Reserved = new ReservedClient(Http);
         Simple = new SimpleClient(Http);
+        Stream = new StreamClient(Http);
     }
 
     public SdkHttp Http { get; }
@@ -37,6 +38,8 @@ public sealed class KitchenSink : IDisposable
     public ReservedClient Reserved { get; }
 
     public SimpleClient Simple { get; }
+
+    public StreamClient Stream { get; }
 
     public void Dispose()
     {

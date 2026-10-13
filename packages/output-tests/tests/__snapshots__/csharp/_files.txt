@@ -3,6 +3,7 @@ cssdk/Clients/HyphenatedClient.cs
 cssdk/Clients/KitchenClient.cs
 cssdk/Clients/ReservedClient.cs
 cssdk/Clients/SimpleClient.cs
+cssdk/Clients/StreamClient.cs
 cssdk/KitchenSink.cs
 cssdk/KitchenSink.csproj
 cssdk/Models/Billing.cs
@@ -10,5 +11,6 @@ cssdk/Models/Hyphenated.cs
 cssdk/Models/Kitchen.cs
 cssdk/Models/Reserved.cs
 cssdk/Models/Simple.cs
+cssdk/Models/Stream.cs
 cssdk/Runtime/Converters.cs
 cssdk/Runtime/SdkRuntime.cs

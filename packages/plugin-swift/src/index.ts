@@ -21,6 +21,7 @@ import {
     parseIncrementalManifest,
     runIncrementalCodegen,
     serializeIncrementalManifest,
+    eventStreamOperations,
 } from '@contractkit/core';
 import { generateSwiftModels, resolveModelsWithInput } from './codegen-models.js';
 import { deriveClientClassName, deriveClientPropertyName, generateSwiftClient, hasPublicOperations } from './codegen-client.js';
@@ -246,6 +247,14 @@ async function runSwiftCodegen(
 
     for (const root of opRoots) {
         if (!hasPublicOperations(root, config.includeInternal)) continue;
+        // Reported every run rather than from the cached render, so a cache hit does not hide it.
+        for (const { route, op } of eventStreamOperations(root, config.includeInternal)) {
+            ctx.warn?.(
+                `${op.method.toUpperCase()} ${route.path} returns text/event-stream, which the Swift SDK does not stream; its method reads the whole response as one string.`,
+                root.file,
+                op.loc.line,
+            );
+        }
         const relPath = `${srcRoot}/Clients/${deriveClientClassName(root.file)}.swift`;
         clients.push({ className: deriveClientClassName(root.file), propertyName: deriveClientPropertyName(root.file) });
 

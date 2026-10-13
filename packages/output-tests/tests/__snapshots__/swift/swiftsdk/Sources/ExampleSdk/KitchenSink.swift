@@ -11,6 +11,7 @@ public final class KitchenSink: Sendable {
     public let kitchen: KitchenClient
     public let reserved: ReservedClient
     public let simple: SimpleClient
+    public let stream: StreamClient
 
     public init(config: SdkConfig) {
         let http = SdkHttp(config: config)
@@ -20,6 +21,7 @@ public final class KitchenSink: Sendable {
         self.kitchen = KitchenClient(http: http)
         self.reserved = ReservedClient(http: http)
         self.simple = SimpleClient(http: http)
+        self.stream = StreamClient(http: http)
     }
 
     /// The SDK against `baseURL`, with `headers` added to every request.

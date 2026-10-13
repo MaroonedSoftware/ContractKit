@@ -17,7 +17,9 @@
  * arrive, therefore merge upstream in `applyOptionsDefaults` and every consumer picks them up
  * unchanged.
  */
-import type { OpOperationNode, OpResponseNode } from './ast.js';
+import type { OpOperationNode, OpResponseBodyNode, OpResponseNode, OpRootNode, OpRouteNode } from './ast.js';
+import { resolveModifiers } from './ast.js';
+import { classifyContentType } from './content-type.js';
 
 /**
  * True when the generated router writes this response and the service returns it.
@@ -75,4 +77,36 @@ export function thrownResponses(op: OpOperationNode): OpResponseNode[] {
 export function isRedundantDocumented(resp: OpResponseNode): boolean {
     if (resp.emit !== 'documented') return false;
     return !resp.hasBlock && resp.bodies.length === 0 && !(resp.statusCode >= 200 && resp.statusCode < 300);
+}
+
+/**
+ * The Server-Sent Events response of a streaming operation, or `undefined` for an ordinary one.
+ *
+ * An operation streams when an emitted status declares a `text/event-stream` body. `validateOp`
+ * holds such an operation to one shape (the stream is the only body at a 2xx status, and no other
+ * status is a non-error outcome), so generators can take the first match and treat the operation
+ * as a stream of `body.bodyType` events.
+ */
+export function eventStreamResponse(op: OpOperationNode): { response: OpResponseNode; body: OpResponseBodyNode } | undefined {
+    for (const response of emittedResponses(op)) {
+        const body = response.bodies.find(b => classifyContentType(b.contentType) === 'event-stream');
+        if (body) return { response, body };
+    }
+    return undefined;
+}
+
+/**
+ * Every streaming operation in a file, with its route, for a generator that has to report the
+ * ones it cannot render. Internal operations are skipped unless `includeInternal` is set, matching
+ * which operations an SDK emits a method for.
+ */
+export function eventStreamOperations(root: OpRootNode, includeInternal = false): { route: OpRouteNode; op: OpOperationNode }[] {
+    const found: { route: OpRouteNode; op: OpOperationNode }[] = [];
+    for (const route of root.routes) {
+        for (const op of route.operations) {
+            if (!includeInternal && resolveModifiers(route, op).includes('internal')) continue;
+            if (eventStreamResponse(op)) found.push({ route, op });
+        }
+    }
+    return found;
 }

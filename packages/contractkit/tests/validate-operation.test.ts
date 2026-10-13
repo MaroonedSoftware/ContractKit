@@ -58,3 +58,62 @@ describe('no-emitted-response', () => {
         expect(found).toHaveLength(1);
     });
 });
+
+describe('event-stream', () => {
+    function errors(source: string): string[] {
+        const { diag } = validateProject({ files: [{ filePath: 'api.ck', source }] });
+        return diag.diagnostics.filter(d => d.severity === 'error' && d.code === 'event-stream').map(d => d.message);
+    }
+
+    const STREAM = (responseBlock: string, extra = '') => `contract ChatEvent: {
+    text: string
+}
+
+operation /conversations/{id}/stream: {
+    params: { id: uuid }
+    get: {
+        service: ChatService.stream
+${extra}        response: {
+${responseBlock}
+        }
+    }
+}
+`;
+
+    it('accepts a 2xx stream whose other statuses are errors', () => {
+        expect(errors(STREAM('            200: { text/event-stream: ChatEvent }\n            404:\n            409(documented): { application/json: ChatEvent }'))).toEqual([]);
+    });
+
+    it('rejects a stream on a request body', () => {
+        const found = errors(STREAM('            200: { text/event-stream: ChatEvent }', '        request: { text/event-stream: ChatEvent }\n'));
+        expect(found).toEqual([expect.stringContaining('a request body cannot stream')]);
+    });
+
+    it('rejects a stream on a non-2xx status', () => {
+        expect(errors(STREAM('            400: { text/event-stream: ChatEvent }'))).toEqual([expect.stringContaining('must be a 2xx response')]);
+    });
+
+    it('rejects a stream sharing its status with another content type', () => {
+        const found = errors(STREAM('            200: {\n                text/event-stream: ChatEvent\n                application/json: ChatEvent\n            }'));
+        expect(found).toEqual([expect.stringContaining("status's only body")]);
+    });
+
+    it('rejects a second non-error outcome beside the stream', () => {
+        const found = errors(STREAM('            200: { text/event-stream: ChatEvent }\n            204:'));
+        expect(found).toEqual([expect.stringContaining('cannot also return 204')]);
+    });
+
+    it('rejects an error status the service would have to return rather than throw', () => {
+        const found = errors(STREAM('            200: { text/event-stream: ChatEvent }\n            409: { application/json: ChatEvent }'));
+        expect(found).toEqual([expect.stringContaining('cannot also return 409')]);
+    });
+
+    it('rejects streams on several statuses', () => {
+        const found = errors(STREAM('            200: { text/event-stream: ChatEvent }\n            201: { text/event-stream: ChatEvent }'));
+        expect(found).toEqual([expect.stringContaining('several statuses (200, 201)')]);
+    });
+
+    it('rejects a binary event schema, since each event is JSON', () => {
+        expect(errors(STREAM('            200: { text/event-stream: binary }'))).toEqual([expect.stringContaining("is 'binary'")]);
+    });
+});

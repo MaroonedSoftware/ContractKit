@@ -209,6 +209,7 @@ function returnTypeFor(shape: ResponseShape, op: OpOperationNode, base: string, 
 /** The Kotlin type of one response body. A non-JSON mime ignores the schema, as in every SDK. */
 function bodyKotlinType(body: OpResponseBodyNode, ctx: RenderContext): string {
     switch (classifyContentType(body.contentType)) {
+        case 'event-stream':
         case 'text':
             return 'String';
         case 'binary':
@@ -221,6 +222,7 @@ function bodyKotlinType(body: OpResponseBodyNode, ctx: RenderContext): string {
 /** The expression that reads one body out of the response. */
 function bodyReadExpr(body: OpResponseBodyNode): string {
     switch (classifyContentType(body.contentType)) {
+        case 'event-stream':
         case 'text':
             return 'response.text';
         case 'binary':
@@ -339,6 +341,7 @@ function bodyCall(op: OpOperationNode, ctx: RenderContext): string[] {
             return ['        multipartBody(body)'];
         case 'urlencoded':
             return ['        formBody(body)'];
+        case 'event-stream':
         case 'text':
             return [`        textBody(body, ${mime})`];
         case 'binary':
@@ -641,6 +644,7 @@ function buildMethodParams(route: OpRouteNode, op: OpOperationNode, ctx: RenderC
             case 'binary':
                 params.push({ name: 'body', type: 'ByteArray', optional: false });
                 break;
+            case 'event-stream':
             case 'text':
                 params.push({ name: 'body', type: 'String', optional: false });
                 break;

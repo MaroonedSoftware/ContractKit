@@ -923,6 +923,54 @@ middleware. Those are passed to the shared fetch as `expectStatuses` so they no 
 `SdkError`. What remains — non-emitted 4xx/5xx — is the throw path, typed via a per-operation
 `…ErrorBody` alias referenced from the method's `@throws` tag.
 
+### Server-Sent Events (streaming)
+
+A `text/event-stream` body makes the operation a stream of Server-Sent Events. The declared type is
+the schema of one event's JSON `data`, usually a discriminated union:
+
+```
+contract ChatStreamEvent: discriminated(by=type, ChatDelta | ChatDone)
+
+operation /conversations/{id}/stream: {
+    params: { id: uuid }
+    get: {
+        sdk: streamConversation
+        service: ChatService.stream
+        response: {
+            200: { text/event-stream: ChatStreamEvent }
+            404:
+        }
+    }
+}
+```
+
+A streaming operation has one shape, checked at build time:
+
+- the stream is on a 2xx status, and is that status's only content type;
+- every other status is an error the service throws (a bare `404:`, or a body marked
+  `(documented)`), so the stream is the only outcome the service writes;
+- the event type is JSON, so it cannot be `binary`;
+- a request body cannot be `text/event-stream`.
+
+Generated effects:
+
+- **TypeScript SDK** returns `Promise<SseEventStream<ChatStreamEvent>>`, an async iterable of
+  parsed events, and takes a trailing optional `requestOptions: { signal?, lastEventId? }`. The
+  request goes through the same `SdkFetch` as every other method, so custom fetch, auth headers and
+  a non-2xx `SdkError` behave as before. Each event's `data` is parsed with `JSON.parse` and the
+  same revivers a buffered body gets. Leaving the `for await` loop
+  early, or aborting the signal, closes the connection. To resume after a drop, call again with
+  `lastEventId: stream.lastEventId`, which is sent as `Last-Event-ID`.
+
+  ```typescript
+  const stream = await sdk.chat.streamConversation(id, { signal });
+  for await (const event of stream) {
+      if (event.type === 'delta') render(event.text);
+  }
+  ```
+- **Python, Kotlin, Swift and C# SDKs** do not stream. Each warns at build time and reads the
+  whole response as one string, as they did before `text/event-stream` had a meaning of its own.
+
 ### Typed response headers
 
 Each status code can declare typed response headers alongside the body. Names use the on-the-wire form (hyphens allowed, case-insensitive). The `?` suffix marks a header optional.

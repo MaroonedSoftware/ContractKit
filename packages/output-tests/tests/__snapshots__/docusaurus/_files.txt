@@ -14,6 +14,8 @@ docs/api-reference/billing/search-payments-scoped.md
 docs/api-reference/billing/search-payments.md
 docs/api-reference/billing/update-payment-with-form.md
 docs/api-reference/billing/upload-receipt.md
+docs/api-reference/chat/_category_.json
+docs/api-reference/chat/stream-conversation.md
 docs/api-reference/endpoints/_category_.json
 docs/api-reference/endpoints/get-invoice.md
 docs/api-reference/endpoints/get-row.md
@@ -46,6 +48,10 @@ docs/api-reference/models/billing/snake-headers.md
 docs/api-reference/models/billing/tenant-headers.md
 docs/api-reference/models/billing/update-payment-form.md
 docs/api-reference/models/billing/upload-receipt-form.md
+docs/api-reference/models/chat/_category_.json
+docs/api-reference/models/chat/chat-delta.md
+docs/api-reference/models/chat/chat-done.md
+docs/api-reference/models/chat/chat-stream-event.md
 docs/api-reference/models/heartbeat.md
 docs/api-reference/models/invoice.md
 docs/api-reference/models/kitchen/_category_.json

@@ -17,6 +17,7 @@ import {
     hashFingerprint,
     collectTransitiveModelRefs,
     collectTypeRefs,
+    eventStreamOperations,
 } from '@contractkit/core';
 import { generatePydanticModels, deriveModelsModuleName, computeTypeAliases, SCALARS_PY } from './codegen-models.js';
 import {
@@ -160,6 +161,14 @@ async function runPythonCodegen(
 
     for (const root of opRoots) {
         if (!hasPublicOperations(root, config.includeInternal)) continue;
+        // Reported every run rather than from the cached render, so a cache hit does not hide it.
+        for (const { route, op } of eventStreamOperations(root, config.includeInternal)) {
+            ctx.warn?.(
+                `${op.method.toUpperCase()} ${route.path} returns text/event-stream, which the Python SDK does not stream; its method reads the whole response as one string.`,
+                root.file,
+                op.loc.line,
+            );
+        }
         const moduleName = deriveClientModuleName(root.file);
         const relPath = `${moduleName}.py`;
         clientInfos.push({

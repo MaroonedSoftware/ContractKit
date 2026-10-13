@@ -21,6 +21,7 @@ import {
     parseIncrementalManifest,
     runIncrementalCodegen,
     serializeIncrementalManifest,
+    eventStreamOperations,
 } from '@contractkit/core';
 import { generateCSharpModels, resolveModelsWithInput, type CSharpDateTypes } from './codegen-models.js';
 import { deriveClientClassName, deriveClientPropertyName, generateCSharpClient, hasPublicOperations } from './codegen-client.js';
@@ -267,6 +268,14 @@ async function runCSharpCodegen(
     // ── Per-op-root client files ─────────────────────────────────────────────
     for (const root of inputs.opRoots) {
         if (!hasPublicOperations(root, config.includeInternal)) continue;
+        // Reported every run rather than from the cached render, so a cache hit does not hide it.
+        for (const { route, op } of eventStreamOperations(root, config.includeInternal)) {
+            ctx.warn?.(
+                `${op.method.toUpperCase()} ${route.path} returns text/event-stream, which the C# SDK does not stream; its method reads the whole response as one string.`,
+                root.file,
+                op.loc.line,
+            );
+        }
         const relPath = `Clients/${deriveClientClassName(root.file)}.cs`;
         clients.push({ className: deriveClientClassName(root.file), propertyName: deriveClientPropertyName(root.file) });
 

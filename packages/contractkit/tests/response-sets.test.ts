@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emittedResponses, observableResponses, thrownResponses, isRedundantDocumented } from '../src/response-sets.js';
+import { emittedResponses, observableResponses, thrownResponses, isRedundantDocumented, eventStreamResponse } from '../src/response-sets.js';
 import type { OpResponseNode } from '../src/ast.js';
 import { opOperation } from './helpers.js';
 
@@ -128,5 +128,23 @@ describe('isRedundantDocumented', () => {
 
     it('ignores responses with no modifier', () => {
         expect(isRedundantDocumented(bare(404))).toBe(false);
+    });
+});
+
+describe('eventStreamResponse', () => {
+    const stream: OpResponseNode = {
+        statusCode: 200,
+        bodies: [{ contentType: 'text/event-stream', bodyType: { kind: 'ref', name: 'Event' } }],
+        hasBlock: true,
+    };
+
+    it('finds the emitted text/event-stream body', () => {
+        const found = eventStreamResponse(op(stream, bare(404)));
+        expect(found?.response.statusCode).toBe(200);
+        expect(found?.body.bodyType).toEqual({ kind: 'ref', name: 'Event' });
+    });
+
+    it('is undefined for an ordinary operation', () => {
+        expect(eventStreamResponse(op(withBody(200), bare(404)))).toBeUndefined();
     });
 });

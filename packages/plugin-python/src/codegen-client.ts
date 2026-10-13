@@ -51,7 +51,8 @@ function responseClassName(methodBase: string, statusCode?: number): string {
 /** The Python type of one response body — non-JSON mimes ignore the schema, as elsewhere. */
 function pyBodyType(body: OpResponseBodyNode, modelsWithInput?: Set<string>): string {
     const category = classifyContentType(body.contentType);
-    if (category === 'text') return 'str';
+    // Read whole, as text: the Python SDK does not stream (the plugin warns on these operations).
+    if (category === 'text' || category === 'event-stream') return 'str';
     if (category === 'binary') return 'bytes';
     return renderPyType(body.bodyType, modelsWithInput);
 }
@@ -376,7 +377,8 @@ function generateMethod(
     const primaryResponse = shape.kind === 'multiStatus' ? undefined : shape.resp;
     const primaryBodies = primaryResponse ? primaryResponse.bodies : [];
     const isVoid = primaryBodies.length === 0;
-    const respCategory = primaryBodies[0] ? classifyContentType(primaryBodies[0].contentType) : 'json';
+    const primaryCategory = primaryBodies[0] ? classifyContentType(primaryBodies[0].contentType) : 'json';
+    const respCategory = primaryCategory === 'event-stream' ? 'text' : primaryCategory;
     const dataType = isVoid ? 'None' : pyBodyType(primaryBodies[0]!, modelsWithInput);
     const dataExpr = (body: OpResponseBodyNode) => pyDataExpr(body, responseAdapterNames, modelsWithInput, typeAliases);
     const respHeaders = primaryResponse?.headers ?? [];

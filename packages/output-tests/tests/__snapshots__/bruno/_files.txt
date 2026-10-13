@@ -13,6 +13,8 @@ bruno/billing/post-payments-paymentId-receipt.yml
 bruno/billing/post-payments-paymentId.yml
 bruno/billing/post-payments.yml
 bruno/billing/post-sessions.yml
+bruno/chat/folder.yml
+bruno/chat/get-conversations-id-stream.yml
 bruno/environments/local.yml
 bruno/hyphenated/folder.yml
 bruno/hyphenated/get-invoices-invoice-id.yml

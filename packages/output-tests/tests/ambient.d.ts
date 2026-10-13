@@ -218,3 +218,8 @@ declare module '#src/services/kitchen.service.js' {
         [key: string]: any;
     }
 }
+declare module '#src/services/chat.service.js' {
+    export class ChatService {
+        [key: string]: any;
+    }
+}
