@@ -94,6 +94,14 @@ public final class KitchenClient: Sendable {
             return .applicationJson(data: try http.decodeJSON(Folder.self, from: response), headers: headers)
         }
     }
+
+    /// an enum query parameter, sent by its wire spelling and never as the unknown member
+    public func listTallies(query: ListTalliesQuery? = nil) async throws -> [Tally] {
+        var request = SdkRequest(method: "GET", path: ["tallies"])
+        try http.addQuery(&request, query)
+        let response = try await http.execute(request)
+        return try http.decodeJSON([Tally].self, from: response)
+    }
 }
 
 /// Query parameters for GET /folders/{folder-id}.
@@ -168,4 +176,17 @@ public struct ExportFolderHeaders: Equatable, Sendable {
 public enum ExportFolderResponse: Equatable, Sendable {
     case applicationJson(data: Folder, headers: ExportFolderHeaders)
     case textCsv(data: String, headers: ExportFolderHeaders)
+}
+
+/// Query parameters for GET /tallies.
+public struct ListTalliesQuery: Encodable, Equatable, Sendable {
+    public var rating: Rating?
+
+    public init(rating: Rating? = nil) {
+        self.rating = rating
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case rating = "rating"
+    }
 }

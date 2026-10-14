@@ -1,6 +1,6 @@
 import type { SdkFetch } from '../sdk-options.js';
 import { bigIntReplacer, parseJsonWithBigInt as parseJson, buildQueryString, buildHeaders, readContentType, parseBigIntHeader } from '../sdk-options.js';
-import type { Folder, Instrument, LedgerOutput, LedgerWireInput, Named, Shared, SharedInput, StampedOutput, StampedWireInput, TokenOutput, TokenWireInput } from '../types/kitchen.types.js';
+import type { Folder, Instrument, LedgerOutput, LedgerWireInput, Named, Rating, Shared, SharedInput, StampedOutput, StampedWireInput, Tally, TokenOutput, TokenWireInput } from '../types/kitchen.types.js';
 import { reviveFolder, reviveLedgerOutput, reviveStampedOutput } from '../types/kitchen.types.js';
 import { DateTime } from 'luxon';
 
@@ -100,5 +100,14 @@ export class KitchenClient {
             default:
                 return { contentType: 'application/json', data: reviveFolder(await parseJson<Folder>(result)), headers: { xExportId: result.headers.get('x-export-id')!, xRows: result.headers.get('x-rows') === null ? undefined : Number(result.headers.get('x-rows')) } };
         }
+    }
+
+    /** @description an enum query parameter, sent by its wire spelling and never as the unknown member */
+    async listTallies(query?: { rating?: Rating }): Promise<Tally[]> {
+        const qs = buildQueryString(query);
+        const result = await this.fetch(`/tallies${qs}`, {
+            method: 'GET',
+        });
+        return await parseJson<Tally[]>(result);
     }
 }

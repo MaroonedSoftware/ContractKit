@@ -5,6 +5,7 @@ package com.example.sdk.models
 
 import com.example.sdk.runtime.BigInt
 import com.example.sdk.runtime.Decimal
+import com.example.sdk.runtime.SdkEnumSerializer
 import kotlin.time.Duration
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
@@ -149,25 +150,49 @@ data class ScopedFilter(
     val region: String,
 )
 
-@Serializable
+@Serializable(with = PaymentStatusSerializer::class)
 enum class PaymentStatus {
-    @SerialName("pending")
     PENDING,
-    @SerialName("completed")
     COMPLETED,
-    @SerialName("failed")
     FAILED,
+
+    /**
+     * A value this SDK does not know, such as a member the service added after it was generated.
+     * Never sent: encoding it throws a [kotlinx.serialization.SerializationException].
+     */
+    UNKNOWN,
 }
 
-@Serializable
+/** Reads and writes [PaymentStatus] by its wire spelling. A spelling it does not know reads as [PaymentStatus.UNKNOWN]. */
+object PaymentStatusSerializer : SdkEnumSerializer<PaymentStatus>(
+    "PaymentStatus",
+    PaymentStatus.UNKNOWN,
+    PaymentStatus.PENDING to "pending",
+    PaymentStatus.COMPLETED to "completed",
+    PaymentStatus.FAILED to "failed",
+)
+
+@Serializable(with = PaymentFilterStatusSerializer::class)
 enum class PaymentFilterStatus {
-    @SerialName("pending")
     PENDING,
-    @SerialName("completed")
     COMPLETED,
-    @SerialName("failed")
     FAILED,
+
+    /**
+     * A value this SDK does not know, such as a member the service added after it was generated.
+     * Never sent: encoding it throws a [kotlinx.serialization.SerializationException].
+     */
+    UNKNOWN,
 }
+
+/** Reads and writes [PaymentFilterStatus] by its wire spelling. A spelling it does not know reads as [PaymentFilterStatus.UNKNOWN]. */
+object PaymentFilterStatusSerializer : SdkEnumSerializer<PaymentFilterStatus>(
+    "PaymentFilterStatus",
+    PaymentFilterStatus.UNKNOWN,
+    PaymentFilterStatus.PENDING to "pending",
+    PaymentFilterStatus.COMPLETED to "completed",
+    PaymentFilterStatus.FAILED to "failed",
+)
 
 @Serializable
 data class SavedSearchFilter(

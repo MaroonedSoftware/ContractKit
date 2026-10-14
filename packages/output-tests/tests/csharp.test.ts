@@ -127,6 +127,7 @@ using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json;
+using Example.Sdk.Clients;
 using Example.Sdk.Models;
 using Example.Sdk.Runtime;
 // The host has a System.DateOnly of its own, so the SDK's is named outright. These aliases also fail
@@ -160,7 +161,46 @@ internal static class Program
         Report("time-as-timespan", back.Time!.Value.ToTimeSpan().ToString());
         Report("decimal-reads", string.Join(",", new[] { ${DECIMAL_CASES.map(c => JSON.stringify(c)).join(', ')} }.Select(ReadsDecimal)));
         Report("decimal-overflow", ReadsDecimal("79228162514264337593543950336"));
+
+        // A service that adds an enum member must not break an older client.
+        var unknown = JsonSerializer.Deserialize<Tally>(
+            """{"rating":"great","status":"archived","maybe":"meh","many":["good","great"],"either":"other","fallback":"later"}""",
+            SdkJson.Options)!;
+        Report("enum-unknown", $"{unknown.Rating},{unknown.Status},{unknown.Maybe},{string.Join("|", unknown.Many)}");
+        Report("enum-union-string", unknown.Either is TallyEither.OfString { Value: "other" } ? "True" : "False");
+        Report("enum-union-fallback", unknown.Fallback is TallyFallback.OfTallyFallbackMember { Value: TallyFallbackMember.Unknown } ? "True" : "False");
+        var known = JsonSerializer.Deserialize<Tally>(
+            """{"rating":"bad","maybe":null,"many":["neutral"],"either":"open","fallback":3}""",
+            SdkJson.Options)!;
+        Report("enum-known", JsonSerializer.Serialize(known, SdkJson.Options));
+        Report("enum-union-member", known.Either is TallyEither.OfTallyEitherMember { Value: TallyEitherMember.Open } ? "True" : "False");
+        Report("enum-default", default(Rating).ToString());
+        Report("enum-key", JsonSerializer.Serialize(
+            JsonSerializer.Deserialize<System.Collections.Generic.Dictionary<Rating, int>>("""{"good":1,"great":2}""", SdkJson.Options)!
+                .OrderBy(pair => pair.Key).Select(pair => pair.Key + ":" + pair.Value)));
+        Report("enum-writes-unknown", Writes(() => JsonSerializer.Serialize(Rating.Unknown, SdkJson.Options)));
+        Report("enum-writes-unknown-field", Writes(() => JsonSerializer.Serialize(unknown, SdkJson.Options)));
+        Report("enum-not-a-string", Reads(() => JsonSerializer.Deserialize<Rating>("1", SdkJson.Options)));
+        using var http = new SdkHttp(new SdkOptions { BaseUrl = "https://api.example.com" });
+        Report("enum-query", string.Join("&", http.Params(new ListTalliesQuery { Rating = Rating.Good }).Select(pair => pair.Key + ":" + pair.Value)));
+        Report("enum-query-unknown", Writes(() => http.Params(new ListTalliesQuery { Rating = Rating.Unknown }).ToList()));
     }
+
+    // "1" when the call completes, "0" when it raises the JsonException a caller would see.
+    private static string Writes(Func<object> write)
+    {
+        try
+        {
+            write();
+            return "1";
+        }
+        catch (JsonException)
+        {
+            return "0";
+        }
+    }
+
+    private static string Reads(Func<object> read) => Writes(read);
 
     // "1" when the SDK reads the text as a decimal, "0" when it raises the JsonException a caller
     // would see. Anything else escaping is a bug the test should surface, so it is not caught.
@@ -280,6 +320,25 @@ describe.skipIf(!hasDotnet)('generated C#', () => {
                 // Past System.Decimal's range: a JsonException like any other bad value, not an
                 // OverflowException escaping the deserializer.
                 'decimal-overflow': '0',
+                // An unknown value reads as the Unknown member wherever an enum sits, rather than
+                // throwing and failing the whole payload.
+                'enum-unknown': 'Unknown,Unknown,Unknown,Good|Unknown',
+                // A plain string beside an enum still gets a value the enum does not know...
+                'enum-union-string': 'True',
+                // ...and only an enum-only union falls back to the enum's Unknown.
+                'enum-union-fallback': 'True',
+                'enum-known': '{"rating":"bad","maybe":null,"many":["neutral"],"either":"open","fallback":3}',
+                'enum-union-member': 'True',
+                // The sentinel is the zero value, so an unset enum never passes for a real member.
+                'enum-default': 'Unknown',
+                'enum-key': '["Unknown:2","Good:1"]',
+                // Unknown has no wire spelling: writing it throws, in a body and a query string alike.
+                'enum-writes-unknown': '0',
+                'enum-writes-unknown-field': '0',
+                // A number is not a newer member; it is still rejected.
+                'enum-not-a-string': '0',
+                'enum-query': 'rating:good',
+                'enum-query-unknown': '0',
             });
         },
         BUILD_TIMEOUT_MS,

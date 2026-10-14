@@ -139,6 +139,17 @@ public sealed class KitchenClient(SdkHttp http)
                 return new ExportFolderResponse.ApplicationJson(http.ReadJson<Folder>(response), headers);
         }
     }
+
+    /// <summary>an enum query parameter, sent by its wire spelling and never as the unknown member</summary>
+    public async Task<List<Tally>> ListTalliesAsync(ListTalliesQuery? query = null, CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Get,
+            http.Path("tallies"),
+            query: http.Params(query),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<List<Tally>>(response);
+    }
 }
 
 /// <summary>The query parameters declared on GET /folders/{folder-id}.</summary>
@@ -200,4 +211,12 @@ public abstract record ExportFolderResponse
     public sealed record ApplicationJson(Folder Data, ExportFolderHeaders Headers) : ExportFolderResponse;
 
     public sealed record TextCsv(string Data, ExportFolderHeaders Headers) : ExportFolderResponse;
+}
+
+/// <summary>The query parameters declared on GET /tallies.</summary>
+public sealed record ListTalliesQuery
+{
+    [JsonPropertyName("rating")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Rating? Rating { get; init; }
 }

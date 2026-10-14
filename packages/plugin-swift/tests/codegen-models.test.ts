@@ -268,21 +268,41 @@ describe('read and input variants', () => {
 // ─── Enums, aliases, unions ────────────────────────────────────────────────
 
 describe('enums', () => {
-    it('renders a String enum whose cases carry the wire values', () => {
+    it('renders an enum whose cases map to their wire values', () => {
         const out = gen([model('S', [], { type: enumType('pending', 'on hold') })]);
-        expect(out).toContain('public enum S: String, Codable, CaseIterable, Sendable {');
-        expect(out).toContain('case pending = "pending"');
-        expect(out).toContain('case onHold = "on hold"');
+        expect(out).toContain('public enum S: Codable, CaseIterable, Hashable, Sendable {');
+        expect(out).toContain('    case pending\n');
+        expect(out).toContain('    case onHold\n');
+        expect(out).toContain('        case .onHold: return "on hold"');
+        expect(out).toContain('        case "on hold": self = .onHold');
+    });
+
+    it('reads a value it does not know as an unknown case, so a service adding one cannot break the client', () => {
+        const out = gen([model('S', [], { type: enumType('pending', 'done') })]);
+        expect(out).toContain('    case unknown\n');
+        expect(out).toContain('        self = Self(rawValue: try container.decode(String.self)) ?? .unknown');
+        expect(out).toContain('        case .unknown: return nil');
+        // Never sent: it has no wire spelling to send.
+        expect(out).toContain('debugDescription: "S.unknown has no wire spelling, so it cannot be sent"');
+        // Only the members the contract declares.
+        expect(out).toContain('    public static let allCases: [S] = [.pending, .done]');
+    });
+
+    it('names the unknown case around a real unknown value rather than renaming it', () => {
+        const out = gen([model('S', [], { type: enumType('unknown', 'done') })]);
+        expect(out).toContain('        case "unknown": self = .unknown');
+        expect(out).toContain('    case unknown2\n');
+        expect(out).toContain('?? .unknown2');
     });
 
     it('suffixes cases that collide after camelCasing', () => {
         const out = gen([model('S', [], { type: enumType('a-b', 'aB') })]);
-        expect(out).toContain('case aB = "a-b"');
-        expect(out).toContain('case aB2 = "aB"');
+        expect(out).toContain('        case .aB: return "a-b"');
+        expect(out).toContain('        case .aB2: return "aB"');
     });
 
     it('escapes a case that lands on a reserved word', () => {
-        expect(gen([model('S', [], { type: enumType('default') })])).toContain('case `default` = "default"');
+        expect(gen([model('S', [], { type: enumType('default') })])).toContain('    case `default`\n');
     });
 });
 
@@ -303,6 +323,12 @@ describe('unions', () => {
         const out = gen([model('M', [field('v', unionType(refType('P'), scalarType('null')))]), model('P', [field('id', scalarType('string'))])]);
         expect(out).toContain('public var v: P?');
         expect(out).not.toContain('enum MV');
+    });
+
+    it('lets a later member claim a string an enum member does not know, and falls back to the enum last', () => {
+        const out = gen([model('M', [field('v', unionType(enumType('a', 'b'), scalarType('string')))])]);
+        expect(out).toContain('if let value = try? container.decode(MVMember.self), value != .unknown {');
+        expect(out).toContain('} else if (try? container.decode(String.self)) != nil {\n            self = .member(.unknown)');
     });
 
     it('renders a plain union as an indirect enum that tries members in declaration order', () => {

@@ -2,10 +2,53 @@
 import Foundation
 
 /// A named enum, so a field default has to resolve to a member rather than its wire spelling
-public enum Rating: String, Codable, CaseIterable, Sendable {
-    case good = "good"
-    case neutral = "neutral"
-    case bad = "bad"
+public enum Rating: Codable, CaseIterable, Hashable, Sendable {
+    case good
+    case neutral
+    case bad
+
+    /// A value this SDK does not know, such as a member the service added after it was generated.
+    /// Never sent: encoding it throws an `EncodingError`.
+    case unknown
+
+    /// The members the contract declares. `unknown` is not one of them.
+    public static let allCases: [Rating] = [.good, .neutral, .bad]
+
+    /// The wire spelling, or `nil` for `unknown`, which has none.
+    public var rawValue: String? {
+        switch self {
+        case .good: return "good"
+        case .neutral: return "neutral"
+        case .bad: return "bad"
+        case .unknown: return nil
+        }
+    }
+
+    /// The member a wire spelling names, or `nil` for one this SDK does not know.
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "good": self = .good
+        case "neutral": self = .neutral
+        case "bad": self = .bad
+        default: return nil
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self = Self(rawValue: try container.decode(String.self)) ?? .unknown
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        guard let rawValue else {
+            throw EncodingError.invalidValue(
+                self,
+                EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "Rating.unknown has no wire spelling, so it cannot be sent")
+            )
+        }
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 public struct Card: Codable, Equatable, Sendable {
@@ -253,6 +296,56 @@ public struct LedgerInput: Codable, Equatable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(self.entryCode, forKey: .entryCode)
         try container.encode(self.postedAt, forKey: .postedAt)
+    }
+}
+
+/// A service that adds an enum member must not break an older client: an SDK reads a value it does
+/// not know as unknown wherever an enum sits, and a plain string beside an enum in a union still gets
+/// one the enum does not know
+public struct Tally: Codable, Equatable, Sendable {
+    public var rating: Rating
+    public var status: TallyStatus?
+    public var maybe: Rating?
+    public var many: [Rating]
+    public var either: TallyEither
+    public var fallback: TallyFallback
+
+    public init(rating: Rating, status: TallyStatus? = nil, maybe: Rating?, many: [Rating], either: TallyEither, fallback: TallyFallback) {
+        self.rating = rating
+        self.status = status
+        self.maybe = maybe
+        self.many = many
+        self.either = either
+        self.fallback = fallback
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case rating = "rating"
+        case status = "status"
+        case maybe = "maybe"
+        case many = "many"
+        case either = "either"
+        case fallback = "fallback"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.rating = try container.decode(Rating.self, forKey: .rating)
+        self.status = try container.decodeIfPresent(TallyStatus.self, forKey: .status)
+        self.maybe = try container.decode(Rating?.self, forKey: .maybe)
+        self.many = try container.decode([Rating].self, forKey: .many)
+        self.either = try container.decode(TallyEither.self, forKey: .either)
+        self.fallback = try container.decode(TallyFallback.self, forKey: .fallback)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.rating, forKey: .rating)
+        try container.encodeIfPresent(self.status, forKey: .status)
+        try container.encode(self.maybe, forKey: .maybe)
+        try container.encode(self.many, forKey: .many)
+        try container.encode(self.either, forKey: .either)
+        try container.encode(self.fallback, forKey: .fallback)
     }
 }
 
@@ -700,6 +793,200 @@ public struct FolderOrigin: Codable, Equatable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(self.x, forKey: .x)
         try container.encode(self.y, forKey: .y)
+    }
+}
+
+public enum TallyStatus: Codable, CaseIterable, Hashable, Sendable {
+    case `open`
+    case closed
+
+    /// A value this SDK does not know, such as a member the service added after it was generated.
+    /// Never sent: encoding it throws an `EncodingError`.
+    case unknown
+
+    /// The members the contract declares. `unknown` is not one of them.
+    public static let allCases: [TallyStatus] = [.`open`, .closed]
+
+    /// The wire spelling, or `nil` for `unknown`, which has none.
+    public var rawValue: String? {
+        switch self {
+        case .`open`: return "open"
+        case .closed: return "closed"
+        case .unknown: return nil
+        }
+    }
+
+    /// The member a wire spelling names, or `nil` for one this SDK does not know.
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "open": self = .`open`
+        case "closed": self = .closed
+        default: return nil
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self = Self(rawValue: try container.decode(String.self)) ?? .unknown
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        guard let rawValue else {
+            throw EncodingError.invalidValue(
+                self,
+                EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "TallyStatus.unknown has no wire spelling, so it cannot be sent")
+            )
+        }
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
+public enum TallyEitherMember: Codable, CaseIterable, Hashable, Sendable {
+    case `open`
+    case closed
+
+    /// A value this SDK does not know, such as a member the service added after it was generated.
+    /// Never sent: encoding it throws an `EncodingError`.
+    case unknown
+
+    /// The members the contract declares. `unknown` is not one of them.
+    public static let allCases: [TallyEitherMember] = [.`open`, .closed]
+
+    /// The wire spelling, or `nil` for `unknown`, which has none.
+    public var rawValue: String? {
+        switch self {
+        case .`open`: return "open"
+        case .closed: return "closed"
+        case .unknown: return nil
+        }
+    }
+
+    /// The member a wire spelling names, or `nil` for one this SDK does not know.
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "open": self = .`open`
+        case "closed": self = .closed
+        default: return nil
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self = Self(rawValue: try container.decode(String.self)) ?? .unknown
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        guard let rawValue else {
+            throw EncodingError.invalidValue(
+                self,
+                EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "TallyEitherMember.unknown has no wire spelling, so it cannot be sent")
+            )
+        }
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
+public indirect enum TallyEither: Codable, Equatable, Sendable {
+    case member(TallyEitherMember)
+    case string(String)
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(TallyEitherMember.self), value != .unknown {
+            self = .member(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if (try? container.decode(String.self)) != nil {
+            self = .member(.unknown)
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "No TallyEither member matched the payload")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .member(let value):
+            try container.encode(value)
+        case .string(let value):
+            try container.encode(value)
+        }
+    }
+}
+
+public enum TallyFallbackMember: Codable, CaseIterable, Hashable, Sendable {
+    case `open`
+    case closed
+
+    /// A value this SDK does not know, such as a member the service added after it was generated.
+    /// Never sent: encoding it throws an `EncodingError`.
+    case unknown
+
+    /// The members the contract declares. `unknown` is not one of them.
+    public static let allCases: [TallyFallbackMember] = [.`open`, .closed]
+
+    /// The wire spelling, or `nil` for `unknown`, which has none.
+    public var rawValue: String? {
+        switch self {
+        case .`open`: return "open"
+        case .closed: return "closed"
+        case .unknown: return nil
+        }
+    }
+
+    /// The member a wire spelling names, or `nil` for one this SDK does not know.
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "open": self = .`open`
+        case "closed": self = .closed
+        default: return nil
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self = Self(rawValue: try container.decode(String.self)) ?? .unknown
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        guard let rawValue else {
+            throw EncodingError.invalidValue(
+                self,
+                EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "TallyFallbackMember.unknown has no wire spelling, so it cannot be sent")
+            )
+        }
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
+public indirect enum TallyFallback: Codable, Equatable, Sendable {
+    case member(TallyFallbackMember)
+    case int(Int)
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(TallyFallbackMember.self), value != .unknown {
+            self = .member(value)
+        } else if let value = try? container.decode(Int.self) {
+            self = .int(value)
+        } else if (try? container.decode(String.self)) != nil {
+            self = .member(.unknown)
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "No TallyFallback member matched the payload")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .member(let value):
+            try container.encode(value)
+        case .int(let value):
+            try container.encode(value)
+        }
     }
 }
 

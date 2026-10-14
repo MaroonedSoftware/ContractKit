@@ -117,11 +117,43 @@ An anonymous object nested inside a renamed contract is hoisted into a struct of
 keeps its declared key names — the hoisting pass records no owner to take the casing from. The
 generator warns when it meets one. Name the shape as its own contract to fix it.
 
+## Enums
+
+A service that adds an enum member must not break an older client, so every generated enum has an
+`unknown` case that a wire value the SDK does not know decodes into. The rest of the payload decodes
+as normal.
+
+```swift
+public enum Status: Codable, CaseIterable, Hashable, Sendable {
+    case inProgress
+    case done
+
+    /// A value this SDK does not know, such as a member the service added after it was generated.
+    case unknown
+
+    public static let allCases: [Status] = [.inProgress, .done]
+    public var rawValue: String? { ... }        // nil for .unknown
+    public init?(rawValue: String) { ... }      // nil for a spelling it does not know
+}
+```
+
+The enum is not `String`-backed, because a raw-value enum needs a spelling for every case and
+`unknown` has none. `rawValue`, `init?(rawValue:)` and `allCases` are written out instead, and
+`allCases` lists only the members the contract declares.
+
+Encoding `unknown` throws an `EncodingError` rather than sending something the service never
+defined. That covers a request body as well as a path, query, header or form value. A contract that
+already has an `unknown` value keeps `unknown` for it, and the extra case becomes `unknown2`.
+
+In a plain union, an enum member only claims a string it knows on the first pass, so a later
+`String` member still gets one it does not. A string no member claims falls back to the first enum
+member's `unknown`.
+
 ## Unions
 
 Neither union form has an anonymous Swift equivalent, so each becomes a named `indirect enum`. Two
 shapes are recognised first, because Swift already expresses them: `union(T, null)` is just `T?`,
-and a union of string literals is a `String`-backed enum.
+and a union of string literals is an enum (see [Enums](#enums)).
 
 **Plain unions** get one payload case per member:
 

@@ -31,7 +31,7 @@
 </details>
 
 <details>
-<summary><strong>Kitchen</strong> (8)</summary>
+<summary><strong>Kitchen</strong> (9)</summary>
 
 - [Several statuses, and two content types on one of them](#several-statuses-and-two-content-types-on-one-of-them)
 - [A method name that is a keyword in the target languages](#a-method-name-that-is-a-keyword-in-the-target-languages)
@@ -41,6 +41,7 @@
 - [Mint](#mint)
 - [List tokens](#list-tokens)
 - [One status with two content types and response headers, so the headers are read before the mime dispatch](#one-status-with-two-content-types-and-response-headers-so-the-headers-are-read-before-the-mime-dispatch)
+- [An enum query parameter, sent by its wire spelling and never as the unknown member](#an-enum-query-parameter-sent-by-its-wire-spelling-and-never-as-the-unknown-member)
 
 </details>
 
@@ -80,10 +81,11 @@
 </details>
 
 <details>
-<summary><strong>Kitchen</strong> (13)</summary>
+<summary><strong>Kitchen</strong> (14)</summary>
 
 - [Rating](#rating)
 - [Folder](#folder)
+- [Tally](#tally)
 - [Doc](#doc)
 - [Card](#card)
 - [Bank](#bank)
@@ -799,6 +801,31 @@ Response headers:
 | `x-rows` | `number` |  |
 
 
+---
+
+#### An enum query parameter, sent by its wire spelling and never as the unknown member
+
+**`GET`** `/tallies`
+
+> [!NOTE]
+> SDK method: `listTallies`
+
+##### Attributes
+
+<details>
+<summary>Attributes (1)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `rating` | `Rating` | No |  |
+
+</details>
+
+##### Response
+
+`200 OK` — Returns a list of [Tally](#tally) objects.
+
+
 ### Chat
 
 #### Stream
@@ -1138,6 +1165,26 @@ type Rating = 'good' | 'neutral' | 'bad'
 | `blob` | `Blob` | No |  |
 | `extra` | `unknown` | No |  |
 | `raw` | `JsonValue` | No |  |
+
+</details>
+
+#### Tally
+
+> A service that adds an enum member must not break an older client: an SDK reads a value it does
+> not know as unknown wherever an enum sits, and a plain string beside an enum in a union still gets
+> one the enum does not know
+
+<details>
+<summary>Attributes (6)</summary>
+
+| Attribute | Type | Required | Description |
+| --- | --- | --- | --- |
+| `rating` | `Rating` | Yes |  |
+| `status` | `'open' \| 'closed'` | No |  |
+| `maybe` | `Rating` | Yes | *nullable* |
+| `many` | `Rating[]` | Yes |  |
+| `either` | `'open' \| 'closed' \| string` | Yes |  |
+| `fallback` | `'open' \| 'closed' \| number` | Yes |  |
 
 </details>
 

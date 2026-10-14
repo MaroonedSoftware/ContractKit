@@ -1,0 +1,22 @@
+info:
+  name: /tallies
+  type: http
+  seq: 7
+
+http:
+  method: GET
+  url: "{{baseUrl}}/tallies"
+  params:
+    - name: rating
+      value: ""
+      type: query
+      disabled: true
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+docs: |-
+  an enum query parameter, sent by its wire spelling and never as the unknown member

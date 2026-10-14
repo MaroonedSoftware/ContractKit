@@ -97,6 +97,43 @@ const plugin = createKotlinSdkPlugin({ baseDir: 'clients/kotlin/' }, process.cwd
 Prefer the default export when loading through `contractkit.config.json`; the factory is for
 building the plugin in code.
 
+## Enums
+
+A service that adds an enum member must not break an older client, so every generated `enum class`
+has an `UNKNOWN` entry that a wire value the SDK does not know decodes into. The rest of the payload
+decodes as normal.
+
+```kotlin
+@Serializable(with = StatusSerializer::class)
+enum class Status {
+    IN_PROGRESS,
+    DONE,
+
+    /** A value this SDK does not know, such as a member the service added after it was generated. */
+    UNKNOWN,
+}
+
+object StatusSerializer : SdkEnumSerializer<Status>(
+    "Status",
+    Status.UNKNOWN,
+    Status.IN_PROGRESS to "in-progress",
+    Status.DONE to "done",
+)
+```
+
+`UNKNOWN` comes last, so the ordinals of the real entries do not move. `SdkEnumSerializer` lives in
+`runtime/Serializers.kt` and maps each entry to its wire spelling; because it is a string
+serializer, the enum works the same in a nullable property, a list, a map key and a query string.
+
+`UNKNOWN` has no wire spelling, so encoding it throws a `SerializationException` rather than
+sending something the service never defined. That covers a request body as well as a path, query,
+header or form value. A contract that already has an `unknown` value keeps `UNKNOWN` for it, and
+the extra entry becomes `UNKNOWN2`.
+
+In a plain union, an enum member only claims a string it knows on the first pass, so a later
+`String` member still gets one it does not. A string no member claims falls back to the first enum
+member's `UNKNOWN`.
+
 ## Unions
 
 A union has no anonymous form in Kotlin, so each one becomes a named `sealed interface` with a

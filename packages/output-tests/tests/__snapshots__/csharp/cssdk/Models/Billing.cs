@@ -225,9 +225,15 @@ public sealed record ScopedFilter
     public required string Region { get; init; }
 }
 
-[JsonConverter(typeof(JsonStringEnumConverter<PaymentStatus>))]
+[JsonConverter(typeof(PaymentStatusConverter))]
 public enum PaymentStatus
 {
+    /// <summary>
+    /// A value this SDK does not know, such as a member the service added after it was generated.
+    /// Never sent: writing it throws a <see cref="JsonException"/>.
+    /// </summary>
+    Unknown = 0,
+
     [JsonStringEnumMemberName("pending")]
     Pending,
 
@@ -238,9 +244,57 @@ public enum PaymentStatus
     Failed,
 }
 
-[JsonConverter(typeof(JsonStringEnumConverter<PaymentFilterStatus>))]
+/// <summary>
+/// Reads and writes <see cref="PaymentStatus"/> by its wire spelling. A spelling it does not know reads as
+/// <see cref="PaymentStatus.Unknown"/> rather than failing the payload.
+/// </summary>
+public sealed class PaymentStatusConverter : JsonConverter<PaymentStatus>
+{
+    public override PaymentStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            throw new JsonException($"Expected a string for PaymentStatus, got {reader.TokenType}.");
+        }
+
+        return FromWire(reader.GetString());
+    }
+
+    public override void Write(Utf8JsonWriter writer, PaymentStatus value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(ToWire(value));
+
+    public override PaymentStatus ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        FromWire(reader.GetString());
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, PaymentStatus value, JsonSerializerOptions options) =>
+        writer.WritePropertyName(ToWire(value));
+
+    private static PaymentStatus FromWire(string? text) => text switch
+    {
+        "pending" => PaymentStatus.Pending,
+        "completed" => PaymentStatus.Completed,
+        "failed" => PaymentStatus.Failed,
+        _ => PaymentStatus.Unknown,
+    };
+
+    private static string ToWire(PaymentStatus value) => value switch
+    {
+        PaymentStatus.Pending => "pending",
+        PaymentStatus.Completed => "completed",
+        PaymentStatus.Failed => "failed",
+        _ => throw new JsonException($"PaymentStatus.{value} has no wire spelling, so it cannot be sent."),
+    };
+}
+
+[JsonConverter(typeof(PaymentFilterStatusConverter))]
 public enum PaymentFilterStatus
 {
+    /// <summary>
+    /// A value this SDK does not know, such as a member the service added after it was generated.
+    /// Never sent: writing it throws a <see cref="JsonException"/>.
+    /// </summary>
+    Unknown = 0,
+
     [JsonStringEnumMemberName("pending")]
     Pending,
 
@@ -249,6 +303,48 @@ public enum PaymentFilterStatus
 
     [JsonStringEnumMemberName("failed")]
     Failed,
+}
+
+/// <summary>
+/// Reads and writes <see cref="PaymentFilterStatus"/> by its wire spelling. A spelling it does not know reads as
+/// <see cref="PaymentFilterStatus.Unknown"/> rather than failing the payload.
+/// </summary>
+public sealed class PaymentFilterStatusConverter : JsonConverter<PaymentFilterStatus>
+{
+    public override PaymentFilterStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            throw new JsonException($"Expected a string for PaymentFilterStatus, got {reader.TokenType}.");
+        }
+
+        return FromWire(reader.GetString());
+    }
+
+    public override void Write(Utf8JsonWriter writer, PaymentFilterStatus value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(ToWire(value));
+
+    public override PaymentFilterStatus ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        FromWire(reader.GetString());
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, PaymentFilterStatus value, JsonSerializerOptions options) =>
+        writer.WritePropertyName(ToWire(value));
+
+    private static PaymentFilterStatus FromWire(string? text) => text switch
+    {
+        "pending" => PaymentFilterStatus.Pending,
+        "completed" => PaymentFilterStatus.Completed,
+        "failed" => PaymentFilterStatus.Failed,
+        _ => PaymentFilterStatus.Unknown,
+    };
+
+    private static string ToWire(PaymentFilterStatus value) => value switch
+    {
+        PaymentFilterStatus.Pending => "pending",
+        PaymentFilterStatus.Completed => "completed",
+        PaymentFilterStatus.Failed => "failed",
+        _ => throw new JsonException($"PaymentFilterStatus.{value} has no wire spelling, so it cannot be sent."),
+    };
 }
 
 public sealed record SavedSearchFilter

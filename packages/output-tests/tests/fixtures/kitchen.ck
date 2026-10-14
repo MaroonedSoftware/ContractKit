@@ -47,6 +47,18 @@ contract Folder: {
     raw?: json
 }
 
+# A service that adds an enum member must not break an older client: an SDK reads a value it does
+# not know as unknown wherever an enum sits, and a plain string beside an enum in a union still gets
+# one the enum does not know
+contract Tally: {
+    rating: Rating
+    status?: enum(open, closed)
+    maybe: Rating | null
+    many: array(Rating)
+    either: enum(open, closed) | string
+    fallback: enum(open, closed) | int
+}
+
 contract Doc: {
     id: uuid
     folder?: lazy(Folder)
@@ -235,6 +247,21 @@ operation /folders/{folder-id}/export: {
                     x-export-id: string
                     x-rows?: int
                 }
+            }
+        }
+    }
+}
+
+operation /tallies: {
+    get: { # an enum query parameter, sent by its wire spelling and never as the unknown member
+        sdk: listTallies
+        service: KitchenService.listTallies
+        query: {
+            rating?: Rating
+        }
+        response: {
+            200: {
+                application/json: array(Tally)
             }
         }
     }

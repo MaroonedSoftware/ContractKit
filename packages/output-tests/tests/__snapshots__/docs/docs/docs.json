@@ -55,7 +55,8 @@
                             "api-reference/kitchen/stamp",
                             "api-reference/kitchen/mint",
                             "api-reference/kitchen/list-tokens",
-                            "api-reference/kitchen/export-folder"
+                            "api-reference/kitchen/export-folder",
+                            "api-reference/kitchen/list-tallies"
                         ]
                     },
                     {
@@ -96,6 +97,7 @@
                                 "pages": [
                                     "api-reference/models/kitchen/rating",
                                     "api-reference/models/kitchen/folder",
+                                    "api-reference/models/kitchen/tally",
                                     "api-reference/models/kitchen/doc",
                                     "api-reference/models/kitchen/card",
                                     "api-reference/models/kitchen/bank",
