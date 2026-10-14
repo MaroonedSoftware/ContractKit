@@ -6,6 +6,7 @@ pysdk/_client_kitchen.py
 pysdk/_client_reserved.py
 pysdk/_client_simple.py
 pysdk/_client_stream.py
+pysdk/_enums.py
 pysdk/_models_billing.py
 pysdk/_models_hyphenated.py
 pysdk/_models_kitchen.py

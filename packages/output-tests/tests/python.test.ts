@@ -139,4 +139,84 @@ describe.skipIf(!canRunSdk)('generated Python, with Pydantic installed', () => {
         expect(report.query).toEqual({ a: '0.00000001', b: ['100'] });
         expect(report.path).toBe('0.00000001');
     });
+
+    it('reads an enum value it does not know as UNKNOWN, and refuses to send UNKNOWN', () => {
+        // A Literal failed the whole response on a member the service added later. Known values
+        // still read as their strings, a string beside an enum in a union still goes to the
+        // string, and a value that is not a string is still rejected.
+        const script = [
+            'import asyncio, json',
+            'import httpx',
+            'from pydantic import TypeAdapter, ValidationError',
+            'from pydantic_core import PydanticSerializationError',
+            'from pysdk import UNKNOWN',
+            'from pysdk._models_kitchen import Tally',
+            'from pysdk._client_kitchen import KitchenClient',
+            'from pysdk._base_client import _path_text, _wire_values',
+            'def show(value):',
+            '    if isinstance(value, list):',
+            '        return [show(item) for item in value]',
+            '    return "UNKNOWN" if value is UNKNOWN else value',
+            'def refused(call):',
+            '    try:',
+            '        call()',
+            '        return False',
+            '    except PydanticSerializationError:',
+            '        return True',
+            'def rejected(data):',
+            '    try:',
+            '        Tally.model_validate(data)',
+            '        return False',
+            '    except ValidationError:',
+            '        return True',
+            'base = {"rating": "good", "maybe": None, "many": [], "either": "open", "fallback": 1}',
+            'novel = Tally.model_validate({"rating": "great", "status": "archived", "maybe": "meh", "many": ["bad", "awful"], "either": "pending", "fallback": "pending"})',
+            'known = Tally.model_validate({"rating": "good", "status": "open", "maybe": "neutral", "many": ["bad"], "either": "closed", "fallback": 7})',
+            'seen = []',
+            'def handler(request):',
+            '    seen.append(str(request.url))',
+            '    return httpx.Response(200, json=[{"rating": "new", "maybe": None, "many": [], "either": "x", "fallback": "y"}])',
+            'async def calls():',
+            '    client = KitchenClient("http://test")',
+            '    client._http = httpx.AsyncClient(transport=httpx.MockTransport(handler))',
+            '    listed = await client.list_tallies({"rating": "bad"})',
+            '    try:',
+            '        await client.list_tallies({"rating": UNKNOWN})',
+            '        sent = True',
+            '    except PydanticSerializationError:',
+            '        sent = False',
+            '    return show(listed[0].rating), sent',
+            'listed, sent_unknown = asyncio.run(calls())',
+            'print(json.dumps({',
+            '    "novel": {key: show(value) for key, value in novel},',
+            '    "known": json.loads(known.model_dump_json(by_alias=True)),',
+            '    "revalidated": show(Tally.model_validate(novel.model_dump()).rating),',
+            '    "write_body": refused(lambda: novel.model_dump_json()),',
+            '    "write_list": refused(lambda: TypeAdapter(list[Tally]).dump_json([novel])),',
+            '    "write_query": refused(lambda: _wire_values({"rating": UNKNOWN})),',
+            '    "write_query_list": refused(lambda: _wire_values({"many": ["good", UNKNOWN]})),',
+            '    "write_path": refused(lambda: _path_text(UNKNOWN)),',
+            '    "non_string": [rejected({**base, "rating": 5}), rejected({**base, "many": [None]}), rejected({**base, "fallback": 1.5})],',
+            '    "listed": listed,',
+            '    "sent_unknown": sent_unknown,',
+            '    "requests": seen,',
+            '}))',
+        ].join('\n');
+        const result = spawnSync(sdkPython, ['-W', 'error', '-c', script], { cwd: dir, encoding: 'utf-8' });
+        expect(result.stderr).toBe('');
+        expect(JSON.parse(result.stdout)).toEqual({
+            novel: { rating: 'UNKNOWN', status: 'UNKNOWN', maybe: 'UNKNOWN', many: ['bad', 'UNKNOWN'], either: 'pending', fallback: 'UNKNOWN' },
+            known: { rating: 'good', status: 'open', maybe: 'neutral', many: ['bad'], either: 'closed', fallback: 7 },
+            revalidated: 'UNKNOWN',
+            write_body: true,
+            write_list: true,
+            write_query: true,
+            write_query_list: true,
+            write_path: true,
+            non_string: [true, true, true],
+            listed: 'UNKNOWN',
+            sent_unknown: false,
+            requests: ['http://test/tallies?rating=bad'],
+        });
+    });
 });

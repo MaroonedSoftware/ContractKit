@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from uuid import UUID
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
+from ._enums import ReadsUnknown, UnknownValue
 from ._scalars import BigInt, ExactDecimal
 
 # A customer payment
@@ -17,7 +18,7 @@ class Payment(BaseModel):
     quantity: BigInt
     created_at: datetime = Field(alias="createdAt")
     processing_time: timedelta | None = Field(alias="processingTime", default=None)
-    status: Literal["pending", "completed", "failed"] | None = Field(default="pending")
+    status: Annotated[Literal["pending", "completed", "failed"] | UnknownValue, ReadsUnknown] | None = Field(default="pending")
 
 class PaymentInput(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -27,7 +28,7 @@ class PaymentInput(BaseModel):
     quantity: BigInt
     created_at: datetime = Field(alias="createdAt")
     processing_time: timedelta | None = Field(alias="processingTime", default=None)
-    status: Literal["pending", "completed", "failed"] | None = Field(default="pending")
+    status: Annotated[Literal["pending", "completed", "failed"] | UnknownValue, ReadsUnknown] | None = Field(default="pending")
 
 # A stored credential — has a writeonly child, so its Base schema is read
 class Credential(BaseModel):
@@ -61,7 +62,7 @@ class UploadReceiptForm(BaseModel):
 
 # Query params declared as a model, referenced via `query: PaymentFilter`
 class PaymentFilter(BaseModel):
-    status: Literal["pending", "completed", "failed"] | None = None
+    status: Annotated[Literal["pending", "completed", "failed"] | UnknownValue, ReadsUnknown] | None = None
     since: datetime | None = None
     ids: list[UUID] | None = None
 

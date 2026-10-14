@@ -5,10 +5,11 @@ from datetime import date, datetime, time, timedelta
 from uuid import UUID
 from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
+from ._enums import ReadsUnknown, UnknownValue
 from ._scalars import BigInt, ExactDecimal
 
 # A named enum, so a field default has to resolve to a member rather than its wire spelling
-Rating = Literal["good", "neutral", "bad"]
+Rating = Annotated[Literal["good", "neutral", "bad"] | UnknownValue, ReadsUnknown]
 
 class Card(BaseModel):
     kind: Literal["card"]
@@ -59,11 +60,11 @@ class LedgerInput(BaseModel):
 # one the enum does not know
 class Tally(BaseModel):
     rating: Rating
-    status: Literal["open", "closed"] | None = None
+    status: Annotated[Literal["open", "closed"] | UnknownValue, ReadsUnknown] | None = None
     maybe: Rating | None
     many: list[Rating]
     either: Literal["open", "closed"] | str
-    fallback: Literal["open", "closed"] | int
+    fallback: Annotated[Literal["open", "closed"] | int | UnknownValue, ReadsUnknown]
 
 Instrument = Annotated[Card | Bank, Field(discriminator="kind")]
 

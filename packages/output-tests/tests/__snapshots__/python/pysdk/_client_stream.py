@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from uuid import UUID
 from urllib.parse import quote
+from typing import cast
 from ._base_client import BaseClient, SdkError, _path_text  # noqa: F401
 from ._models_stream import ChatStreamEvent
 
@@ -11,4 +12,4 @@ class StreamClient(BaseClient):
 
     async def stream_conversation(self, id: UUID) -> str:
         result = await self._fetch(f"/conversations/{quote(_path_text(id), safe='')}/stream", method="GET", response_kind="text")
-        return result
+        return cast(str, result)

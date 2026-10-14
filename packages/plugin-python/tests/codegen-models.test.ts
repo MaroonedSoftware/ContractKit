@@ -5,7 +5,9 @@ import {
     toPythonFieldName,
     deriveModelsModuleName,
     computeTypeAliases,
+    computeEnumAliases,
     SCALARS_PY,
+    ENUMS_PY,
 } from '../src/codegen-models.js';
 import {
     scalarType,
@@ -52,8 +54,37 @@ describe('renderPyType', () => {
         expect(() => renderPyType({ kind: 'scalar', name: 'quaternion' } as any)).toThrow(/unmapped scalar 'quaternion'/);
     });
 
-    it('renders enum', () => {
-        expect(renderPyType(enumType('pending', 'completed', 'failed'))).toBe('Literal["pending", "completed", "failed"]');
+    it('renders an enum that reads a value it does not know as UNKNOWN', () => {
+        expect(renderPyType(enumType('pending', 'completed', 'failed'))).toBe(
+            'Annotated[Literal["pending", "completed", "failed"] | UnknownValue, ReadsUnknown]',
+        );
+    });
+
+    describe('an enum in a union', () => {
+        const enums = new Map([['Rating', ['good', 'bad']]]);
+
+        it('keeps its own fallback beside null', () => {
+            expect(renderPyType(unionType(refType('Rating'), scalarType('null')), undefined, false, enums)).toBe('Rating | None');
+            expect(renderPyType(unionType(enumType('a'), scalarType('null')))).toBe('Annotated[Literal["a"] | UnknownValue, ReadsUnknown] | None');
+        });
+
+        it('claims only the strings it lists beside a string member, which gets the rest', () => {
+            expect(renderPyType(unionType(enumType('open', 'closed'), scalarType('string')))).toBe('Literal["open", "closed"] | str');
+            expect(renderPyType(unionType(refType('Rating'), scalarType('json')), undefined, false, enums)).toBe('Literal["good", "bad"] | Any');
+        });
+
+        it('reads a string no member claims as UNKNOWN', () => {
+            expect(renderPyType(unionType(enumType('open', 'closed'), scalarType('int')))).toBe(
+                'Annotated[Literal["open", "closed"] | int | UnknownValue, ReadsUnknown]',
+            );
+            // A named enum is spelled out, since its own annotation would claim every string.
+            expect(renderPyType(unionType(lazyType(refType('Rating')), scalarType('uuid'), scalarType('null')), undefined, false, enums)).toBe(
+                'Annotated[Literal["good", "bad"] | UUID | None | UnknownValue, ReadsUnknown]',
+            );
+            expect(renderPyType(unionType(refType('Rating'), enumType('meh')), undefined, false, enums)).toBe(
+                'Annotated[Literal["good", "bad"] | Literal["meh"] | UnknownValue, ReadsUnknown]',
+            );
+        });
     });
 
     it('renders literal as Literal[...], with Python booleans', () => {
@@ -170,10 +201,11 @@ describe('generatePydanticModels', () => {
         expect(output).toContain('class Payment(BaseModel):');
         expect(output).toContain('id: UUID');
         expect(output).toContain('amount: float');
-        expect(output).toContain('status: Literal["pending", "completed", "failed"]');
+        expect(output).toContain('status: Annotated[Literal["pending", "completed", "failed"] | UnknownValue, ReadsUnknown]');
         expect(output).toContain('from pydantic import BaseModel');
         expect(output).toContain('from uuid import UUID');
-        expect(output).toContain('from typing import Literal');
+        expect(output).toContain('from typing import Annotated, Literal');
+        expect(output).toContain('from ._enums import ReadsUnknown, UnknownValue');
     });
 
     it('generates optional fields', () => {
@@ -498,6 +530,78 @@ describe('multi-line descriptions', () => {
         expect(output).toContain('# Lifecycle status.');
         expect(output).toContain('# Extra detail line.');
         expect(output).not.toMatch(/^Extra detail line\.$/m);
+    });
+});
+
+describe('unknown enum values', () => {
+    it('gives an enum contract and every place it sits the fallback, and imports it', () => {
+        const root = contractRoot([
+            model('Rating', [], { type: enumType('good', 'bad') }),
+            model('Tally', [
+                field('rating', refType('Rating')),
+                field('status', enumType('open', 'closed'), { optional: true }),
+                field('maybe', refType('Rating'), { nullable: true }),
+                field('many', arrayType(refType('Rating'))),
+                field('either', unionType(enumType('open', 'closed'), scalarType('string'))),
+                field('fallback', unionType(refType('Rating'), scalarType('int'))),
+            ]),
+        ]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('Rating = Annotated[Literal["good", "bad"] | UnknownValue, ReadsUnknown]');
+        expect(output).toContain('    rating: Rating\n');
+        expect(output).toContain('    status: Annotated[Literal["open", "closed"] | UnknownValue, ReadsUnknown] | None = None');
+        expect(output).toContain('    maybe: Rating | None\n');
+        expect(output).toContain('    many: list[Rating]\n');
+        expect(output).toContain('    either: Literal["open", "closed"] | str\n');
+        // Without cross-file options, the file's own enums still spell out the named one.
+        expect(output).toContain('    fallback: Annotated[Literal["good", "bad"] | int | UnknownValue, ReadsUnknown]');
+        expect(output).toContain('from ._enums import ReadsUnknown, UnknownValue');
+    });
+
+    it('spells out an enum from another file through the cross-file map', () => {
+        const root = contractRoot([model('Tally', [field('fallback', unionType(refType('Rating'), scalarType('int')))])]);
+        const output = generatePydanticModels(root, {
+            modelModulePaths: new Map([['Rating', '._models_shared']]),
+            enums: new Map([['Rating', ['good', 'bad']]]),
+        });
+        expect(output).toContain('    fallback: Annotated[Literal["good", "bad"] | int | UnknownValue, ReadsUnknown]');
+    });
+
+    it('imports nothing for an enum beside a string member, which renders as a bare Literal', () => {
+        const root = contractRoot([model('Tally', [field('either', unionType(enumType('open'), scalarType('string')))])]);
+        const output = generatePydanticModels(root);
+        expect(output).toContain('from typing import Literal\n');
+        expect(output).not.toContain('_enums');
+    });
+});
+
+describe('computeEnumAliases', () => {
+    it('lists each enum contract, and each contract that only renames one, with its values', () => {
+        const models = [
+            model('Rating', [], { type: enumType('good', 'bad') }),
+            model('Grade', [], { type: lazyType(refType('Rating')) }),
+            model('Card', [field('last4', scalarType('string'))]),
+            model('Mixed', [], { type: unionType(enumType('a'), scalarType('int')) }),
+            model('Loop', [], { type: refType('Loop') }),
+        ];
+        expect([...computeEnumAliases(models)]).toEqual([
+            ['Rating', ['good', 'bad']],
+            ['Grade', ['good', 'bad']],
+        ]);
+    });
+});
+
+describe('ENUMS_PY', () => {
+    it('falls back to UNKNOWN only for a string nothing else claimed', () => {
+        expect(ENUMS_PY).toContain(
+            '        return handler(value)\n    except ValidationError:\n        if isinstance(value, str):\n            return UNKNOWN',
+        );
+    });
+
+    it('refuses to write UNKNOWN to JSON, and gives it no value a wire string could equal', () => {
+        expect(ENUMS_PY).toContain('when_used="json"');
+        expect(ENUMS_PY).toContain('raise PydanticSerializationError("UNKNOWN has no wire spelling, so it cannot be sent")');
+        expect(ENUMS_PY).toContain('    UNKNOWN = object()');
     });
 });
 
