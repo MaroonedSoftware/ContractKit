@@ -1,5 +1,15 @@
 # @contractkit/contractkit-plugin-python
 
+## 0.17.0
+
+### Minor Changes
+
+- 025cf97: Read an enum value the SDK does not know instead of failing validation, so a service that adds an enum member no longer breaks an older client. Every generated enum is now `Annotated[Literal[...] | UnknownValue, ReadsUnknown]` instead of a bare `Literal[...]`: a known value reads and writes exactly as before, as its plain string, and an unrecognised string reads as `UNKNOWN`, in nullable fields, lists, dict keys and query parameters alike. A value that is not a string is still rejected. `UNKNOWN` and its type `UnknownValue` live in the new `_enums.py` and are exported from the package; `x is UNKNOWN` narrows an enum to its known members for a type checker. Sending `UNKNOWN` raises `PydanticSerializationError`, since it has no wire spelling, whether in a request body or a path, query, header or form value. In a plain union, an enum member claims only a string it lists, so a later `str` member still receives one it does not, and when no member takes every string, a string no member claims reads as `UNKNOWN`.
+
+### Patch Changes
+
+- 6d8eb55: Cast a text, event-stream or binary response body to `str` or `bytes` before a method returns it. The base client's `_fetch` returns `Any`, so the bare `return result` failed `mypy --strict` with `no-any-return` in every project that type-checks the generated SDK.
+
 ## 0.16.2
 
 ### Patch Changes
