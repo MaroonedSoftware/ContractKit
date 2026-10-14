@@ -1,5 +1,0 @@
----
-'@contractkit/plugin-kotlin': minor
----
-
-Decode an enum value the SDK does not know instead of throwing, so a service that adds an enum member no longer breaks an older client. Every generated `enum class` gains an `UNKNOWN` entry, appended after the real ones so their ordinals do not move, and is serialized by a generated `<Enum>Serializer` object built on the new `SdkEnumSerializer` in `runtime/Serializers.kt` instead of the kotlinx default with `@SerialName`. A known wire spelling decodes and encodes exactly as before and an unrecognised string decodes to `UNKNOWN`, in nullable properties, lists, map keys and request parameters alike. Encoding `UNKNOWN` throws a `SerializationException`, since it has no wire spelling. In a plain union, an enum member claims only a string it knows, so a later `String` member still receives one it does not, and a string no member claims falls back to the first enum member's `UNKNOWN`. A contract with its own `unknown` value keeps `UNKNOWN` for it and the extra entry becomes `UNKNOWN2`.
