@@ -807,6 +807,27 @@ describe('generatePythonClient', () => {
         expect(binaryOut).toContain('response_kind="binary"');
     });
 
+    it('casts a text, event-stream or binary body it returns as it arrived, which _fetch types Any', () => {
+        // A bare `return result` from a method annotated `-> str` fails `mypy --strict`.
+        const root = opRoot([
+            opRoute('/notes', [opOperation('get', { sdk: 'getNote', responses: [opResponse(200, scalarType('string'), 'text/plain')] })]),
+            opRoute('/feed', [opOperation('get', { sdk: 'getFeed', responses: [opResponse(200, scalarType('string'), 'text/event-stream')] })]),
+            opRoute('/files', [
+                opOperation('get', { sdk: 'getFile', responses: [opResponse(200, scalarType('binary'), 'application/octet-stream')] }),
+            ]),
+        ]);
+        const output = generatePythonClient(root);
+        expect(output).toContain('from typing import cast');
+        expect(output.match(/return cast\(str, result\)/g)).toHaveLength(2);
+        expect(output).toContain('return cast(bytes, result)');
+        expect(output).not.toMatch(/return result$/m);
+    });
+
+    it('imports no cast when every body is JSON', () => {
+        const root = opRoot([opRoute('/m', [opOperation('get', { sdk: 'getModel', responses: [opResponse(200, 'Item')] })])]);
+        expect(generatePythonClient(root)).not.toContain('cast');
+    });
+
     it('omits content_type kwarg when the request is plain application/json', () => {
         const root = opRoot([
             opRoute('/users', [

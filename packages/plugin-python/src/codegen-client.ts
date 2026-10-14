@@ -75,6 +75,19 @@ function pyContentTypeAnnotation(bodies: OpResponseBodyNode[]): string {
     return `Literal[${bodies.map(b => JSON.stringify(b.contentType)).join(', ')}]`;
 }
 
+/**
+ * Whether the method returns a text or binary body as it arrived. `_fetch` returns `Any`, so the
+ * method casts it to `str` or `bytes`: returning the bare value from a method annotated `-> str`
+ * is an error under `mypy --strict`.
+ */
+function returnsRawBody(op: OpOperationNode): boolean {
+    const shape = responseShape(op);
+    const body = shape.kind === 'simple' ? shape.resp?.bodies[0] : undefined;
+    if (!body) return false;
+    const category = classifyContentType(body.contentType);
+    return category === 'text' || category === 'event-stream' || category === 'binary';
+}
+
 function responseShape(op: OpOperationNode): PyResponseShape {
     const observable = observableResponses(op);
     if (observable.length > 1) return { kind: 'multiStatus', responses: observable };
@@ -193,13 +206,16 @@ export function generatePythonClient(root: OpRootNode, opts: ClientCodegenOption
     // `NotRequired` needs Python 3.11; only a request dict with an optional field pulls it in.
     const needsNotRequired = inlineRequestDicts.some(src => src.nodes.some(p => Boolean(p.optional) || p.default !== undefined));
 
-    if (needsAnnotated || needsAny || needsLiteral || needsTypedDict) {
+    const needsCast = publicOps.some(({ op }) => returnsRawBody(op));
+
+    if (needsAnnotated || needsAny || needsLiteral || needsTypedDict || needsCast) {
         const typingImports: string[] = [];
         if (needsAnnotated) typingImports.push('Annotated');
         if (needsAny) typingImports.push('Any');
         if (needsLiteral) typingImports.push('Literal');
         if (needsNotRequired) typingImports.push('NotRequired');
         if (needsTypedDict) typingImports.push('TypedDict');
+        if (needsCast) typingImports.push('cast');
         lines.push(`from typing import ${typingImports.join(', ')}`);
     }
     // Module-level TypeAdapters, built once at import rather than on every call: one for each
@@ -512,10 +528,9 @@ function generateMethod(
         } else {
             lines.push(`        return None`);
         }
-    } else if (hasRespHeaders) {
-        lines.push(`        return ${dataExpr(primaryBodies[0]!)}, headers`);
     } else {
-        lines.push(`        return ${dataExpr(primaryBodies[0]!)}`);
+        const data = returnsRawBody(op) ? `cast(${dataType}, result)` : dataExpr(primaryBodies[0]!);
+        lines.push(hasRespHeaders ? `        return ${data}, headers` : `        return ${data}`);
     }
 
     return lines;
