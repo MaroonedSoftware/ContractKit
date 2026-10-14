@@ -336,6 +336,31 @@ describe('generatePythonClient', () => {
         expect(output).toContain('    "kind": NotRequired[Annotated[Card | Bank, Field(discriminator="type")]],');
     });
 
+    it('imports the unknown-value fallback for an inline enum, and spells out a named one in a union', () => {
+        const root = opRoot([
+            opRoute('/tallies', [
+                opOperation('get', {
+                    query: [
+                        opParam('status', enumType('open', 'closed'), { optional: true }),
+                        opParam('pick', unionType(refType('Rating'), scalarType('int')), { optional: true }),
+                    ],
+                    responses: [opResponse(200, arrayType(refType('Rating')))],
+                }),
+            ]),
+        ]);
+        const output = generatePythonClient(root, {
+            modelModulePaths: new Map([['Rating', '._models_kitchen']]),
+            typeAliases: new Set(['Rating']),
+            enums: new Map([['Rating', ['good', 'bad']]]),
+        });
+        expect(output).toContain('    "status": NotRequired[Annotated[Literal["open", "closed"] | UnknownValue, ReadsUnknown]],');
+        expect(output).toContain('    "pick": NotRequired[Annotated[Literal["good", "bad"] | int | UnknownValue, ReadsUnknown]],');
+        expect(output).toContain('from ._enums import ReadsUnknown, UnknownValue');
+        // `Annotated` alone: pydantic's `Field` is only for a discriminated union.
+        expect(output).not.toContain('from pydantic import Field');
+        expect(output).toContain('TypeAdapter[list[Rating]] = TypeAdapter(list[Rating])');
+    });
+
     it('imports BigInt wherever a request or response type carries a bigint', () => {
         const root = opRoot([
             opRoute('/counts', [
@@ -1203,11 +1228,18 @@ describe('BASE_CLIENT_PY', () => {
 
     it('converts inline query and header values to the forms the router parses', () => {
         // httpx str()s a datetime with a space, which Luxon's fromISO rejects.
-        expect(BASE_CLIENT_PY).toContain('data = to_jsonable_python({key: _plain_decimals(value) for key, value in values.items()})');
+        expect(BASE_CLIENT_PY).toContain('data = to_jsonable_python({key: _wire_value(value) for key, value in values.items()})');
         // str() writes a Decimal as "1E-8" for 0.00000001, which the server's pattern rejects.
         expect(BASE_CLIENT_PY).toContain('return format(value, "f")');
         // A None became an empty value, which a numeric schema rejects.
         expect(BASE_CLIENT_PY).toContain('if value is not None}');
+    });
+
+    it("refuses an enum's UNKNOWN in a path, query, header or multipart value", () => {
+        // Query and header values go through _wire_value, path values through _path_text.
+        expect(BASE_CLIENT_PY).toContain('    return refuse_unknown(value)\n');
+        expect(BASE_CLIENT_PY).toContain('    refuse_unknown(value)\n    if isinstance(value, Decimal):');
+        expect(BASE_CLIENT_PY).toContain('                for value in body.values():\n                    refuse_unknown(value)');
     });
 
     it('sends every header value as text, since httpx rejects anything else', () => {

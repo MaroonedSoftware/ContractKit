@@ -4,9 +4,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 from urllib.parse import quote
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError, _path_text  # noqa: F401
+from ._enums import ReadsUnknown, UnknownValue
 from ._models_billing import AdminCredentialInput, Credential, CredentialInput, Payment, PaymentFilter, PaymentInput, PaymentRef, SavedSearch, ScopedFilter, Session, SessionInput, SnakeFilter, SnakeHeaders, TenantHeaders, UpdatePaymentForm, UploadReceiptForm
 
 
@@ -20,7 +21,7 @@ class CreatePaymentHeaders(TypedDict, total=False):
 ListPaymentsQuery = TypedDict("ListPaymentsQuery", {
     "limit": NotRequired[int],
     "cursor": str,
-    "status": NotRequired[Literal["pending", "completed", "failed"]],
+    "status": NotRequired[Annotated[Literal["pending", "completed", "failed"] | UnknownValue, ReadsUnknown]],
 })
 
 
