@@ -457,24 +457,100 @@ function generateAliasModel(model: ModelNode, ctx: RenderContext): string[] {
 }
 
 function enumCaseNames(values: string[]): Map<string, string> {
-    const out = new Map<string, string>();
-    const used = new Set<string>();
-    for (const value of values) out.set(value, uniqueName(toSwiftCaseName(value), used));
-    return out;
+    return enumNaming(values).cases;
 }
 
+/**
+ * The case names of a generated enum, and the name of its case for a value this SDK does not know.
+ * That case is named last so it never renames a real one: a contract that already has an `unknown`
+ * value keeps `unknown` for it, and the extra case becomes `unknown2`.
+ */
+function enumNaming(values: string[]): { cases: Map<string, string>; unknown: string } {
+    const cases = new Map<string, string>();
+    const used = new Set<string>();
+    for (const value of values) cases.set(value, uniqueName(toSwiftCaseName(value), used));
+    return { cases, unknown: uniqueName('unknown', used) };
+}
+
+/**
+ * An enum with a case per member, plus a case for a value this SDK does not know.
+ *
+ * A service that adds an enum member must not break an older client. A `String`-backed enum's
+ * synthesized `init(from:)` throws on a spelling it has no case for, failing the whole response over
+ * one field, so decoding is written out and falls back to the extra case. That case has no wire
+ * spelling, which is also why the enum is not `String`-backed: a raw-value enum needs one for every
+ * case. `rawValue` and `init?(rawValue:)` are spelled out instead, and `allCases` lists only the
+ * members the contract declares.
+ *
+ * Encoding the extra case throws an `EncodingError` rather than inventing a spelling. That covers
+ * bodies, path segments, query strings and headers alike, since the client turns all of them into
+ * text through the same encoder.
+ */
 function generateEnum(name: string, values: string[], ctx: RenderContext, description?: string, deprecated?: boolean): string[] {
-    const cases = enumCaseNames(values);
+    const { cases, unknown } = enumNaming(values);
     const lines: string[] = [];
     lines.push(...declarationDoc(description, deprecated, ''));
-    lines.push(`public enum ${name}: String, Codable, CaseIterable, Sendable {`);
-    for (const value of values) {
-        lines.push(`    case ${cases.get(value)} = ${quoteSwiftString(value)}`);
-    }
+    lines.push(`public enum ${name}: Codable, CaseIterable, Hashable, Sendable {`);
+    for (const value of values) lines.push(`    case ${cases.get(value)}`);
+    lines.push('');
+    lines.push('    /// A value this SDK does not know, such as a member the service added after it was generated.');
+    lines.push('    /// Never sent: encoding it throws an `EncodingError`.');
+    lines.push(`    case ${unknown}`);
+    lines.push('');
+    lines.push(`    /// The members the contract declares. \`${unknown}\` is not one of them.`);
+    lines.push(`    public static let allCases: [${name}] = [${values.map(v => `.${cases.get(v)}`).join(', ')}]`);
+    lines.push('');
+    lines.push(`    /// The wire spelling, or \`nil\` for \`${unknown}\`, which has none.`);
+    lines.push('    public var rawValue: String? {');
+    lines.push('        switch self {');
+    for (const value of values) lines.push(`        case .${cases.get(value)}: return ${quoteSwiftString(value)}`);
+    lines.push(`        case .${unknown}: return nil`);
+    lines.push('        }');
+    lines.push('    }');
+    lines.push('');
+    lines.push('    /// The member a wire spelling names, or `nil` for one this SDK does not know.');
+    lines.push('    public init?(rawValue: String) {');
+    lines.push('        switch rawValue {');
+    for (const value of values) lines.push(`        case ${quoteSwiftString(value)}: self = .${cases.get(value)}`);
+    lines.push('        default: return nil');
+    lines.push('        }');
+    lines.push('    }');
+    lines.push('');
+    lines.push('    public init(from decoder: Decoder) throws {');
+    lines.push('        let container = try decoder.singleValueContainer()');
+    lines.push(`        self = Self(rawValue: try container.decode(String.self)) ?? .${unknown}`);
+    lines.push('    }');
+    lines.push('');
+    lines.push('    public func encode(to encoder: Encoder) throws {');
+    lines.push('        guard let rawValue else {');
+    lines.push('            throw EncodingError.invalidValue(');
+    lines.push('                self,');
+    lines.push(
+        `                EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "${name}.${unknown} has no wire spelling, so it cannot be sent")`,
+    );
+    lines.push('            )');
+    lines.push('        }');
+    lines.push('        var container = encoder.singleValueContainer()');
+    lines.push('        try container.encode(rawValue)');
+    lines.push('    }');
     lines.push('}');
     // An enum has no fields, so no visibility can differ between reading and writing it.
     if (ctx.modelsWithInput.has(name)) lines.push(`public typealias ${name}Input = ${name}`);
     return lines;
+}
+
+/**
+ * The values of the enum a type names directly: a hoisted inline enum, or a reference to an enum
+ * contract. Anything else, an array of one included, is `undefined`.
+ */
+function enumValuesOf(type: ContractTypeNode, ctx: RenderContext): string[] | undefined {
+    const inner = unwrapLazy(type);
+    const decl = ctx.hoisted?.byNode.get(inner) ?? (inner.kind === 'ref' ? ctx.hoisted?.byName.get(inner.name) : undefined);
+    if (decl) return decl.kind === 'enum' ? decl.values : undefined;
+    if (inner.kind !== 'ref') return undefined;
+    const target = ctx.modelIndex.get(inner.name)?.type;
+    const targetType = target ? unwrapLazy(target) : undefined;
+    return targetType?.kind === 'enum' ? targetType.values : undefined;
 }
 
 // ─── Struct rendering ──────────────────────────────────────────────────────
@@ -834,10 +910,23 @@ function generatePlainUnion(decl: HoistedDecl, name: string, ctx: RenderContext,
     lines.push('');
     lines.push('    public init(from decoder: Decoder) throws {');
     lines.push('        let container = try decoder.singleValueContainer()');
+    // An enum reads any string, so on the first pass its unknown case counts as no match: a later
+    // member the string really is, such as a plain `String`, must still get it. Only when nothing
+    // else claims the string does it fall back to the first enum's unknown case, so a value the
+    // service added to that enum reads as unknown rather than failing the payload.
+    let fallback: string | undefined;
     members.forEach((member, i) => {
-        lines.push(`        ${i === 0 ? 'if' : '} else if'} let value = try? container.decode(${member.swiftType}.self) {`);
+        const values = enumValuesOf(member.type, ctx);
+        const unknown = values ? `.${enumNaming(values).unknown}` : undefined;
+        const guard = unknown ? `, value != ${unknown}` : '';
+        if (unknown) fallback ??= `.${member.caseName}(${unknown})`;
+        lines.push(`        ${i === 0 ? 'if' : '} else if'} let value = try? container.decode(${member.swiftType}.self)${guard} {`);
         lines.push(`            self = .${member.caseName}(value)`);
     });
+    if (fallback) {
+        lines.push('        } else if (try? container.decode(String.self)) != nil {');
+        lines.push(`            self = ${fallback}`);
+    }
     lines.push('        } else {');
     lines.push(`            throw DecodingError.dataCorruptedError(in: container, debugDescription: "No ${name} member matched the payload")`);
     lines.push('        }');

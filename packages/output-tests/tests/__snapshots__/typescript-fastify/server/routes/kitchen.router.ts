@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { FastifyPluginAsync } from 'fastify';
 import { requirePolicy } from '@maroonedsoftware/fastify';
 import { KitchenService } from '#src/services/kitchen.service.js';
-import { Folder, Instrument, LedgerInput, LedgerOutput, Named, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput, serializeFolder } from '../schemas/kitchen.schema.js';
+import { Folder, Instrument, LedgerInput, LedgerOutput, Named, Rating, Shared, SharedInput, Stamped, StampedOutput, Tally, Token, TokenOutput, serializeFolder } from '../schemas/kitchen.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
@@ -190,6 +190,26 @@ export const KitchenRoutes: FastifyPluginAsync = async app => {
         } else {
             return reply.send(result.body);
         }
+    });
+
+    /**
+     * an enum query parameter, sent by its wire spelling and never as the unknown member
+     * from [kitchen.ck](../../contracts/kitchen.ck) `GET /tallies`
+    */
+    app.get('/tallies', { preHandler: [requirePolicy()] }, async (request, reply) => {
+        const query = await parseAndValidate(
+            request.query,
+            z.strictObject({
+                rating: Rating.optional(),
+            }),
+        );
+
+        const service = request.container.get(KitchenService);
+        const result: Tally[] = await service.listTallies(query);
+
+        reply.status(200);
+        reply.type('application/json');
+        return reply.send(result);
     });
 
 };

@@ -177,6 +177,23 @@ struct Probe {
         checks.expect("binary: base64", node.blob == data("hi"))
         checks.expect("unknown/json: JSONValue", node.any != nil && node.js != nil)
         checks.expect("named enum: decodes", node.rating == .good)
+        // A service that adds an enum member must not break an older client.
+        let tally = try decoder.decode(Tally.self, from: data(#"{"rating":"great","status":"archived","maybe":"meh","many":["good","great"],"either":"other","fallback":"later"}"#))
+        checks.expect("enum: an unknown value decodes to .unknown", tally.rating == .unknown && tally.status == .unknown && tally.maybe == .unknown)
+        checks.expect("enum: an unknown value inside an array", tally.many == [.good, .unknown])
+        checks.expect("enum: a union's string member still gets a value the enum does not know", tally.either == .string("other"))
+        checks.expect("enum: an enum-only union falls back to the enum's unknown case", tally.fallback == .member(.unknown))
+        let known = try decoder.decode(Tally.self, from: data(#"{"rating":"bad","maybe":null,"many":["neutral"],"either":"open","fallback":3}"#))
+        checks.expect("enum: known values decode", known.rating == .bad && known.status == nil && known.maybe == nil && known.many == [.neutral])
+        checks.expect("enum: a union's enum member takes a value it knows", known.either == .member(.open) && known.fallback == .int(3))
+        let knownOut = try object(encoder.encode(known))
+        checks.expect("enum: known values encode their wire spelling", knownOut["rating"] as? String == "bad" && knownOut["many"] as? [String] == ["neutral"] && knownOut["either"] as? String == "open")
+        checks.expect("enum: known values round-trip", try decoder.decode(Tally.self, from: encoder.encode(known)) == known)
+        checks.expect("enum: allCases lists only the declared members", Rating.allCases == [.good, .neutral, .bad])
+        checks.expect("enum: rawValue and init?(rawValue:)", Rating.good.rawValue == "good" && Rating.unknown.rawValue == nil && Rating(rawValue: "neutral") == .neutral && Rating(rawValue: "great") == nil)
+        checks.expectThrows("enum: .unknown refuses to encode") { try encoder.encode(Rating.unknown) }
+        checks.expectThrows("enum: .unknown inside a model refuses to encode") { try encoder.encode(tally) }
+        checks.expectThrows("enum: a value that is not a string is still rejected") { try decoder.decode(Rating.self, from: data("1")) }
         checks.expect("keyword field names", node.class == "c" && node.default == nil && node.self_ == nil)
 
         let nodeOut = try object(encoder.encode(node))
@@ -215,6 +232,18 @@ struct Probe {
             checks.expect("response: JSON body and typed headers", node.class == "c" && headers.xCount == 7 && headers.xWhen != nil)
         } else {
             checks.expect("response: JSON body and typed headers", false)
+        }
+
+        // An enum query parameter: a known member is sent by its wire spelling, the unknown case never.
+        transport.respond(204)
+        _ = try await sdk.stress.repeat(nodeId: nodeId, query: RepeatQuery(rating: .good), customHeaders: RepeatHeaders(xTrace: "tr"))
+        checks.expect("query: an enum is sent by its wire spelling", transport.lastRequest!.url!.absoluteString.contains("rating=good"))
+        transport.lastRequest = nil
+        do {
+            _ = try await sdk.stress.repeat(nodeId: nodeId, query: RepeatQuery(rating: .unknown), customHeaders: RepeatHeaders(xTrace: "tr"))
+            checks.expect("query: an unknown enum is refused before sending", false)
+        } catch {
+            checks.expect("query: an unknown enum is refused before sending", transport.lastRequest == nil)
         }
 
         // The same status, a different content type.

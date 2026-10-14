@@ -300,13 +300,28 @@ describe('declarations', () => {
         expect(out).not.toContain('data class Empty');
     });
 
-    it('emits an enum class with a SerialName per value', () => {
+    it('emits an enum class whose serializer maps each entry to its wire spelling', () => {
         const out = gen([model('Status', [], { type: enumType('pending', 'in-progress') })]);
-        expect(out).toContain('enum class Status {');
-        expect(out).toContain('    @SerialName("pending")');
+        expect(out).toContain('@Serializable(with = StatusSerializer::class)\nenum class Status {');
         expect(out).toContain('    PENDING,');
-        expect(out).toContain('    @SerialName("in-progress")');
         expect(out).toContain('    IN_PROGRESS,');
+        expect(out).toContain('object StatusSerializer : SdkEnumSerializer<Status>(');
+        expect(out).toContain('    Status.IN_PROGRESS to "in-progress",');
+        expect(out).toContain('import com.example.sdk.runtime.SdkEnumSerializer');
+    });
+
+    it('reads a value it does not know as an UNKNOWN entry, so a service adding one cannot break the client', () => {
+        const out = gen([model('Status', [], { type: enumType('pending', 'done') })]);
+        // Last, so the ordinals of the real entries do not move.
+        expect(out).toMatch(/    DONE,\n\n(?:\s*(?:\/\*\*|\*).*\n)*    UNKNOWN,\n\}/);
+        expect(out).toContain('    Status.UNKNOWN,\n    Status.PENDING to "pending",');
+    });
+
+    it('names the UNKNOWN entry around a real unknown value rather than renaming it', () => {
+        const out = gen([model('Status', [], { type: enumType('unknown', 'done') })]);
+        expect(out).toContain('    Status.UNKNOWN to "unknown",');
+        expect(out).toContain('    UNKNOWN2,');
+        expect(out).toContain('    Status.UNKNOWN2,\n');
     });
 
     it('emits a typealias for a scalar alias', () => {
@@ -437,9 +452,18 @@ describe('plain unions', () => {
     it('renders a union of string literals as an enum class', () => {
         const out = gen([model('M', [field('kind', unionType(literalType('card'), literalType('bank')))])]);
         expect(out).toContain('enum class MKind {');
-        expect(out).toContain('    @SerialName("card")');
+        expect(out).toContain('    MKind.CARD to "card",');
         expect(out).toContain('    CARD,');
         expect(out).toContain('val kind: MKind,');
+    });
+
+    it('lets a later member claim a string an enum member does not know, and falls back to the enum last', () => {
+        const out = gen([model('M', [field('v', unionType(enumType('a', 'b'), scalarType('string')))])]);
+        expect(out).toContain(
+            'runCatching { input.json.decodeFromJsonElement(MVMember.serializer(), element) }.getOrNull()?.takeIf { it != MVMember.UNKNOWN }',
+        );
+        expect(out).toContain('if (element is JsonPrimitive && element.isString) return MV.');
+        expect(out).toContain('import kotlinx.serialization.json.JsonPrimitive');
     });
 
     it('marks the reference nullable when the union carries a null member alongside others', () => {

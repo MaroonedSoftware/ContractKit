@@ -54,6 +54,17 @@ class LedgerInput(BaseModel):
     entry_code: str = Field(alias="entryCode")
     posted_at: datetime = Field(alias="postedAt")
 
+# A service that adds an enum member must not break an older client: an SDK reads a value it does
+# not know as unknown wherever an enum sits, and a plain string beside an enum in a union still gets
+# one the enum does not know
+class Tally(BaseModel):
+    rating: Rating
+    status: Literal["open", "closed"] | None = None
+    maybe: Rating | None
+    many: list[Rating]
+    either: Literal["open", "closed"] | str
+    fallback: Literal["open", "closed"] | int
+
 Instrument = Annotated[Card | Bank, Field(discriminator="kind")]
 
 # A plain base under format(), which the schema inlines rather than extends

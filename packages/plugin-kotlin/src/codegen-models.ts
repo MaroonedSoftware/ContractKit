@@ -627,29 +627,76 @@ function generateAliasModel(model: ModelNode, ctx: RenderContext): string[] {
 }
 
 function enumEntryNames(values: string[]): Map<string, string> {
-    const out = new Map<string, string>();
-    const used = new Set<string>();
-    for (const value of values) out.set(value, uniqueName(toKotlinEnumEntryName(value), used));
-    return out;
+    return enumNaming(values).entries;
 }
 
-function generateEnumClass(name: string, values: string[], ctx: RenderContext, description?: string, deprecated?: boolean): string[] {
-    ctx.imports.add('kotlinx.serialization.SerialName');
-    ctx.imports.add('kotlinx.serialization.Serializable');
+/**
+ * The entry names of a generated enum class, and the name of its entry for a value this SDK does
+ * not know. That entry is named last so it never renames a real one: a contract that already has an
+ * `unknown` value keeps `UNKNOWN` for it, and the extra entry becomes `UNKNOWN2`.
+ */
+function enumNaming(values: string[]): { entries: Map<string, string>; unknown: string } {
+    const entries = new Map<string, string>();
+    const used = new Set<string>();
+    for (const value of values) entries.set(value, uniqueName(toKotlinEnumEntryName(value), used));
+    return { entries, unknown: uniqueName('UNKNOWN', used) };
+}
 
-    const entries = enumEntryNames(values);
+/**
+ * An enum class, an extra entry for a value this SDK does not know, and the serializer that reads
+ * such a value into it.
+ *
+ * A service that adds an enum member must not break an older client. kotlinx.serialization's own
+ * enum serializer throws on a name it has no entry for, failing the whole response over one field,
+ * so each enum is read through `SdkEnumSerializer` instead, which maps the wire spelling and falls
+ * back to the extra entry. That entry goes last, so the ordinals of the real ones do not move.
+ *
+ * It has no wire spelling, so encoding it throws a `SerializationException` rather than inventing
+ * one. That covers bodies, path segments, query strings and headers alike, since the client turns
+ * all of them into text through the same serializer.
+ */
+function generateEnumClass(name: string, values: string[], ctx: RenderContext, description?: string, deprecated?: boolean): string[] {
+    ctx.imports.add('kotlinx.serialization.Serializable');
+    ctx.imports.add(`${ctx.packageName}.runtime.SdkEnumSerializer`);
+
+    const { entries, unknown } = enumNaming(values);
+    const serializerName = `${name}Serializer`;
     const lines: string[] = [];
     lines.push(...docLines(description, deprecated, ''));
-    lines.push('@Serializable');
+    lines.push(`@Serializable(with = ${serializerName}::class)`);
     lines.push(`enum class ${name} {`);
-    for (const value of values) {
-        lines.push(`    @SerialName(${quoteKotlinString(value)})`);
-        lines.push(`    ${entries.get(value)},`);
-    }
+    for (const value of values) lines.push(`    ${entries.get(value)},`);
+    lines.push('');
+    lines.push('    /**');
+    lines.push('     * A value this SDK does not know, such as a member the service added after it was generated.');
+    lines.push('     * Never sent: encoding it throws a [kotlinx.serialization.SerializationException].');
+    lines.push('     */');
+    lines.push(`    ${unknown},`);
     lines.push('}');
+    lines.push('');
+    lines.push(`/** Reads and writes [${name}] by its wire spelling. A spelling it does not know reads as [${name}.${unknown}]. */`);
+    lines.push(`object ${serializerName} : SdkEnumSerializer<${name}>(`);
+    lines.push(`    ${quoteKotlinString(name)},`);
+    lines.push(`    ${name}.${unknown},`);
+    for (const value of values) lines.push(`    ${name}.${entries.get(value)} to ${quoteKotlinString(value)},`);
+    lines.push(')');
     // An enum has no fields, so no visibility can differ between reading and writing it.
     if (ctx.modelsWithInput.has(name)) lines.push(`typealias ${name}Input = ${name}`);
     return lines;
+}
+
+/**
+ * The values of the enum a type names directly: a hoisted inline enum, or a reference to an enum
+ * contract. Anything else, a list of one included, is `undefined`.
+ */
+function enumValuesOf(type: ContractTypeNode, ctx: RenderContext): string[] | undefined {
+    const inner = type.kind === 'lazy' ? type.inner : type;
+    const decl = ctx.hoisted?.byNode.get(inner) ?? (inner.kind === 'ref' ? ctx.hoisted?.byName.get(inner.name) : undefined);
+    if (decl) return decl.kind === 'enum' ? decl.values : undefined;
+    if (inner.kind !== 'ref') return undefined;
+    const target = ctx.modelIndex.get(inner.name)?.type;
+    const targetType = target?.kind === 'lazy' ? target.inner : target;
+    return targetType?.kind === 'enum' ? targetType.values : undefined;
 }
 
 /** The sealed interfaces a generated class has to declare it implements. */
@@ -889,11 +936,27 @@ function generatePlainUnion(decl: HoistedDecl, name: string, ctx: RenderContext,
     lines.push(`    override fun deserialize(decoder: Decoder): ${name} {`);
     lines.push(`        val input = decoder as? JsonDecoder ?: throw SerializationException("${name} can only be decoded from JSON")`);
     lines.push('        val element = input.decodeJsonElement()');
+    // An enum reads any string, so on the first pass its UNKNOWN entry counts as no match: a later
+    // member the string really is, such as a plain `String`, must still get it. Only when nothing
+    // else claims the string does it fall back to the first enum's UNKNOWN, so a value the service
+    // added to that enum reads as unknown rather than failing the payload.
+    let fallback: string | undefined;
     for (const member of members) {
-        lines.push(
-            `        runCatching { ${name}.${member.wrapperName}(input.json.decodeFromJsonElement(${serializerExpression(member.type, ctx, forInput)}, element)) }` +
-                '.getOrNull()?.let { return it }',
-        );
+        const decode = `input.json.decodeFromJsonElement(${serializerExpression(member.type, ctx, forInput)}, element)`;
+        const values = enumValuesOf(member.type, ctx);
+        if (values) {
+            const unknown = `${renderKotlinType(member.type, ctx, forInput)}.${enumNaming(values).unknown}`;
+            fallback ??= `${name}.${member.wrapperName}(${unknown})`;
+            lines.push(
+                `        runCatching { ${decode} }.getOrNull()?.takeIf { it != ${unknown} }?.let { return ${name}.${member.wrapperName}(it) }`,
+            );
+        } else {
+            lines.push(`        runCatching { ${name}.${member.wrapperName}(${decode}) }.getOrNull()?.let { return it }`);
+        }
+    }
+    if (fallback) {
+        ctx.imports.add('kotlinx.serialization.json.JsonPrimitive');
+        lines.push(`        if (element is JsonPrimitive && element.isString) return ${fallback}`);
     }
     lines.push(`        throw SerializationException("No ${name} member matched the payload")`);
     lines.push('    }');

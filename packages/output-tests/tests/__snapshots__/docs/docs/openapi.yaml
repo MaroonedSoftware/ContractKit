@@ -576,6 +576,25 @@ paths:
             x-rows:
               schema:
                 type: integer
+  '/tallies':
+    get:
+      operationId: listTallies
+      description: 'an enum query parameter, sent by its wire spelling and never as the unknown member'
+      parameters:
+        - name: rating
+          in: query
+          required: false
+          schema:
+            '$ref': '#/components/schemas/Rating'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                type: array
+                items:
+                  '$ref': '#/components/schemas/Tally'
   '/seats/{class}':
     get:
       operationId: getSeat
@@ -951,6 +970,34 @@ components:
         raw: {}
       required: [id, class, children, label, pinned, size, generation, price]
       description: "Self recursion through lazy(), mutual recursion through Doc, every container, both union\nforms, every scalar, and field names that are keywords in the target languages"
+    Tally:
+      type: object
+      properties:
+        rating:
+          '$ref': '#/components/schemas/Rating'
+        status:
+          type: string
+          enum: [open, closed]
+        maybe:
+          oneOf:
+            - '$ref': '#/components/schemas/Rating'
+            - type: 'null'
+        many:
+          type: array
+          items:
+            '$ref': '#/components/schemas/Rating'
+        either:
+          oneOf:
+            - type: string
+              enum: [open, closed]
+            - type: string
+        fallback:
+          oneOf:
+            - type: string
+              enum: [open, closed]
+            - type: integer
+      required: [rating, maybe, many, either, fallback]
+      description: "A service that adds an enum member must not break an older client: an SDK reads a value it does\nnot know as unknown wherever an enum sits, and a plain string beside an enum in a union still gets\none the enum does not know"
     Doc:
       type: object
       properties:

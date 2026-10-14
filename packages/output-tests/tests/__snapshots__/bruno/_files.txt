@@ -21,6 +21,7 @@ bruno/hyphenated/get-invoices-invoice-id.yml
 bruno/kitchen/folder.yml
 bruno/kitchen/get-folders-folder-id-export.yml
 bruno/kitchen/get-folders-folder-id.yml
+bruno/kitchen/get-tallies.yml
 bruno/kitchen/get-tokens.yml
 bruno/kitchen/patch-folders-folder-id.yml
 bruno/kitchen/post-ledgers.yml

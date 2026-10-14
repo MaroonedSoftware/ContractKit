@@ -8,7 +8,7 @@ from typing import Literal, NotRequired, TypedDict
 from pydantic import TypeAdapter
 from ._base_client import BaseClient, SdkError, _path_text  # noqa: F401
 from ._scalars import BigInt
-from ._models_kitchen import Folder, Instrument, Ledger, LedgerInput, Named, Shared, SharedInput, Stamped, Token
+from ._models_kitchen import Folder, Instrument, Ledger, LedgerInput, Named, Rating, Shared, SharedInput, Stamped, Tally, Token
 
 
 class GetFolder200Headers(TypedDict, total=False):
@@ -31,6 +31,11 @@ GetFolderQuery = TypedDict("GetFolderQuery", {
 GetFolderHeaders = TypedDict("GetFolderHeaders", {
     "x-trace": str,
     "x-opt": NotRequired[int],
+})
+
+
+ListTalliesQuery = TypedDict("ListTalliesQuery", {
+    "rating": NotRequired[Rating],
 })
 
 
@@ -59,6 +64,7 @@ class ExportFolderResponse(TypedDict):
 
 _IMPORT__RESPONSE: TypeAdapter[Instrument] = TypeAdapter(Instrument)
 _LIST_TOKENS_RESPONSE: TypeAdapter[list[Token]] = TypeAdapter(list[Token])
+_LIST_TALLIES_RESPONSE: TypeAdapter[list[Tally]] = TypeAdapter(list[Tally])
 
 
 class KitchenClient(BaseClient):
@@ -126,3 +132,10 @@ class KitchenClient(BaseClient):
         if _content_type == "text/csv":
             return { "content_type": "text/csv", "data": result, "headers": headers }
         return { "content_type": "application/json", "data": Folder.model_validate(result), "headers": headers }
+
+    async def list_tallies(self, query: ListTalliesQuery | None = None) -> list[Tally]:
+        """
+        an enum query parameter, sent by its wire spelling and never as the unknown member
+        """
+        result = await self._fetch("/tallies", method="GET", params=query)
+        return _LIST_TALLIES_RESPONSE.validate_python(result)

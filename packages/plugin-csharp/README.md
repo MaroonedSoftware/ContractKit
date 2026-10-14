@@ -135,6 +135,41 @@ contract, is emitted twice: `<Name>` for what a response carries and `<Name>Inpu
 request sends. `format(input=)` and `format(output=)` rename the wire keys of each direction; a
 model that is not split can only carry one key set, and asking for two is reported as a warning.
 
+## Enums
+
+A service that adds an enum member must not break an older client, so every generated enum has an
+`Unknown` member that a wire value the SDK does not know reads into. The rest of the payload reads
+as normal.
+
+```csharp
+[JsonConverter(typeof(StatusConverter))]
+public enum Status
+{
+    /// <summary>A value this SDK does not know, such as a member the service added after it was generated.</summary>
+    Unknown = 0,
+
+    [JsonStringEnumMemberName("in-progress")]
+    InProgress,
+
+    [JsonStringEnumMemberName("done")]
+    Done,
+}
+```
+
+`Unknown` is the first member and zero, so `default(Status)` is never mistaken for a real value.
+The type's own `StatusConverter` maps each member to its wire spelling, the same spelling
+`[JsonStringEnumMemberName]` gives the framework's converter. It works the same in a nullable
+property, a list, a dictionary key and a query string.
+
+`Unknown` has no wire spelling, so writing it throws a `JsonException` rather than sending
+something the service never defined. That covers a request body as well as a path, query, header
+or form value. A contract that already has an `unknown` value keeps `Unknown` for it, and the
+sentinel becomes `Unknown2`.
+
+In a plain union, an enum member only claims a string it knows on the first pass, so a later
+`string` member still gets one it does not. A string no member claims falls back to the first enum
+member's `Unknown`.
+
 ## Unions and anonymous shapes
 
 The `.ck` language lets a union, an enum, an object literal or a tuple appear anonymously inside a

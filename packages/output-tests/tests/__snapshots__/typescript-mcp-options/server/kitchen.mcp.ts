@@ -9,7 +9,7 @@ import { MFA_SATISFIED_POLICY } from '@maroonedsoftware/authentication';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
 import { KitchenService } from '#src/services/kitchen.service.js';
-import { Folder, Instrument, Named, SharedInput, Token, serializeFolder } from './schemas/kitchen.schema.js';
+import { Folder, Instrument, Named, Rating, SharedInput, Tally, Token, serializeFolder } from './schemas/kitchen.schema.js';
 
 /** The request's scoped container, which a tool resolving per call reads its service and policies from. */
 function requireMcpContainer(context: McpToolContext): Container {
@@ -22,6 +22,7 @@ function requireMcpContainer(context: McpToolContext): Container {
 const ImportArgs = z.object({ folderId: z.uuid(), body: SharedInput });
 const TouchFolderArgs = z.object({ folderId: z.uuid(), body: Named });
 const ListTokensArgs = z.object({});
+const ListTalliesArgs = z.object({ query: z.object({ rating: Rating.optional() }).optional() });
 
 /**
  * from [kitchen.ck](../contracts/kitchen.ck) `PUT /folders/{folder-id}`
@@ -93,11 +94,36 @@ export class ListTokensMcpTool implements McpToolHandler {
     }
 }
 
+/**
+ * from [kitchen.ck](../contracts/kitchen.ck) `GET /tallies`
+ */
+@Injectable()
+export class ListTalliesMcpTool implements McpToolHandler {
+    readonly definition: Tool = {
+        name: 'list_tallies',
+        description: 'an enum query parameter, sent by its wire spelling and never as the unknown member',
+        inputSchema: z.toJSONSchema(ListTalliesArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        outputSchema: z.toJSONSchema(z.object({ items: z.array(Tally) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+    };
+
+    async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
+        const { query = await parseAndValidate({}, ListTalliesArgs.shape.query.unwrap()) } = await parseAndValidate(args, ListTalliesArgs);
+        const result = await container.get(KitchenService).listTallies(query);
+        const resultJson = JSON.stringify({ items: result });
+        return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };
+    }
+}
+
 /** Add a handler for each of this file's operations to the catalog, unlisted in `tools/list`. */
 export function registerKitchenMcpCatalog(map: McpToolHandlerMap, container: Container): void {
     map.set('import', container.get(ImportMcpTool));
     map.set('touch_folder', container.get(TouchFolderMcpTool));
     map.set('list_tokens', container.get(ListTokensMcpTool));
+    map.set('list_tallies', container.get(ListTalliesMcpTool));
 }
 
 /** Register this file's tool classes on the registry, so the tool maps can resolve them. */
@@ -105,4 +131,5 @@ export function registerKitchenMcpToolClasses(registry: Registry): void {
     registry.register(ImportMcpTool).useClass(ImportMcpTool).asSingleton();
     registry.register(TouchFolderMcpTool).useClass(TouchFolderMcpTool).asSingleton();
     registry.register(ListTokensMcpTool).useClass(ListTokensMcpTool).asSingleton();
+    registry.register(ListTalliesMcpTool).useClass(ListTalliesMcpTool).asSingleton();
 }

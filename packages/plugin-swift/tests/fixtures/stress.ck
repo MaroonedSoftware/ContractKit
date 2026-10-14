@@ -45,6 +45,18 @@ contract Node: {
     js?: json
 }
 
+# A service that adds an enum member must not break an older client: a value the SDK does not know
+# reads as unknown wherever an enum sits, and a plain string beside an enum in a union still gets
+# one the enum does not know. Only an enum-only union falls back to the enum's unknown case.
+contract Tally: {
+    rating: Rating
+    status?: enum(open, closed)
+    maybe: Rating | null
+    many: array(Rating)
+    either: enum(open, closed) | string
+    fallback: enum(open, closed) | int
+}
+
 contract Leaf: {
     id: uuid
     owner?: lazy(Node)
@@ -107,6 +119,7 @@ operation /nodes/{node-id}: {
         query: {
             depth?: int = 1
             tags?: array(string)
+            rating?: Rating
         }
         headers: {
             x-trace: string

@@ -8,9 +8,11 @@ import com.example.sdk.models.Instrument
 import com.example.sdk.models.Ledger
 import com.example.sdk.models.LedgerInput
 import com.example.sdk.models.Named
+import com.example.sdk.models.Rating
 import com.example.sdk.models.Shared
 import com.example.sdk.models.SharedInput
 import com.example.sdk.models.Stamped
+import com.example.sdk.models.Tally
 import com.example.sdk.models.Token
 import com.example.sdk.runtime.BigInt
 import com.example.sdk.runtime.SdkHttp
@@ -115,6 +117,15 @@ class KitchenClient(private val http: SdkHttp) {
             else -> ExportFolderResponse.ApplicationJson(http.decodeJson(response), headers)
         }
     }
+
+    /** an enum query parameter, sent by its wire spelling and never as the unknown member */
+    suspend fun listTallies(query: ListTalliesQuery? = null): List<Tally> {
+        val response = http.execute(HttpMethod.Get) {
+            path("tallies")
+            params(query)
+        }
+        return http.decodeJson(response)
+    }
 }
 
 @Serializable
@@ -177,3 +188,8 @@ sealed interface ExportFolderResponse {
     val headers: ExportFolderHeaders,
     ) : ExportFolderResponse
 }
+
+@Serializable
+data class ListTalliesQuery(
+    val rating: Rating? = null,
+)

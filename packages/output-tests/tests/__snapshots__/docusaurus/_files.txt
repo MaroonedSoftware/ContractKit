@@ -27,6 +27,7 @@ docs/api-reference/kitchen/_category_.json
 docs/api-reference/kitchen/export-folder.md
 docs/api-reference/kitchen/get-folder.md
 docs/api-reference/kitchen/import.md
+docs/api-reference/kitchen/list-tallies.md
 docs/api-reference/kitchen/list-tokens.md
 docs/api-reference/kitchen/mint.md
 docs/api-reference/kitchen/post-ledger.md
@@ -67,6 +68,7 @@ docs/api-reference/models/kitchen/rating.md
 docs/api-reference/models/kitchen/shared.md
 docs/api-reference/models/kitchen/stamp.md
 docs/api-reference/models/kitchen/stamped.md
+docs/api-reference/models/kitchen/tally.md
 docs/api-reference/models/kitchen/token.md
 docs/api-reference/models/note.md
 docs/api-reference/models/seat-ref.md

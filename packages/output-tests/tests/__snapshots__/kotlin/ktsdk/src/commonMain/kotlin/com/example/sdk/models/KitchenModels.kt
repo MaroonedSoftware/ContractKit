@@ -6,6 +6,7 @@ package com.example.sdk.models
 import com.example.sdk.runtime.BigInt
 import com.example.sdk.runtime.Decimal
 import com.example.sdk.runtime.PairAsArraySerializer
+import com.example.sdk.runtime.SdkEnumSerializer
 import com.example.sdk.runtime.TripleAsArraySerializer
 import kotlin.time.Duration
 import kotlin.time.Instant
@@ -25,6 +26,7 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
@@ -32,15 +34,27 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /** A named enum, so a field default has to resolve to a member rather than its wire spelling */
-@Serializable
+@Serializable(with = RatingSerializer::class)
 enum class Rating {
-    @SerialName("good")
     GOOD,
-    @SerialName("neutral")
     NEUTRAL,
-    @SerialName("bad")
     BAD,
+
+    /**
+     * A value this SDK does not know, such as a member the service added after it was generated.
+     * Never sent: encoding it throws a [kotlinx.serialization.SerializationException].
+     */
+    UNKNOWN,
 }
+
+/** Reads and writes [Rating] by its wire spelling. A spelling it does not know reads as [Rating.UNKNOWN]. */
+object RatingSerializer : SdkEnumSerializer<Rating>(
+    "Rating",
+    Rating.UNKNOWN,
+    Rating.GOOD to "good",
+    Rating.NEUTRAL to "neutral",
+    Rating.BAD to "bad",
+)
 
 @Serializable
 data class Card(
@@ -95,6 +109,21 @@ data class Ledger(
 data class LedgerInput(
     @SerialName("entry_code") val entryCode: String,
     @SerialName("posted_at") val postedAt: Instant,
+)
+
+/**
+ * A service that adds an enum member must not break an older client: an SDK reads a value it does
+ * not know as unknown wherever an enum sits, and a plain string beside an enum in a union still gets
+ * one the enum does not know
+ */
+@Serializable
+data class Tally(
+    val rating: Rating,
+    val status: TallyStatus? = null,
+    val maybe: Rating?,
+    val many: List<Rating>,
+    val either: TallyEither,
+    val fallback: TallyFallback,
 )
 
 /** A plain base under format(), which the schema inlines rather than extends */
@@ -246,6 +275,122 @@ data class FolderOrigin(
     val x: Double,
     val y: Double,
 )
+
+@Serializable(with = TallyStatusSerializer::class)
+enum class TallyStatus {
+    OPEN,
+    CLOSED,
+
+    /**
+     * A value this SDK does not know, such as a member the service added after it was generated.
+     * Never sent: encoding it throws a [kotlinx.serialization.SerializationException].
+     */
+    UNKNOWN,
+}
+
+/** Reads and writes [TallyStatus] by its wire spelling. A spelling it does not know reads as [TallyStatus.UNKNOWN]. */
+object TallyStatusSerializer : SdkEnumSerializer<TallyStatus>(
+    "TallyStatus",
+    TallyStatus.UNKNOWN,
+    TallyStatus.OPEN to "open",
+    TallyStatus.CLOSED to "closed",
+)
+
+@Serializable(with = TallyEitherMemberSerializer::class)
+enum class TallyEitherMember {
+    OPEN,
+    CLOSED,
+
+    /**
+     * A value this SDK does not know, such as a member the service added after it was generated.
+     * Never sent: encoding it throws a [kotlinx.serialization.SerializationException].
+     */
+    UNKNOWN,
+}
+
+/** Reads and writes [TallyEitherMember] by its wire spelling. A spelling it does not know reads as [TallyEitherMember.UNKNOWN]. */
+object TallyEitherMemberSerializer : SdkEnumSerializer<TallyEitherMember>(
+    "TallyEitherMember",
+    TallyEitherMember.UNKNOWN,
+    TallyEitherMember.OPEN to "open",
+    TallyEitherMember.CLOSED to "closed",
+)
+
+@Serializable(with = TallyEitherSerializer::class)
+sealed interface TallyEither {
+    data class OfTallyEitherMember(val value: TallyEitherMember) : TallyEither
+    data class OfString(val value: String) : TallyEither
+}
+
+object TallyEitherSerializer : KSerializer<TallyEither> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("TallyEither")
+
+    override fun serialize(encoder: Encoder, value: TallyEither) {
+        val output = encoder as? JsonEncoder ?: throw SerializationException("TallyEither can only be encoded as JSON")
+        val element = when (value) {
+            is TallyEither.OfTallyEitherMember -> output.json.encodeToJsonElement(TallyEitherMember.serializer(), value.value)
+            is TallyEither.OfString -> output.json.encodeToJsonElement(String.serializer(), value.value)
+        }
+        output.encodeJsonElement(element)
+    }
+
+    override fun deserialize(decoder: Decoder): TallyEither {
+        val input = decoder as? JsonDecoder ?: throw SerializationException("TallyEither can only be decoded from JSON")
+        val element = input.decodeJsonElement()
+        runCatching { input.json.decodeFromJsonElement(TallyEitherMember.serializer(), element) }.getOrNull()?.takeIf { it != TallyEitherMember.UNKNOWN }?.let { return TallyEither.OfTallyEitherMember(it) }
+        runCatching { TallyEither.OfString(input.json.decodeFromJsonElement(String.serializer(), element)) }.getOrNull()?.let { return it }
+        if (element is JsonPrimitive && element.isString) return TallyEither.OfTallyEitherMember(TallyEitherMember.UNKNOWN)
+        throw SerializationException("No TallyEither member matched the payload")
+    }
+}
+
+@Serializable(with = TallyFallbackMemberSerializer::class)
+enum class TallyFallbackMember {
+    OPEN,
+    CLOSED,
+
+    /**
+     * A value this SDK does not know, such as a member the service added after it was generated.
+     * Never sent: encoding it throws a [kotlinx.serialization.SerializationException].
+     */
+    UNKNOWN,
+}
+
+/** Reads and writes [TallyFallbackMember] by its wire spelling. A spelling it does not know reads as [TallyFallbackMember.UNKNOWN]. */
+object TallyFallbackMemberSerializer : SdkEnumSerializer<TallyFallbackMember>(
+    "TallyFallbackMember",
+    TallyFallbackMember.UNKNOWN,
+    TallyFallbackMember.OPEN to "open",
+    TallyFallbackMember.CLOSED to "closed",
+)
+
+@Serializable(with = TallyFallbackSerializer::class)
+sealed interface TallyFallback {
+    data class OfTallyFallbackMember(val value: TallyFallbackMember) : TallyFallback
+    data class OfInt(val value: Long) : TallyFallback
+}
+
+object TallyFallbackSerializer : KSerializer<TallyFallback> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("TallyFallback")
+
+    override fun serialize(encoder: Encoder, value: TallyFallback) {
+        val output = encoder as? JsonEncoder ?: throw SerializationException("TallyFallback can only be encoded as JSON")
+        val element = when (value) {
+            is TallyFallback.OfTallyFallbackMember -> output.json.encodeToJsonElement(TallyFallbackMember.serializer(), value.value)
+            is TallyFallback.OfInt -> output.json.encodeToJsonElement(Long.serializer(), value.value)
+        }
+        output.encodeJsonElement(element)
+    }
+
+    override fun deserialize(decoder: Decoder): TallyFallback {
+        val input = decoder as? JsonDecoder ?: throw SerializationException("TallyFallback can only be decoded from JSON")
+        val element = input.decodeJsonElement()
+        runCatching { input.json.decodeFromJsonElement(TallyFallbackMember.serializer(), element) }.getOrNull()?.takeIf { it != TallyFallbackMember.UNKNOWN }?.let { return TallyFallback.OfTallyFallbackMember(it) }
+        runCatching { TallyFallback.OfInt(input.json.decodeFromJsonElement(Long.serializer(), element)) }.getOrNull()?.let { return it }
+        if (element is JsonPrimitive && element.isString) return TallyFallback.OfTallyFallbackMember(TallyFallbackMember.UNKNOWN)
+        throw SerializationException("No TallyFallback member matched the payload")
+    }
+}
 
 @Serializable(with = InstrumentSerializer::class)
 sealed interface Instrument

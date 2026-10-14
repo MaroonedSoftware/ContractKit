@@ -621,35 +621,113 @@ const VALUE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 function enumMemberNames(values: string[]): Map<string, string> {
-    const out = new Map<string, string>();
-    const used = new Set<string>();
-    for (const value of values) out.set(value, uniqueName(toCSharpEnumMemberName(value), used));
-    return out;
+    return enumNaming(values).members;
 }
 
 /**
- * A C# enum whose members carry their wire spelling.
+ * The member names of a generated enum, and the name of its sentinel for a value this SDK does not
+ * know. The sentinel is named last so it never renames a real member: a contract that already has an
+ * `unknown` value keeps `Unknown` for it, and the sentinel becomes `Unknown2`.
+ */
+function enumNaming(values: string[]): { members: Map<string, string>; unknown: string } {
+    const members = new Map<string, string>();
+    const used = new Set<string>();
+    for (const value of values) members.set(value, uniqueName(toCSharpEnumMemberName(value), used));
+    return { members, unknown: uniqueName('Unknown', used) };
+}
+
+/**
+ * A C# enum whose members carry their wire spelling, plus a sentinel for a value this SDK does not
+ * know, and a converter of its own.
  *
- * `JsonStringEnumConverter<T>` plus `[JsonStringEnumMemberName]` is what makes the wire value travel
- * without a converter of the generator's own. Both are framework features, so nothing reflective is
- * generated for an enum.
+ * A service that adds an enum member must not break an older client. `JsonStringEnumConverter<T>`
+ * throws on a string it has no member for, which would fail the whole response over one field, so
+ * each enum gets a converter that reads such a string as the sentinel instead. The sentinel is the
+ * first member, so it is also `default(T)`: a value nobody set never passes for a real member.
+ *
+ * The sentinel has no wire spelling, so writing it throws a `JsonException` rather than inventing
+ * one. That covers bodies, path segments, query strings and headers alike, since the client turns
+ * all of them into text through the same serializer.
+ *
+ * The converter is generated per enum rather than written once over reflection: a `switch` on the
+ * wire spelling needs nothing the netstandard2.0 build lacks and stays trimming-safe. The
+ * `[JsonStringEnumMemberName]` attributes stay, so a caller who registers the framework's own
+ * converter in their options still gets the right spellings.
  */
 function generateEnum(name: string, values: string[], ctx: RenderContext, description?: string, deprecated?: boolean): string[] {
-    const entries = enumMemberNames(values);
+    const { members: entries, unknown } = enumNaming(values);
+    const converterName = `${name}Converter`;
     const lines: string[] = [];
     lines.push(...docLines(description, deprecated, ''));
-    lines.push(`[JsonConverter(typeof(JsonStringEnumConverter<${name}>))]`);
+    lines.push(`[JsonConverter(typeof(${converterName}))]`);
     lines.push(`public enum ${name}`);
     lines.push('{');
-    values.forEach((value, index) => {
-        if (index > 0) lines.push('');
+    lines.push('    /// <summary>');
+    lines.push('    /// A value this SDK does not know, such as a member the service added after it was generated.');
+    lines.push('    /// Never sent: writing it throws a <see cref="JsonException"/>.');
+    lines.push('    /// </summary>');
+    lines.push(`    ${unknown} = 0,`);
+    for (const value of values) {
+        lines.push('');
         lines.push(`    [JsonStringEnumMemberName(${quoteCSharpString(value)})]`);
         lines.push(`    ${entries.get(value)},`);
-    });
+    }
+    lines.push('}');
+    lines.push('');
+    lines.push(`/// <summary>`);
+    lines.push(`/// Reads and writes <see cref="${name}"/> by its wire spelling. A spelling it does not know reads as`);
+    lines.push(`/// <see cref="${name}.${unknown}"/> rather than failing the payload.`);
+    lines.push(`/// </summary>`);
+    lines.push(`public sealed class ${converterName} : JsonConverter<${name}>`);
+    lines.push('{');
+    lines.push(`    public override ${name} Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)`);
+    lines.push('    {');
+    lines.push('        if (reader.TokenType != JsonTokenType.String)');
+    lines.push('        {');
+    lines.push(`            throw new JsonException($"Expected a string for ${name}, got {reader.TokenType}.");`);
+    lines.push('        }');
+    lines.push('');
+    lines.push('        return FromWire(reader.GetString());');
+    lines.push('    }');
+    lines.push('');
+    lines.push(`    public override void Write(Utf8JsonWriter writer, ${name} value, JsonSerializerOptions options) =>`);
+    lines.push('        writer.WriteStringValue(ToWire(value));');
+    lines.push('');
+    lines.push(`    public override ${name} ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>`);
+    lines.push('        FromWire(reader.GetString());');
+    lines.push('');
+    lines.push(`    public override void WriteAsPropertyName(Utf8JsonWriter writer, ${name} value, JsonSerializerOptions options) =>`);
+    lines.push('        writer.WritePropertyName(ToWire(value));');
+    lines.push('');
+    lines.push(`    private static ${name} FromWire(string? text) => text switch`);
+    lines.push('    {');
+    for (const value of values) lines.push(`        ${quoteCSharpString(value)} => ${name}.${entries.get(value)},`);
+    lines.push(`        _ => ${name}.${unknown},`);
+    lines.push('    };');
+    lines.push('');
+    lines.push(`    private static string ToWire(${name} value) => value switch`);
+    lines.push('    {');
+    for (const value of values) lines.push(`        ${name}.${entries.get(value)} => ${quoteCSharpString(value)},`);
+    lines.push(`        _ => throw new JsonException($"${name}.{value} has no wire spelling, so it cannot be sent."),`);
+    lines.push('    };');
     lines.push('}');
     // An enum has no fields, so no visibility can differ between reading and writing it.
     if (ctx.modelsWithInput.has(name)) ctx.globalAliases.push(`global using ${name}Input = ${ctx.namespace}.Models.${name};`);
     return lines;
+}
+
+/**
+ * The values of the enum a type names directly: a hoisted inline enum, or a reference to an enum
+ * contract. Anything else, an array of one included, is `undefined`.
+ */
+function enumValuesOf(type: ContractTypeNode, ctx: RenderContext): string[] | undefined {
+    const inner = type.kind === 'lazy' ? type.inner : type;
+    const decl = ctx.hoisted?.byNode.get(inner) ?? (inner.kind === 'ref' ? ctx.hoisted?.byName.get(inner.name) : undefined);
+    if (decl) return decl.kind === 'enum' ? decl.values : undefined;
+    if (inner.kind !== 'ref') return undefined;
+    const target = ctx.modelIndex.get(inner.name)?.type;
+    const targetType = target?.kind === 'lazy' ? target.inner : target;
+    return targetType?.kind === 'enum' ? targetType.values : undefined;
 }
 
 /** The union interfaces a generated record has to declare it implements. */
@@ -872,15 +950,33 @@ function generatePlainUnion(decl: HoistedDecl, name: string, ctx: RenderContext,
     lines.push('        using var document = JsonDocument.ParseValue(ref reader);');
     lines.push('        var element = document.RootElement;');
     lines.push('');
+    // An enum reads any string, so on the first pass its sentinel counts as no match: a later member
+    // the string really is, such as a plain `string`, must still get it. Only when nothing else
+    // claims the string does it fall back to the first enum's sentinel, so a value the service added
+    // to that enum reads as unknown rather than failing the payload.
+    let fallback: string | undefined;
     for (const member of members) {
+        const values = enumValuesOf(member.type, ctx);
         lines.push('        try');
         lines.push('        {');
-        lines.push(`            return new ${name}.${member.wrapperName}(${deserializeExpr(member.type, ctx, forInput)});`);
+        if (values) {
+            const enumName = renderCSharpType(member.type, ctx, forInput);
+            const unknown = `${enumName}.${enumNaming(values).unknown}`;
+            fallback ??= `new ${name}.${member.wrapperName}(${unknown})`;
+            lines.push(`            var value = element.Deserialize<${enumName}>(options);`);
+            lines.push(`            if (value != ${unknown}) return new ${name}.${member.wrapperName}(value);`);
+        } else {
+            lines.push(`            return new ${name}.${member.wrapperName}(${deserializeExpr(member.type, ctx, forInput)});`);
+        }
         lines.push('        }');
         lines.push('        catch (JsonException)');
         lines.push('        {');
         lines.push('            // Not this member; fall through to the next.');
         lines.push('        }');
+        lines.push('');
+    }
+    if (fallback) {
+        lines.push(`        if (element.ValueKind == JsonValueKind.String) return ${fallback};`);
         lines.push('');
     }
     lines.push(`        throw new JsonException("No ${name} member matched the payload.");`);

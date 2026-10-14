@@ -12,9 +12,15 @@ using Example.Sdk.Runtime;
 namespace Example.Sdk.Models;
 
 /// <summary>A named enum, so a field default has to resolve to a member rather than its wire spelling</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<Rating>))]
+[JsonConverter(typeof(RatingConverter))]
 public enum Rating
 {
+    /// <summary>
+    /// A value this SDK does not know, such as a member the service added after it was generated.
+    /// Never sent: writing it throws a <see cref="JsonException"/>.
+    /// </summary>
+    Unknown = 0,
+
     [JsonStringEnumMemberName("good")]
     Good,
 
@@ -23,6 +29,48 @@ public enum Rating
 
     [JsonStringEnumMemberName("bad")]
     Bad,
+}
+
+/// <summary>
+/// Reads and writes <see cref="Rating"/> by its wire spelling. A spelling it does not know reads as
+/// <see cref="Rating.Unknown"/> rather than failing the payload.
+/// </summary>
+public sealed class RatingConverter : JsonConverter<Rating>
+{
+    public override Rating Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            throw new JsonException($"Expected a string for Rating, got {reader.TokenType}.");
+        }
+
+        return FromWire(reader.GetString());
+    }
+
+    public override void Write(Utf8JsonWriter writer, Rating value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(ToWire(value));
+
+    public override Rating ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        FromWire(reader.GetString());
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, Rating value, JsonSerializerOptions options) =>
+        writer.WritePropertyName(ToWire(value));
+
+    private static Rating FromWire(string? text) => text switch
+    {
+        "good" => Rating.Good,
+        "neutral" => Rating.Neutral,
+        "bad" => Rating.Bad,
+        _ => Rating.Unknown,
+    };
+
+    private static string ToWire(Rating value) => value switch
+    {
+        Rating.Good => "good",
+        Rating.Neutral => "neutral",
+        Rating.Bad => "bad",
+        _ => throw new JsonException($"Rating.{value} has no wire spelling, so it cannot be sent."),
+    };
 }
 
 public sealed record Card : Instrument
@@ -103,6 +151,33 @@ public sealed record LedgerInput
 
     [JsonPropertyName("posted_at")]
     public required DateTimeOffset PostedAt { get; init; }
+}
+
+/// <summary>
+/// A service that adds an enum member must not break an older client: an SDK reads a value it does
+/// not know as unknown wherever an enum sits, and a plain string beside an enum in a union still gets
+/// one the enum does not know
+/// </summary>
+public sealed record Tally
+{
+    [JsonPropertyName("rating")]
+    public required Rating Rating { get; init; }
+
+    [JsonPropertyName("status")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TallyStatus? Status { get; init; }
+
+    [JsonPropertyName("maybe")]
+    public required Rating? Maybe { get; init; }
+
+    [JsonPropertyName("many")]
+    public required List<Rating> Many { get; init; }
+
+    [JsonPropertyName("either")]
+    public required TallyEither Either { get; init; }
+
+    [JsonPropertyName("fallback")]
+    public required TallyFallback Fallback { get; init; }
 }
 
 /// <summary>A plain base under format(), which the schema inlines rather than extends</summary>
@@ -490,6 +565,290 @@ public sealed record FolderOrigin
 
     [JsonPropertyName("y")]
     public required double Y { get; init; }
+}
+
+[JsonConverter(typeof(TallyStatusConverter))]
+public enum TallyStatus
+{
+    /// <summary>
+    /// A value this SDK does not know, such as a member the service added after it was generated.
+    /// Never sent: writing it throws a <see cref="JsonException"/>.
+    /// </summary>
+    Unknown = 0,
+
+    [JsonStringEnumMemberName("open")]
+    Open,
+
+    [JsonStringEnumMemberName("closed")]
+    Closed,
+}
+
+/// <summary>
+/// Reads and writes <see cref="TallyStatus"/> by its wire spelling. A spelling it does not know reads as
+/// <see cref="TallyStatus.Unknown"/> rather than failing the payload.
+/// </summary>
+public sealed class TallyStatusConverter : JsonConverter<TallyStatus>
+{
+    public override TallyStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            throw new JsonException($"Expected a string for TallyStatus, got {reader.TokenType}.");
+        }
+
+        return FromWire(reader.GetString());
+    }
+
+    public override void Write(Utf8JsonWriter writer, TallyStatus value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(ToWire(value));
+
+    public override TallyStatus ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        FromWire(reader.GetString());
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, TallyStatus value, JsonSerializerOptions options) =>
+        writer.WritePropertyName(ToWire(value));
+
+    private static TallyStatus FromWire(string? text) => text switch
+    {
+        "open" => TallyStatus.Open,
+        "closed" => TallyStatus.Closed,
+        _ => TallyStatus.Unknown,
+    };
+
+    private static string ToWire(TallyStatus value) => value switch
+    {
+        TallyStatus.Open => "open",
+        TallyStatus.Closed => "closed",
+        _ => throw new JsonException($"TallyStatus.{value} has no wire spelling, so it cannot be sent."),
+    };
+}
+
+[JsonConverter(typeof(TallyEitherMemberConverter))]
+public enum TallyEitherMember
+{
+    /// <summary>
+    /// A value this SDK does not know, such as a member the service added after it was generated.
+    /// Never sent: writing it throws a <see cref="JsonException"/>.
+    /// </summary>
+    Unknown = 0,
+
+    [JsonStringEnumMemberName("open")]
+    Open,
+
+    [JsonStringEnumMemberName("closed")]
+    Closed,
+}
+
+/// <summary>
+/// Reads and writes <see cref="TallyEitherMember"/> by its wire spelling. A spelling it does not know reads as
+/// <see cref="TallyEitherMember.Unknown"/> rather than failing the payload.
+/// </summary>
+public sealed class TallyEitherMemberConverter : JsonConverter<TallyEitherMember>
+{
+    public override TallyEitherMember Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            throw new JsonException($"Expected a string for TallyEitherMember, got {reader.TokenType}.");
+        }
+
+        return FromWire(reader.GetString());
+    }
+
+    public override void Write(Utf8JsonWriter writer, TallyEitherMember value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(ToWire(value));
+
+    public override TallyEitherMember ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        FromWire(reader.GetString());
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, TallyEitherMember value, JsonSerializerOptions options) =>
+        writer.WritePropertyName(ToWire(value));
+
+    private static TallyEitherMember FromWire(string? text) => text switch
+    {
+        "open" => TallyEitherMember.Open,
+        "closed" => TallyEitherMember.Closed,
+        _ => TallyEitherMember.Unknown,
+    };
+
+    private static string ToWire(TallyEitherMember value) => value switch
+    {
+        TallyEitherMember.Open => "open",
+        TallyEitherMember.Closed => "closed",
+        _ => throw new JsonException($"TallyEitherMember.{value} has no wire spelling, so it cannot be sent."),
+    };
+}
+
+[JsonConverter(typeof(TallyEitherConverter))]
+public abstract record TallyEither
+{
+    private TallyEither() { }
+
+    public sealed record OfTallyEitherMember(TallyEitherMember Value) : TallyEither;
+
+    public sealed record OfString(string Value) : TallyEither;
+}
+
+/// <summary>Reads <see cref="TallyEither"/> by trying each member in declaration order.</summary>
+public sealed class TallyEitherConverter : JsonConverter<TallyEither>
+{
+    public override TallyEither Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        using var document = JsonDocument.ParseValue(ref reader);
+        var element = document.RootElement;
+
+        try
+        {
+            var value = element.Deserialize<TallyEitherMember>(options);
+            if (value != TallyEitherMember.Unknown) return new TallyEither.OfTallyEitherMember(value);
+        }
+        catch (JsonException)
+        {
+            // Not this member; fall through to the next.
+        }
+
+        try
+        {
+            return new TallyEither.OfString(element.Deserialize<string>(options)!);
+        }
+        catch (JsonException)
+        {
+            // Not this member; fall through to the next.
+        }
+
+        if (element.ValueKind == JsonValueKind.String) return new TallyEither.OfTallyEitherMember(TallyEitherMember.Unknown);
+
+        throw new JsonException("No TallyEither member matched the payload.");
+    }
+
+    public override void Write(Utf8JsonWriter writer, TallyEither value, JsonSerializerOptions options)
+    {
+        switch (value)
+        {
+            case TallyEither.OfTallyEitherMember member:
+                JsonSerializer.Serialize(writer, member.Value, options);
+                break;
+            case TallyEither.OfString member:
+                JsonSerializer.Serialize(writer, member.Value, options);
+                break;
+            default:
+                throw new JsonException($"Unknown TallyEither member {value.GetType().Name}.");
+        }
+    }
+}
+
+[JsonConverter(typeof(TallyFallbackMemberConverter))]
+public enum TallyFallbackMember
+{
+    /// <summary>
+    /// A value this SDK does not know, such as a member the service added after it was generated.
+    /// Never sent: writing it throws a <see cref="JsonException"/>.
+    /// </summary>
+    Unknown = 0,
+
+    [JsonStringEnumMemberName("open")]
+    Open,
+
+    [JsonStringEnumMemberName("closed")]
+    Closed,
+}
+
+/// <summary>
+/// Reads and writes <see cref="TallyFallbackMember"/> by its wire spelling. A spelling it does not know reads as
+/// <see cref="TallyFallbackMember.Unknown"/> rather than failing the payload.
+/// </summary>
+public sealed class TallyFallbackMemberConverter : JsonConverter<TallyFallbackMember>
+{
+    public override TallyFallbackMember Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            throw new JsonException($"Expected a string for TallyFallbackMember, got {reader.TokenType}.");
+        }
+
+        return FromWire(reader.GetString());
+    }
+
+    public override void Write(Utf8JsonWriter writer, TallyFallbackMember value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(ToWire(value));
+
+    public override TallyFallbackMember ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        FromWire(reader.GetString());
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, TallyFallbackMember value, JsonSerializerOptions options) =>
+        writer.WritePropertyName(ToWire(value));
+
+    private static TallyFallbackMember FromWire(string? text) => text switch
+    {
+        "open" => TallyFallbackMember.Open,
+        "closed" => TallyFallbackMember.Closed,
+        _ => TallyFallbackMember.Unknown,
+    };
+
+    private static string ToWire(TallyFallbackMember value) => value switch
+    {
+        TallyFallbackMember.Open => "open",
+        TallyFallbackMember.Closed => "closed",
+        _ => throw new JsonException($"TallyFallbackMember.{value} has no wire spelling, so it cannot be sent."),
+    };
+}
+
+[JsonConverter(typeof(TallyFallbackConverter))]
+public abstract record TallyFallback
+{
+    private TallyFallback() { }
+
+    public sealed record OfTallyFallbackMember(TallyFallbackMember Value) : TallyFallback;
+
+    public sealed record OfInt(long Value) : TallyFallback;
+}
+
+/// <summary>Reads <see cref="TallyFallback"/> by trying each member in declaration order.</summary>
+public sealed class TallyFallbackConverter : JsonConverter<TallyFallback>
+{
+    public override TallyFallback Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        using var document = JsonDocument.ParseValue(ref reader);
+        var element = document.RootElement;
+
+        try
+        {
+            var value = element.Deserialize<TallyFallbackMember>(options);
+            if (value != TallyFallbackMember.Unknown) return new TallyFallback.OfTallyFallbackMember(value);
+        }
+        catch (JsonException)
+        {
+            // Not this member; fall through to the next.
+        }
+
+        try
+        {
+            return new TallyFallback.OfInt(element.Deserialize<long>(options)!);
+        }
+        catch (JsonException)
+        {
+            // Not this member; fall through to the next.
+        }
+
+        if (element.ValueKind == JsonValueKind.String) return new TallyFallback.OfTallyFallbackMember(TallyFallbackMember.Unknown);
+
+        throw new JsonException("No TallyFallback member matched the payload.");
+    }
+
+    public override void Write(Utf8JsonWriter writer, TallyFallback value, JsonSerializerOptions options)
+    {
+        switch (value)
+        {
+            case TallyFallback.OfTallyFallbackMember member:
+                JsonSerializer.Serialize(writer, member.Value, options);
+                break;
+            case TallyFallback.OfInt member:
+                JsonSerializer.Serialize(writer, member.Value, options);
+                break;
+            default:
+                throw new JsonException($"Unknown TallyFallback member {value.GetType().Name}.");
+        }
+    }
 }
 
 [JsonConverter(typeof(InstrumentConverter))]

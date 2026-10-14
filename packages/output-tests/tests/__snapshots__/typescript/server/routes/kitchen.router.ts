@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ServerKitRouter, bodyParserMiddleware, requirePolicy } from '@maroonedsoftware/koa';
 import { KitchenService } from '#src/services/kitchen.service.js';
-import { Folder, Instrument, LedgerInput, LedgerOutput, Named, Shared, SharedInput, Stamped, StampedOutput, Token, TokenOutput, serializeFolder } from '../schemas/kitchen.schema.js';
+import { Folder, Instrument, LedgerInput, LedgerOutput, Named, Rating, Shared, SharedInput, Stamped, StampedOutput, Tally, Token, TokenOutput, serializeFolder } from '../schemas/kitchen.schema.js';
 import { DateTime } from 'luxon';
 import { parseAndValidate } from '@maroonedsoftware/zod';
 import { bigIntReplacer } from '@maroonedsoftware/utilities';
@@ -191,4 +191,24 @@ KitchenRouter.get('/folders/:folderId/export', requirePolicy(), async ctx => {
     } else {
         ctx.body = result.body;
     }
+});
+
+/**
+ * an enum query parameter, sent by its wire spelling and never as the unknown member
+ * from [kitchen.ck](../../contracts/kitchen.ck) `GET /tallies`
+*/
+KitchenRouter.get('/tallies', requirePolicy(), async ctx => {
+    const query = await parseAndValidate(
+        ctx.query,
+        z.strictObject({
+            rating: Rating.optional(),
+        }),
+    );
+
+    const service = ctx.container.get(KitchenService);
+    const result: Tally[] = await service.listTallies(query);
+
+    ctx.status = 200;
+    ctx.type = 'application/json';
+    ctx.body = result;
 });

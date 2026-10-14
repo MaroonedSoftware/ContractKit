@@ -259,9 +259,33 @@ describe('declarations', () => {
     it('emits an enum whose members carry their wire spelling', () => {
         const root = contractRoot([model('Status', [], { type: enumType('pending', 'in-progress') })]);
         const out = render(root);
-        expect(out).toContain('[JsonConverter(typeof(JsonStringEnumConverter<Status>))]');
         expect(out).toContain('[JsonStringEnumMemberName("in-progress")]');
         expect(out).toContain('    InProgress,');
+        expect(out).toContain('        "in-progress" => Status.InProgress,');
+        expect(out).toContain('        Status.InProgress => "in-progress",');
+    });
+
+    it('reads a value it does not know as an Unknown member, so a service adding one cannot break the client', () => {
+        const out = render(contractRoot([model('Status', [], { type: enumType('pending', 'done') })]));
+        expect(out).toContain('[JsonConverter(typeof(StatusConverter))]');
+        expect(out).not.toContain('JsonStringEnumConverter');
+        // First and zero, so it is also what an unset value holds.
+        expect(out).toMatch(/public enum Status\n\{\n(?:\s*\/\/\/.*\n)*\s*Unknown = 0,/);
+        expect(out).toContain('public sealed class StatusConverter : JsonConverter<Status>');
+        expect(out).toContain('        _ => Status.Unknown,');
+        // Never sent: it has no wire spelling to send.
+        expect(out).toContain('        _ => throw new JsonException($"Status.{value} has no wire spelling, so it cannot be sent."),');
+        // A null or a number is not a newer member; it is still an error.
+        expect(out).toContain('throw new JsonException($"Expected a string for Status, got {reader.TokenType}.");');
+        expect(out).toContain('public override Status ReadAsPropertyName(');
+        expect(out).toContain('public override void WriteAsPropertyName(');
+    });
+
+    it('names the sentinel around a real unknown member rather than renaming it', () => {
+        const out = render(contractRoot([model('Status', [], { type: enumType('unknown', 'done') })]));
+        expect(out).toContain('    Unknown2 = 0,');
+        expect(out).toContain('        "unknown" => Status.Unknown,');
+        expect(out).toContain('        _ => Status.Unknown2,');
     });
 
     it('emits a non-object alias as a fully qualified global using, which is what an alias target needs', () => {
@@ -383,6 +407,14 @@ describe('plain unions', () => {
         const out = render(literals);
         expect(out).toContain('public enum MV');
         expect(out).toContain('[JsonStringEnumMemberName("a")]');
+    });
+
+    it('lets a later member claim a string an enum member does not know, and falls back to the enum last', () => {
+        const mixed = contractRoot([model('M', [field('v', unionType(enumType('a', 'b'), scalarType('string')))])]);
+        const out = render(mixed);
+        expect(out).toContain('var value = element.Deserialize<MVMember>(options);');
+        expect(out).toContain('if (value != MVMember.Unknown) return new MV.OfMvMember(value);');
+        expect(out).toContain('if (element.ValueKind == JsonValueKind.String) return new MV.OfMvMember(MVMember.Unknown);');
     });
 });
 

@@ -243,6 +243,22 @@ export function reviveLedgerOutput(raw: LedgerOutput): LedgerOutput {
 }
 
 /**
+ * A service that adds an enum member must not break an older client: an SDK reads a value it does
+ * not know as unknown wherever an enum sits, and a plain string beside an enum in a union still gets
+ * one the enum does not know
+ * generated from [Tally](../../contracts/kitchen.ck)
+*/
+export const Tally = z.strictObject({
+    rating: Rating,
+    status: z.enum(["open", "closed"]).optional(),
+    maybe: Rating.nullable(),
+    many: z.array(Rating),
+    either: z.union([z.enum(["open", "closed"]), z.string()]),
+    fallback: z.union([z.enum(["open", "closed"]), z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int())]),
+});
+export type Tally = z.infer<typeof Tally>;
+
+/**
  * Self recursion through lazy(), mutual recursion through Doc, every container, both union
  * forms, every scalar, and field names that are keywords in the target languages
  * generated from [Folder](../../contracts/kitchen.ck)
