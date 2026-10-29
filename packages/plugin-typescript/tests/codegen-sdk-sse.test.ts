@@ -138,6 +138,18 @@ describe('parseSse', () => {
         expect(await collect(stream)).toEqual([{ n: 1 }]);
     });
 
+    it('keeps the last event id at the last dispatched event when the stream ends mid-event', async () => {
+        const stream = parseSse(sseResponse(['id: 1\ndata: {"n":1}\n\n', 'id: 2\ndata: {"n":2}\n']));
+        expect(await collect(stream)).toEqual([{ n: 1 }]);
+        expect(stream.lastEventId).toBe('1');
+    });
+
+    it('carries the id over to later events and publishes an id-only event on its blank line', async () => {
+        const stream = parseSse(sseResponse(['id: 1\ndata: {"n":1}\n\n', 'data: {"n":2}\n\n', 'id: 3\n\n']));
+        expect(await collect(stream)).toEqual([{ n: 1 }, { n: 2 }]);
+        expect(stream.lastEventId).toBe('3');
+    });
+
     it('applies the parse callback to each event', async () => {
         const stream = parseSse(sseResponse(['data: {"n":1}\n\n']), (data: string) => ({ ...JSON.parse(data), revived: true }));
         expect(await collect(stream)).toEqual([{ n: 1, revived: true }]);

@@ -1831,7 +1831,8 @@ export function sseRequestHeaders(options: SseRequestOptions | undefined): Recor
 /**
  * Parse a text/event-stream response into its events. Data lines are joined with newlines and
  * dispatched on a blank line; comments and other fields are skipped; an event cut off by the end
- * of the stream is dropped. Each event's data goes through parse, JSON.parse by default.
+ * of the stream is dropped. Each event's data goes through parse, JSON.parse by default. An id
+ * becomes lastEventId only once its event is dispatched, so a dropped event is never skipped on resume.
  */
 export function parseSse<T>(res: Response, parse: (data: string) => T = data => JSON.parse(data) as T): SseEventStream<T> {
     let lastEventId: string | undefined;
@@ -1841,6 +1842,8 @@ export function parseSse<T>(res: Response, parse: (data: string) => T = data => 
         const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
         let buffer = '';
         let data: string[] = [];
+        // As in the EventSource spec, the id buffer carries over between events and is published on dispatch.
+        let idBuffer: string | undefined;
         try {
             for (;;) {
                 const chunk = await reader.read();
@@ -1853,6 +1856,7 @@ export function parseSse<T>(res: Response, parse: (data: string) => T = data => 
                     const line = buffer.slice(0, end);
                     buffer = buffer.slice(buffer.startsWith('\r\n', end) ? end + 2 : end + 1);
                     if (line === '') {
+                        lastEventId = idBuffer;
                         if (data.length > 0) yield parse(data.join('\n'));
                         data = [];
                         continue;
@@ -1861,7 +1865,7 @@ export function parseSse<T>(res: Response, parse: (data: string) => T = data => 
                     const field = colon === -1 ? line : line.slice(0, colon);
                     const value = colon === -1 ? '' : line.slice(line.startsWith(' ', colon + 1) ? colon + 2 : colon + 1);
                     if (field === 'data') data.push(value);
-                    else if (field === 'id' && !value.includes('\0')) lastEventId = value;
+                    else if (field === 'id' && !value.includes('\0')) idBuffer = value;
                 }
                 if (chunk.done) return;
             }
