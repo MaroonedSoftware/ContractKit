@@ -1821,10 +1821,13 @@ export interface SseEventStream<T> extends AsyncIterable<T> {
     readonly lastEventId: string | undefined;
 }
 
-/** The request headers a streaming call sends: Accept, plus Last-Event-ID when resuming. */
+/**
+ * The request headers a streaming call sends: Accept, plus Last-Event-ID when resuming. An empty
+ * id means the server cleared the cursor, so, as EventSource does, no header is sent for it.
+ */
 export function sseRequestHeaders(options: SseRequestOptions | undefined): Record<string, string> {
     const headers: Record<string, string> = { Accept: 'text/event-stream' };
-    if (options?.lastEventId !== undefined) headers['Last-Event-ID'] = options.lastEventId;
+    if (options?.lastEventId) headers['Last-Event-ID'] = options.lastEventId;
     return headers;
 }
 
