@@ -114,6 +114,18 @@ async function collect<T>(stream: AsyncIterable<T>): Promise<T[]> {
     return out;
 }
 
+describe('sseRequestHeaders', () => {
+    const { sseRequestHeaders } = evaluate(generateSdkOptions(), { fetch: undefined, crypto: undefined }) as {
+        sseRequestHeaders: (options?: { lastEventId?: string }) => Record<string, string>;
+    };
+
+    it('sends Last-Event-ID only for a non-empty id', () => {
+        expect(sseRequestHeaders({ lastEventId: '7' })).toEqual({ Accept: 'text/event-stream', 'Last-Event-ID': '7' });
+        expect(sseRequestHeaders({ lastEventId: '' })).toEqual({ Accept: 'text/event-stream' });
+        expect(sseRequestHeaders(undefined)).toEqual({ Accept: 'text/event-stream' });
+    });
+});
+
 describe('parseSse', () => {
     const { parseSse } = evaluate(generateSdkOptions(), { fetch: undefined, crypto: undefined }) as { parseSse: ParseSse };
 
