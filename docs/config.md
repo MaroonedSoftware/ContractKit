@@ -17,7 +17,7 @@ Create `contractkit.config.json` in your project root. The CLI itself only handl
                     "routes": "src/routes/{filename}.router.ts",
                     "types": "src/modules/{area}/types/{filename}.ts"
                 },
-                "servicePathTemplate": "#modules/{module}/{module}.service.js"
+                "servicePathTemplate": "#modules/{kebab}/{kebab}.service.js"
             },
             "sdk": {
                 "baseDir": "packages/sdk/",
@@ -63,15 +63,15 @@ Create `contractkit.config.json` in your project root. The CLI itself only handl
 
 Each plugin is its own npm package and is loaded by listing it under `"plugins"`. The value of each entry is passed to the plugin as `ctx.options`.
 
-| Package                          | Generates                                                        |
-| -------------------------------- | ---------------------------------------------------------------- |
-| `@contractkit/plugin-typescript` | Koa routers, TypeScript SDK clients, Zod schemas, plain TS types |
-| `@contractkit/plugin-docs`       | OpenAPI 3.1 YAML, a Markdown reference, and a Mintlify site      |
-| `@contractkit/plugin-bruno`      | Bruno REST collection                                            |
-| `@contractkit/plugin-python`     | Python SDK client (Pydantic v2 + httpx)                          |
-| `@contractkit/plugin-kotlin`     | Kotlin Multiplatform SDK client (Ktor + kotlinx.serialization)   |
-| `@contractkit/plugin-swift`      | Swift SDK client (SwiftPM package, Codable + URLSession)         |
-| `@contractkit/plugin-csharp`     | C#/.NET SDK client (System.Text.Json + HttpClient)               |
+| Package                          | Generates                                                                                      |
+| -------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `@contractkit/plugin-typescript` | Koa or Fastify routers, TypeScript SDK clients, Zod schemas, plain TS types, MCP tool handlers |
+| `@contractkit/plugin-docs`       | OpenAPI 3.1 YAML, a Markdown reference, a Mintlify site, and a Docusaurus docs folder          |
+| `@contractkit/plugin-bruno`      | Bruno REST collection                                                                          |
+| `@contractkit/plugin-python`     | Python SDK client (Pydantic v2 + httpx)                                                        |
+| `@contractkit/plugin-kotlin`     | Kotlin Multiplatform SDK client (Ktor + kotlinx.serialization)                                 |
+| `@contractkit/plugin-swift`      | Swift SDK client (SwiftPM package, Codable + URLSession)                                       |
+| `@contractkit/plugin-csharp`     | C#/.NET SDK client (System.Text.Json + HttpClient)                                             |
 
 ### `@contractkit/plugin-typescript`
 
@@ -88,7 +88,7 @@ Generates server router files from `operation` declarations, targeting Koa or Fa
 | `zod`                 | `boolean` | When true, `output.types` emits Zod schemas. When false/omitted, emits plain TypeScript interfaces.                        |
 | `output.routes`       | `string`  | Path template for router files. Default: `{filename}.router.ts`                                                            |
 | `output.types`        | `string`  | Path template for type/schema files                                                                                        |
-| `servicePathTemplate` | `string`  | Import path template for service implementations. Supports `{module}`.                                                     |
+| `servicePathTemplate` | `string`  | Import path template for service implementations. Supports `{name}` (`LedgerService` → `Ledger`) and `{kebab}` (→ `ledger`). |
 | `includeInternal`     | `boolean` | Whether to emit handlers for `internal` operations. Default: `true`.                                                       |
 | `validateResponses`   | `boolean` | Re-parse the service result against its response schema before writing `ctx.body`. Requires `zod: true`. Default: `false`. |
 
@@ -149,7 +149,7 @@ Generates a typed TypeScript HTTP client. Each operation file becomes a client c
 | `includeInternal` | `boolean` | Whether to emit SDK methods for `internal` operations. Default: `false`.                                                                                   |
 | `scaffold`        | `boolean` | Emit a starter `package.json` and `tsconfig.json` at `baseDir` so the SDK is a buildable package. Opt-in and **write-once** — see below. Default: `false`. |
 
-When `scaffold: true`, the SDK output becomes a standalone, buildable package: a `package.json` (with a `build` script, `exports`, and dependency ranges) and a self-contained `tsconfig.json` are written at `baseDir`. Dependencies are derived from the contracts — `zod` is added when `zod: true`, and `luxon` (plus `@types/luxon`) when any surfaced model uses a `date`/`time`/`datetime`/`interval` scalar. These files are **written only when absent**: they are never overwritten on later builds and never removed by orphan cleanup, so once created they are yours to edit. Disabling `scaffold` later leaves your files untouched.
+When `scaffold: true`, the SDK output becomes a standalone, buildable package: a `package.json` (with a `build` script, `exports`, and dependency ranges) and a self-contained `tsconfig.json` are written at `baseDir`. Dependencies are derived from the contracts and the emitted operations: `zod` is added when `zod: true`, `luxon` (plus `@types/luxon`) when a surfaced model uses a `date`/`time`/`datetime`/`duration`/`interval` scalar or an emitted operation uses a `date`/`time`/`datetime`/`duration`, and `decimal.js` when either uses a `decimal`. These files are **written only when absent**: they are never overwritten on later builds and never removed by orphan cleanup, so once created they are yours to edit. Disabling `scaffold` later leaves your files untouched.
 
 #### `zod` and `types`
 
@@ -160,7 +160,7 @@ Standalone generators that emit one Zod (or plain TS) file per `.ck` source file
 | `baseDir` | `string` | Directory (relative to `rootDir`) where files are written                                              |
 | `output`  | `string` | Path template. Default: `{filename}.schema.ts` (zod) or `{filename}.types.ts` (types) alongside source |
 
-All path templates support `{filename}`, `{dir}`, `{area}`, and (for `output.sdk`) `{name}`. `{area}` resolves to the `area` value declared in the source file's `options { keys: { area: ... } }` block.
+All path templates support `{filename}`, `{dir}`, any key from the source file's `options { keys: { ... } }` block (so `{area}` and `{subarea}` resolve to those values), and (for `output.sdk`) `{name}`. A variable with no value stays in the path literally and the plugin warns.
 
 #### `mcp`
 
@@ -470,6 +470,6 @@ Bases are flattened into each record. An optional field and a required nullable 
 
 ## Writing your own plugin
 
-Plugins implement the `ContractKitPlugin` interface from `@contractkit/core`. Hooks: `transform` (mutate AST per file), `validate` (throw to fail compilation), `generateTargets` (emit output files), and `command` (register a CLI subcommand). See `packages/contractkit/src/plugin.ts`.
+Plugins implement the `ContractKitPlugin` interface from `@contractkit/core`. Hooks: `transform` (mutate AST per file), `validate` (throw to fail compilation), `validateExtension` (check this plugin's per-operation `plugins` entry), `generateTargets` (emit output files), and `command` (register a CLI subcommand). See `packages/contractkit/src/plugin.ts`.
 
 ---

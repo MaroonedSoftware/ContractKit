@@ -1,0 +1,78 @@
+# @contractkit/plugin-swift
+
+> ContractKit's Swift SDK generator. Emits `Codable` models and an async/await client, as a SwiftPM
+> package that depends on nothing but Foundation.
+
+Loaded by `@contractkit/cli` through `contractkit.config.json`. It consumes the AST produced by
+`@contractkit/core`. The output is Swift source; this plugin itself is a Node package that runs at
+build time.
+
+## Install
+
+```bash
+pnpm add -D @contractkit/cli @contractkit/plugin-swift
+```
+
+## Configure
+
+`plugins` is an **object** keyed by package name, not an array.
+
+```json
+{
+    "rootDir": ".",
+    "patterns": ["contracts/**/*.ck"],
+    "plugins": {
+        "@contractkit/plugin-swift": {
+            "baseDir": "clients/swift/",
+            "moduleName": "AcmeSdk",
+            "sdkName": "Acme"
+        }
+    }
+}
+```
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `baseDir` | `string` | `"swift-sdk"` | Output directory, relative to `rootDir` |
+| `moduleName` | `string` | `"ContractKitSdk"` | SwiftPM target and product name; sources land in `Sources/<moduleName>/` |
+| `sdkName` | `string` | `"Sdk"` | Aggregator class name. Must differ from `moduleName` |
+| `includeInternal` | `boolean` | `false` | Emit client methods for operations marked `internal` |
+| `scaffold` | `boolean` | `false` | Emit `Package.swift` once, as a user-owned file |
+
+## What it generates
+
+Under `baseDir`, in `Sources/<moduleName>/`: a `Models/<File>Models.swift` per contract file, a
+`Clients/<File>Client.swift` per operation file, and an aggregator class named `sdkName`. Every
+client method is `async throws`.
+
+`scaffold: true` also writes `Package.swift` once. It is created if absent, never overwritten, and
+never removed.
+
+## Programmatic use
+
+```typescript
+import { createSwiftSdkPlugin } from '@contractkit/plugin-swift';
+
+const plugin = createSwiftSdkPlugin({ baseDir: 'clients/swift/' }, process.cwd());
+```
+
+Prefer the default export when loading through `contractkit.config.json`; the factory is for
+building the plugin in code.
+
+## Gotchas
+
+- `moduleName` and `sdkName` must differ, because a type cannot share a name with its module. The
+  generator rejects a config where they match.
+- A contract named after a Swift, Foundation, or runtime type is rejected: a contract called `Error`
+  would shadow the protocol every `throws` in the client depends on.
+- `Int` is 32-bit on watchOS's `arm64_32`.
+- An optional-and-nullable field cannot distinguish an absent key from an explicit `null`.
+- Clients are grouped per `.ck` file. The TypeScript SDK's `area`/`subarea` nesting is not
+  implemented.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-swift/README.md
+- Configuration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/config.md
+- Language reference: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt

@@ -14,7 +14,7 @@ pnpm add -D @contractkit/cli @contractkit/plugin-typescript
 ```
 
 The CLI alone produces no output. Pair it with at least one codegen plugin:
-`@contractkit/plugin-typescript`, `-python`, `-openapi`, `-markdown`, `-bruno`.
+`@contractkit/plugin-typescript`, `-python`, `-kotlin`, `-swift`, `-csharp`, `-docs`, `-bruno`.
 
 ## Run
 

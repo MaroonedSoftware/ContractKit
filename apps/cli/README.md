@@ -43,7 +43,7 @@ Create `contractkit.config.json` at your project root:
                     "routes": "src/routes/{filename}.router.ts",
                     "types": "src/modules/{area}/types/{filename}.ts"
                 },
-                "servicePathTemplate": "#modules/{module}/{module}.service.js"
+                "servicePathTemplate": "#modules/{kebab}/{kebab}.service.js"
             }
         },
         "@contractkit/plugin-docs": {
@@ -79,15 +79,15 @@ At the end of each run, the CLI also deletes any generated file that a previous 
 
 Each plugin is its own npm package, listed under `"plugins"`:
 
-| Package                                                              | Generates                                                                         |
-| -------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| [`@contractkit/plugin-typescript`](../../packages/plugin-typescript) | Koa routers, TypeScript SDK clients, Zod schemas, plain TS types                  |
-| [`@contractkit/plugin-docs`](../../packages/plugin-docs)             | OpenAPI 3.1 YAML, a Markdown reference, a Mintlify site, a Docusaurus docs folder |
-| [`@contractkit/plugin-bruno`](../../packages/plugin-bruno)           | Bruno REST collection                                                             |
-| [`@contractkit/plugin-python`](../../packages/plugin-python)         | Python SDK client (Pydantic v2 + httpx)                                           |
-| [`@contractkit/plugin-kotlin`](../../packages/plugin-kotlin)         | Kotlin Multiplatform SDK client (Ktor + kotlinx.serialization)                    |
-| [`@contractkit/plugin-swift`](../../packages/plugin-swift)           | Swift SDK client (SwiftPM package, Codable + URLSession)                          |
-| [`@contractkit/plugin-csharp`](../../packages/plugin-csharp)         | C#/.NET SDK client (System.Text.Json + HttpClient, no NuGet dependencies)         |
+| Package                                                              | Generates                                                                                      |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| [`@contractkit/plugin-typescript`](../../packages/plugin-typescript) | Koa or Fastify routers, TypeScript SDK clients, Zod schemas, plain TS types, MCP tool handlers |
+| [`@contractkit/plugin-docs`](../../packages/plugin-docs)             | OpenAPI 3.1 YAML, a Markdown reference, a Mintlify site, a Docusaurus docs folder              |
+| [`@contractkit/plugin-bruno`](../../packages/plugin-bruno)           | Bruno REST collection                                                                          |
+| [`@contractkit/plugin-python`](../../packages/plugin-python)         | Python SDK client (Pydantic v2 + httpx)                                                        |
+| [`@contractkit/plugin-kotlin`](../../packages/plugin-kotlin)         | Kotlin Multiplatform SDK client (Ktor + kotlinx.serialization)                                 |
+| [`@contractkit/plugin-swift`](../../packages/plugin-swift)           | Swift SDK client (SwiftPM package, Codable + URLSession)                                       |
+| [`@contractkit/plugin-csharp`](../../packages/plugin-csharp)         | C#/.NET SDK client (System.Text.Json + HttpClient, no NuGet dependencies)                      |
 
 For writing your own plugin, see [@contractkit/core](../../packages/contractkit#plugin-api).
 

@@ -1,0 +1,90 @@
+# @contractkit/plugin-csharp
+
+> ContractKit's C#/.NET SDK generator. Emits `System.Text.Json` models and an `HttpClient`-based
+> client from `.ck` contract and operation files, with no NuGet dependencies.
+
+Loaded by `@contractkit/cli` through `contractkit.config.json`. It consumes the AST produced by
+`@contractkit/core`. The output is C# source; this plugin itself is a Node package that runs at build
+time.
+
+## Install
+
+```bash
+pnpm add -D @contractkit/cli @contractkit/plugin-csharp
+```
+
+## Configure
+
+`plugins` is an **object** keyed by package name, not an array.
+
+```json
+{
+    "rootDir": ".",
+    "patterns": ["contracts/**/*.ck"],
+    "plugins": {
+        "@contractkit/plugin-csharp": {
+            "baseDir": "clients/csharp/",
+            "namespace": "Acme.Sdk",
+            "sdkName": "AcmeSdk",
+            "scaffold": true
+        }
+    }
+}
+```
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `baseDir` | `string` | `"csharp-sdk"` | Output directory, relative to `rootDir` |
+| `namespace` | `string` | `"ContractKit.Sdk"` | Root namespace for the generated sources |
+| `sdkName` | `string` | `"Sdk"` | Aggregator class name, and the assembly name when scaffolding |
+| `includeInternal` | `boolean` | `false` | Emit client methods for operations marked `internal` |
+| `scaffold` | `boolean` | `false` | Write `<SdkName>.csproj` once, as a user-owned file |
+| `targetFrameworks` | `string[]` | `["net10.0"]` | Frameworks to build for: `net10.0`, `netstandard2.0` (for UWP or .NET Framework) |
+| `dateTypes` | `string` | `"dateonly"` | Which C# type a `date` maps to: `dateonly` or `datetime` |
+
+Config is validated at run time: an invalid namespace, a namespace segment that is a C# keyword, or
+a non-boolean flag fails the build.
+
+## What it generates
+
+```
+<baseDir>/
+    Runtime/SdkRuntime.cs     SdkHttp, SdkOptions, SdkException, SdkResponse, SdkPart
+    Runtime/Converters.cs     SdkJson.Options and the scalar converters
+    Runtime/Polyfills.cs      only with `netstandard2.0` in `targetFrameworks`
+    Models/<File>.cs          one file per contract file
+    Clients/<File>Client.cs   one client per operations file
+    <SdkName>.cs              the aggregator
+    <SdkName>.csproj          only with `scaffold: true`, written once
+```
+
+Generated sources are rewritten every run. The project file is created once and then belongs to you.
+
+## Programmatic use
+
+```typescript
+import { createCSharpSdkPlugin } from '@contractkit/plugin-csharp';
+
+const plugin = createCSharpSdkPlugin({ baseDir: 'clients/csharp/' }, process.cwd());
+```
+
+Prefer the default export when loading through `contractkit.config.json`; the factory is for
+building the plugin in code.
+
+## Gotchas
+
+- Clients are grouped per `.ck` file. `keys.area` and `keys.subarea` are ignored.
+- `decimal` is the BCL's 28-digit type, so a contract decimal wider than that fails to read.
+- Serialize a model yourself with `SdkJson.Options`, or `decimal`, `bigint` and `duration` will not
+  match the contract: the three scalar converters are options-level.
+- A `binary` field inside a JSON body is base64, which interoperates only with a service that agrees.
+  An `application/octet-stream` body or a multipart part is exact.
+- The `netstandard2.0` leg is verified by build and by serialization, not on a device. Smoke-test one
+  call from the app before relying on it.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-csharp/README.md
+- Configuration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/config.md
+- Language reference: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt

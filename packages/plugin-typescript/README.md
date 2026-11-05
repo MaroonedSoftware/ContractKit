@@ -23,7 +23,7 @@ Add the plugin to `contractkit.config.json`. Each sub-config is independent — 
           "routes": "src/routes/{filename}.router.ts",
           "types": "src/modules/{area}/types/{filename}.ts"
         },
-        "servicePathTemplate": "#modules/{module}/{module}.service.js"
+        "servicePathTemplate": "#modules/{kebab}/{kebab}.service.js"
       },
       "sdk": {
         "baseDir": "packages/sdk/",
@@ -64,7 +64,7 @@ Generates server router files from `operation` declarations and optionally type 
 | `servicePathTemplate` | `string` | — | Import path template for service implementations |
 | `validateResponses` | `boolean` | `false` | Re-parse the service result against its response schema before writing `ctx.body`. Requires `zod: true`. |
 
-Each generated router imports handler implementations from a service module. The `servicePathTemplate` controls where that import points. Template variables: `{module}`.
+Each generated router imports handler implementations from a service module. The `servicePathTemplate` controls where that import points. Template variables: `{name}` (`LedgerService` → `Ledger`) and `{kebab}` (→ `ledger`). An `options { services }` entry for the service wins over the template.
 
 ### `sdk`
 
@@ -187,7 +187,7 @@ Multiple files mapping to the same `(area, subarea)` are merged into one leaf cl
 Method names follow this priority:
 
 1. `sdk:` field on the HTTP verb declaration — used as-is (e.g. `sdk: getUser` → `getUser`)
-2. `name:` field — converted to camelCase (e.g. `name: "Get User"` → `getUser`)
+2. `name:` field, converted to camelCase (e.g. `name: Get User` → `getUser`)
 3. Inferred from the HTTP method and path (e.g. `GET /users/{id}` → `getUsersById`)
 
 A shared `sdk-options.ts` file is emitted alongside the clients. It exports:
@@ -212,7 +212,7 @@ import { createTypescriptPlugin } from '@contractkit/plugin-typescript';
 const plugin = createTypescriptPlugin({
   server: {
     output: { routes: 'src/routes/{filename}.router.ts' },
-    servicePathTemplate: '#services/{module}.service.js',
+    servicePathTemplate: '#services/{kebab}.service.js',
   },
 });
 ```

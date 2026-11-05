@@ -1,8 +1,9 @@
 # ContractKit — full usage guide
 
-> A DSL for API contracts. One `.ck` file is the source of truth; Zod schemas, a Koa router,
-> TypeScript and Python SDK clients, an OpenAPI 3.1 spec, Markdown docs, and a Bruno collection are
-> all generated from it and regenerated when it changes.
+> A DSL for API contracts. One `.ck` file is the source of truth; Zod schemas, a Koa or Fastify
+> router, MCP tool handlers, TypeScript, Python, Kotlin, Swift and C# SDK clients, an OpenAPI 3.1
+> spec, Markdown, Mintlify and Docusaurus docs, and a Bruno collection are all generated from it and
+> regenerated when it changes.
 
 This is the single self-contained document: install, config, the language, every plugin, the CLI,
 and the mistakes that actually bite. [`llms.txt`](llms.txt) is the shorter index that links out to
@@ -170,14 +171,12 @@ the artefacts meant for consumers do not.
 
 | Package | Emits | `includeInternal` default |
 | --- | --- | --- |
-| `@contractkit/plugin-typescript` | Koa routers, TS SDK, Zod schemas, plain types, MCP tools | `true` (server), `false` (sdk, mcp) |
+| `@contractkit/plugin-typescript` | Koa or Fastify routers, TS SDK, Zod schemas, plain types, MCP tools | `true` (server), `false` (sdk, mcp) |
 | `@contractkit/plugin-python` | Pydantic v2 models + async httpx client | `false` |
 | `@contractkit/plugin-kotlin` | kotlinx.serialization models + Ktor suspend client | `false` |
 | `@contractkit/plugin-swift` | Codable models + URLSession async client | `false` |
 | `@contractkit/plugin-csharp` | System.Text.Json records + async HttpClient client | `false` |
-| `@contractkit/plugin-openapi` | One OpenAPI **3.1** YAML document | `false` |
-| `@contractkit/plugin-markdown` | One Markdown API reference | `false` |
-| `@contractkit/plugin-docs` | An OpenAPI spec, a Markdown reference, a Mintlify docs folder, or a Docusaurus docs folder | `false` |
+| `@contractkit/plugin-docs` | Any of: one OpenAPI **3.1** document, one Markdown API reference, a Mintlify docs folder, a Docusaurus docs folder | `false` |
 | `@contractkit/plugin-bruno` | A Bruno REST collection | `true` |
 
 ### TypeScript
@@ -196,7 +195,7 @@ present. Include only what you need.
           "routes": "src/routes/{filename}.router.ts",
           "types": "src/modules/{area}/types/{filename}.ts"
         },
-        "servicePathTemplate": "#modules/{module}/{module}.service.js"
+        "servicePathTemplate": "#modules/{kebab}/{kebab}.service.js"
       },
       "sdk": {
         "baseDir": "packages/sdk/",
@@ -230,17 +229,22 @@ Path templates accept `{filename}`, `{dir}`, `{area}`, and `{name}` in `sdk.outp
 
 ### OpenAPI
 
+OpenAPI is the `openapi` target of `@contractkit/plugin-docs`. Each key under that plugin is one
+target, enabled by being present.
+
 ```json
 {
   "plugins": {
-    "@contractkit/plugin-openapi": {
-      "baseDir": "docs/api/",
-      "output": "openapi.yaml",
-      "info": { "title": "Acme API", "version": "1.0.0" },
-      "servers": [{ "url": "https://api.acme.com" }],
-      "security": [{ "bearerAuth": [] }],
-      "securitySchemes": {
-        "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    "@contractkit/plugin-docs": {
+      "openapi": {
+        "baseDir": "docs/api/",
+        "output": "openapi.yaml",
+        "info": { "title": "Acme API", "version": "1.0.0" },
+        "servers": [{ "url": "https://api.acme.com" }],
+        "security": [{ "bearerAuth": [] }],
+        "securitySchemes": {
+          "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+        }
       }
     }
   }
@@ -250,7 +254,7 @@ Path templates accept `{filename}`, `{dir}`, `{area}`, and `{name}` in `sdk.outp
 `security` states which scheme applies; `securitySchemes` defines what it is. You almost always need
 both — a requirement naming an undefined scheme produces a spec validators reject.
 
-### Python, Markdown, Bruno, Docs
+### Other SDKs, Bruno, other docs targets
 
 ```json
 {
@@ -259,12 +263,15 @@ both — a requirement naming an undefined scheme produces a spec validators rej
     "@contractkit/plugin-kotlin": { "baseDir": "clients/kotlin/", "packageName": "com.acme.sdk", "sdkName": "AcmeSdk" },
     "@contractkit/plugin-swift": { "baseDir": "clients/swift/", "moduleName": "AcmeSdk", "sdkName": "Acme" },
     "@contractkit/plugin-csharp": { "baseDir": "clients/csharp/", "namespace": "Acme.Sdk", "sdkName": "AcmeSdk" },
-    "@contractkit/plugin-markdown": { "baseDir": "docs/", "output": "api-reference.md" },
     "@contractkit/plugin-bruno": { "baseDir": "bruno/", "collectionName": "Acme API" },
     "@contractkit/plugin-docs": {
-      "baseDir": "mintlify/",
-      "openapi": { "info": { "title": "Acme API", "version": "1.0.0" } },
-      "docs": { "theme": "mint", "colors": { "primary": "#0D9373" } }
+      "markdown": { "baseDir": "reference/", "output": "api-reference.md" },
+      "mintlify": {
+        "baseDir": "mintlify/",
+        "openapi": { "info": { "title": "Acme API", "version": "1.0.0" } },
+        "docs": { "theme": "mint", "colors": { "primary": "#0D9373" } }
+      },
+      "docusaurus": { "baseDir": "site/docs/", "label": "API Reference" }
     }
   }
 }
@@ -294,7 +301,7 @@ those statuses as ordinary results.
 
 Read the warnings: conversion is lossy where OpenAPI is more permissive than `.ck`. Treat the output
 as a starting point to review and commit, not a build step — afterwards the `.ck` files are the
-source of truth and the spec is generated from them by `@contractkit/plugin-openapi`.
+source of truth and the spec is generated from them by `@contractkit/plugin-docs`.
 
 ## Editor and formatting
 
@@ -313,8 +320,9 @@ source of truth and the spec is generated from them by `@contractkit/plugin-open
 1. **`plugins` written as an array.** It is an object keyed by package name.
 2. **Omitting `patterns`.** The CLI prints help and exits `1`.
 3. **Guessing plugin package names.** They are `@contractkit/plugin-typescript`, `-python`,
-   `-openapi`, `-markdown`, `-bruno` — no doubled `contractkit-` segment, and the Python one is not
-   `-python-sdk`.
+   `-kotlin`, `-swift`, `-csharp`, `-docs`, `-bruno`: no doubled `contractkit-` segment, and the
+   Python one is not `-python-sdk`. OpenAPI and Markdown are targets of `-docs`, not packages to
+   install.
 4. **`validateResponses` without `zod: true`.** It needs a runtime schema.
 5. **Confusing `404:` with `404(documented):`, or `304: {}` with `304:`.** They drive different
    router and SDK behaviour.
@@ -373,13 +381,11 @@ language server use.
 | --- | --- |
 | `@contractkit/cli` | The `contractkit` binary — discovery, config, caching, plugin orchestration |
 | `@contractkit/core` | Grammar, parser, AST, semantics, validation, plugin interface |
-| `@contractkit/plugin-typescript` | Koa routers, TS SDK, Zod schemas, plain types, MCP tools |
+| `@contractkit/plugin-typescript` | Koa or Fastify routers, TS SDK, Zod schemas, plain types, MCP tools |
 | `@contractkit/plugin-python` | Python SDK (Pydantic v2 + httpx) |
 | `@contractkit/plugin-kotlin` | Kotlin Multiplatform SDK (Ktor + kotlinx.serialization) |
 | `@contractkit/plugin-swift` | Swift SDK (SwiftPM, Codable + URLSession) |
 | `@contractkit/plugin-csharp` | C#/.NET SDK (System.Text.Json + HttpClient, no NuGet dependencies) |
-| `@contractkit/plugin-openapi` | OpenAPI 3.1 YAML |
-| `@contractkit/plugin-markdown` | Markdown API reference |
 | `@contractkit/plugin-docs` | Documentation: OpenAPI, Markdown, Mintlify, Docusaurus |
 | `@contractkit/plugin-bruno` | Bruno REST collection |
 | `@contractkit/openapi-to-ck` | OpenAPI → `.ck`, for adopting an existing API |

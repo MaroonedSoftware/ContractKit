@@ -1,0 +1,84 @@
+# @contractkit/plugin-kotlin
+
+> ContractKit's Kotlin Multiplatform SDK generator. Emits `kotlinx.serialization` data classes and a
+> Ktor-based client from `.ck` contract and operation files.
+
+Loaded by `@contractkit/cli` through `contractkit.config.json`. It consumes the AST produced by
+`@contractkit/core`. The output is Kotlin source; this plugin itself is a Node package that runs at
+build time.
+
+## Install
+
+```bash
+pnpm add -D @contractkit/cli @contractkit/plugin-kotlin
+```
+
+## Configure
+
+`plugins` is an **object** keyed by package name, not an array.
+
+```json
+{
+    "rootDir": ".",
+    "patterns": ["contracts/**/*.ck"],
+    "plugins": {
+        "@contractkit/plugin-kotlin": {
+            "baseDir": "clients/kotlin/",
+            "packageName": "com.acme.sdk",
+            "sdkName": "AcmeSdk"
+        }
+    }
+}
+```
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `baseDir` | `string` | `"kotlin-sdk"` | Output directory, relative to `rootDir` |
+| `packageName` | `string` | `"contractkit.sdk"` | Kotlin package for the generated sources |
+| `sdkName` | `string` | `"Sdk"` | Aggregator class name |
+| `includeInternal` | `boolean` | `false` | Emit client methods for operations marked `internal` |
+| `scaffold` | `boolean` | `false` | Emit Gradle build files once, as user-owned files |
+
+## What it generates
+
+Under `baseDir`, in `src/commonMain/kotlin/<package path>/`: a `models/<File>Models.kt` per contract
+file, a `clients/<File>Client.kt` per operation file, and an aggregator class named `sdkName`. Every
+client method is a `suspend fun`, and all clients share one Ktor `HttpClient`.
+
+`scaffold: true` also writes `build.gradle.kts`, `settings.gradle.kts` and `gradle.properties` once.
+They are created if absent, never overwritten, and never removed. The scaffold ships a JVM target
+with the CIO engine; add the targets you ship, each with its own Ktor engine.
+
+## Programmatic use
+
+```typescript
+import { createKotlinSdkPlugin } from '@contractkit/plugin-kotlin';
+
+const plugin = createKotlinSdkPlugin({ baseDir: 'clients/kotlin/' }, process.cwd());
+```
+
+Prefer the default export when loading through `contractkit.config.json`; the factory is for
+building the plugin in code.
+
+## Gotchas
+
+- No test compiles the generated Kotlin. The tests assert over generated strings, so `pnpm test`
+  will not catch a construct that parses here and fails in `kotlinc`. Build the scaffold after a
+  generator change.
+- `int` maps to `Long`, because the source language's `int` is a JS safe integer, which overflows
+  `Int`.
+- Contract bases are flattened into each data class, since data classes cannot extend one another.
+- Clients are grouped per `.ck` file. The TypeScript SDK's `area`/`subarea` nesting is not
+  implemented.
+- `explicitNulls = false` omits a required nullable field whose value is null, which a strict service
+  would reject.
+- Which statuses come back as a value and which raise is decided by the contract: a status with a
+  block, or any 2xx, is one the service produces; a bare `404:` is the error contract, raised as
+  `SdkError`.
+
+## More
+
+- README: https://github.com/MaroonedSoftware/contractkit/blob/main/packages/plugin-kotlin/README.md
+- Configuration: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/config.md
+- Language reference: https://github.com/MaroonedSoftware/contractkit/blob/main/docs/language.md
+- Full usage guide: https://github.com/MaroonedSoftware/contractkit/blob/main/llms-full.txt
