@@ -1,6 +1,6 @@
 {
     "name": "@contractkit/cli",
-    "version": "0.12.0",
+    "version": "0.12.1",
     "description": "Compiler for .ck files",
     "license": "MIT",
     "author": {
