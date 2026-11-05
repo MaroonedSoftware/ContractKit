@@ -36,4 +36,22 @@ export class ReservedClient {
         });
         return await parseJson<Note>(result);
     }
+
+    /**
+     * @name Generate C# client
+     * @description `name:` is free text, and every SDK has to turn it into a method name the language accepts
+     */
+    async generateCClient(): Promise<Note> {
+        const result = await this.fetch(`/names`, { method: 'GET' });
+        return await parseJson<Note>(result);
+    }
+
+    /**
+     * @name 2fa setup
+     * @description `name:` is free text, and every SDK has to turn it into a method name the language accepts
+     */
+    async _2faSetup(): Promise<Note> {
+        const result = await this.fetch(`/names`, { method: 'POST' });
+        return await parseJson<Note>(result);
+    }
 }

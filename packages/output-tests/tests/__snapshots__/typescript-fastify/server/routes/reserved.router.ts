@@ -85,4 +85,30 @@ export const ReservedRoutes: FastifyPluginAsync = async app => {
         return reply.send(result);
     });
 
+    /**
+     * `name:` is free text, and every SDK has to turn it into a method name the language accepts
+     * from [reserved.ck](../../contracts/reserved.ck) `GET /names`
+    */
+    app.get('/names', { preHandler: [requirePolicy()] }, async (request, reply) => {
+        const service = request.container.get(SeatService);
+        const result: Note = await service.generateClient();
+
+        reply.status(200);
+        reply.type('application/json');
+        return reply.send(result);
+    });
+
+    /**
+     * `name:` is free text, and every SDK has to turn it into a method name the language accepts
+     * from [reserved.ck](../../contracts/reserved.ck) `POST /names`
+    */
+    app.post('/names', { preHandler: [requirePolicy()] }, async (request, reply) => {
+        const service = request.container.get(SeatService);
+        const result: Note = await service.setUpTwoFactor();
+
+        reply.status(200);
+        reply.type('application/json');
+        return reply.send(result);
+    });
+
 };

@@ -1,0 +1,17 @@
+info:
+  name: 2fa setup
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/names"
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+docs: |-
+  `name:` is free text, and every SDK has to turn it into a method name the language accepts

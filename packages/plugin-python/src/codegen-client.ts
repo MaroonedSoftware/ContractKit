@@ -1128,7 +1128,9 @@ export function deriveClientPropertyName(file: string): string {
 /** An inferred name always starts with the HTTP verb; only a declared `sdk:` or `name:` can be a keyword. */
 function deriveMethodName(op: OpOperationNode, route: OpRouteNode): string {
     if (op.sdk) return escapePythonKeyword(toSnakeCase(op.sdk));
-    if (op.name) return escapePythonKeyword(toSnakeCase(op.name));
+    // `name:` is free text: it can start with a digit, or snake_case down to nothing.
+    const fromName = op.name ? toSnakeCase(op.name) : '';
+    if (fromName) return escapePythonKeyword(/^\d/.test(fromName) ? `_${fromName}` : fromName);
     return inferMethodName(op.method, route.path);
 }
 

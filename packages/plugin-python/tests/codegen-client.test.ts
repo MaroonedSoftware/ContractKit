@@ -71,6 +71,15 @@ describe('generatePythonClient', () => {
         expect(methodCount).toBe(1);
     });
 
+    it.each([
+        ['Generate C# client', 'generate_c_client'],
+        ['2fa setup', '_2fa_setup'],
+        ['###', 'get_users'],
+    ])('derives a valid method name from name: %s', (name, expected) => {
+        const root = opRoot([opRoute('/users', [opOperation('get', { name, responses: [opResponse(200, 'User')] })])]);
+        expect(generatePythonClient(root)).toContain(`async def ${expected}(self`);
+    });
+
     it('infers method names from path and method', () => {
         const root = opRoot(
             [

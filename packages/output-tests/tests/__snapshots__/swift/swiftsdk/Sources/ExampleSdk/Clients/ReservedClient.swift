@@ -35,6 +35,22 @@ public final class ReservedClient: Sendable {
         let response = try await http.execute(request)
         return try http.decodeJSON(Note.self, from: response)
     }
+
+    /// Generate C# client
+    /// `name:` is free text, and every SDK has to turn it into a method name the language accepts
+    public func generateCClient() async throws -> Note {
+        let request = SdkRequest(method: "GET", path: ["names"])
+        let response = try await http.execute(request)
+        return try http.decodeJSON(Note.self, from: response)
+    }
+
+    /// 2fa setup
+    /// `name:` is free text, and every SDK has to turn it into a method name the language accepts
+    public func _2faSetup() async throws -> Note {
+        let request = SdkRequest(method: "POST", path: ["names"])
+        let response = try await http.execute(request)
+        return try http.decodeJSON(Note.self, from: response)
+    }
 }
 
 /// Query parameters for GET /seats/{class}.

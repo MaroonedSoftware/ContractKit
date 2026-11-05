@@ -8,6 +8,8 @@
 - [Fetch one seat](#fetch-one-seat)
 - [Fetch a row by its seat class](#fetch-a-row-by-its-seat-class)
 - [Replace a note](#replace-a-note)
+- [Generate C# client](#generate-c-client)
+- [2fa setup](#2fa-setup)
 - [Current service status](#current-service-status)
 
 <details>
@@ -221,6 +223,34 @@ Response headers:
 #### Request body (`application/json`)
 
 Accepts a [Note](#note) object.
+
+#### Response
+
+`200 OK` — Returns a [Note](#note) object.
+
+
+---
+
+### Generate C# client
+
+**`GET`** `/names`
+
+> [!NOTE]
+> SDK method: `generateCClient`
+
+#### Response
+
+`200 OK` — Returns a [Note](#note) object.
+
+
+---
+
+### 2fa setup
+
+**`POST`** `/names`
+
+> [!NOTE]
+> SDK method: `_2faSetup`
 
 #### Response
 

@@ -98,3 +98,23 @@ operation /notes/{body}: {
         }
     }
 }
+
+# `name:` is free text, and every SDK has to turn it into a method name the language accepts
+operation /names: {
+    get: {
+        name: Generate C# client
+        service: SeatService.generateClient
+        response: {
+            200: { application/json: Note }
+        }
+    }
+
+    post: {
+        name: 2fa setup
+        service: SeatService.setUpTwoFactor
+        mcp: true
+        response: {
+            200: { application/json: Note }
+        }
+    }
+}

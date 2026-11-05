@@ -190,6 +190,8 @@ Method names follow this priority:
 2. `name:` field — converted to camelCase (e.g. `name: "Get User"` → `getUser`)
 3. Inferred from the HTTP method and path (e.g. `GET /users/{id}` → `getUsersById`)
 
+`name:` is free text, so characters an identifier cannot hold act as word breaks (`name: Generate C# client` → `generateCClient`), a leading digit gets a `_` (`name: 2fa setup` → `_2faSetup`), and a name with no usable characters falls through to the inferred name.
+
 A shared `sdk-options.ts` file is emitted alongside the clients. It exports:
 
 - `SdkOptions` / `SdkFetch` / `SdkRequestInit` / `SdkError` / `createSdkFetch` — base client primitives. `SdkError<TBody>` exposes `status`, `statusText`, `body`, and `headers` (the raw `Headers` instance); each operation that declares a body on a thrown status also exports a matching `…ErrorBody` alias to narrow `body` to.
