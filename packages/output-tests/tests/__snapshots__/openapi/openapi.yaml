@@ -677,6 +677,27 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/Note'
+  '/names':
+    get:
+      operationId: generateClient
+      summary: 'Generate C# client'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Note'
+    post:
+      operationId: setUpTwoFactor
+      summary: '2fa setup'
+      responses:
+        '200':
+          description: 'Successful response'
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/Note'
   '/status':
     get:
       operationId: getStatus

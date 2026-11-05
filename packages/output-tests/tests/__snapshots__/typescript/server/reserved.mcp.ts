@@ -13,6 +13,7 @@ import { Note, Seat, serializeSeat } from './schemas/reserved.schema.js';
 
 const GetSeatArgs = z.object({ class: z.string(), query: z.object({ from: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })).optional(), in: z.string().optional(), pageSize: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()).optional() }).optional(), headers: z.object({ from: z.string().optional() }).optional() });
 const PutNoteArgs = z.object({ body_: z.string(), body: Note });
+const _2faSetupArgs = z.object({});
 
 /**
  * from [reserved.ck](../contracts/reserved.ck) `GET /seats/{class}`
@@ -63,14 +64,39 @@ export class PutNoteMcpTool implements McpToolHandler {
     }
 }
 
+/**
+ * from [reserved.ck](../contracts/reserved.ck) `POST /names`
+ */
+@Injectable()
+export class _2faSetupMcpTool implements McpToolHandler {
+    readonly definition: Tool = {
+        name: '2fa_setup',
+        description: '`name:` is free text, and every SDK has to turn it into a method name the language accepts',
+        inputSchema: z.toJSONSchema(_2faSetupArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        outputSchema: z.toJSONSchema(Note, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+    };
+
+    constructor(private readonly service: SeatService, private readonly policies: PolicyService) {}
+
+    async handle(_args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
+        await requireMcpPolicy(context, this.policies, { policy: MFA_SATISFIED_POLICY });
+        const result = await this.service.setUpTwoFactor();
+        return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
+    }
+}
+
 /** Add this file's tools to the tool map. */
 export function registerReservedMcpTools(map: McpToolHandlerMap, container: Container): void {
     map.set('get_seat', container.get(GetSeatMcpTool));
     map.set('put_note', container.get(PutNoteMcpTool));
+    map.set('2fa_setup', container.get(_2faSetupMcpTool));
 }
 
 /** Register this file's tool classes on the registry, so the tool maps can resolve them. */
 export function registerReservedMcpToolClasses(registry: Registry): void {
     registry.register(GetSeatMcpTool).useClass(GetSeatMcpTool).asSingleton();
     registry.register(PutNoteMcpTool).useClass(PutNoteMcpTool).asSingleton();
+    registry.register(_2faSetupMcpTool).useClass(_2faSetupMcpTool).asSingleton();
 }

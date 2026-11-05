@@ -22,6 +22,8 @@ function requireMcpContainer(context: McpToolContext): Container {
 const GetSeatArgs = z.object({ class: z.string(), query: z.object({ from: z.preprocess((val) => typeof val === 'string' ? DateTime.fromFormat(val, 'yyyy-MM-dd') : val, z.custom<DateTime>((val) => val instanceof DateTime && val.isValid, { message: 'Must be a date in format yyyy-MM-dd' })).optional(), in: z.string().optional(), pageSize: z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), z.number().int()).optional() }).optional(), headers: z.object({ from: z.string().optional() }).optional() });
 const GetRowArgs = z.object({ params: SeatRef });
 const PutNoteArgs = z.object({ body_: z.string(), body: Note });
+const GenerateCClientArgs = z.object({});
+const _2faSetupArgs = z.object({});
 
 /**
  * from [reserved.ck](../contracts/reserved.ck) `GET /seats/{class}`
@@ -94,10 +96,55 @@ export class PutNoteMcpTool implements McpToolHandler {
     }
 }
 
+/**
+ * from [reserved.ck](../contracts/reserved.ck) `GET /names`
+ */
+@Injectable()
+export class GenerateCClientMcpTool implements McpToolHandler {
+    readonly definition: Tool = {
+        name: 'generate_c_client',
+        description: '`name:` is free text, and every SDK has to turn it into a method name the language accepts',
+        inputSchema: z.toJSONSchema(GenerateCClientArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        outputSchema: z.toJSONSchema(Note, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+    };
+
+    async handle(_args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
+        const result = await container.get(SeatService).generateClient();
+        return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
+    }
+}
+
+/**
+ * from [reserved.ck](../contracts/reserved.ck) `POST /names`
+ */
+@Injectable()
+export class _2faSetupMcpTool implements McpToolHandler {
+    readonly definition: Tool = {
+        name: '2fa_setup',
+        description: '`name:` is free text, and every SDK has to turn it into a method name the language accepts',
+        inputSchema: z.toJSONSchema(_2faSetupArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
+        outputSchema: z.toJSONSchema(Note, { unrepresentable: 'any' }) as Tool['outputSchema'],
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+    };
+
+    async handle(_args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
+        const container = requireMcpContainer(context);
+        await requireMcpPolicy(context, container.get(PolicyService), { policy: MFA_SATISFIED_POLICY });
+        const result = await container.get(SeatService).setUpTwoFactor();
+        return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
+    }
+}
+
 /** Add this file's tools to the tool map. */
 export function registerReservedMcpTools(map: McpToolHandlerMap, container: Container): void {
     map.set('get_seat', container.get(GetSeatMcpTool));
     map.set('put_note', container.get(PutNoteMcpTool));
+    map.set('2fa_setup', container.get(_2faSetupMcpTool));
 }
 
 /** Add a handler for each of this file's operations to the catalog, unlisted in `tools/list`. */
@@ -105,6 +152,8 @@ export function registerReservedMcpCatalog(map: McpToolHandlerMap, container: Co
     map.set('get_seat', container.get(GetSeatMcpTool));
     map.set('get_row', container.get(GetRowMcpTool));
     map.set('put_note', container.get(PutNoteMcpTool));
+    map.set('generate_c_client', container.get(GenerateCClientMcpTool));
+    map.set('2fa_setup', container.get(_2faSetupMcpTool));
 }
 
 /** Register this file's tool classes on the registry, so the tool maps can resolve them. */
@@ -112,4 +161,6 @@ export function registerReservedMcpToolClasses(registry: Registry): void {
     registry.register(GetSeatMcpTool).useClass(GetSeatMcpTool).asSingleton();
     registry.register(GetRowMcpTool).useClass(GetRowMcpTool).asSingleton();
     registry.register(PutNoteMcpTool).useClass(PutNoteMcpTool).asSingleton();
+    registry.register(GenerateCClientMcpTool).useClass(GenerateCClientMcpTool).asSingleton();
+    registry.register(_2faSetupMcpTool).useClass(_2faSetupMcpTool).asSingleton();
 }

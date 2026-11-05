@@ -54,6 +54,32 @@ public sealed class ReservedClient(SdkHttp http)
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return http.ReadJson<Note>(response);
     }
+
+    /// <summary>
+    /// Generate C# client
+    /// `name:` is free text, and every SDK has to turn it into a method name the language accepts
+    /// </summary>
+    public async Task<Note> GenerateCClientAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Get,
+            http.Path("names"),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<Note>(response);
+    }
+
+    /// <summary>
+    /// 2fa setup
+    /// `name:` is free text, and every SDK has to turn it into a method name the language accepts
+    /// </summary>
+    public async Task<Note> _2faSetupAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await http.ExecuteAsync(
+            HttpMethod.Post,
+            http.Path("names"),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return http.ReadJson<Note>(response);
+    }
 }
 
 /// <summary>The query parameters declared on GET /seats/{class}.</summary>

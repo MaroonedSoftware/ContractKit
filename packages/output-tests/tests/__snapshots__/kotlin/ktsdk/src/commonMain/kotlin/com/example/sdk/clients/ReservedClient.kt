@@ -40,6 +40,28 @@ class ReservedClient(private val http: SdkHttp) {
         }
         return http.decodeJson(response)
     }
+
+    /**
+     * Generate C# client
+     * `name:` is free text, and every SDK has to turn it into a method name the language accepts
+     */
+    suspend fun generateCClient(): Note {
+        val response = http.execute(HttpMethod.Get) {
+            path("names")
+        }
+        return http.decodeJson(response)
+    }
+
+    /**
+     * 2fa setup
+     * `name:` is free text, and every SDK has to turn it into a method name the language accepts
+     */
+    suspend fun _2faSetup(): Note {
+        val response = http.execute(HttpMethod.Post) {
+            path("names")
+        }
+        return http.decodeJson(response)
+    }
 }
 
 @Serializable

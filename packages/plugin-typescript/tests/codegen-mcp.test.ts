@@ -95,6 +95,20 @@ describe('generateMcpFile', () => {
     });
 
     describe('tool name + class name', () => {
+        it('prefixes a class name that would start with a digit', () => {
+            const root = opRoot([opRoute('/users', [opOperation('get', { name: '2fa setup', mcp: true, responses: [opResponse(200, 'User')] })])]);
+            const out = generateMcpFile(root);
+            expect(out).toContain("name: '2fa_setup'");
+            expect(out).toContain('export class _2faSetupMcpTool');
+        });
+
+        it('infers the tool name when name: has no identifier characters', () => {
+            const root = opRoot([opRoute('/users', [opOperation('get', { name: '###', mcp: true, responses: [opResponse(200, 'User')] })])]);
+            const out = generateMcpFile(root);
+            expect(out).toContain("name: 'get_users'");
+            expect(out).toContain('export class GetUsersMcpTool');
+        });
+
         it('uses explicit mcp.name verbatim', () => {
             const root = opRoot([
                 opRoute('/routes', [opOperation('post', { mcp: mcpBlock({ name: 'searchRoutes' }), request: opRequest('Query'), responses: [opResponse(200, 'RouteList', 'application/json')] })]),

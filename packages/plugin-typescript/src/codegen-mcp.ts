@@ -135,13 +135,14 @@ function toSnake(s: string): string {
         .replace(/^_|_$/g, '');
 }
 
-/** snake_case → PascalCase. */
+/** snake_case → PascalCase, with a `_` before a leading digit so the result can open an identifier. */
 function toPascal(s: string): string {
-    return s
+    const pascal = s
         .split('_')
         .filter(Boolean)
         .map(p => p.charAt(0).toUpperCase() + p.slice(1))
         .join('');
+    return /^\d/.test(pascal) ? `_${pascal}` : pascal;
 }
 
 /** Inferred snake_case tool name from method + path, e.g. GET /payments/{id} → get_payments_by_id. */
@@ -162,8 +163,8 @@ function deriveToolName(op: OpOperationNode, route: OpRouteNode): string {
     const cfg = mcpConfig(op);
     if (cfg?.name) return cfg.name;
     if (op.sdk) return toSnake(op.sdk);
-    if (op.name) return toSnake(op.name);
-    return inferToolName(op.method, route.path);
+    // `name:` is free text, so it can snake_case down to nothing.
+    return (op.name && toSnake(op.name)) || inferToolName(op.method, route.path);
 }
 
 /** Tool class name — PascalCase of the tool name with an `McpTool` suffix for clarity. */

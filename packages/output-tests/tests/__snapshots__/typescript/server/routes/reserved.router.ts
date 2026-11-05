@@ -83,3 +83,29 @@ ReservedRouter.put('/notes/:body', requirePolicy(), bodyParserMiddleware(['json'
     ctx.type = 'application/json';
     ctx.body = result;
 });
+
+/**
+ * `name:` is free text, and every SDK has to turn it into a method name the language accepts
+ * from [reserved.ck](../../contracts/reserved.ck) `GET /names`
+*/
+ReservedRouter.get('/names', requirePolicy(), async ctx => {
+    const service = ctx.container.get(SeatService);
+    const result: Note = await service.generateClient();
+
+    ctx.status = 200;
+    ctx.type = 'application/json';
+    ctx.body = result;
+});
+
+/**
+ * `name:` is free text, and every SDK has to turn it into a method name the language accepts
+ * from [reserved.ck](../../contracts/reserved.ck) `POST /names`
+*/
+ReservedRouter.post('/names', requirePolicy(), async ctx => {
+    const service = ctx.container.get(SeatService);
+    const result: Note = await service.setUpTwoFactor();
+
+    ctx.status = 200;
+    ctx.type = 'application/json';
+    ctx.body = result;
+});

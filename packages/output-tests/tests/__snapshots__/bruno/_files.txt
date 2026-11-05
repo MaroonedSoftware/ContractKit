@@ -29,7 +29,9 @@ bruno/kitchen/post-stamps.yml
 bruno/kitchen/post-tokens.yml
 bruno/kitchen/put-folders-folder-id.yml
 bruno/opencollection.yml
+bruno/reserved/2fa-setup.yml
 bruno/reserved/folder.yml
+bruno/reserved/generate-c-client.yml
 bruno/reserved/get-rows-class.yml
 bruno/reserved/get-seats-class.yml
 bruno/reserved/put-notes-body.yml

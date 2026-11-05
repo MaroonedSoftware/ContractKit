@@ -49,3 +49,19 @@ class ReservedClient(BaseClient):
         """
         result = await self._fetch(f"/notes/{quote(_path_text(body_), safe='')}", method="PUT", body=body.model_dump(mode="json", by_alias=True, exclude_unset=True))
         return Note.model_validate(result)
+
+    async def generate_c_client(self) -> Note:
+        """
+        Generate C# client
+        `name:` is free text, and every SDK has to turn it into a method name the language accepts
+        """
+        result = await self._fetch("/names", method="GET")
+        return Note.model_validate(result)
+
+    async def _2fa_setup(self) -> Note:
+        """
+        2fa setup
+        `name:` is free text, and every SDK has to turn it into a method name the language accepts
+        """
+        result = await self._fetch("/names", method="POST")
+        return Note.model_validate(result)

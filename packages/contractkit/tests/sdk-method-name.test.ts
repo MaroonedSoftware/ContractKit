@@ -24,6 +24,27 @@ describe('deriveSdkMethodName', () => {
         expect(deriveSdkMethodName(op, opRoute('/users', [op]))).toBe('listAllUsersNow');
     });
 
+    it.each([
+        ['Generate C# client', 'generateCClient'],
+        ['"Get User"', 'getUser'],
+        ["Issue 42's tracker (v2.1)", 'issue42STrackerV21'],
+        ['Créer un compte', 'créerUnCompte'],
+        ['Pay $ now', 'pay$Now'],
+    ])('drops what an identifier cannot hold from name: %s', (name, expected) => {
+        const op = opOperation('get', { name });
+        expect(deriveSdkMethodName(op, opRoute('/users', [op]))).toBe(expected);
+    });
+
+    it('prefixes a name: that starts with a digit', () => {
+        const op = opOperation('get', { name: '2fa setup' });
+        expect(deriveSdkMethodName(op, opRoute('/users', [op]))).toBe('_2faSetup');
+    });
+
+    it('falls back to the verb and path when name: has no identifier characters', () => {
+        const op = opOperation('get', { name: '###' });
+        expect(deriveSdkMethodName(op, opRoute('/users', [op]))).toBe('getUsers');
+    });
+
     it('falls back to the verb and path', () => {
         const op = opOperation('post');
         expect(deriveSdkMethodName(op, opRoute('/users', [op]))).toBe('postUsers');

@@ -23,6 +23,8 @@
                             "api-reference/endpoints/get-seat",
                             "api-reference/endpoints/get-row",
                             "api-reference/endpoints/put-note",
+                            "api-reference/endpoints/generate-c-client",
+                            "api-reference/endpoints/2fa-setup",
                             "api-reference/endpoints/get-status"
                         ]
                     },
