@@ -1,5 +1,14 @@
 # @contractkit/prettier-plugin-contractkit
 
+## 0.14.16
+
+### Patch Changes
+
+- 5e405ca: `signature:` inside a `security` block is now an error that points at the operation-level `signature:` field. It used to parse and do nothing, so the request went unverified and formatting deleted the line. The prettier plugin now refuses to format any file with a parse error instead of printing what survived, which for a syntax error was an empty file.
+- Updated dependencies [38507f9]
+- Updated dependencies [5e405ca]
+    - @contractkit/core@0.36.0
+
 ## 0.14.15
 
 ### Patch Changes

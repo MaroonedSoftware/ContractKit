@@ -1,5 +1,13 @@
 # @contractkit/contractkit-plugin-bruno
 
+## 1.6.12
+
+### Patch Changes
+
+- Updated dependencies [38507f9]
+- Updated dependencies [5e405ca]
+    - @contractkit/core@0.36.0
+
 ## 1.6.11
 
 ### Patch Changes
