@@ -19,7 +19,11 @@ Behavior:
 
 The pass lives in `apply-variable-substitution.ts` and runs in the CLI between `parseCk`
 and `decomposeCk`, after `applyOptionsDefaults`. It does **not** run inside `parseCk`, so
-the prettier plugin sees the un-substituted source and can round-trip the file.
+the prettier plugin sees the un-substituted source and can round-trip the file. It runs before the
+plugin `validate` and `transform` hooks, so those see substituted strings.
+
+Don't confuse this with the `{area}`-style single-brace variables in a plugin's output path templates,
+which are resolved by the plugin itself (see the `ck-plugins` skill).
 
 ## Plugin-config fallback
 

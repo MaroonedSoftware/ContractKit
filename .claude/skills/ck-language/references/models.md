@@ -1,11 +1,11 @@
-# Contracts: modifiers, inheritance, schema shapes
+# Contracts: modifiers, inheritance, schema shapes, scalars
 
 ## Contract modifiers
 
 | Modifier                              | Effect                                   |
 | ------------------------------------- | ---------------------------------------- |
 | `deprecated`                          | Marks model as deprecated                |
-| `mode(strict\|strip\|loose)`          | Controls how Zod handles unknown keys    |
+| `mode(strict\|strip\|loose)`          | Controls how Zod handles unknown keys. A model with no `mode()` is `strict` |
 | `format(input=camel\|snake\|pascal)`  | Transforms key casing when parsing input |
 | `format(output=camel\|snake\|pascal)` | Transforms key casing on output          |
 
@@ -25,9 +25,16 @@ Modifiers compose in any order on the source side (`override readonly`,
 canonical order: **override → deprecated → readonly|writeonly**. `readonly` + `writeonly`
 on the same field is a parse-time error.
 
+`?` and `| null` are separate facts. `x?: string` sets `FieldNode.optional`; `x: string | null` sets
+`FieldNode.nullable` and removes `null` from `type` (`extractNullability`). Generators have to
+treat a required nullable field and an optional one differently.
+
+A numeric default on a `bigint` field parses to an exact `bigint` (`FieldDefault`), because a JS
+number rounds past 2**53. Don't hand one to `JSON.stringify`, which throws on it.
+
 ## Multi-base inheritance
 
-`contract C: A & B & C & D & { ... }` produces `model.bases = ['A', 'B', 'C', 'D']`. Each
+`contract Test5: A & B & C & D & { ... }` produces `model.bases = ['A', 'B', 'C', 'D']`. Each
 base contributes its full **effective** field set (own fields plus its own bases', with
 its own overrides applied) — diamond inheritance is deduplicated at resolution time.
 
@@ -62,6 +69,8 @@ Codegen impact per plugin:
   `Omit` tolerates omit keys that don't exist on the base, so we omit unconditionally and
   skip any per-base field-set lookup.
 - **Python**: `class Test5(A, B, C, D): ...`, Pydantic v2 MRO handles override redeclarations.
+- **Kotlin, Swift, C#**: bases are flattened into each generated type through
+  `resolveEffectiveFields`.
 - **OpenAPI**: `allOf: [{ $ref: A }, { $ref: B }, { $ref: C }, { $ref: D }, { ...inline }]`.
 - **Markdown**: `Extends [\`A\`](#a), [\`B\`](#b), ...`
 - **Bruno** uses `resolveModelFields` to flatten the chain with overrides applied; nothing
@@ -122,9 +131,29 @@ model map; a renderer called without it takes every member for a plain object.
 in Zod, `Annotated[Union[...], Field(discriminator=...)]` in Python, and `oneOf` +
 `discriminator.mapping` in OpenAPI.
 
-Validated at parse time in `validate-discriminated.ts`: every member must be a model ref
-or an inline object containing the discriminator as a `literal()`/`enum()` field, and at
-least two members are required. Failures emit **warnings, not errors**.
+Validated by `checkDiscriminatedUnions` in `validate-refs.ts`, a cross-file pass: every member must
+be a model ref or an inline object containing the discriminator as a `literal()`/`enum()` field,
+and at least two members are required. Failures emit **warnings, not errors**.
+
+## Enums and unknown values
+
+A service adding an enum member must not break an older client. The Python, C#, Kotlin and Swift
+SDKs read a string the enum doesn't list into a sentinel instead of failing the payload:
+
+- **Python**: every enum is `Annotated[Literal[...] | UnknownValue, ReadsUnknown]`, and an unlisted
+  string reads as `UNKNOWN` from the emitted `_enums.py`, which the package exports.
+- **C#** `Unknown` (value `0`), **Kotlin** `UNKNOWN`, **Swift** `unknown`. The sentinel is named last,
+  so a contract with its own `unknown` value keeps that name and the sentinel takes `Unknown2` or
+  the equivalent.
+
+A non-string value is still rejected. The sentinel has no wire spelling, so writing it throws.
+
+In a plain union an enum member claims only the strings it lists, so a later `string` member still
+gets the rest. In Python, a union with no member taking every string reads the leftovers as
+`UNKNOWN`. In the other three, they fall to the first enum member's sentinel.
+
+The TypeScript SDK needs none of this: its clients return `parseJson` and reviver output without
+parsing the body against a schema. The router's `z.enum` still rejects an unlisted value in a request.
 
 ## Scalar types worth knowing
 
@@ -138,8 +167,13 @@ least two members are required. Failures emit **warnings, not errors**.
   written with `toFormat()` too. A new place that writes one of these values must do the same.
 - `interval` → Luxon `Interval`; `_ZodInterval` parses an ISO 8601 interval string and
   `.transform()`s back to ISO on output
-- `bigint` → `z.coerce.bigint()`; the SDK generates bigint-aware JSON helpers in
-  `sdk-options.ts`
+- `duration` → Luxon `Duration`, ISO 8601 on the wire
+- `bigint` → sent as a digit string, with an optional trailing `n`. The Zod schema converts only a
+  string matching that form (`BIGINT_PREPROCESS` in `codegen-contract.ts`) and hands anything else
+  to `z.bigint()` to reject, so `"abc"` is a 400 rather than a `SyntaxError`, and `"0x10"` is not
+  `16n`. The SDK's bigint JSON helpers are in `sdk-options.ts`
+- `number`, `int`, `boolean` → likewise convert only text in their wire form (a non-blank numeric
+  string, `"true"`/`"false"`) rather than `z.coerce`, whose `Number(v)` accepts `[]` and `''`
 - `decimal` → decimal.js `Decimal`, for money and anything else that must be exact.
   Travels as a **quoted JSON string**; `_ZodDecimal` **rejects a raw JSON number** rather
   than coercing it, since by then the value has already been through a double. It carries
@@ -154,3 +188,25 @@ least two members are required. Failures emit **warnings, not errors**.
   `__Decimal = Decimal.clone({ defaults: true, toExpNeg, toExpPos })` (`decimal-runtime.ts`)
   and send request values with `toFixed()`. `min`/`max` are kept as source strings, never
   coerced through `Number()`.
+
+  The wire grammar is `DECIMAL_PATTERN` in `decimal-pattern.ts`: optional `-`, digits, optionally a
+  point and more digits. No exponent, hex, `+`, `.5`, `5.`, `NaN` or `Infinity`. decimal.js on its own
+  parses several of those, so `_ZodDecimal` and the runtime of each SDK check the pattern first.
+  `decimalPattern(scale)` narrows it for the OpenAPI `pattern`, and allows trailing zeros past
+  `scale`, because `scale` counts places after trailing zeros are dropped: `"1.10"` passes `scale=1`.
+
+  `validateDecimal` errors on a `decimal` inside an undiscriminated union (no SDK can tell which
+  member arrived) and on a `decimal` response header. It is called only from `validateProject`, not
+  from `cli.ts`, so a CLI build does not run it. The TypeScript and Python SDK generators separately
+  throw on a `decimal` response header.
+
+## Compound types
+
+`array(T, min=, max=)`, `tuple(A, B)`, `record(K, V)`, `enum(a, b)`, `literal(x)`, `lazy(T)` and
+`discriminated(by=k, A | B)` are built by `buildCompoundType` in `type-builders.ts` from the
+grammar's generic `identifier(TypeArgs)`, so they are not grammar rules. Any other name resolves to
+a scalar or a model ref. Table of Zod outputs and constraints: `docs/language.md`.
+
+A field whose type contains `lazy(T)` is emitted as a getter (`get parent() { return T.optional(); }`)
+so TypeScript can infer the recursive type. `z.lazy` in the schema's own initializer would leave it
+typed `any`.
