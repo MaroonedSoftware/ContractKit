@@ -24,7 +24,8 @@ description: Checklist and conventions for changing the ContractKit Ohm grammar 
 
 A grammar change is never a one-file change. Work through all of these explicitly:
 
-1. `semantics.ts`: the corresponding action. Parse-time diagnostics go here through `diag`.
+1. `semantics.ts`: the corresponding action. Parse-time diagnostics go here through `diag`. An
+   error there also stops the prettier plugin and the editor from formatting the file.
 2. `ast.ts`: the AST node type. Keep the authored form when two spellings parse to one meaning
    (`mcp?: boolean | 'exclude' | McpConfigNode`, `hasBlock`), since the printer needs it. A new key in
    an operation body also goes in `OpBodyKey` and `OP_BODY_KEYS`, which carry its source order and the

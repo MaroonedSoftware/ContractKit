@@ -1626,10 +1626,23 @@ operation /routes: {
             expect(op.leadingComments).toEqual(['operator only']);
         });
 
-        it('parses SecuritySignatureLine inside security block', () => {
-            const { root, diag } = parse('operation /hooks: { post: { security: { signature: "hmac-key"\n  policy: webhookIn } } }');
-            expect(diag.hasErrors()).toBe(false);
+        // An author writing this expects the request to be verified, and nothing would verify it.
+        it('rejects signature: inside a security block, pointing at the operation-level form', () => {
+            const { root, diag } = parse('operation /hooks: {\n  post: {\n    security: {\n      signature: "hmac-key"\n      policy: webhookIn\n    }\n  }\n}');
+            const errors = diag.getAll().filter(d => d.severity === 'error');
+            expect(errors).toHaveLength(1);
+            expect(errors[0]!.message).toMatch(/'signature' is not allowed inside a security block/);
+            expect(errors[0]!.message).toMatch(/signature: "hmac-key"/);
+            expect(errors[0]!.line).toBe(4);
             expect((root.routes[0]!.operations[0]!.security as any).policy).toBe('webhookIn');
+        });
+
+        it.each([
+            ['the route', 'operation /hooks: {\n  security: { signature: KEY }\n  post: {}\n}'],
+            ['the options block', 'options {\n  security: { signature: KEY }\n}'],
+        ])('rejects signature: in a security block on %s', (_where, source) => {
+            const { diag } = parse(source);
+            expect(diag.getAll().filter(d => d.severity === 'error').map(d => d.message)).toEqual([expect.stringMatching(/not allowed inside a security block/)]);
         });
 
         it('parses signature: "key" as operation-level field', () => {

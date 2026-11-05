@@ -327,6 +327,8 @@ Contract {
   PolicyValue = noneKw     -- none
               | identifier -- name
 
+  // Not a supported form. It is matched so that semantics can report an error that points at the
+  // operation-level `signature:` field, which a bare syntax error here could not do.
   SecuritySignatureLine = signatureKw ":" (stringLit | identifier)
 
   // ─── Keywords (lexical to avoid whitespace-skipping issues) ─────
