@@ -1,5 +1,18 @@
 # @contractkit/cli
 
+## 0.12.0
+
+### Minor Changes
+
+- 38507f9: `contractkit` now fails the build on a `decimal` in an undiscriminated union or a `decimal` response header. These checks ran only in the editor, so a CLI build accepted both. Core now exports `validateDecimal`.
+
+### Patch Changes
+
+- Updated dependencies [38507f9]
+- Updated dependencies [5e405ca]
+    - @contractkit/core@0.36.0
+    - @contractkit/openapi-to-ck@0.12.13
+
 ## 0.11.10
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @contractkit/plugin-csharp
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [38507f9]
+- Updated dependencies [5e405ca]
+    - @contractkit/core@0.36.0
+
 ## 0.4.0
 
 ### Minor Changes
