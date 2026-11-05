@@ -232,31 +232,31 @@ contract deprecated format(input=camel) mode(strip) OldWebhookPayload: {
 
 ## Scalar Types
 
-| Type       | Zod Output                | Notes                                                                           |
-| ---------- | ------------------------- | ------------------------------------------------------------------------------- |
-| `string`   | `z.string()`              |                                                                                 |
-| `number`   | `z.coerce.number()`       |                                                                                 |
-| `int`      | `z.coerce.number().int()` |                                                                                 |
-| `bigint`   | `z.coerce.bigint()`       | Integer of any size, sent as a digit string (`"123"`, or `"123n"`)              |
-| `decimal`  | decimal.js `Decimal`      | Exact decimal sent as a quoted string; see below                                |
-| `boolean`  | `z.coerce.boolean()`      |                                                                                 |
-| `date`     | `z.string().date()`       | ISO 8601 date string                                                            |
-| `time`     | `z.string().time()`       | ISO 8601 time string                                                            |
-| `datetime` | Luxon `DateTime`          | Full ISO 8601 datetime                                                          |
-| `duration` | Luxon `Duration`          | ISO 8601 duration (e.g. `PT1H30M`, `P1D`)                                       |
-| `interval` | Luxon `Interval`          | ISO 8601 interval (e.g. `2024-01-01/2024-12-31`); serialized back to ISO string |
-| `email`    | `z.string().email()`      |                                                                                 |
-| `url`      | `z.string().url()`        |                                                                                 |
-| `uuid`     | `z.string().uuid()`       |                                                                                 |
-| `unknown`  | `z.unknown()`             |                                                                                 |
-| `null`     | `z.null()`                | Typically used in union: `T \| null`                                            |
-| `object`   | `z.object({})`            | Untyped/passthrough object                                                      |
-| `binary`   | `z.custom<Buffer>(...)`   | Node.js Buffer validation                                                       |
-| `json`     | Recursive `_ZodJson`      | Any JSON-serializable value                                                     |
+| Type       | Zod Output                                                           | Notes                                                                                                           |
+| ---------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `string`   | `z.string()`                                                         |                                                                                                                 |
+| `number`   | `z.number()`, preprocessed                                           | A non-blank numeric string converts; anything else reaches `z.number()` as it is, so `[]` and `""` are rejected |
+| `int`      | `z.number().int()`, preprocessed                                     | Same conversion as `number`                                                                                     |
+| `bigint`   | `z.bigint()`, preprocessed                                           | Integer of any size, sent as a digit string (`"123"`, or `"123n"`); any other text is rejected                  |
+| `decimal`  | decimal.js `Decimal`                                                 | Exact decimal sent as a quoted string; see below                                                                |
+| `boolean`  | `z.boolean()`, preprocessed                                          | Only the strings `"true"` and `"false"` convert; any other non-boolean is rejected                              |
+| `date`     | Luxon `DateTime`                                                     | Text in the field's format on the wire, `yyyy-MM-dd` by default                                                 |
+| `time`     | Luxon `DateTime`                                                     | Text in the field's format on the wire, `HH:mm:ss` by default                                                   |
+| `datetime` | Luxon `DateTime`                                                     | Full ISO 8601 datetime                                                                                          |
+| `duration` | Luxon `Duration`                                                     | ISO 8601 duration (e.g. `PT1H30M`, `P1D`)                                                                       |
+| `interval` | Luxon `Interval`                                                     | ISO 8601 interval (e.g. `2024-01-01/2024-12-31`); serialized back to ISO string                                 |
+| `email`    | `z.email()`                                                          |                                                                                                                 |
+| `url`      | `z.url()`                                                            |                                                                                                                 |
+| `uuid`     | `z.uuid()`                                                           |                                                                                                                 |
+| `unknown`  | `z.unknown()`                                                        |                                                                                                                 |
+| `null`     | `z.null()`                                                           | Typically used in union: `T \| null`                                                                            |
+| `object`   | `z.record(z.string(), z.unknown())`                                  | Untyped/passthrough object                                                                                      |
+| `binary`   | `z.custom<Buffer>(...)` on a server, `z.custom<Blob>(...)` in an SDK | Binary data validation                                                                                          |
+| `json`     | Recursive `_ZodJson`                                                 | Any JSON-serializable value                                                                                     |
 
 ### `decimal`
 
-`number` compiles to `z.coerce.number()` — an IEEE-754 double. Use `decimal` wherever a value has
+`number` compiles to `z.number()`, an IEEE-754 double. Use `decimal` wherever a value has
 to be exact: money, tax rates, anything a rounding error would corrupt.
 
 ```
@@ -548,8 +548,9 @@ contract User: {
 - A `#` comment may trail a `keys`/`services` entry or a `name:` value, provided a space
   separates it from the value. A `#` with no space before it belongs to the value, so an
   unquoted subpath import (`PetService: #modules/pet/pet.service.js`) and a name containing a
-  `#` (`name: Generate C# client`) both parse as written; quote a value that needs a space
-  followed by `#` inside it
+  `#` (`name: Generate C# client`) both parse as written. A `keys`/`services` value that needs a
+  space followed by `#` inside it can be quoted. A `name:` value cannot: quotes are not syntax
+  there and stay in the value, and the name still ends at the first space or tab followed by `#`
 
 ```
 options {
@@ -1029,8 +1030,8 @@ get: {
 Generated effects:
 
 - **OpenAPI** emits `headers:` under each response with the schema and required flag.
-- **TypeScript SDK** changes the method's return shape from `Promise<T>` to `Promise<{ data: T; headers: { preferenceApplied?: string; ... } }>` (or `Promise<{ headers: ... }>` for void responses). Header names are camelCased; values are read from the `Headers` object as strings (`null` becomes `undefined`).
-- **TypeScript router** types the service method's return as `{ body, headers }` (or `{ headers }` for void), and the wrapper calls `ctx.set(name, String(value))` for each declared header.
+- **TypeScript SDK** changes the method's return shape from `Promise<T>` to `Promise<{ data: T; headers: { preferenceApplied?: string; ... } }>` (or `Promise<{ headers: ... }>` for void responses). Header names are camelCased. Each value is read from the `Headers` object and converted to its declared type: `number` and `int` through `Number()`, `boolean` as `=== 'true'`, `bigint` through a strict parser that throws on anything else, and `datetime`, `date`, `time` and `duration` to Luxon objects. String-like types and `interval` stay strings. An absent optional header is `undefined`, and a type that cannot be read from a header fails generation.
+- **TypeScript router** types the service method's return as `{ body, headers }` (or `{ headers }` for void), and the wrapper sets each declared header (`ctx.set` on Koa, `reply.header` on Fastify) with `String(value)`, or `toFormat()` for a `date` or `time`.
 - **Python SDK** generates a per-method `TypedDict` (e.g. `GetTransferHeaders`) and changes the return type to `tuple[T, GetTransferHeaders]` (or `GetTransferHeaders` for void). Header keys are snake_cased; values come from the lower-cased response-header dict.
 - **Bruno** adds an `isDefined` runtime assertion for each required response header on the asserted status code, and lists all declared headers in the request's `docs` block.
 - **Markdown docs** render a `Response headers` table per status code.
@@ -1185,12 +1186,12 @@ Every other hint is `false`, `openWorldHint` included: a tool calls the app's ow
 
 ```ck
 get: {
-    service: SearchesService.get
+    service: OrdersService.get
     mcp: {
         hint: readOnly
-        ui: "ui://ats/search.review"
+        ui: "ui://acme/order.review"
     }
-    response: { 200: { application/json: CandidateSearch } }
+    response: { 200: { application/json: Order } }
 }
 ```
 

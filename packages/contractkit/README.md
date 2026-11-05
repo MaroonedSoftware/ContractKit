@@ -101,8 +101,8 @@ export function createMyPlugin(options: MyOptions = {}): ContractKitPlugin {
         },
 
         // Required: emit output files. Called once with all parsed roots.
-        async generateTargets(roots: CkRootNode[], ctx: PluginContext) {
-            for (const root of roots) {
+        async generateTargets({ contractRoots, opRoots }, ctx: PluginContext) {
+            for (const root of [...contractRoots, ...opRoots]) {
                 ctx.emitFile('relative/path.ts', '// generated');
             }
         },
@@ -162,17 +162,19 @@ writeFileSync(manifestPath, serializeIncrementalManifest(result.manifest), 'utf-
 
 Companion helpers: `hashFingerprint(value)` for stable sha256 hashing, `stableStringify(value)` for deterministic JSON (handles bigint and undefined), `collectTransitiveModelRefs(seedTypes, modelMap)` for slicing cross-file model dependencies into per-unit fingerprints.
 
-### Per-operation plugin files
+### Per-operation plugin extensions
 
-An operation can declare `plugins: { name: "path.yml" }` in the source. The CLI resolves each path relative to the operation's `.ck` file and stores the content on the AST as `op.pluginFiles[name]` before plugins run. A plugin keyed by its own `name` can read its entry to override or augment generated output:
+An operation can declare `plugins: { name: value }` in the source, where `name` is a plugin's `name` and `value` is any JSON-like tree, for example `plugins: { bruno: { template: "file://request.yml" } }`. Before plugins run, the CLI walks each tree and replaces every string starting with `file://` (resolved relative to the operation's `.ck` file) or `http://` / `https://` (fetched by GET) with the payload, then stores the result on the AST as `op.pluginExtensions[name]`. A missing file, a path escaping `rootDir`, or a failed or blocked request warns and leaves the URL string in place.
+
+A plugin keyed by its own `name` reads its entry to override or augment generated output, and can implement `validateExtension(value)` to check its shape:
 
 ```typescript
-async generateTargets(roots, ctx) {
-    for (const root of roots) {
+async generateTargets({ opRoots }, ctx) {
+    for (const root of opRoots) {
         for (const route of root.routes) {
             for (const op of route.operations) {
-                const override = op.pluginFiles?.['my-plugin'];
-                if (override) {
+                const override = op.pluginExtensions?.['my-plugin'];
+                if (typeof override === 'string') {
                     ctx.emitFile(targetPath(op), override);
                     continue;
                 }
@@ -183,7 +185,7 @@ async generateTargets(roots, ctx) {
 }
 ```
 
-The raw paths from the grammar are still available on `op.plugins` for round-trip use cases (e.g. the prettier plugin); `op.pluginFiles` is set only by the CLI resolver, never by the parser.
+The raw values from the grammar stay on `op.plugins` for round-trip use cases (e.g. the prettier plugin). Plugins read `op.pluginExtensions`, which is set only by the CLI resolver, never by the parser.
 
 ## Programmatic parsing
 

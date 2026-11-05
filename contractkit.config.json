@@ -1,22 +1,22 @@
 {
-    "rootDir": "~/projects/homegrown_v2/",
+    "rootDir": ".",
     "cache": true,
     "prettier": true,
-    "patterns": ["contracts/types/**/*.ck", "contracts/operations/**/*.ck"],
+    "patterns": ["contracts/**/*.ck"],
     "plugins": {
         "@contractkit/plugin-typescript": {
             "server": {
-                "baseDir": "apps/api/",
+                "baseDir": "out/api/",
                 "zod": true,
                 "output": {
                     "routes": "src/routes/{filename}.router.ts",
                     "types": "src/modules/{area}/types/{filename}.ts"
                 },
-                "servicePathTemplate": "#modules/{module}/{module}.service.js"
+                "servicePathTemplate": "#modules/{kebab}/{kebab}.service.js"
             },
             "sdk": {
-                "baseDir": "packages/sdk/",
-                "name": "homegrown",
+                "baseDir": "out/sdk/",
+                "name": "acme",
                 "zod": true,
                 "output": {
                     "sdk": "src/{name}.sdk.ts",
@@ -27,16 +27,16 @@
         },
         "@contractkit/plugin-docs": {
             "openapi": {
-                "baseDir": "docs/api/",
+                "baseDir": "out/docs/api/",
                 "output": "openapi.yaml",
                 "info": {
-                    "title": "Homegrown API",
+                    "title": "Acme API",
                     "version": "1.0.0",
-                    "description": "Homegrown API"
+                    "description": "Acme API"
                 },
                 "servers": [
                     {
-                        "url": "https://api.joinhomegrown.com",
+                        "url": "https://api.example.com",
                         "description": "Production"
                     },
                     {
@@ -58,11 +58,11 @@
                 }
             },
             "markdown": {
-                "baseDir": "docs/",
+                "baseDir": "out/docs/",
                 "output": "api-reference.md"
             },
             "mintlify": {
-                "baseDir": "docs/mintlify/",
+                "baseDir": "out/docs/mintlify/",
                 "docs": {
                     "theme": "mint",
                     "colors": {

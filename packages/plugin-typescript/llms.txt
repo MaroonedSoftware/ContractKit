@@ -1,6 +1,6 @@
 # @contractkit/plugin-typescript
 
-> ContractKit's TypeScript code generator. From the same `.ck` files it emits Koa routers, a
+> ContractKit's TypeScript code generator. From the same `.ck` files it emits Koa or Fastify routers, a
 > TypeScript SDK client, Zod schemas, plain TypeScript types, and MCP tool handlers. Five
 > independent sub-generators, each enabled by the presence of its config key.
 
@@ -31,7 +31,7 @@ include only the ones you want; omitting a key disables that sub-generator entir
                     "routes": "src/routes/{filename}.router.ts",
                     "types": "src/modules/{area}/types/{filename}.ts"
                 },
-                "servicePathTemplate": "#modules/{module}/{module}.service.js"
+                "servicePathTemplate": "#modules/{kebab}/{kebab}.service.js"
             },
             "sdk": {
                 "baseDir": "packages/sdk/",

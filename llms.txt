@@ -1,8 +1,8 @@
 # ContractKit
 
-> A DSL for API contracts. `.ck` files compile to Zod schemas, Koa or Fastify routers, TypeScript and
-> Python SDK clients, OpenAPI 3.1 YAML, Bruno collections, and Markdown docs. One file is the
-> source of truth; every artefact is generated from it.
+> A DSL for API contracts. `.ck` files compile to Zod schemas, Koa or Fastify routers, MCP tool handlers,
+> TypeScript, Python, Kotlin, Swift and C# SDK clients, OpenAPI 3.1, Markdown, Mintlify and Docusaurus
+> docs, and Bruno collections. One file is the source of truth; every artefact is generated from it.
 
 The pipeline is: Ohm grammar (`contractkit.ohm`) → `semantics.ts` → typed AST (`ast.ts`) → CLI
 normalization passes → `decomposeCk` → each plugin's `generateTargets`. Everything under
@@ -47,9 +47,9 @@ names, its full option table, its programmatic API, and the mistakes specific to
 - [@contractkit/cli](apps/cli/llms.txt)
 - [@contractkit/plugin-typescript](packages/plugin-typescript/llms.txt)
 - [@contractkit/plugin-python](packages/plugin-python/llms.txt)
-- [@contractkit/plugin-kotlin](packages/plugin-kotlin/README.md)
-- [@contractkit/plugin-swift](packages/plugin-swift/README.md)
-- [@contractkit/plugin-csharp](packages/plugin-csharp/README.md)
+- [@contractkit/plugin-kotlin](packages/plugin-kotlin/llms.txt)
+- [@contractkit/plugin-swift](packages/plugin-swift/llms.txt)
+- [@contractkit/plugin-csharp](packages/plugin-csharp/llms.txt)
 - [@contractkit/plugin-docs](packages/plugin-docs/llms.txt)
 - [@contractkit/plugin-bruno](packages/plugin-bruno/llms.txt)
 - [@contractkit/openapi-to-ck](packages/openapi-to-ck/llms.txt)
