@@ -58,8 +58,7 @@ Load these rather than rediscovering the semantics from source:
   (`type-utils.ts`), `resolveModifiers`/`resolveSecurity` (`ast.ts`).
 - **Two lists wire up validation.** `apps/cli/src/cli.ts` calls the cross-file validators itself,
   and `validateProject` (`validate-project.ts`, used by the editor) has its own list. A new pass
-  has to go in both. They differ today: `validateDecimal` runs only in `validateProject`, so a CLI
-  build does not run it.
+  has to go in both.
 - **`op.pluginExtensions`, never `op.plugins`,** at codegen time. `op.plugins` is the raw
   parse tree kept for prettier; `pluginExtensions` is the resolved one.
 - **`ifAbsent` emits are user-owned.** Use for starter files only, never generated code.

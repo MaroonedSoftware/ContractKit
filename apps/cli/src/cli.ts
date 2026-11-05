@@ -15,6 +15,7 @@ import {
     validateOp,
     validateRefs,
     validateInheritance,
+    validateDecimal,
     applyOptionsDefaults,
     applyVariableSubstitution,
     computeModelsWithInput,
@@ -311,6 +312,7 @@ async function main() {
         // ── Cross-file validation ──────────────────────────────────────
         validateRefs(allContracts, allOps, diag);
         validateInheritance(allContracts, diag);
+        validateDecimal(allContracts, allOps, diag);
 
         for (const op of allOps) {
             validateOp(op, diag);
