@@ -20,7 +20,7 @@ const CONSTRAINT_KEYS = ['min', 'max', 'length', 'len', 'scale', 'regex'];
 
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 
-const OP_BLOCK_KEYWORDS = ['service', 'sdk', 'query', 'headers', 'request', 'response', 'security'];
+const OP_BLOCK_KEYWORDS = ['service', 'sdk', 'signature', 'query', 'headers', 'request', 'response', 'security'];
 
 const OBJECT_MODES: Array<{ label: string; insertText: string; detail: string }> = [
     { label: 'mode(strict)', insertText: 'mode(strict)', detail: 'Reject unknown keys (z.strictObject)' },
@@ -30,7 +30,6 @@ const OBJECT_MODES: Array<{ label: string; insertText: string; detail: string }>
 
 const SECURITY_SCHEMES: Array<{ label: string; detail: string }> = [
     { label: 'policy', detail: 'Named policy required for this endpoint (or `none` to bypass)' },
-    { label: 'signature', detail: 'Verify request signature with the named key' },
 ];
 
 // 'none' is only valid in `security: none` form, not inside a block

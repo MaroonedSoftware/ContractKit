@@ -196,8 +196,8 @@ parsing the body against a schema. The router's `z.enum` still rejects an unlist
   `scale`, because `scale` counts places after trailing zeros are dropped: `"1.10"` passes `scale=1`.
 
   `validateDecimal` errors on a `decimal` inside an undiscriminated union (no SDK can tell which
-  member arrived) and on a `decimal` response header. It is called only from `validateProject`, not
-  from `cli.ts`, so a CLI build does not run it. The TypeScript and Python SDK generators separately
+  member arrived) and on a `decimal` response header. Both `cli.ts` and `validateProject` run it, so
+  the build and the editor report the same errors. The TypeScript and Python SDK generators separately
   throw on a `decimal` response header.
 
 ## Compound types

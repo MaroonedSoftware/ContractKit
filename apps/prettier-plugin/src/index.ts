@@ -40,7 +40,15 @@ const plugin: Plugin<CkRootNode> = {
         'contract-ck': {
             parse(text, _options) {
                 const diag = new DiagnosticCollector();
-                return parseCk(text, '<stdin>', diag);
+                const ast = parseCk(text, '<stdin>', diag);
+                // Prettier writes whatever the printer returns, and the AST of a file with errors is
+                // missing whatever caused them: a syntax error yields an empty root. Printing it would
+                // delete the author's text, so leave the file alone and surface the error instead.
+                if (diag.hasErrors()) {
+                    const errors = diag.getAll().filter(d => d.severity === 'error');
+                    throw new Error(errors.map(d => `line ${d.line}: ${d.message}`).join('\n'));
+                }
+                return ast;
             },
             astFormat: 'contract-ck',
             locStart: () => 0,

@@ -16,6 +16,17 @@ function format(source: string): Promise<string> {
 }
 
 describe('prettier plugin — end to end', () => {
+    // Prettier writes whatever the printer returns, so formatting past an error replaces the author's
+    // text with what the AST happened to keep. A syntax error keeps nothing and would empty the file.
+    it('refuses to format a file with a syntax error', async () => {
+        await expect(format('contract Pet: {\n    name: string\n\n this is broken ((\n')).rejects.toThrow();
+    });
+
+    it('refuses to format a file with a signature inside a security block, rather than deleting it', async () => {
+        const source = 'operation /hooks: {\n    post: {\n        security: {\n            signature: KEY\n        }\n    }\n}\n';
+        await expect(format(source)).rejects.toThrow(/not allowed inside a security block/);
+    });
+
     it('ends the formatted file with exactly one newline', async () => {
         const source = `contract Pet: {
     name: string

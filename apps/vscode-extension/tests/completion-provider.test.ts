@@ -84,6 +84,7 @@ describe('getCompletions', () => {
             const index = new WorkspaceIndex();
             const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 2, character: 8 } }, doc, index);
             expect(items.some(i => i.label === 'security')).toBe(true);
+            expect(items.some(i => i.label === 'signature')).toBe(true);
         });
 
         it('offers only none after security: (inline public form)', () => {
@@ -100,7 +101,7 @@ describe('getCompletions', () => {
             const index = new WorkspaceIndex();
             const items = getCompletions({ textDocument: { uri: doc.uri }, position: { line: 3, character: 12 } }, doc, index);
             expect(items.some(i => i.label === 'policy')).toBe(true);
-            expect(items.some(i => i.label === 'signature')).toBe(true);
+            expect(items.some(i => i.label === 'signature')).toBe(false);
             expect(items.some(i => i.label === 'none')).toBe(false);
         });
     });

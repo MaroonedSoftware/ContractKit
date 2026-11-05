@@ -1781,10 +1781,16 @@ export function createSemantics(grammar: Grammar) {
             return identNode.sourceString;
         },
 
+        // Parsed only to reject it by name. Signature verification belongs to one operation and lives on
+        // `op.signature`, while a security block cascades from options and routes and carries policy alone.
         SecuritySignatureLine(_signatureKw, _colon, valueNode) {
             const raw = valueNode.sourceString;
-            const value = raw.startsWith('"') || raw.startsWith("'") ? raw.slice(1, -1) : raw;
-            return { _type: 'signatureField', value };
+            this.args.diag.error(
+                this.args.file,
+                getLine(this),
+                `'signature' is not allowed inside a security block, where it would have no effect and requests would not be verified. Declare it on the operation instead: signature: ${raw}`,
+            );
+            return { _type: 'signatureField' };
         },
 
         // ─── Plugins ─────────────────────────────────────────────────

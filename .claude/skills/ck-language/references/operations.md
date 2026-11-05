@@ -20,9 +20,9 @@ docs target and MCP default to leaving them out.
 
 `route-guards.ts` renders these for both the routers and the MCP mount.
 
-The grammar also accepts `signature:` inside a `security` block, but the semantics action drops it
-and the printer does not write it back, so it has no effect and `pnpm format` deletes it. Use the
-operation-level form below.
+`signature:` inside a `security` block is a parse error that points at the operation-level form below.
+The grammar matches it only so the diagnostic can name that form: a security block cascades from
+options and routes and carries policy alone, while a signature belongs to one operation.
 
 ## Webhook signatures
 
