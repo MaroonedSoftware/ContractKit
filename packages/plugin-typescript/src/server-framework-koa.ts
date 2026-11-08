@@ -22,13 +22,18 @@ const KOA_RUNTIME_SYMBOLS = [
 const KOA_RUNTIME_TYPES: ReadonlySet<string> = new Set(['SseStream']);
 
 /**
- * Map a request MIME type to the ServerKit body-parser token `bodyParserMiddleware` accepts. The
- * tokens are the keys of the parser map in `@maroonedsoftware/servercore`, so they are the same
- * whichever HTTP framework the router targets — only Koa still runs body parsing as a middleware
- * call, so only this adapter needs the mapping.
+ * Map a request MIME type to the token `bodyParserMiddleware` accepts. The middleware hands its
+ * tokens to Koa's `ctx.request.is`, which rejects a body whose type matches none of them with a 415,
+ * so each token must match the MIME type it stands for. Only Koa still runs body parsing as a
+ * middleware call, so only this adapter needs the mapping.
+ *
+ * `json` matches `application/json` alone, so any other JSON type (an RFC 6839 `+json` structured
+ * suffix such as `application/vnd.api+json`) maps to `+json`, which `request.is` reads as `*\/*+json`.
  */
 function bodyParserToken(contentType: string): string {
     switch (classifyContentType(contentType)) {
+        case 'json':
+            return contentType === 'application/json' ? 'json' : '+json';
         case 'urlencoded':
             return 'urlencoded';
         case 'multipart':

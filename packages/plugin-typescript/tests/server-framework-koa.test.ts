@@ -71,8 +71,17 @@ describe('KOA_SERVER_FRAMEWORK', () => {
         });
 
         it('dedupes several MIME types down to their shared parser token', () => {
+            expect(
+                koa.routeOpen('UsersRouter', 'post', '/users', { bodyContentTypes: ['application/vnd.api+json', 'application/webhook+json'] }),
+            ).toBe("UsersRouter.post('/users', bodyParserMiddleware(['+json']), async ctx => {");
+        });
+
+        it('maps a +json structured suffix to +json, since Koa only matches json against application/json', () => {
+            expect(koa.routeOpen('WebhooksRouter', 'post', '/webhooks', { bodyContentTypes: ['application/webhook+json'] })).toBe(
+                "WebhooksRouter.post('/webhooks', bodyParserMiddleware(['+json']), async ctx => {",
+            );
             expect(koa.routeOpen('UsersRouter', 'post', '/users', { bodyContentTypes: ['application/json', 'application/vnd.api+json'] })).toBe(
-                "UsersRouter.post('/users', bodyParserMiddleware(['json']), async ctx => {",
+                "UsersRouter.post('/users', bodyParserMiddleware(['json', '+json']), async ctx => {",
             );
         });
 
