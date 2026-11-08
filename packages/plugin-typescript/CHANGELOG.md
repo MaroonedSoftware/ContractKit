@@ -1,5 +1,11 @@
 # @contractkit/contractkit-plugin-typescript
 
+## 0.43.1
+
+### Patch Changes
+
+- bb1f247: Koa routers now accept request bodies with a `+json` structured-suffix type such as `application/vnd.api+json` or `application/webhook+json`. The generated `bodyParserMiddleware` call passes `'+json'` for those types instead of `'json'`, which Koa matches against `application/json` alone and so answered such requests with a 415.
+
 ## 0.43.0
 
 ### Minor Changes
