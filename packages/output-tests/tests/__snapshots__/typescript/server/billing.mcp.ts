@@ -48,7 +48,7 @@ export class SearchPaymentsMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(SearchPaymentsArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     }, { resourceUri: 'ui://billing/payments' });
 
     constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
@@ -73,7 +73,7 @@ export class GetRefundMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(GetRefundArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Payment, { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
@@ -97,7 +97,7 @@ export class SearchPaymentsByDateMcpTool implements McpToolHandler {
         description: 'search payments with snake_case filter and header models',
         inputSchema: z.toJSONSchema(SearchPaymentsByDateArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
@@ -120,7 +120,7 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
         description: 'search payments with a snake_case filter extended inline',
         inputSchema: z.toJSONSchema(SearchPaymentsScopedArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}
@@ -145,7 +145,7 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(SaveScopedSearchArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(SavedSearch, { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     constructor(private readonly service: PaymentService, private readonly policies: PolicyService) {}

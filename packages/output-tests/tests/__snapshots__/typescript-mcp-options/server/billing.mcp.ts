@@ -64,7 +64,7 @@ export class CreatePaymentMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(CreatePaymentArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Payment, { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -88,7 +88,7 @@ export class ListPaymentsMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(ListPaymentsArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -112,7 +112,7 @@ export class SearchPaymentsMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(SearchPaymentsArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     }, { resourceUri: 'ui://billing/payments' });
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -136,7 +136,7 @@ export class CreatePaymentsMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(CreatePaymentsArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -160,7 +160,7 @@ export class GetPaymentMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(GetPaymentArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Payment, { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -183,7 +183,7 @@ export class UpdatePaymentWithFormMcpTool implements McpToolHandler {
         description: 'update a payment with form data',
         inputSchema: z.toJSONSchema(UpdatePaymentWithFormArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -205,7 +205,7 @@ export class DeletePaymentMcpTool implements McpToolHandler {
         description: 'delete a payment — declares only a documented error status',
         inputSchema: z.toJSONSchema(DeletePaymentArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -228,7 +228,7 @@ export class GetRefundMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(GetRefundArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Payment, { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -252,7 +252,7 @@ export class CreateCredentialMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(CreateCredentialArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Credential, { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -275,7 +275,7 @@ export class CreateSessionMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(CreateSessionArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Session, { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -297,7 +297,7 @@ export class SearchPaymentsByDateMcpTool implements McpToolHandler {
         description: 'search payments with snake_case filter and header models',
         inputSchema: z.toJSONSchema(SearchPaymentsByDateArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -319,7 +319,7 @@ export class SearchPaymentsScopedMcpTool implements McpToolHandler {
         description: 'search payments with a snake_case filter extended inline',
         inputSchema: z.toJSONSchema(SearchPaymentsScopedArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -343,7 +343,7 @@ export class SaveScopedSearchMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(SaveScopedSearchArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(SavedSearch, { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'billing' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {

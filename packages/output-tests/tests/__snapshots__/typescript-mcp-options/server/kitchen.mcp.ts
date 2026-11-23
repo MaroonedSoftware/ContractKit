@@ -35,7 +35,7 @@ export class ImportMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(ImportArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(z.object({ value: Instrument }), { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'kitchen' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -59,7 +59,7 @@ export class TouchFolderMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(TouchFolderArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(Folder, { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'kitchen' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -82,7 +82,7 @@ export class ListTokensMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(ListTokensArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(z.object({ items: z.array(Token) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'kitchen' },
     };
 
     async handle(_args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {
@@ -105,7 +105,7 @@ export class ListTalliesMcpTool implements McpToolHandler {
         inputSchema: z.toJSONSchema(ListTalliesArgs, { unrepresentable: 'any', io: 'input' }) as Tool['inputSchema'],
         outputSchema: z.toJSONSchema(z.object({ items: z.array(Tally) }), { unrepresentable: 'any' }) as Tool['outputSchema'],
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY } },
+        _meta: { 'contractkit/security': { policy: MFA_SATISFIED_POLICY }, 'contractkit/area': 'kitchen' },
     };
 
     async handle(args: Record<string, unknown>, context: McpToolContext): Promise<CallToolResult> {

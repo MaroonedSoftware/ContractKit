@@ -72,22 +72,31 @@ describe('generateMcpFile', () => {
         });
 
         it('skips mcp: false', () => {
-            const root = opRoot([opRoute('/users', [opOperation('get', { sdk: 'listUsers', mcp: false, responses: [opResponse(200, 'User', 'application/json')] })])]);
+            const root = opRoot([
+                opRoute('/users', [opOperation('get', { sdk: 'listUsers', mcp: false, responses: [opResponse(200, 'User', 'application/json')] })]),
+            ]);
             const out = generateMcpFile(root);
             expect(out).not.toContain('implements McpToolHandler');
         });
 
         it('skips mcp: exclude, which is no tool', () => {
-            const root = opRoot([opRoute('/users', [opOperation('get', { sdk: 'listUsers', mcp: 'exclude', responses: [opResponse(200, 'User', 'application/json')] })])]);
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { sdk: 'listUsers', mcp: 'exclude', responses: [opResponse(200, 'User', 'application/json')] }),
+                ]),
+            ]);
             expect(hasMcpOperations(root)).toBe(false);
             expect(generateMcpFile(root)).not.toContain('implements McpToolHandler');
         });
 
         it('skips internal ops unless includeInternal', () => {
             const root = opRoot([
-                opRoute('/users', [opOperation('get', { sdk: 'listUsers', mcp: true, responses: [opResponse(200, 'User', 'application/json')] })], undefined, [
-                    'internal',
-                ]),
+                opRoute(
+                    '/users',
+                    [opOperation('get', { sdk: 'listUsers', mcp: true, responses: [opResponse(200, 'User', 'application/json')] })],
+                    undefined,
+                    ['internal'],
+                ),
             ]);
             expect(generateMcpFile(root)).not.toContain('ListUsersMcpTool');
             expect(generateMcpFile(root, { includeInternal: true })).toContain('ListUsersMcpTool');
@@ -111,7 +120,13 @@ describe('generateMcpFile', () => {
 
         it('uses explicit mcp.name verbatim', () => {
             const root = opRoot([
-                opRoute('/routes', [opOperation('post', { mcp: mcpBlock({ name: 'searchRoutes' }), request: opRequest('Query'), responses: [opResponse(200, 'RouteList', 'application/json')] })]),
+                opRoute('/routes', [
+                    opOperation('post', {
+                        mcp: mcpBlock({ name: 'searchRoutes' }),
+                        request: opRequest('Query'),
+                        responses: [opResponse(200, 'RouteList', 'application/json')],
+                    }),
+                ]),
             ]);
             const out = generateMcpFile(root);
             expect(out).toContain("name: 'searchRoutes'");
@@ -119,20 +134,28 @@ describe('generateMcpFile', () => {
         });
 
         it('snake_cases the sdk field', () => {
-            const root = opRoot([opRoute('/users', [opOperation('get', { sdk: 'listAllUsers', mcp: true, responses: [opResponse(200, 'User', 'application/json')] })])]);
+            const root = opRoot([
+                opRoute('/users', [opOperation('get', { sdk: 'listAllUsers', mcp: true, responses: [opResponse(200, 'User', 'application/json')] })]),
+            ]);
             const out = generateMcpFile(root);
             expect(out).toContain("name: 'list_all_users'");
             expect(out).toContain('export class ListAllUsersMcpTool');
         });
 
         it('snake_cases the name field', () => {
-            const root = opRoot([opRoute('/users', [opOperation('get', { name: 'Get User', mcp: true, responses: [opResponse(200, 'User', 'application/json')] })])]);
+            const root = opRoot([
+                opRoute('/users', [opOperation('get', { name: 'Get User', mcp: true, responses: [opResponse(200, 'User', 'application/json')] })]),
+            ]);
             expect(generateMcpFile(root)).toContain("name: 'get_user'");
         });
 
         it('infers snake_case name from method + path', () => {
             const root = opRoot([
-                opRoute('/payments/{id}', [opOperation('get', { mcp: true, responses: [opResponse(200, 'Payment', 'application/json')] })], [opParam('id', scalarType('uuid'))]),
+                opRoute(
+                    '/payments/{id}',
+                    [opOperation('get', { mcp: true, responses: [opResponse(200, 'Payment', 'application/json')] })],
+                    [opParam('id', scalarType('uuid'))],
+                ),
             ]);
             expect(generateMcpFile(root)).toContain("name: 'get_payments_by_id'");
         });
@@ -141,12 +164,22 @@ describe('generateMcpFile', () => {
     describe('definition metadata', () => {
         it('emits title, description, and every annotation', () => {
             const root = opRoot([
-                opRoute('/payments/{id}', [
-                    opOperation('get', {
-                        mcp: mcpBlock({ title: 'Get Payment', description: 'Fetch a payment by id.', readOnlyHint: true, idempotentHint: true, destructiveHint: false }),
-                        responses: [opResponse(200, 'Payment', 'application/json')],
-                    }),
-                ], [opParam('id', scalarType('uuid'))]),
+                opRoute(
+                    '/payments/{id}',
+                    [
+                        opOperation('get', {
+                            mcp: mcpBlock({
+                                title: 'Get Payment',
+                                description: 'Fetch a payment by id.',
+                                readOnlyHint: true,
+                                idempotentHint: true,
+                                destructiveHint: false,
+                            }),
+                            responses: [opResponse(200, 'Payment', 'application/json')],
+                        }),
+                    ],
+                    [opParam('id', scalarType('uuid'))],
+                ),
             ]);
             const out = generateMcpFile(root);
             expect(out).toContain("title: 'Get Payment'");
@@ -156,27 +189,37 @@ describe('generateMcpFile', () => {
 
         describe('annotations the contract leaves unset', () => {
             const annotationsFor = (method: 'get' | 'post' | 'put' | 'patch' | 'delete', mcp: McpConfigNode | true = true) =>
-                generateMcpFile(opRoot([opRoute('/users', [opOperation(method, { mcp, responses: [opResponse(200, 'User', 'application/json')] })])]));
+                generateMcpFile(
+                    opRoot([opRoute('/users', [opOperation(method, { mcp, responses: [opResponse(200, 'User', 'application/json')] })])]),
+                );
 
             it('reads a GET as read-only and idempotent', () => {
-                expect(annotationsFor('get')).toContain('annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }');
+                expect(annotationsFor('get')).toContain(
+                    'annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }',
+                );
             });
 
             it('reads a PUT as idempotent', () => {
-                expect(annotationsFor('put')).toContain('annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }');
+                expect(annotationsFor('put')).toContain(
+                    'annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }',
+                );
             });
 
             it('reads a DELETE as destructive', () => {
-                expect(annotationsFor('delete')).toContain('annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }');
+                expect(annotationsFor('delete')).toContain(
+                    'annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }',
+                );
             });
 
             it('reads a POST or PATCH as neither read-only nor destructive', () => {
                 for (const method of ['post', 'patch'] as const) {
-                    expect(annotationsFor(method)).toContain('annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }');
+                    expect(annotationsFor(method)).toContain(
+                        'annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }',
+                    );
                 }
             });
 
-            it("fills only the hints a partial hint: list leaves unset", () => {
+            it('fills only the hints a partial hint: list leaves unset', () => {
                 expect(annotationsFor('delete', mcpBlock({ destructiveHint: false, openWorldHint: true }))).toContain(
                     'annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }',
                 );
@@ -185,7 +228,13 @@ describe('generateMcpFile', () => {
 
         describe('an MCP App', () => {
             const generate = (mcp: McpConfigNode | true) =>
-                generateMcpFile(opRoot([opRoute('/searches', [opOperation('get', { sdk: 'getSearch', mcp, responses: [opResponse(200, 'User', 'application/json')] })])]));
+                generateMcpFile(
+                    opRoot([
+                        opRoute('/searches', [
+                            opOperation('get', { sdk: 'getSearch', mcp, responses: [opResponse(200, 'User', 'application/json')] }),
+                        ]),
+                    ]),
+                );
 
             it('wraps the definition in withMcpUi with the ui:// resource', () => {
                 const out = generate(mcpBlock({ ui: 'ui://ats/search.review' }));
@@ -196,7 +245,9 @@ describe('generateMcpFile', () => {
             });
 
             it('imports withMcpUi as a value', () => {
-                expect(generate(mcpBlock({ ui: 'ui://ats/search.review' }))).toMatch(/import \{ [^}]*\bwithMcpUi\b[^}]*\} from '@maroonedsoftware\/mcp';/);
+                expect(generate(mcpBlock({ ui: 'ui://ats/search.review' }))).toMatch(
+                    /import \{ [^}]*\bwithMcpUi\b[^}]*\} from '@maroonedsoftware\/mcp';/,
+                );
             });
 
             it('leaves a tool without one as a plain definition', () => {
@@ -206,9 +257,41 @@ describe('generateMcpFile', () => {
             });
         });
 
+        describe("the file's area in _meta", () => {
+            const metaFor = (meta: Record<string, string>) =>
+                generateMcpFile(
+                    opRoot(
+                        [
+                            opRoute('/users', [
+                                opOperation('get', { mcp: true, security: SECURITY_NONE, responses: [opResponse(200, 'User', 'application/json')] }),
+                            ]),
+                        ],
+                        'users.op',
+                        meta,
+                    ),
+                );
+
+            it("reports the file's area beside its security", () => {
+                expect(metaFor({ area: 'users' })).toContain("_meta: { 'contractkit/security': 'none', 'contractkit/area': 'users' },");
+            });
+
+            it('reports no area for a file that names none', () => {
+                expect(metaFor({})).toContain("_meta: { 'contractkit/security': 'none' },");
+                expect(metaFor({})).not.toContain('contractkit/area');
+            });
+
+            it('escapes an area that would break the string', () => {
+                expect(metaFor({ area: "o'clock" })).toContain("'contractkit/area': 'o\\'clock'");
+            });
+        });
+
         describe("the operation's security in _meta", () => {
             const metaFor = (security?: SecurityNode) =>
-                generateMcpFile(opRoot([opRoute('/users', [opOperation('get', { mcp: true, security, responses: [opResponse(200, 'User', 'application/json')] })])]));
+                generateMcpFile(
+                    opRoot([
+                        opRoute('/users', [opOperation('get', { mcp: true, security, responses: [opResponse(200, 'User', 'application/json')] })]),
+                    ]),
+                );
 
             it('reports the MFA default for an operation that declares nothing', () => {
                 const out = metaFor();
@@ -232,7 +315,11 @@ describe('generateMcpFile', () => {
         });
 
         it('falls back to op description', () => {
-            const root = opRoot([opRoute('/users', [opOperation('get', { mcp: true, description: 'List users.', responses: [opResponse(200, 'User', 'application/json')] })])]);
+            const root = opRoot([
+                opRoute('/users', [
+                    opOperation('get', { mcp: true, description: 'List users.', responses: [opResponse(200, 'User', 'application/json')] }),
+                ]),
+            ]);
             expect(generateMcpFile(root)).toContain("description: 'List users.'");
         });
     });
@@ -240,7 +327,11 @@ describe('generateMcpFile', () => {
     describe('input schema + validation', () => {
         it('folds path params into a shared args const used for schema and validation', () => {
             const root = opRoot([
-                opRoute('/payments/{id}', [opOperation('get', { mcp: true, responses: [opResponse(200, 'Payment', 'application/json')] })], [opParam('id', scalarType('uuid'))]),
+                opRoute(
+                    '/payments/{id}',
+                    [opOperation('get', { mcp: true, responses: [opResponse(200, 'Payment', 'application/json')] })],
+                    [opParam('id', scalarType('uuid'))],
+                ),
             ]);
             const out = generateMcpFile(root);
             expect(out).toContain('const GetPaymentsByIdArgs = z.object({ id: z.uuid() });');
@@ -250,7 +341,14 @@ describe('generateMcpFile', () => {
 
         it('nests the request body under a body field', () => {
             const root = opRoot([
-                opRoute('/payments', [opOperation('post', { sdk: 'createPayment', mcp: true, request: opRequest('PaymentInput'), responses: [opResponse(201, 'Payment', 'application/json')] })]),
+                opRoute('/payments', [
+                    opOperation('post', {
+                        sdk: 'createPayment',
+                        mcp: true,
+                        request: opRequest('PaymentInput'),
+                        responses: [opResponse(201, 'Payment', 'application/json')],
+                    }),
+                ]),
             ]);
             const out = generateMcpFile(root);
             expect(out).toContain('const CreatePaymentArgs = z.object({ body: PaymentInput });');
@@ -306,7 +404,9 @@ describe('generateMcpFile', () => {
         });
 
         it('underscores the args param when the op takes no arguments', () => {
-            const root = opRoot([opRoute('/health', [opOperation('get', { mcp: true, responses: [opResponse(200, 'Health', 'application/json')] })])]);
+            const root = opRoot([
+                opRoute('/health', [opOperation('get', { mcp: true, responses: [opResponse(200, 'Health', 'application/json')] })]),
+            ]);
             const out = generateMcpFile(root);
             // Nothing destructures `args` here, so an un-prefixed name trips no-unused-vars in
             // consumers that lint generated output.
@@ -320,7 +420,17 @@ describe('generateMcpFile', () => {
     describe('service call + result', () => {
         it('injects the declared service and calls it', () => {
             const root = opRoot([
-                opRoute('/payments/{id}', [opOperation('get', { mcp: true, service: 'PaymentsService.getById', responses: [opResponse(200, 'Payment', 'application/json')] })], [opParam('id', scalarType('uuid'))]),
+                opRoute(
+                    '/payments/{id}',
+                    [
+                        opOperation('get', {
+                            mcp: true,
+                            service: 'PaymentsService.getById',
+                            responses: [opResponse(200, 'Payment', 'application/json')],
+                        }),
+                    ],
+                    [opParam('id', scalarType('uuid'))],
+                ),
             ]);
             const out = generateMcpFile(root);
             expect(out).toContain('constructor(private readonly service: PaymentsService, private readonly policies: PolicyService) {}');
@@ -342,7 +452,9 @@ describe('generateMcpFile', () => {
             });
 
             it('uses the replacer for a wrapped list too', () => {
-                const out = toolFor(opOperation('get', { mcp: true, responses: [opResponse(200, arrayType(scalarType('bigint')), 'application/json')] }));
+                const out = toolFor(
+                    opOperation('get', { mcp: true, responses: [opResponse(200, arrayType(scalarType('bigint')), 'application/json')] }),
+                );
                 expect(out).toContain('const resultJson = JSON.stringify({ items: result }, bigIntReplacer);');
             });
 
@@ -369,7 +481,11 @@ describe('generateMcpFile', () => {
 
         it('returns bare content (no structuredContent / outputSchema) for a void response', () => {
             const root = opRoot([
-                opRoute('/payments/{id}', [opOperation('delete', { mcp: true, service: 'PaymentsService.remove', responses: [opResponse(204)] })], [opParam('id', scalarType('uuid'))]),
+                opRoute(
+                    '/payments/{id}',
+                    [opOperation('delete', { mcp: true, service: 'PaymentsService.remove', responses: [opResponse(204)] })],
+                    [opParam('id', scalarType('uuid'))],
+                ),
             ]);
             const out = generateMcpFile(root);
             expect(out).toContain('await this.service.remove(id);');
@@ -380,7 +496,17 @@ describe('generateMcpFile', () => {
 
         it('emits outputSchema for an object response', () => {
             const root = opRoot([
-                opRoute('/payments/{id}', [opOperation('get', { mcp: true, service: 'PaymentsService.getById', responses: [opResponse(200, 'Payment', 'application/json')] })], [opParam('id', scalarType('uuid'))]),
+                opRoute(
+                    '/payments/{id}',
+                    [
+                        opOperation('get', {
+                            mcp: true,
+                            service: 'PaymentsService.getById',
+                            responses: [opResponse(200, 'Payment', 'application/json')],
+                        }),
+                    ],
+                    [opParam('id', scalarType('uuid'))],
+                ),
             ]);
             expect(generateMcpFile(root)).toContain("outputSchema: z.toJSONSchema(Payment, { unrepresentable: 'any' }) as Tool['outputSchema']");
         });
@@ -389,11 +515,16 @@ describe('generateMcpFile', () => {
     describe('a result that is not an object', () => {
         const STRUCTURED = "return { content: [{ type: 'text', text: resultJson }], structuredContent: JSON.parse(resultJson) };";
         const toolFor = (body: string | ContractTypeNode, models?: Map<string, ModelNode>) =>
-            generateMcpFile(opRoot([opRoute('/things', [opOperation('get', { mcp: true, responses: [opResponse(200, body, 'application/json')] })])]), { models });
+            generateMcpFile(
+                opRoot([opRoute('/things', [opOperation('get', { mcp: true, responses: [opResponse(200, body, 'application/json')] })])]),
+                { models },
+            );
 
         it('reports a list as { items }', () => {
             const out = toolFor(arrayType(refType('Payment')));
-            expect(out).toContain("outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema']");
+            expect(out).toContain(
+                "outputSchema: z.toJSONSchema(z.object({ items: z.array(Payment) }), { unrepresentable: 'any' }) as Tool['outputSchema']",
+            );
             expect(out).toContain('const resultJson = JSON.stringify({ items: result });');
             expect(out).toContain(STRUCTURED);
             expect(out).toContain("import { Payment } from './payment.js';");
@@ -454,7 +585,19 @@ describe('generateMcpFile', () => {
     describe('imports + registration', () => {
         it('imports the MCP + injectkit primitives and emits a per-file register fn', () => {
             const root = opRoot(
-                [opRoute('/payments/{id}', [opOperation('get', { mcp: true, service: 'PaymentsService.getById', responses: [opResponse(200, 'Payment', 'application/json')] })], [opParam('id', scalarType('uuid'))])],
+                [
+                    opRoute(
+                        '/payments/{id}',
+                        [
+                            opOperation('get', {
+                                mcp: true,
+                                service: 'PaymentsService.getById',
+                                responses: [opResponse(200, 'Payment', 'application/json')],
+                            }),
+                        ],
+                        [opParam('id', scalarType('uuid'))],
+                    ),
+                ],
                 'payments.op',
             );
             const out = generateMcpFile(root);
@@ -471,7 +614,17 @@ describe('generateMcpFile', () => {
 
         it('resolves service + schema imports via modelOutPaths', () => {
             const root = opRoot(
-                [opRoute('/payments', [opOperation('post', { sdk: 'createPayment', mcp: true, service: 'PaymentsService.create', request: opRequest('PaymentInput'), responses: [opResponse(201, 'Payment', 'application/json')] })])],
+                [
+                    opRoute('/payments', [
+                        opOperation('post', {
+                            sdk: 'createPayment',
+                            mcp: true,
+                            service: 'PaymentsService.create',
+                            request: opRequest('PaymentInput'),
+                            responses: [opResponse(201, 'Payment', 'application/json')],
+                        }),
+                    ]),
+                ],
                 'payments.op',
             );
             const modelOutPaths = new Map<string, string>([
@@ -725,7 +878,11 @@ describe('generateMcpAggregator', () => {
     it('builds the catalog under its own token when the catalog is on', () => {
         const out = generateMcpAggregator(
             [
-                { registerCatalogFn: 'registerPaymentsMcpCatalog', registerClassesFn: 'registerPaymentsMcpToolClasses', importPath: './payments.mcp.js' },
+                {
+                    registerCatalogFn: 'registerPaymentsMcpCatalog',
+                    registerClassesFn: 'registerPaymentsMcpToolClasses',
+                    importPath: './payments.mcp.js',
+                },
                 {
                     registerFn: 'registerUsersMcpTools',
                     registerCatalogFn: 'registerUsersMcpCatalog',
@@ -747,7 +904,13 @@ describe('generateMcpAggregator', () => {
 
     it('leaves the container unread when no operation is flagged', () => {
         const out = generateMcpAggregator(
-            [{ registerCatalogFn: 'registerPaymentsMcpCatalog', registerClassesFn: 'registerPaymentsMcpToolClasses', importPath: './payments.mcp.js' }],
+            [
+                {
+                    registerCatalogFn: 'registerPaymentsMcpCatalog',
+                    registerClassesFn: 'registerPaymentsMcpToolClasses',
+                    importPath: './payments.mcp.js',
+                },
+            ],
             { catalog: true },
         );
         expect(out).toContain('export function registerMcpTools(_container: Container): McpToolHandlerMap {');
@@ -770,7 +933,9 @@ describe('generateMcpAggregator', () => {
     });
 
     it('only builds the map — Container has no register, that belongs to Registry', () => {
-        const out = generateMcpAggregator([{ registerFn: 'registerPaymentsMcpTools', registerClassesFn: 'registerPaymentsMcpToolClasses', importPath: './payments.mcp.js' }]);
+        const out = generateMcpAggregator([
+            { registerFn: 'registerPaymentsMcpTools', registerClassesFn: 'registerPaymentsMcpToolClasses', importPath: './payments.mcp.js' },
+        ]);
         expect(out).not.toContain('container.register');
         expect(out).toContain('registry.register(McpToolHandlerMap).useFactory(registerMcpTools).asSingleton();');
     });
@@ -846,7 +1011,9 @@ describe('per-tool security enforcement', () => {
         expect(out).toContain('constructor(private readonly service: UsersService, private readonly policies: PolicyService) {}');
         expect(out).toContain('constructor(private readonly service: UsersService) {}');
         // One gated tool is enough to pull the runtime imports in for the whole file.
-        expect(out).toContain("import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';");
+        expect(out).toContain(
+            "import { requireMcpPolicy, type McpToolHandler, type McpToolHandlerMap, type McpToolContext } from '@maroonedsoftware/mcp';",
+        );
         expect(out).toContain("import { PolicyService } from '@maroonedsoftware/policies';");
     });
 
@@ -930,35 +1097,35 @@ describe('generateMcpRouter', () => {
         expect(out).not.toContain('ctx.request.body');
     });
 
-        it('delegates the whole file to the framework adapter', () => {
-            const stub = {
-                middleware: { policy: (args: string) => `requirePolicy(${args})` },
-                mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}`,
-            };
-            // Only `mcpRouter` and the guard factory it needs are reachable from here, so the rest of
-            // the adapter is left off the stub.
-            const out = generateMcpRouter({ framework: stub as never });
-            expect(out).toBe('// stub mount at /mcp');
-        });
+    it('delegates the whole file to the framework adapter', () => {
+        const stub = {
+            middleware: { policy: (args: string) => `requirePolicy(${args})` },
+            mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}`,
+        };
+        // Only `mcpRouter` and the guard factory it needs are reachable from here, so the rest of
+        // the adapter is left off the stub.
+        const out = generateMcpRouter({ framework: stub as never });
+        expect(out).toBe('// stub mount at /mcp');
+    });
 
-        it('passes a configured path through to the adapter', () => {
-            const stub = {
-                middleware: { policy: (args: string) => `requirePolicy(${args})` },
-                mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}`,
-            };
-            expect(generateMcpRouter({ path: '/tools', framework: stub as never })).toBe('// stub mount at /tools');
-        });
+    it('passes a configured path through to the adapter', () => {
+        const stub = {
+            middleware: { policy: (args: string) => `requirePolicy(${args})` },
+            mcpRouter: ({ path }: { path: string }) => `// stub mount at ${path}`,
+        };
+        expect(generateMcpRouter({ path: '/tools', framework: stub as never })).toBe('// stub mount at /tools');
+    });
 
-        it('hands the adapter the guards rather than letting the template spell them', () => {
-            const stub = {
-                middleware: { policy: (args: string) => `requirePolicy(${args})` },
-                mcpRouter: ({ guards }: { guards: RouteMiddleware }) => JSON.stringify(guards),
-            };
-            expect(JSON.parse(generateMcpRouter({ framework: stub as never }))).toEqual({
-                bodyContentTypes: ['application/json'],
-                policy: 'requirePolicy({ policy: false })',
-            });
+    it('hands the adapter the guards rather than letting the template spell them', () => {
+        const stub = {
+            middleware: { policy: (args: string) => `requirePolicy(${args})` },
+            mcpRouter: ({ guards }: { guards: RouteMiddleware }) => JSON.stringify(guards),
+        };
+        expect(JSON.parse(generateMcpRouter({ framework: stub as never }))).toEqual({
+            bodyContentTypes: ['application/json'],
+            policy: 'requirePolicy({ policy: false })',
         });
+    });
 
     it('defaults the mount path to /mcp', () => {
         expect(generateMcpRouter()).toContain("router.post('/mcp'");
