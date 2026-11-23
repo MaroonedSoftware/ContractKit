@@ -418,6 +418,14 @@ function annotationsExpr(op: OpOperationNode): string {
 export const MCP_SECURITY_META_KEY = 'contractkit/security';
 
 /**
+ * The `_meta` key a tool definition reports its file's area under: the `area` of the file's
+ * `options { keys }`, the same value that names the SDK client the operation lands on. It is what
+ * lets a meta tool over a large catalog group operations the way the API is organised (list the
+ * areas, then one area's operations) rather than by keyword alone. Absent when the file names none.
+ */
+export const MCP_AREA_META_KEY = 'contractkit/area';
+
+/**
  * The operation's effective security as a tool's `_meta` reports it, in the vocabulary a `.ck` file
  * uses: `'none'`, or `{ policy }` with the policy the tool asserts (`false` for a bare session
  * check). It mirrors {@link toolPolicyCheck}, so a meta tool searching the catalog can filter on
@@ -561,6 +569,8 @@ interface ToolPlan {
     listed: boolean;
     /** In the catalog of every operation, through `register<File>McpCatalog`. */
     inCatalog: boolean;
+    /** The file's `options { keys: { area } }`, reported in `_meta` when the file declares one. */
+    area: string | undefined;
 }
 
 /**
@@ -589,6 +599,7 @@ export function planTools(root: OpRootNode, includeInternal: boolean, catalog = 
                 security: resolveSecurity(route, op, root),
                 listed,
                 inCatalog,
+                area: root.meta?.area,
             });
         }
     }
@@ -669,7 +680,8 @@ function renderToolClass(plan: ToolPlan, file: string, options: McpCodegenOption
     const outExpr = outputSchemaExpr(op, options.models);
     if (outExpr) lines.push(`        outputSchema: z.toJSONSchema(${outExpr}, { unrepresentable: 'any' }) as Tool['outputSchema'],`);
     lines.push(`        annotations: ${annotationsExpr(op)},`);
-    lines.push(`        _meta: { '${MCP_SECURITY_META_KEY}': ${securityMetaExpr(plan.security)} },`);
+    const areaMeta = plan.area ? `, '${MCP_AREA_META_KEY}': '${escapeSingleQuoted(plan.area)}'` : '';
+    lines.push(`        _meta: { '${MCP_SECURITY_META_KEY}': ${securityMetaExpr(plan.security)}${areaMeta} },`);
     lines.push(cfg?.ui ? `    }, { resourceUri: '${escapeSingleQuoted(cfg.ui)}' });` : '    };');
     lines.push('');
 
